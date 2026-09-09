@@ -1,0 +1,18 @@
+# Secrets — ne jamais committer
+.env
+infra/.env
+infra/traefik/letsencrypt/
+
+# Backend
+backend/node_modules/
+backend/dist/
+
+# Flutter
+app/build/
+app/.dart_tool/
+app/**/generated_plugin_registrant.dart
+
+# Général
+.DS_Store
+*.log
+backend/generated/

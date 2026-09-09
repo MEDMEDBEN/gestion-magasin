@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run test*)",
+      "Bash(npm run start:dev*)",
+      "Bash(npm run lint*)",
+      "Bash(npx prisma migrate dev*)",
+      "Bash(npx prisma generate*)",
+      "Bash(flutter test*)",
+      "Bash(flutter analyze*)",
+      "Bash(flutter pub get*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(git commit*)",
+      "Bash(npx prisma migrate deploy*)",
+      "Bash(npx prisma migrate reset*)",
+      "Bash(flutter build*)",
+      "Bash(docker*)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(git push --force*)",
+      "Bash(npx prisma db push --force-reset*)"
+    ]
+  }
+}

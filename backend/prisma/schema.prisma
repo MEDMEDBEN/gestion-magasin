@@ -1,0 +1,1071 @@
+// Schéma de données — Phase 0 (fondation)
+//
+// Règles appliquées (voir CLAUDE.md) :
+//  - id           : UUID (v7 par défaut côté serveur, mais le client PEUT fournir le sien — contrat de sync)
+//  - argent       : Int = centimes de DA. JAMAIS de Float/Decimal pour un montant.
+//  - quantités    : Decimal(14,3) — certains produits se vendent au mètre.
+//  - taux (TVA)   : Decimal(5,2) en pourcentage (ex : 19.00).
+//  - stock        : StockMovement = source de vérité (deltas signés) ; Stock = projection.
+//  - enums        : valeurs en MAJUSCULES, identiques backend / DB / Flutter.
+//
+// AUCUNE logique métier ici — uniquement la structure.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────────────────────────────────────
+// ENUMS
+// ───────────────────────────────────────────────────────────
+
+/// Unité de vente d'un produit (les quantités restent décimales dans tous les cas).
+enum ProductUnit {
+  PIECE
+  METRE
+  ROULEAU
+  BOITE
+  PAQUET
+  KILOGRAMME
+}
+
+/// Nature d'un emplacement. MAGASIN / DEPOT / TRANSIT portent les projections de stock ;
+/// EMPLACEMENT = position physique dans le dépôt (Zone → Rayon → Étagère → Position).
+enum LocationType {
+  MAGASIN
+  DEPOT
+  TRANSIT
+  EMPLACEMENT
+}
+
+enum StockMovementType {
+  RECEPTION
+  VENTE
+  RETOUR_CLIENT
+  RETOUR_FOURNISSEUR
+  TRANSFERT_SORTIE
+  TRANSFERT_ENTREE
+  AJUSTEMENT_INVENTAIRE
+  PERTE_CASSE
+}
+
+/// Type d'opération à l'origine d'un mouvement / d'une notification / d'un log d'audit.
+enum OperationType {
+  SALE
+  RECEPTION
+  TRANSFER
+  INVENTORY
+  PURCHASE_ORDER
+  QUOTE
+  CUSTOMER_PAYMENT
+  SUPPLIER_PAYMENT
+  CASH_SESSION
+  PRODUCT
+  MANUAL
+}
+
+enum SaleType {
+  TICKET
+  FACTURE
+}
+
+enum SaleStatus {
+  VALIDEE
+  ANNULEE
+}
+
+enum PaymentMethod {
+  ESPECES
+  CHEQUE
+  VIREMENT
+  CARTE
+  AUTRE
+}
+
+enum QuoteStatus {
+  BROUILLON
+  ENVOYE
+  ACCEPTE
+  CONVERTI
+  REFUSE
+  EXPIRE
+}
+
+/// Type de document à numérotation séquentielle par année (voir InvoiceCounter).
+enum DocumentType {
+  FACTURE
+  DEVIS
+  BON_COMMANDE
+  TRANSFERT
+}
+
+enum CashSessionStatus {
+  OUVERTE
+  CLOTUREE
+}
+
+enum CashMovementType {
+  VENTE_ESPECES
+  ENTREE
+  SORTIE
+  PRELEVEMENT
+}
+
+enum PurchaseOrderStatus {
+  BROUILLON
+  COMMANDEE
+  CONFIRMEE
+  PARTIELLEMENT_RECUE
+  RECUE
+  ANNULEE
+}
+
+enum TransferStatus {
+  DEMANDEE
+  ACCEPTEE
+  EN_PREPARATION
+  PREPAREE
+  EN_TRANSIT
+  RECUE
+  REFUSEE
+  ANNULEE
+}
+
+enum Priority {
+  BASSE
+  NORMALE
+  HAUTE
+  URGENTE
+}
+
+enum InventoryStatus {
+  EN_COURS
+  TERMINE
+}
+
+enum InventoryType {
+  COMPLET
+  TOURNANT
+}
+
+enum InventoryLineState {
+  CONFORME
+  ECART
+}
+
+enum PlanningTaskType {
+  SAISIE
+  COMPTAGE
+  REVISION
+  RECEPTION
+  PREPARATION
+  AUTRE
+}
+
+enum PlanningTaskStatus {
+  A_FAIRE
+  EN_COURS
+  TERMINEE
+}
+
+enum NotificationType {
+  STOCK_FAIBLE
+  RUPTURE
+  NOUVELLE_DEMANDE_DEPOT
+  DEMANDE_PRETE
+  TRANSFERT
+  TRANSFERT_RECU
+  COMMANDE_CONFIRMEE
+  RECEPTION
+  RECEPTION_PARTIELLE
+  RETARD_FOURNISSEUR
+  ECHEANCE_CLIENT
+  DETTE_CLIENT_RETARD
+  DETTE_FOURNISSEUR
+  INVENTAIRE_A_FAIRE
+  ECART_DETECTE
+  TACHE_DU_JOUR
+  TACHE_EN_RETARD
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  CANCEL
+  VALIDATE
+  ADJUST
+}
+
+/// Résultat du traitement serveur d'une mutation hors-ligne (contrat de sync, docs/context.md §4).
+enum SyncMutationStatus {
+  CONFIRMEE
+  REJETEE
+}
+
+// ───────────────────────────────────────────────────────────
+// AUTH / UTILISATEURS
+// ───────────────────────────────────────────────────────────
+
+/// Pas d'inscription publique : l'admin crée les comptes.
+model User {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  email             String?   @unique
+  phone             String?   @unique
+  fullName          String
+  passwordHash      String
+  isActive          Boolean   @default(true)
+  /// Force le changement de mot de passe à la première connexion (spec §2bis).
+  mustChangePassword Boolean  @default(true)
+  lastLoginAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  roles       Role[]       @relation("UserRoles")
+  /// Permissions accordées en plus de celles des rôles (un membre peut cumuler).
+  permissions Permission[] @relation("UserPermissions")
+
+  refreshTokens       RefreshToken[]
+  sales               Sale[]
+  quotes              Quote[]
+  customerPayments    CustomerPayment[]
+  supplierPayments    SupplierPayment[]
+  cashSessions        CashSession[]
+  cashMovements       CashMovement[]
+  stockMovements      StockMovement[]
+  receptions          Reception[]
+  purchaseOrdersCreated   PurchaseOrder[] @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersConfirmed PurchaseOrder[] @relation("PurchaseOrderConfirmedBy")
+  transfersRequested  Transfer[]      @relation("TransferRequestedBy")
+  transfersPrepared   Transfer[]      @relation("TransferPreparedBy")
+  transfersReceived   Transfer[]      @relation("TransferReceivedBy")
+  inventoriesCreated  Inventory[]     @relation("InventoryCreatedBy")
+  inventoriesValidated Inventory[]    @relation("InventoryValidatedBy")
+  planningTasksAssigned PlanningTask[] @relation("PlanningTaskAssignedTo")
+  planningTasksCreated  PlanningTask[] @relation("PlanningTaskCreatedBy")
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  syncMutations       SyncMutation[]
+
+  @@index([isActive])
+}
+
+/// Rôles figés : ADMIN, VENDEUR, MAGASINIER (voir CLAUDE.md).
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]       @relation("UserRoles")
+  permissions Permission[] @relation("RolePermissions")
+}
+
+/// Permission atomique (ex : `sale.create`, `stock.adjust`). Reflète docs/permissions.md.
+model Permission {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles Role[] @relation("RolePermissions")
+  users User[] @relation("UserPermissions")
+}
+
+/// Session persistante révocable (90 j glissants). Le token n'est stocké que HASHÉ.
+model RefreshToken {
+  id         String    @id @default(uuid(7)) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  deviceId   String?
+  deviceName String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ───────────────────────────────────────────────────────────
+// CATALOGUE
+// ───────────────────────────────────────────────────────────
+
+model Category {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        String
+  parentId    String?  @db.Uuid
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+}
+
+/// MAGASIN / DEPOT / TRANSIT portent les projections de stock.
+/// EMPLACEMENT = position physique dans le dépôt, rattachée au DEPOT via parentId.
+model Location {
+  id       String       @id @default(uuid(7)) @db.Uuid
+  code     String       @unique
+  name     String
+  type     LocationType
+  parentId String?      @db.Uuid
+  zone     String?
+  aisle    String?
+  shelf    String?
+  position String?
+  isActive Boolean      @default(true)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  parent   Location?  @relation("LocationTree", fields: [parentId], references: [id])
+  children Location[] @relation("LocationTree")
+
+  stocks              Stock[]
+  storedProducts      Product[]       @relation("ProductStorageLocation")
+  stockMovements      StockMovement[] @relation("StockMovementLocation")
+  movementsFrom       StockMovement[] @relation("StockMovementSource")
+  movementsTo         StockMovement[] @relation("StockMovementDestination")
+  sales               Sale[]
+  cashSessions        CashSession[]
+  receptions          Reception[]
+  transfersFrom       Transfer[]      @relation("TransferFrom")
+  transfersTo         Transfer[]      @relation("TransferTo")
+  inventories         Inventory[]
+  planningTasks       PlanningTask[]
+
+  @@index([type])
+  @@index([parentId])
+}
+
+model Product {
+  id          String      @id @default(uuid(7)) @db.Uuid
+  sku         String      @unique
+  /// Code fabricant scanné s'il existe, sinon code interne généré — UNIQUE (CLAUDE.md règle 15).
+  barcode     String      @unique
+  name        String
+  description String?
+  brand       String?
+  unit        ProductUnit @default(PIECE)
+  categoryId  String?     @db.Uuid
+  taxRateId   String?     @db.Uuid
+  mainSupplierId String?  @db.Uuid
+  /// Emplacement physique au dépôt (Location de type EMPLACEMENT).
+  storageLocationId String? @db.Uuid
+  imageUrl    String?
+  minThreshold Decimal    @default(0) @db.Decimal(14, 3)
+  safetyStock  Decimal    @default(0) @db.Decimal(14, 3)
+  /// Coût = dernier prix d'achat réceptionné, en centimes (CLAUDE.md règle 5).
+  lastPurchasePriceHt Int?
+  /// Autorise une opération qui rendrait le stock négatif (CLAUDE.md règle 9).
+  allowBackorder Boolean  @default(false)
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  category        Category? @relation(fields: [categoryId], references: [id])
+  taxRate         TaxRate?  @relation(fields: [taxRateId], references: [id])
+  mainSupplier    Supplier? @relation(fields: [mainSupplierId], references: [id])
+  storageLocation Location? @relation("ProductStorageLocation", fields: [storageLocationId], references: [id])
+
+  prices         ProductPrice[]
+  stocks         Stock[]
+  stockMovements StockMovement[]
+  saleLines      SaleLine[]
+  quoteLines     QuoteLine[]
+  purchaseLines  PurchaseLine[]
+  receptionLines ReceptionLine[]
+  transferLines  TransferLine[]
+  inventoryLines InventoryLine[]
+
+  @@index([categoryId])
+  @@index([mainSupplierId])
+  @@index([isActive])
+  @@index([name])
+}
+
+// ───────────────────────────────────────────────────────────
+// TARIFS / TVA / NUMÉROTATION
+// ───────────────────────────────────────────────────────────
+
+/// Tarif de vente (DETAIL, GROS…). Le prix appliqué est figé sur la SaleLine.
+model PriceTier {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  code      String   @unique
+  name      String
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prices     ProductPrice[]
+  customers  Customer[]
+  saleLines  SaleLine[]
+  quoteLines QuoteLine[]
+}
+
+/// Prix HT (centimes) d'un produit pour un tarif donné.
+model ProductPrice {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  productId   String   @db.Uuid
+  priceTierId String   @db.Uuid
+  priceHt     Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceTier PriceTier @relation(fields: [priceTierId], references: [id])
+
+  @@unique([productId, priceTierId])
+  @@index([priceTierId])
+}
+
+/// Taux de TVA en pourcentage (ex : 19.00, 9.00, 0.00).
+model TaxRate {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  code      String   @unique
+  name      String
+  rate      Decimal  @db.Decimal(5, 2)
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+}
+
+/// Compteur séquentiel par type de document et par année (FAC-2026-00001…).
+/// Le numéro de facture est attribué côté serveur, en transaction, sans trou (CLAUDE.md règle 11).
+model InvoiceCounter {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  documentType DocumentType
+  year         Int
+  lastNumber   Int          @default(0)
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([documentType, year])
+}
+
+// ───────────────────────────────────────────────────────────
+// STOCK
+// ───────────────────────────────────────────────────────────
+
+/// PROJECTION (cache) — recalculée dans la même transaction que le StockMovement.
+/// Ne jamais écrire quantity directement à partir d'une valeur absolue (CLAUDE.md règle 2).
+model Stock {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  productId         String   @db.Uuid
+  locationId        String   @db.Uuid
+  quantity          Decimal  @default(0) @db.Decimal(14, 3)
+  reservedQuantity  Decimal  @default(0) @db.Decimal(14, 3)
+  inTransitQuantity Decimal  @default(0) @db.Decimal(14, 3)
+  updatedAt         DateTime @updatedAt
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id])
+
+  @@unique([productId, locationId])
+  @@index([locationId])
+}
+
+/// SOURCE DE VÉRITÉ du stock : deltas additifs, jamais de valeur absolue.
+/// `locationId` = emplacement dont la projection bouge ; `quantity` = delta SIGNÉ.
+/// `sourceLocationId` / `destinationLocationId` sont informatifs (traçabilité d'un transfert).
+model StockMovement {
+  id                    String            @id @default(uuid(7)) @db.Uuid
+  productId             String            @db.Uuid
+  locationId            String            @db.Uuid
+  quantity              Decimal           @db.Decimal(14, 3)
+  type                  StockMovementType
+  sourceLocationId      String?           @db.Uuid
+  destinationLocationId String?           @db.Uuid
+  /// Opération à l'origine du mouvement (polymorphe, pas de FK).
+  operationType         OperationType
+  operationId           String?           @db.Uuid
+  userId                String?           @db.Uuid
+  comment               String?
+  createdAt             DateTime          @default(now())
+
+  product             Product   @relation(fields: [productId], references: [id])
+  location            Location  @relation("StockMovementLocation", fields: [locationId], references: [id])
+  sourceLocation      Location? @relation("StockMovementSource", fields: [sourceLocationId], references: [id])
+  destinationLocation Location? @relation("StockMovementDestination", fields: [destinationLocationId], references: [id])
+  user                User?     @relation(fields: [userId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([locationId])
+  @@index([operationType, operationId])
+  @@index([createdAt])
+}
+
+// ───────────────────────────────────────────────────────────
+// CLIENTS / VENTES
+// ───────────────────────────────────────────────────────────
+
+model Customer {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String?  @unique
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  priceTierId String?  @db.Uuid
+  /// Plafond de crédit en centimes, fixé par l'admin (0 = pas de vente à crédit).
+  creditLimit Int      @default(0)
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  priceTier PriceTier?        @relation(fields: [priceTierId], references: [id])
+  sales     Sale[]
+  quotes    Quote[]
+  payments  CustomerPayment[]
+
+  @@index([name])
+  @@index([phone])
+}
+
+/// Une vente VALIDEE crée ses lignes + ses mouvements de stock dans UNE transaction.
+/// La dette n'est pas stockée : reste = totalTtc − paidAmount − Σ(CustomerPayment).
+model Sale {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  /// Numéro de ticket (séquentiel applicatif) — toujours présent.
+  number        String     @unique
+  /// Numéro légal de facture (FAC-AAAA-NNNNN) — attribué SERVEUR, en ligne uniquement.
+  invoiceNumber String?    @unique
+  type          SaleType   @default(TICKET)
+  status        SaleStatus @default(VALIDEE)
+  customerId    String?    @db.Uuid
+  userId        String     @db.Uuid
+  locationId    String     @db.Uuid
+  cashSessionId String?    @db.Uuid
+  quoteId       String?    @unique @db.Uuid
+  totalHt       Int
+  totalTax      Int
+  totalTtc      Int
+  /// Montant encaissé au moment de la vente (centimes). Les règlements ultérieurs = CustomerPayment.
+  paidAmount    Int        @default(0)
+  paymentMethod PaymentMethod?
+  dueDate       DateTime?
+  soldAt        DateTime   @default(now())
+  cancelledAt   DateTime?
+  note          String?
+  /// Idempotence sync (docs/context.md §3).
+  clientMutationId String? @unique @db.Uuid
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+  location    Location     @relation(fields: [locationId], references: [id])
+  cashSession CashSession? @relation(fields: [cashSessionId], references: [id])
+  quote       Quote?       @relation("QuoteConvertedSale", fields: [quoteId], references: [id])
+
+  lines         SaleLine[]
+  payments      CustomerPayment[]
+  cashMovements CashMovement[]
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([soldAt])
+  @@index([status])
+}
+
+/// Le prix appliqué est FIGÉ ici au moment de la vente (CLAUDE.md règle 13).
+model SaleLine {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  saleId         String  @db.Uuid
+  productId      String  @db.Uuid
+  priceTierId    String? @db.Uuid
+  quantity       Decimal @db.Decimal(14, 3)
+  unitPriceHt    Int
+  /// Taux de TVA figé au moment de la vente (pourcentage).
+  taxRate        Decimal @default(0) @db.Decimal(5, 2)
+  discountAmount Int     @default(0)
+  lineTotalHt    Int
+  lineTaxAmount  Int
+  lineTotalTtc   Int
+
+  sale      Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product   Product    @relation(fields: [productId], references: [id])
+  priceTier PriceTier? @relation(fields: [priceTierId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model CustomerPayment {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  customerId String        @db.Uuid
+  saleId     String?       @db.Uuid
+  userId     String        @db.Uuid
+  amount     Int
+  method     PaymentMethod @default(ESPECES)
+  paidAt     DateTime      @default(now())
+  note       String?
+  clientMutationId String?  @unique @db.Uuid
+  createdAt  DateTime      @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id])
+  sale     Sale?    @relation(fields: [saleId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([customerId])
+  @@index([saleId])
+  @@index([paidAt])
+}
+
+// ───────────────────────────────────────────────────────────
+// DEVIS (aucun mouvement de stock — CLAUDE.md règle 15)
+// ───────────────────────────────────────────────────────────
+
+model Quote {
+  id         String      @id @default(uuid(7)) @db.Uuid
+  number     String      @unique
+  status     QuoteStatus @default(BROUILLON)
+  customerId String?     @db.Uuid
+  userId     String      @db.Uuid
+  validUntil DateTime?
+  totalHt    Int
+  totalTax   Int
+  totalTtc   Int
+  note       String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  user          User      @relation(fields: [userId], references: [id])
+  lines         QuoteLine[]
+  /// Vente issue de la conversion du devis.
+  convertedSale Sale?     @relation("QuoteConvertedSale")
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model QuoteLine {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  quoteId        String  @db.Uuid
+  productId      String  @db.Uuid
+  priceTierId    String? @db.Uuid
+  quantity       Decimal @db.Decimal(14, 3)
+  unitPriceHt    Int
+  taxRate        Decimal @default(0) @db.Decimal(5, 2)
+  discountAmount Int     @default(0)
+  lineTotalHt    Int
+  lineTaxAmount  Int
+  lineTotalTtc   Int
+
+  quote     Quote      @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  product   Product    @relation(fields: [productId], references: [id])
+  priceTier PriceTier? @relation(fields: [priceTierId], references: [id])
+
+  @@index([quoteId])
+}
+
+// ───────────────────────────────────────────────────────────
+// CAISSE
+// ───────────────────────────────────────────────────────────
+
+/// Pas d'encaissement espèces hors session ouverte (CLAUDE.md règle 12).
+model CashSession {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  userId         String            @db.Uuid
+  locationId     String            @db.Uuid
+  status         CashSessionStatus @default(OUVERTE)
+  /// Fond de caisse à l'ouverture (centimes).
+  openingFloat   Int               @default(0)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  /// Attendu / compté / écart, renseignés à la clôture (rapport Z).
+  expectedAmount Int?
+  countedAmount  Int?
+  difference     Int?
+  note           String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user      User           @relation(fields: [userId], references: [id])
+  location  Location       @relation(fields: [locationId], references: [id])
+  sales     Sale[]
+  movements CashMovement[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([openedAt])
+}
+
+model CashMovement {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  cashSessionId String           @db.Uuid
+  userId        String           @db.Uuid
+  saleId        String?          @db.Uuid
+  type          CashMovementType
+  amount        Int
+  note          String?
+  createdAt     DateTime         @default(now())
+
+  cashSession CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id])
+  sale        Sale?       @relation(fields: [saleId], references: [id])
+
+  @@index([cashSessionId])
+  @@index([saleId])
+}
+
+// ───────────────────────────────────────────────────────────
+// FOURNISSEURS / ACHATS / RÉCEPTIONS
+// ───────────────────────────────────────────────────────────
+
+model Supplier {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  code        String?  @unique
+  name        String
+  phone       String?
+  email       String?
+  address     String?
+  contactName String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products       Product[]
+  purchaseOrders PurchaseOrder[]
+  receptions     Reception[]
+  payments       SupplierPayment[]
+
+  @@index([name])
+}
+
+model SupplierPayment {
+  id              String        @id @default(uuid(7)) @db.Uuid
+  supplierId      String        @db.Uuid
+  purchaseOrderId String?       @db.Uuid
+  userId          String        @db.Uuid
+  amount          Int
+  method          PaymentMethod @default(ESPECES)
+  paidAt          DateTime      @default(now())
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+
+  @@index([supplierId])
+  @@index([purchaseOrderId])
+  @@index([paidAt])
+}
+
+/// BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE (+ ANNULEE).
+model PurchaseOrder {
+  id            String              @id @default(uuid(7)) @db.Uuid
+  number        String              @unique
+  supplierId    String              @db.Uuid
+  status        PurchaseOrderStatus @default(BROUILLON)
+  createdById   String              @db.Uuid
+  confirmedById String?             @db.Uuid
+  orderDate     DateTime            @default(now())
+  expectedDate  DateTime?
+  dueDate       DateTime?
+  confirmedAt   DateTime?
+  cancelledAt   DateTime?
+  totalHt       Int                 @default(0)
+  totalTax      Int                 @default(0)
+  totalTtc      Int                 @default(0)
+  note          String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  createdBy   User     @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id])
+  confirmedBy User?    @relation("PurchaseOrderConfirmedBy", fields: [confirmedById], references: [id])
+
+  lines      PurchaseLine[]
+  receptions Reception[]
+  payments   SupplierPayment[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([orderDate])
+}
+
+/// receivedQuantity = projection du cumul des ReceptionLine liées.
+model PurchaseLine {
+  id               String  @id @default(uuid(7)) @db.Uuid
+  purchaseOrderId  String  @db.Uuid
+  productId        String  @db.Uuid
+  orderedQuantity  Decimal @db.Decimal(14, 3)
+  receivedQuantity Decimal @default(0) @db.Decimal(14, 3)
+  unitPriceHt      Int
+  taxRate          Decimal @default(0) @db.Decimal(5, 2)
+
+  purchaseOrder  PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id])
+  receptionLines ReceptionLine[]
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+/// Une commande peut avoir PLUSIEURS réceptions (partielles) — CLAUDE.md règle 6.
+model Reception {
+  id              String   @id @default(uuid(7)) @db.Uuid
+  number          String   @unique
+  purchaseOrderId String?  @db.Uuid
+  supplierId      String   @db.Uuid
+  locationId      String   @db.Uuid
+  userId          String   @db.Uuid
+  receivedAt      DateTime @default(now())
+  note            String?
+  clientMutationId String? @unique @db.Uuid
+  createdAt       DateTime @default(now())
+
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  location      Location       @relation(fields: [locationId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  lines         ReceptionLine[]
+
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([receivedAt])
+}
+
+model ReceptionLine {
+  id               String  @id @default(uuid(7)) @db.Uuid
+  receptionId      String  @db.Uuid
+  productId        String  @db.Uuid
+  purchaseLineId   String? @db.Uuid
+  receivedQuantity Decimal @db.Decimal(14, 3)
+  /// Prix unitaire réceptionné (centimes) — alimente Product.lastPurchasePriceHt.
+  unitPriceHt      Int
+  note             String?
+
+  reception    Reception     @relation(fields: [receptionId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id])
+  purchaseLine PurchaseLine? @relation(fields: [purchaseLineId], references: [id])
+
+  @@index([receptionId])
+  @@index([productId])
+}
+
+// ───────────────────────────────────────────────────────────
+// TRANSFERTS MAGASIN ↔ DÉPÔT
+// ───────────────────────────────────────────────────────────
+
+/// DEMANDEE → ACCEPTEE → EN_PREPARATION → PREPAREE → EN_TRANSIT → RECUE (+ REFUSEE, ANNULEE).
+model Transfer {
+  id             String         @id @default(uuid(7)) @db.Uuid
+  number         String         @unique
+  status         TransferStatus @default(DEMANDEE)
+  priority       Priority       @default(NORMALE)
+  fromLocationId String         @db.Uuid
+  toLocationId   String         @db.Uuid
+  requestedById  String         @db.Uuid
+  preparedById   String?        @db.Uuid
+  receivedById   String?        @db.Uuid
+  requestedAt    DateTime       @default(now())
+  acceptedAt     DateTime?
+  preparedAt     DateTime?
+  shippedAt      DateTime?
+  receivedAt     DateTime?
+  refusedAt      DateTime?
+  cancelledAt    DateTime?
+  comment        String?
+  clientMutationId String?      @unique @db.Uuid
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  fromLocation Location @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location @relation("TransferTo", fields: [toLocationId], references: [id])
+  requestedBy  User     @relation("TransferRequestedBy", fields: [requestedById], references: [id])
+  preparedBy   User?    @relation("TransferPreparedBy", fields: [preparedById], references: [id])
+  receivedBy   User?    @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  lines        TransferLine[]
+
+  @@index([status])
+  @@index([requestedAt])
+}
+
+/// La préparation partielle est portée par les quantités, pas par un statut de ligne.
+model TransferLine {
+  id                String  @id @default(uuid(7)) @db.Uuid
+  transferId        String  @db.Uuid
+  productId         String  @db.Uuid
+  requestedQuantity Decimal @db.Decimal(14, 3)
+  preparedQuantity  Decimal @default(0) @db.Decimal(14, 3)
+  shippedQuantity   Decimal @default(0) @db.Decimal(14, 3)
+  receivedQuantity  Decimal @default(0) @db.Decimal(14, 3)
+  note              String?
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id])
+
+  @@index([transferId])
+  @@index([productId])
+}
+
+// ───────────────────────────────────────────────────────────
+// INVENTAIRE
+// ───────────────────────────────────────────────────────────
+
+model Inventory {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  number         String          @unique
+  type           InventoryType   @default(COMPLET)
+  status         InventoryStatus @default(EN_COURS)
+  locationId     String          @db.Uuid
+  /// Zone comptée pour un inventaire tournant.
+  zone           String?
+  createdById    String          @db.Uuid
+  validatedById  String?         @db.Uuid
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  validatedAt    DateTime?
+  note           String?
+  clientMutationId String?       @unique @db.Uuid
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  location    Location        @relation(fields: [locationId], references: [id])
+  createdBy   User            @relation("InventoryCreatedBy", fields: [createdById], references: [id])
+  validatedBy User?           @relation("InventoryValidatedBy", fields: [validatedById], references: [id])
+  lines       InventoryLine[]
+
+  @@index([locationId])
+  @@index([status])
+}
+
+/// difference = countedQuantity − theoreticalQuantity.
+model InventoryLine {
+  id                  String             @id @default(uuid(7)) @db.Uuid
+  inventoryId         String             @db.Uuid
+  productId           String             @db.Uuid
+  theoreticalQuantity Decimal            @db.Decimal(14, 3)
+  countedQuantity     Decimal?           @db.Decimal(14, 3)
+  difference          Decimal            @default(0) @db.Decimal(14, 3)
+  state               InventoryLineState @default(CONFORME)
+  note                String?
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([inventoryId, productId])
+  @@index([productId])
+}
+
+// ───────────────────────────────────────────────────────────
+// PLANNING
+// ───────────────────────────────────────────────────────────
+
+/// A_FAIRE → EN_COURS → TERMINEE. EN_RETARD est CALCULÉ (dueDate dépassée), pas stocké.
+model PlanningTask {
+  id           String             @id @default(uuid(7)) @db.Uuid
+  title        String
+  type         PlanningTaskType   @default(AUTRE)
+  status       PlanningTaskStatus @default(A_FAIRE)
+  assignedToId String             @db.Uuid
+  createdById  String             @db.Uuid
+  locationId   String?            @db.Uuid
+  zone         String?
+  description  String?
+  scheduledFor DateTime
+  dueDate      DateTime
+  completedAt  DateTime?
+  comment      String?
+  result       String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  assignedTo User      @relation("PlanningTaskAssignedTo", fields: [assignedToId], references: [id])
+  createdBy  User      @relation("PlanningTaskCreatedBy", fields: [createdById], references: [id])
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  @@index([assignedToId, status])
+  @@index([dueDate])
+}
+
+// ───────────────────────────────────────────────────────────
+// TRAÇABILITÉ / SYSTÈME
+// ───────────────────────────────────────────────────────────
+
+model Notification {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  userId        String           @db.Uuid
+  type          NotificationType
+  priority      Priority         @default(NORMALE)
+  title         String
+  body          String?
+  isRead        Boolean          @default(false)
+  readAt        DateTime?
+  /// Lien vers l'opération concernée (polymorphe, pas de FK).
+  operationType OperationType?
+  operationId   String?          @db.Uuid
+  createdAt     DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+/// Journal des actions sensibles (prix, ajustements, validations, annulations, permissions).
+/// Les ventes normales ne polluent pas cette vue (spec §24).
+model AuditLog {
+  id         String      @id @default(uuid(7)) @db.Uuid
+  userId     String?     @db.Uuid
+  action     AuditAction
+  entityType String
+  entityId   String      @db.Uuid
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// File des mutations hors-ligne traitées côté serveur.
+/// `clientMutationId` UNIQUE = garantie d'idempotence (docs/context.md §3).
+model SyncMutation {
+  id               String             @id @default(uuid(7)) @db.Uuid
+  clientMutationId String             @unique @db.Uuid
+  userId           String             @db.Uuid
+  deviceId         String
+  operationType    OperationType
+  payload          Json
+  status           SyncMutationStatus
+  /// Motif lisible en cas de REJETEE (ex : stock insuffisant).
+  rejectionReason  String?
+  /// Entité créée/modifiée si CONFIRMEE — permet de renvoyer le même résultat sur retry.
+  resultEntityId   String?            @db.Uuid
+  /// Horodatage de l'appareil, sert à rejouer les mutations dans l'ordre.
+  deviceTimestamp  DateTime
+  processedAt      DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, processedAt])
+  @@index([deviceId])
+}

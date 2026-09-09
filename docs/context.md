@@ -1,0 +1,111 @@
+# Décisions d'architecture
+
+## Stack
+- **Flutter unique (desktop + mobile)** : évite de coder deux fois la logique métier. Un seul dev peut couvrir les deux plateformes.
+- **PostgreSQL (pas de NoSQL)** : le métier exige des transactions ACID strictes (stock, ventes, dettes) — non négociable.
+- **NestJS + Prisma** : structure modulaire alignée sur le découpage métier ; Prisma élimine le risque d'injection SQL par défaut.
+- **Drift (SQLite local)** : offline-first sur mobile et desktop, moteur de sync par mutations en file d'attente.
+
+## Déploiement
+- Backend sur VPS externe (pas de serveur local au magasin).
+- Desktop : 1 seul poste, connexion/déconnexion tolérée.
+- Mobile : les 3 rôles, mais chaque rôle ne synchronise que le sous-ensemble de données utile à son travail (voir `docs/plan.md`).
+
+## Rôles (figés) — 3 rôles
+Admin · Vendeur/Caissier · Magasinier. Un membre peut cumuler des permissions accordées par l'admin. (Décision du 2026-09-08 — voir journal.)
+
+## Décisions métier figées (2026-09-08)
+- **Coût produit = dernier prix d'achat** (marge = prix vente − dernier prix réceptionné).
+- **Montants en entiers (centimes de DA)** partout — jamais de float.
+- **Stock** : `StockMovement` = source de vérité (deltas additifs) ; `Stock.quantity` = projection recalculée dans la même transaction.
+- **Offline** : périmètre large dès le départ, **ventes hors-ligne incluses** — donc la validation anti-survente au sync est critique (voir Contrat de synchronisation ci-dessous).
+
+---
+
+# Contrat de synchronisation offline (NON NÉGOCIABLE)
+
+Ce contrat s'applique à toute opération créée sur un appareil (desktop ou mobile) pouvant être hors connexion. Il doit être implémenté en Phase 0 (au moins le socle) avant toute feature offline.
+
+## 1. Identifiants
+- **Toute entité créable hors-ligne reçoit un `id` UUID généré côté client** (UUIDv7 recommandé : trié dans le temps, pas de collision, pas d'attente du serveur). Pas d'auto-increment comme clé primaire pour ces entités.
+- Le serveur accepte l'`id` fourni par le client (il ne le régénère pas).
+
+## 2. File de mutations
+- Chaque opération hors-ligne est enregistrée localement (Drift) dans une **file de mutations** : `client_mutation_id` (UUID unique), type d'opération, payload, timestamp appareil, `device_id`, statut local (`en_attente` / `confirmée` / `rejetée`).
+- La file est envoyée au serveur dans l'ordre du timestamp appareil, par lots, dès reconnexion.
+
+## 3. Idempotence
+- Le endpoint de sync (`POST /sync` ou par ressource) est **idempotent** : le serveur mémorise les `client_mutation_id` déjà traités. Un renvoi (reconnexion instable, retry) **ne réapplique pas** la mutation — il renvoie le résultat déjà calculé.
+- Conséquence : un mouvement de stock n'est jamais appliqué deux fois.
+
+## 4. Application et validation serveur
+Pour chaque mutation, le serveur, dans une transaction :
+1. Vérifie le `client_mutation_id` (déjà vu → renvoie l'ancien résultat, stop).
+2. Vérifie les **permissions** du user (comme en ligne).
+3. Applique la règle métier et **valide** :
+   - **Anti-stock-négatif** : si l'opération rend le stock disponible < 0 → **REJET** (sauf produit « backorder autorisé »).
+   - Autres invariants métier (produit actif, montants cohérents, etc.).
+4. Si OK : applique le(s) mouvement(s) additif(s) + met à jour les projections + écrit l'audit. Renvoie `confirmée` + l'état serveur.
+5. Si rejet : n'applique rien, renvoie `rejetée` + un motif lisible.
+
+## 5. Résolution des divergences
+- **Stock** : les mouvements étant additifs, deux mutations concurrentes de deux appareils **s'appliquent toutes les deux** (sous réserve de validation § 4). Pas de « dernier gagnant » sur les quantités.
+- **Champs absolus** (ex : prix d'un produit, fiche client) : « dernier écrivain gagne » au niveau du champ, basé sur le timestamp serveur. Ces éditions ne sont normalement pas faites hors-ligne par plusieurs personnes.
+
+## 6. Côté UI (obligatoire)
+- Une opération non confirmée par le serveur s'affiche avec un état **`⟳ en attente de synchronisation`** — jamais comme définitive.
+- Une opération **rejetée** au sync s'affiche clairement comme **échouée**, avec le motif, et exige une action de l'utilisateur : annuler, ou corriger et re-soumettre (ex : vente rejetée pour stock insuffisant → proposer de réduire la quantité ou d'annuler la vente).
+- États UI à prévoir sur chaque écran concerné : `Loading`, `Empty`, `Error`, `Success`, `Offline`, `Sync en attente`.
+
+## 7. Cas particulier — vente hors-ligne
+La vente hors-ligne est autorisée (décision produit), mais :
+- Le stock affiché hors-ligne peut être périmé → la validation § 4 au sync fait autorité.
+- Les prix de ligne saisis sur l'appareil (avec remise autorisée) sont acceptés par le serveur ; seul le **stock** est re-validé.
+- La dette client est (re)calculée **côté serveur** au moment de l'application, jamais figée par le client.
+
+---
+
+# Bornes de données offline (mobile & desktop)
+
+Pour éviter un SQLite local qui gonfle et un stock trop périmé, la synchronisation locale est **bornée** :
+
+- **Catalogue** : produits + catégories + emplacements complets en local (texte léger). **Images en lazy-load** et cache à la demande (jamais préchargées en masse), compressées à l'upload.
+- **Historique borné dans le temps** : ventes, mouvements, réceptions, transferts des **30 derniers jours** en local (constante configurable `LOCAL_HISTORY_DAYS`). Au-delà : consultable uniquement en ligne.
+- **Sous-ensemble par rôle** (voir `docs/plan.md`) : chaque appareil ne télécharge que ce qui sert à son rôle.
+- **Purge locale** : les données synchronisées plus vieilles que `LOCAL_HISTORY_DAYS` sont purgées du local.
+- **Plafond de file de mutations** : au-delà de `MAX_PENDING_MUTATIONS` (ex : 200) ou de `MAX_OFFLINE_HOURS` (ex : 72 h) sans sync, l'app **alerte** l'utilisateur et **restreint** les nouvelles opérations sensibles (surtout ventes) — un appareil trop longtemps hors-ligne travaille sur un stock trop faux.
+- **Premier lancement** : téléchargement initial du sous-ensemble du rôle ; ensuite **delta sync** uniquement (curseur / timestamp serveur).
+
+# Mobile — optimisations attendues
+
+En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, pas de tableaux desktop) :
+
+- **Pagination systématique** de toutes les listes (jamais de « tout charger »).
+- **Lecture cache-first** : afficher immédiatement le local, puis rafraîchir en arrière-plan.
+- **Delta sync** seulement (pas de re-téléchargement complet).
+- **Images** : compression + redimensionnement avant upload (photos réception/problème) ; miniatures en liste, pleine résolution à la demande.
+- **Payloads légers** : endpoints mobiles renvoient le strict nécessaire (pas d'objets imbriqués inutiles).
+- **Scanner** : résultat instantané depuis le cache local si le produit y est.
+- **Indicateur de sync** visible en permanence (`✓` / `⟳` / nombre d'opérations en attente).
+- **Répartition des features** : le mobile expose les opérations terrain (vente, scan, réception, préparation, inventaire, transfert, demandes, notifications, planning) ; la configuration lourde, les grandes listes et les rapports détaillés restent **desktop**.
+
+# Journal des décisions
+
+- **2026-09-08** — Rôles figés à 3 (Admin, Vendeur/Caissier, Magasinier), un membre peut cumuler. Raison : correspond au besoin réel « petite équipe » du Cahier fonctionnel ; « Responsable » et « Lecture seule » écartés pour éviter une matrice de permissions inutilement large au MVP.
+- **2026-09-08** — Coût = dernier prix d'achat (et non CUMP). Raison : suffisant pour le MVP, simple à implémenter ; migration vers CUMP possible plus tard sans casser le modèle (les prix unitaires historiques sont conservés sur les lignes).
+- **2026-09-08** — Offline large incluant les ventes. Raison : besoin terrain ; conséquence assumée = validation anti-survente stricte au sync (§4) + UX de réconciliation des rejets (§6).
+- **2026-09-08** — `Cahier_Fonctionnel` promu source de vérité fonctionnelle, consolidé dans `docs/spec-fonctionnelle.md` ; fichiers racine archivés.
+- **2026-09-09** — Quantités décimales (produits vendus au mètre) : type `Decimal`, `unit` par produit. Impact schéma sur toutes les lignes/quantités.
+- **2026-09-09** — TVA + ticket/facture : taux de TVA par produit ; vente de type `TICKET` (défaut) ou `FACTURE` (numéro légal séquentiel serveur, en ligne uniquement). Raison : clients particuliers (ticket) et pros (facture).
+- **2026-09-09** — Multi-tarifs (détail/gros) via `PriceTier` + `ProductPrice` ; le client porte un tarif par défaut ; prix figé sur la `SaleLine`. Raison : matériel électrique vendu au détail et en gros.
+- **2026-09-09** — Caisse avec clôture quotidienne : `CashSession` + `CashMovement`, rapport Z. Encaissement espèces rattaché à une session ouverte.
+- **2026-09-09** — Bornes offline et optimisations mobiles définies (voir sections ci-dessus).
+- **2026-09-09** — Prix & tarifs gérés par l'admin uniquement ; le vendeur les voit/applique, pas de remise libre.
+- **2026-09-09** — Vente à crédit autorisée au vendeur dans la limite du client fixée par l'admin.
+- **2026-09-09** — Commandes fournisseurs créables par l'admin ET le magasinier (confirmation = admin).
+- **2026-09-09** — Ajout génération de fichiers : PDF (ticket, facture, devis, bons de livraison/transfert/commande, rapports) + exports Excel/CSV d'historique ; import Excel/CSV (produits, clients, fournisseurs, stock initial). Une seule bibliothèque par besoin (voir `CONVENTIONS.md`).
+- **2026-09-09** — Codes-barres : capture du code fabricant si présent, sinon génération interne unique (séquence + contrainte d'unicité) ; étiquettes imprimables (nom/prix/code-barres) en planche A4 et thermique.
+- **2026-09-09** — Devis (`Quote`) ajouté : convertible en vente, sans impact stock.
+- **2026-09-09** — Auth : pas d'inscription publique (l'admin crée les comptes, changement de mot de passe à la 1re connexion) ; session persistante via refresh token long (90 j) révocable ; sync initiale du sous-ensemble du rôle puis delta sync. Voir `docs/spec-fonctionnelle.md` §2bis.
+
+<!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->
