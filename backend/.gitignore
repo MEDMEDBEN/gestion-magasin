@@ -2,10 +2,11 @@ node_modules
 # Keep environment variables out of version control
 .env
 
-/generated/prisma
+/src/generated/prisma
 
 # Dossiers de skills déposés par `prisma init` — hors périmètre du projet
 .agents/
 .claude/
 .windsurf/
 skills-lock.json
+tsconfig.build.tsbuildinfo

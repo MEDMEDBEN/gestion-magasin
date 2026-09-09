@@ -5,123 +5,206 @@
 > Au retour, dire simplement "lis tasks.md et continue" plutôt que de reprendre l'historique complet.
 
 ## Phase actuelle
-`Phase 0 — Fondation` (en cours — étape 1/6 terminée : schéma Prisma)
+`Phase 0 — Fondation` (en cours — étapes 1 et 2 terminées : schéma, OpenAPI, auth, seed)
 
 ## Dernier relais
 - Date : 2026-09-09
 - Qui a travaillé : Dev A (backend & data)
-- Ce qui a été fait : **étape 1 de la Phase 0 — fondation data**.
-  - `git init` sur la branche `develop`, remote `origin` → `https://github.com/MEDMEDBEN/gestion-magasin.git`.
-  - Backend NestJS initialisé dans `backend/` (TypeScript strict, CLI Nest v10 — la v11 exige Node ≥ 22.22, la machine tourne en 22.14).
-  - Prisma 7.10.0 installé et configuré (`backend/prisma7.config.ts`, `DATABASE_URL` dans `backend/.env`, non commité).
-  - Arborescence de modules créée conformément à `CLAUDE.md` (dossiers vides avec `.gitkeep` : auth, users, roles, products, inventory, stock, locations, transfers, sales, customers, purchases, suppliers, receptions, payments, planning, notifications, reports, problems, messaging, automation, audit, sync, storage, common).
-  - `backend/prisma/schema.prisma` écrit avec les **35 tables exhaustives de la Phase 0** + 22 enums. Aucune logique métier, aucun endpoint.
-  - `PrismaModule` / `PrismaService` câblés (infrastructure seulement) pour prouver que le client généré compile.
-  - Infra de dev démarrée : `docker compose -f infra/docker-compose.dev.yml up -d` (PostgreSQL 16 + Redis 7 + MinIO).
+- Ce qui a été fait : **étape 2 de la Phase 0 — contrat OpenAPI + auth + seed**.
+  (L'étape 1 — schéma Prisma + migration — reste validée et n'a pas été retouchée.)
+
+### 1. Contrat OpenAPI
+- `@nestjs/swagger` actif, doc servie sur **`/docs`** (préfixe global `api` pour les routes).
+- **46 endpoints, 57 schémas DTO, 19 tags** couvrant tout le P0.
+- Squelette figé (routes + DTO + guards + doc) pour les features non encore développées :
+  chaque route répond **501 `NOT_IMPLEMENTED`** — jamais une 404 trompeuse. Voir
+  `backend/src/common/api-contract.module.ts`.
+- Conventions respectées : pagination `{ data, meta: { page, limit, total } }`
+  (`common/dto/pagination.dto.ts`), erreurs `{ statusCode, message, error, code? }`
+  (`common/http-exception.filter.ts`), codes métier stables (`common/error-codes.ts`).
+
+### 2. Auth (implémentée et testée)
+- Création de compte **par l'admin uniquement**, pas d'inscription publique.
+- Login par **email OU téléphone**, argon2id ; access JWT **15 min**.
+- Refresh **opaque** (256 bits), stocké **en SHA-256** dans `RefreshToken`, **90 j glissants**,
+  **rotation à chaque appel**, révocable. Rejouer un token révoqué = vol présumé →
+  **toutes** les sessions de l'utilisateur sont fermées.
+- `mustChangePassword` : verrouille toute l'API sauf `change-password` / `logout`.
+- Guards **globaux** : `JwtAccessGuard` puis `RolesGuard`, + `@Roles` / `@RequirePermissions`.
+- Endpoints : `POST /api/auth/login|refresh|change-password|logout`, `GET /api/auth/me`,
+  et la gestion de comptes admin `POST|GET /api/users`, `PATCH /api/users/:id`,
+  `POST /api/users/:id/reset-password|revoke-sessions`.
+
+### 3. Seed (`backend/prisma/seed.ts`, `npm run seed`)
+Idempotent : 38 permissions, 3 rôles, 3 locations, 2 tarifs, 2 taux de TVA, 1 admin.
 
 ### Preuves réelles (sorties collées)
 
-Migration appliquée :
+Tests unitaires — argon2, JWT, RolesGuard :
 ```
-$ npx prisma migrate dev --name phase0_schema_initial
-Prisma schema loaded from prisma\schema.prisma.
-Datasource "db": PostgreSQL database "gestion_magasin_dev", schema "public" at "localhost:5432"
-Applying migration `20260909024741_phase0_schema_initial`
-The following migration(s) have been created and applied from new schema changes:
-prisma\migrations/
-  └─ 20260909024741_phase0_schema_initial/
-    └─ migration.sql
-Your database is now in sync with your schema.
-```
-
-Tables réellement créées en base (35 modèles + 3 tables de jointure implicites + `_prisma_migrations`) :
-```
-$ docker exec infra-postgres-1 psql -U dev -d gestion_magasin_dev -c "\dt"
-AuditLog · CashMovement · CashSession · Category · Customer · CustomerPayment · Inventory
-InventoryLine · InvoiceCounter · Location · Notification · Permission · PlanningTask
-PriceTier · Product · ProductPrice · PurchaseLine · PurchaseOrder · Quote · QuoteLine
-Reception · ReceptionLine · RefreshToken · Role · Sale · SaleLine · Stock · StockMovement
-Supplier · SupplierPayment · SyncMutation · TaxRate · Transfer · TransferLine · User
-_RolePermissions · _UserPermissions · _UserRoles · _prisma_migrations
-(39 rows)
-```
-
-Types de colonnes vérifiés en base (règles 4 et 10 de `CLAUDE.md`) :
-```
-$ ... information_schema.columns ...
- CashSession   | openingFloat      | integer  | 32 | 0
- ProductPrice  | priceHt           | integer  | 32 | 0
- PurchaseLine  | unitPriceHt       | integer  | 32 | 0
- Sale          | totalTtc          | integer  | 32 | 0
- SaleLine      | quantity          | numeric  | 14 | 3
- Stock         | quantity          | numeric  | 14 | 3
- StockMovement | quantity          | numeric  | 14 | 3
- TaxRate       | rate              | numeric  |  5 | 2
- TransferLine  | requestedQuantity | numeric  | 14 | 3
-```
-→ **Tous les montants en `integer` (centimes), toutes les quantités en `numeric(14,3)`.**
-
-Build et tests :
-```
-$ npm run build
-> nest build          (aucune erreur)
-
 $ npm test
-PASS src/app.controller.spec.ts
-Test Suites: 1 passed, 1 total
-Tests:       1 passed, 1 total
+PASS src/common/roles.guard.spec.ts
+PASS src/common/jwt-access.guard.spec.ts
+PASS src/auth/auth.service.spec.ts
+Test Suites: 3 passed, 3 total
+Tests:       21 passed, 21 total
 ```
-(Le seul test est celui du scaffold Nest — les vrais tests arrivent avec l'auth et le stock.)
 
-### Décisions de modélisation prises (à connaître avant de continuer)
-- **`id`** : `String @id @default(uuid(7)) @db.Uuid` partout — le serveur génère un UUIDv7 par défaut, mais le client **peut fournir le sien** (contrat de sync `docs/context.md` §1).
-- **`StockMovement`** : `locationId` + `quantity` **signée** = le couple qui fait autorité sur la projection (règle 2). `sourceLocationId` / `destinationLocationId` sont conservés mais **informatifs** (traçabilité d'un transfert), conformément à la liste de champs de `spec-fonctionnelle.md` §31. Un transfert produit donc **deux** mouvements (`TRANSFERT_SORTIE` puis `TRANSFERT_ENTREE`), jamais un seul à deux faces.
-- **`Location`** : une seule table pour deux usages, distingués par `type` — `MAGASIN` / `DEPOT` / `TRANSIT` portent les projections de stock ; `EMPLACEMENT` = position physique au dépôt (`zone`/`aisle`/`shelf`/`position`, rattachée au DEPOT par `parentId`). `Product.storageLocationId` pointe vers un `EMPLACEMENT`.
-- **Dettes jamais stockées** : pas de champ « reste dû ». Client → `Sale.totalTtc − Sale.paidAmount − Σ CustomerPayment`. `Sale.paidAmount` = encaissement au moment de la vente ; les règlements ultérieurs sont des `CustomerPayment`.
-- **`InvoiceCounter`** : porte **tous** les compteurs séquentiels par année via `documentType` (`FACTURE`, `DEVIS`, `BON_COMMANDE`, `TRANSFERT`), contrainte `@@unique([documentType, year])` — un seul mécanisme pour `FAC-2026-00001`, `DEV-…`, `BC-…`, `TRF-…`.
-- **Idempotence sync** : `clientMutationId` (UUID, `@unique`) présent sur `Sale`, `CustomerPayment`, `Reception`, `Transfer`, `Inventory` — les entités créables hors-ligne — en plus de la table `SyncMutation`.
-- **`PlanningTask.EN_RETARD`** n'est **pas** un statut stocké : il se calcule (`dueDate` dépassée + statut ≠ `TERMINEE`), conformément à `docs/plan.md`.
-- **Références polymorphes** (`StockMovement.operationId`, `Notification.operationId`) : pas de FK, typées par l'enum `OperationType` + index composite.
+Tests d'intégration — sur la vraie base PostgreSQL :
+```
+$ npm run test:e2e
+PASS test/auth.e2e-spec.ts
+  √ refuse un mot de passe incorrect
+  √ donne la même erreur pour un compte inexistant (pas d'énumération)
+  √ login puis accès à une route protégée
+  √ refuse une route protégée sans token
+  √ le refresh fait la ROTATION : l'ancien token devient inutilisable
+  √ un refresh révoqué par logout est rejeté
+  √ un refresh inconnu est rejeté
+  √ un VENDEUR est bloqué sur une route ADMIN
+  √ un ADMIN accède à la route ADMIN
+  √ mustChangePassword verrouille tout sauf le changement de mot de passe
+  √ un compte désactivé ne peut plus se connecter
+  √ rejette un payload avec un champ inconnu (whitelist stricte)
+  √ un endpoint au contrat figé répond 501 NOT_IMPLEMENTED, pas 404
+  √ refuse de réutiliser le mot de passe courant au changement
+  √ refuse un code de permission inconnu (400, pas 500)
+  √ un VENDEUR n'a aucun accès aux fournisseurs (matrice validée)
+  √ la sonde /api/health est publique
+Test Suites: 1 passed, 1 total
+Tests:       17 passed, 17 total
+```
 
-### Points d'attention pour la suite
-- La CLI Nest est figée en **v10** (Node 22.14 sur la machine). Ne pas la mettre à jour sans monter Node ≥ 22.22.
-- Prisma 7 utilise **`prisma7.config.ts`** (et non `prisma.config.ts`) ; `DATABASE_URL` est lu depuis `backend/.env` via `dotenv`. `backend/.env` est **gitignoré** — chaque dev crée le sien (valeur dev : `postgresql://dev:dev@localhost:5432/gestion_magasin_dev?schema=public`).
-- Le client Prisma est généré dans `backend/generated/prisma` (gitignoré) → lancer `npx prisma generate` après un `git pull` qui touche le schéma.
-- `prisma init` dépose des dossiers `.agents/`, `.claude/`, `.windsurf/` et `skills-lock.json` dans `backend/` : ils sont **gitignorés**, ne pas les committer.
+Seed (2ᵉ exécution = idempotent, aucun doublon) :
+```
+$ npm run seed
+  ✔ 38 permissions
+  ✔ rôle ADMIN — 38 permissions
+  ✔ rôle VENDEUR — 16 permissions
+  ✔ rôle MAGASINIER — 15 permissions
+  ✔ emplacements MAGASIN / DEPOT / TRANSIT
+  ✔ tarifs DETAIL/GROS + TVA 19 %/0 %
+  ✔ admin admin@magasin.dz déjà présent — mot de passe inchangé
+```
 
-- État exact du code : `backend/` compile et ses tests passent ; schéma complet migré en base de dev. **Aucun endpoint, aucun guard, aucune logique métier** — c'était volontaire pour cette étape. `app/` (Flutter) n'existe pas encore.
+Serveur réellement démarré :
+```
+$ node dist/main.js
+$ curl http://localhost:3000/api/health
+{"status":"ok","timestamp":"2026-09-09T03:37:21.193Z"}
+
+$ curl -o /dev/null -w "%{http_code}" http://localhost:3000/docs
+200
+
+$ curl http://localhost:3000/api/users          # sans token
+{"statusCode":401,"message":"Access token manquant","error":"UNAUTHORIZED","code":"ACCESS_TOKEN_MISSING"}
+```
+
+### DATABASE_URL — vérifié, et un piège corrigé
+**Confirmé : `DATABASE_URL` est bien câblé, mais il l'est à DEUX endroits distincts.**
+Le `datasource` du schéma n'a volontairement pas de ligne `url` : en **Prisma 7**, l'URL vit dans
+`prisma7.config.ts` — mais **ce fichier ne sert que la CLI**. Au runtime, Prisma 7 exige un
+**driver adapter** ; sans lui, `PrismaClient` lève
+« *PrismaClient was instantiated without any options. A driver adapter is required* ».
+`PrismaService` construit donc explicitement `new PrismaPg({ connectionString })` à partir de
+`ConfigService.get('DATABASE_URL')`, et **refuse de démarrer** si la variable est absente.
+
+> À retenir : `prisma7.config.ts` = CLI · `PrismaService` = runtime. Les deux lisent `backend/.env`.
+
+### Autres corrections d'infrastructure faites au passage
+- **Client Prisma déplacé** de `backend/generated/` vers `backend/src/generated/` : situé hors de
+  `src`, il décalait la sortie du build en `dist/src/main.js` et cassait `npm run start:prod`.
+- **`incremental` retiré de `tsconfig.json`** : combiné au `deleteOutDir` de Nest, tsc croyait le
+  build à jour alors que `dist/` venait d'être supprimé → build silencieusement vide.
+  `dist/main.js` est désormais produit de façon reproductible (vérifié sur deux builds successifs).
+- ⚠️ **Reste à supprimer à la main** : l'ancien dossier `backend/generated/` (mort, gitignoré) —
+  la suppression a été refusée par les permissions de l'agent.
+
+### Audit `security-reviewer` — passé, corrections appliquées
+Aucun problème critique. Corrigé dans la foulée :
+- **rate limiting** (`@nestjs/throttler`) : 10 tentatives / 15 min sur `/auth/login`, 30 sur
+  `/auth/refresh` — surchargeable par `AUTH_LOGIN_LIMIT` / `AUTH_REFRESH_LIMIT` ;
+- **rotation du refresh rendue atomique** (`updateMany` avec `revokedAt: null` dans le WHERE) :
+  deux refresh concurrents ne peuvent plus produire chacun une session valide ;
+- **anti-énumération temporelle** : vérification argon2 factice quand le compte n'existe pas,
+  pour que la réponse prenne le même temps ;
+- **changement de mot de passe** : réutilisation du mot de passe courant refusée — sinon le
+  verrou `mustChangePassword` se contournait en resoumettant le mot de passe temporaire ;
+- **dernier admin protégé** : impossible de retirer le rôle ADMIN ou de désactiver le dernier
+  administrateur actif ;
+- **`extraPermissions` validé** contre le catalogue (400 métier au lieu d'une 500 Prisma) ;
+- **Swagger fermé en production** (`NODE_ENV === 'production'`) ;
+- **codes d'erreur dédiés** `ACCESS_TOKEN_MISSING` / `ACCESS_TOKEN_INVALID` — un access token
+  manquant renvoyait un code de *refresh*, trompeur pour le client.
+
+**Dette assumée, à traiter à sa feature** : les actions sensibles de gestion de comptes (création,
+changement de rôles/permissions, reset de mot de passe, révocation) **n'écrivent pas encore dans
+`AuditLog`**. C'est la feature P0 n°11 « Historique / audit » — à faire dans la **même transaction**
+que la mutation, avec l'acteur pris via `@CurrentUser()`.
+
+### Matrice de permissions — validée et appliquée
+`docs/permissions.md` est passé de « brouillon à valider » à **« VALIDÉE le 2026-09-09 »**, avec les
+5 règles fermes (prix/tarifs admin only · pas de remise libre · crédit plafonné par
+`Customer.creditLimit`, défaut 0 · commandes fournisseurs admin+magasinier · confirmation admin seul).
+Traduction technique unique : `backend/src/common/permissions.ts`, lu par le seed **et** par les guards.
+
+**Une ambiguïté a été tranchée** : la ligne « Gérer fournisseurs » ne distinguait pas lecture et
+gestion. Elle est scindée en deux ; le **vendeur n'a aucun accès aux fournisseurs**, et
+`supplier.read` a été retiré de son rôle. Un test e2e verrouille cette décision.
+
+> ⚠️ Le seed fait autorité sur les permissions des rôles (il utilise `set`). Après toute
+> modification de `permissions.ts`, **relancer `npm run seed`** — sinon la base garde l'ancien jeu
+> et les tokens émis restent périmés (c'est exactement ce qui a fait échouer un test au premier essai).
+
+**Garde-fou structurel** : une route authentifiée **sans `@Roles` explicite est refusée**
+(`FORBIDDEN_ROLE`). Oublier le décorateur ferme la route au lieu de l'ouvrir — la règle 1 de
+`CLAUDE.md` est ainsi rendue mécanique, et couverte par un test unitaire.
+
+- État exact du code : `backend/` compile, **38 tests passent**, le serveur démarre, `/docs` répond.
+  Auth **complète et testée**. Contrat P0 **figé** mais features **non implémentées** (501).
+  `app/` (Flutter) n'existe toujours pas.
 - Bloqué sur : rien.
-- **Prochaine étape précise** (étape 2 de la Phase 0) :
-  1. **Contrat OpenAPI** des endpoints P0 (forme uniquement, pas d'implémentation) : installer `@nestjs/swagger`, l'exposer sur `/api/docs` depuis `backend/src/main.ts`, et poser les DTO de requête/réponse selon `CONVENTIONS.md` (pagination `{ data, meta }`, enveloppe d'erreur `{ statusCode, message, error, code? }`, enum `common/error-codes.ts`).
-  2. **Auth JWT** dans `backend/src/auth/` : login (argon2), access 15 min + refresh 90 j glissant stocké **hashé** dans `RefreshToken`, révocation, `mustChangePassword` à la première connexion, `RolesGuard` + décorateur `@Roles(...)` dans `backend/src/common/`.
-  3. **Seed** (`backend/prisma/seed.ts`) : 3 rôles (`ADMIN`, `VENDEUR`, `MAGASINIER`) + permissions de `docs/permissions.md` + les `Location` `MAGASIN` / `DEPOT` / `TRANSIT` + un `PriceTier` `DETAIL` par défaut + un `TaxRate` 19 % + un compte admin initial.
-  4. **Socle de sync** dans `backend/src/sync/` : endpoint `POST /sync` idempotent (dédup sur `SyncMutation.clientMutationId`), validation qui peut **REJETER** (anti-stock-négatif), renvoi du résultat mémorisé sur retry.
-  5. Faire **valider la matrice de permissions** `docs/permissions.md` par l'utilisateur **avant** d'écrire les guards (décision humaine, cf. `docs/plan.md`).
-  6. Ensuite seulement : `app/` (structure Flutter de base).
+- **Prochaine étape précise** (étape 3 de la Phase 0) : **socle de synchronisation offline**, dans
+  `backend/src/sync/` — appliquer `docs/context.md` à la lettre.
+  1. `POST /api/sync` : reçoit un **lot** de mutations triées par timestamp appareil
+     (`clientMutationId`, `deviceId`, `operationType`, `payload`, `deviceTimestamp`).
+  2. **Idempotence** : dédup sur `SyncMutation.clientMutationId` (déjà `@unique` en base). Une
+     mutation déjà vue **n'est pas rejouée** — on renvoie le résultat mémorisé (`status`,
+     `resultEntityId`).
+  3. Par mutation, **dans une transaction** : vérifier le `clientMutationId`, puis les
+     **permissions** (les mêmes qu'en ligne), puis la règle métier.
+  4. **Validation avec REJET** : anti-stock-négatif (sauf `Product.allowBackorder`), produit actif,
+     montants cohérents. Un rejet n'applique **rien** et renvoie `REJETEE` + motif lisible
+     (`ErrorCode.SYNC_MUTATION_REJECTED`).
+  5. Réponse par mutation : `CONFIRMEE` + état serveur, ou `REJETEE` + motif — pour que le client
+     puisse réconcilier (`docs/context.md` §6).
+  6. Tests obligatoires : rejouer deux fois le même `clientMutationId` n'applique la mutation
+     qu'une seule fois ; une mutation qui rendrait le stock négatif est rejetée sans effet de bord.
 
-  > Rappel : **ne commencer aucune feature P0** tant que les 6 cases de la Phase 0 ne sont pas cochées.
+  > Ensuite seulement : étape 4 = structure Flutter de base (`app/`).
+  > Rappel : **ne commencer aucune feature métier P0** tant que la Phase 0 n'est pas terminée.
 
 ## Avancement par feature
 
 | Feature | Statut | Backend | Frontend | Tests | Sécurité |
 |---|---|---|---|---|---|
-| Phase 0 — Fondation (schéma + OpenAPI + auth + socle sync) | 🟡 En cours | 🟢 Schéma Prisma migré (35 tables) · 🔴 OpenAPI / auth / sync | — | — | — |
-| Auth + rôles/permissions | 🔴 Non commencé | — | — | — | — |
-| Produits + catégories + emplacements | 🔴 Non commencé | — | — | — | — |
-| Stock + mouvements | 🔴 Non commencé | — | — | — | — |
-| Ventes (tarifs, TVA/facture, caisse) + dettes clients + paiements | 🔴 Non commencé | — | — | — | — |
-| Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | — | — | — | — |
-| Achats | 🔴 Non commencé | — | — | — | — |
-| Réceptions (dont partielles) | 🔴 Non commencé | — | — | — | — |
-| Transferts magasin↔dépôt | 🔴 Non commencé | — | — | — | — |
-| Inventaire + tournant | 🔴 Non commencé | — | — | — | — |
-| Planning hebdomadaire | 🔴 Non commencé | — | — | — | — |
-| Historique/audit | 🔴 Non commencé | — | — | — | — |
+| Phase 0 — Fondation (schéma + OpenAPI + auth + socle sync) | 🟡 En cours | 🟢 Schéma · 🟢 OpenAPI · 🟢 Auth · 🔴 Socle sync | — | 🟢 21 unit + 17 e2e | 🟢 Audit passé |
+| Auth + rôles/permissions | 🟢 Backend terminé | 🟢 Login/refresh/logout/guards/seed | 🔴 À faire | 🟢 38 tests | 🟢 Audit passé |
+| Produits + catégories + emplacements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Stock + mouvements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Ventes (tarifs, TVA/facture, caisse) + dettes clients + paiements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Réceptions (dont partielles) | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Transferts magasin↔dépôt | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Planning hebdomadaire | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Historique/audit | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Génération PDF/Excel, devis, étiquettes code-barres (P1) | 🔴 Non commencé | — | — | — | — |
 | Socle offline/sync appliqué au P0 | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟡 en cours · 🟢 terminé et prouvé
 
 ## Décisions en attente
-- Matrice de permissions CRUD détaillée par entité (à produire et valider en Phase 0).
+- ~~Matrice de permissions CRUD détaillée par entité~~ → **VALIDÉE le 2026-09-09** (`docs/permissions.md`).
 - Confirmer les canaux de notification temps réel (WebSocket) au moment de la feature Notifications (P1).
