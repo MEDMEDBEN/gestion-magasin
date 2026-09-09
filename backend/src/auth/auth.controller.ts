@@ -106,6 +106,10 @@ export class AuthController {
   }
 
   @Roles(...ALL_ROLES)
+  // Accessible malgré `mustChangePassword` : l'app doit pouvoir dire QUI elle
+  // affiche sur l'écran de changement de mot de passe. Ne rend que le profil
+  // du demandeur — aucune action métier n'est déverrouillée pour autant.
+  @AllowPasswordChange()
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Profil, rôles et permissions effectives' })

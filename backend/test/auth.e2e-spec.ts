@@ -193,12 +193,20 @@ describe('Auth (e2e)', () => {
     const session = await login(email, TEMP_PASSWORD);
     expect(session.body.user.mustChangePassword).toBe(true);
 
-    // Toute route normale est fermée...
+    // Toute route MÉTIER est fermée...
     const blocked = await request(server)
-      .get('/api/auth/me')
+      .get('/api/products')
       .set('Authorization', `Bearer ${session.body.accessToken}`);
     expect(blocked.status).toBe(403);
     expect(blocked.body.code).toBe('PASSWORD_CHANGE_REQUIRED');
+
+    // ... mais /auth/me reste lisible : l'app doit savoir qui elle affiche
+    // sur l'écran de changement de mot de passe.
+    const whoAmI = await request(server)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${session.body.accessToken}`);
+    expect(whoAmI.status).toBe(200);
+    expect(whoAmI.body.mustChangePassword).toBe(true);
 
     // ... sauf le changement de mot de passe.
     const changed = await request(server)
@@ -208,11 +216,11 @@ describe('Auth (e2e)', () => {
     expect(changed.status).toBe(200);
     expect(changed.body.user.mustChangePassword).toBe(false);
 
-    // Le verrou est levé avec les tokens neufs.
+    // Le verrou métier est levé avec les tokens neufs.
     const unlocked = await request(server)
-      .get('/api/auth/me')
+      .get('/api/products')
       .set('Authorization', `Bearer ${changed.body.accessToken}`);
-    expect(unlocked.status).toBe(200);
+    expect(unlocked.status).toBe(501); // route au contrat figé, mais plus 403
 
     // L'ancien mot de passe ne fonctionne plus.
     const oldPassword = await login(email, TEMP_PASSWORD);

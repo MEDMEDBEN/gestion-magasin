@@ -5,315 +5,291 @@
 > Au retour, dire simplement "lis tasks.md et continue" plutôt que de reprendre l'historique complet.
 
 ## Phase actuelle
-`Phase 0 — Fondation` (étapes 1, 2 et 3 terminées : schéma, OpenAPI, auth, seed, **socle de sync**)
-Reste **l'étape 4 — structure Flutter de base** pour clore la Phase 0.
+**`Phase 0 — Fondation` : TERMINÉE.** Les 6 cases de `docs/plan.md` sont cochées.
+Prochaine phase : **features P0, dans l'ordre**, en commençant par la n°1.
+
+> ⚠️ Une réserve à lever avant de considérer la Phase 0 close côté machine :
+> `flutter build windows` ne passe pas encore ici — prérequis d'environnement, pas un défaut de code.
+> Détail et solution dans « Réserve ouverte » plus bas.
 
 ## Dernier relais
 - Date : 2026-09-09
-- Qui a travaillé : Dev A (backend & data)
-- Ce qui a été fait : **étape 3 de la Phase 0 — socle de synchronisation offline** (`backend/src/sync/`),
-  application de `docs/context.md` §3-§5. Les étapes 1 et 2 n'ont pas été retouchées (sauf une colonne
-  ajoutée, voir « Migration » plus bas).
+- Qui a travaillé : **MEDMEDBEN** (backend + frontend cette session)
+- Ce qui a été fait : **étape 4 de la Phase 0 — structure Flutter de base (`app/`)**.
+  Les étapes 1 à 3 n'ont pas été retouchées, sauf une ligne sur `/auth/me` (voir plus bas).
 
-### 1. `POST /api/sync` — un lot de mutations hors-ligne, idempotent
+> 📌 **Signature du relais** : nous nous signions tous les deux « Dev A », ce qui rendait
+> `tasks.md` ambigu sur qui avait fait quoi. À partir de maintenant, **signer par nom**
+> (MEDMEDBEN / Ratybox) plutôt que par rôle.
 
-Requête : `{ mutations: [ { clientMutationId, deviceId, operationType, payload, deviceTimestamp } ] }`
-(200 mutations max — le `MAX_PENDING_MUTATIONS` de `docs/context.md`).
-Réponse : `{ serverTime, results: [ { clientMutationId, status, entityId?, code?, reason?, serverState?, alreadyProcessed } ] }`.
+### 1. Ce qui a été livré dans `app/`
 
-**Trois issues possibles, deux seulement sont mémorisées :**
+Projet Flutter 3.44.8 (`flutter create`, plateformes **windows + android** — le web est
+hors périmètre et a été retiré), structure conforme à `CLAUDE.md` et `CONVENTIONS.md` :
 
-| Statut | Sens | Mémorisé ? | Ce que fait le client |
-|---|---|---|---|
-| `CONFIRMEE` | appliquée | ✅ | retire la mutation de la file |
-| `REJETEE` | refusée définitivement (permission, payload, règle métier) | ✅ | affiche le motif, exige une action (annuler / corriger = **nouvelle** mutation) |
-| `NON_TRAITEE` | rien n'a été tenté (panne technique, ou feature pas encore livrée) | ❌ | **garde** la mutation en file et la renverra telle quelle |
+```
+app/lib/
+├── core/        config · error (codes miroir du backend) · money · quantity · providers · router
+├── data/        api (dio_client, auth_api, sync_api) · local (token_store, drift, mutation_queue)
+│                models (freezed) · sync (sync_engine)
+├── features/    auth/ (application + presentation)
+└── ui/          theme · widgets · desktop/ · mobile/
+```
 
-Le client réagit toujours au **`code`** (`STOCK_NEGATIVE`, `FORBIDDEN_PERMISSION`, `VALIDATION_FAILED`,
-`NOT_FOUND`, `NOT_IMPLEMENTED`, `SYNC_RETRY_LATER`), jamais au texte français de `reason`.
+- **Client Dio UNIQUE** avec intercepteur JWT + refresh automatique sur 401.
+- **Tokens en `flutter_secure_storage` uniquement** — jamais dans Drift, jamais en clair.
+- **go_router** : redirections login / changement de mot de passe obligatoire.
+- **Drift + file de mutations** : miroir exact du corps de `POST /api/sync`.
+- **Moteur de sync** : lots ≤ 200 triés par `deviceTimestamp`, application des 3 verdicts.
+- **Thème sombre** bleu nuit + accent cyan, et les **6 états d'écran** obligatoires.
 
-Garanties tenues, dans l'ordre, pour chaque mutation :
-1. **Idempotence** — `clientMutationId` déjà vu ⇒ résultat mémorisé renvoyé, rien n'est rejoué.
-2. **Rôle PUIS permissions** — exactement ce qu'exige la route en ligne équivalente, portés par le
-   handler de l'opération et non par la route (les 3 rôles synchronisent, chacun ses opérations).
-   Les deux contrôles sont nécessaires : sans le rôle, un membre à qui l'admin accorde une
-   permission « à la carte » serait refusé en ligne mais accepté hors-ligne.
-3. **Validation** du payload contre un DTO `class-validator` dédié (whitelist stricte).
-4. **Règle métier** dans **une** transaction : mouvement + projection + audit, ou rien.
+### 2. Points de conception à connaître avant de toucher à `app/`
 
-Le lot est rejoué dans l'ordre du **timestamp appareil** (retrié côté serveur), et s'arrête à la
-première panne technique pour ne pas casser cet ordre. Un rejet métier, lui, n'arrête rien.
+- **Le refresh est mutualisé (`_refreshInFlight`)** et ne doit JAMAIS cesser de l'être.
+  Le serveur fait une **rotation** du refresh token et traite le rejeu d'un token révoqué
+  comme un **vol** : il ferme *toutes* les sessions. Deux refresh concurrents
+  déconnecteraient donc l'utilisateur de tous ses appareils.
+- **Une panne serveur n'efface JAMAIS la session.** Sur 5xx / 429 / 408, on conserve les
+  tokens et on réessaiera : effacer couperait l'accès à des ventes hors-ligne encore en file.
+  Seuls un 401 définitif et une absence totale de réponse (`statusCode == 0`, cas ambigu)
+  ferment la session.
+- **`clientMutationId` est généré à la SAISIE et n'est jamais régénéré.** C'est toute la
+  garantie d'idempotence. Corriger une mutation rejetée = créer une **nouvelle** mutation.
+- **Les compteurs de sync sont des `StreamProvider`** (requêtes Drift observées), pas des
+  `Future` : l'indicateur doit bouger tout seul après une saisie ou un cycle de sync.
+- **Aucun `double`** ne porte un montant ni une quantité : `Money = int` (centimes),
+  `Quantity = Decimal`, transport JSON en chaîne.
+- **Le séparateur de milliers est construit par `String.fromCharCode(0x202F)`**, jamais écrit
+  en littéral : une espace invisible dans le source avait déjà provoqué des tests
+  faux-négatifs impossibles à lire.
 
-### 2. Le socle stock partagé — `backend/src/stock/stock-ledger.service.ts`
+### 3. Une modification du backend, assumée
 
-Le contrat de sync exige l'anti-stock-négatif ; il fallait donc écrire la règle 2 de `CLAUDE.md`
-pour de bon. Elle vit dans **un seul** service, sans route, réutilisable tel quel par la feature P0 n°3
-« Stock », puis par ventes / réceptions / transferts / inventaires :
-
-- `StockMovement` inséré + `Stock.quantity` mis à jour **par `increment`** (jamais une valeur absolue),
-  dans la transaction de l'appelant ;
-- la ligne de projection est **verrouillée (`SELECT … FOR UPDATE`)** avant la vérification : sans ce
-  verrou, deux ventes concurrentes de la dernière unité passeraient toutes les deux. C'est le seul
-  SQL brut du projet, en *tagged template* Prisma donc paramétré ;
-- le test est fait sur le **disponible** (`quantity − reservedQuantity`), conformément à
-  `StockDto.availableQuantity` du contrat ;
-- `Product.allowBackorder` est la seule dérogation.
-
-### 3. Étendre le sync = écrire un handler, jamais toucher au moteur
-
-`SyncMutationHandler` (`src/sync/sync-mutation.handler.ts`) : type d'opération, permissions exigées,
-entité auditée, `validate(payload)`, `apply(payload, ctx)` dans la transaction du moteur.
-Inscription dans `SYNC_MUTATION_HANDLERS` (`src/sync/sync.module.ts`). Convention ajoutée à
-`CONVENTIONS.md` § Sync.
-
-**Un seul handler existe aujourd'hui** : `MANUAL` = perte/casse au dépôt (permission `stock.loss`),
-la seule opération dont la feature est assez avancée pour être synchronisable. Elle exerce tout le
-contrat. Les autres types (`SALE`, `RECEPTION`, `TRANSFER`…) répondent `NON_TRAITEE` /
-`NOT_IMPLEMENTED` et leur handler arrivera **avec leur feature**.
-
-### 4. Migration additive
-
-`20260909065518_sync_rejection_code` — `SyncMutation.rejectionCode TEXT NULL`.
-Sans elle, un renvoi de mutation rejetée ne rendait que le motif en français, pas le code métier
-stable : le client n'aurait pas pu réagir programmatiquement (voir `docs/context.md`, journal).
+`GET /api/auth/me` reçoit `@AllowPasswordChange()` : l'app doit pouvoir afficher **qui**
+elle verrouille sur l'écran de changement de mot de passe. La route ne rend que le profil du
+demandeur, aucune action métier n'est déverrouillée. Le test e2e correspondant vérifie
+désormais qu'une vraie **route métier** (`/api/products`) est bien bloquée en 403, et que
+`/auth/me` répond 200 — le test est plus fort qu'avant.
 
 ### Preuves réelles (sorties collées)
 
-Tests unitaires du moteur :
+Tests Flutter — 73, dont 10 sur l'intercepteur de refresh :
 ```
-$ npx jest src/sync --verbose
-PASS src/sync/sync.service.spec.ts
-  SyncService
-    √ applique une mutation valide et trace l'audit dans la même transaction
-    √ ne rejoue JAMAIS une mutation déjà traitée (idempotence)
-    √ renvoie le rejet mémorisé, avec son code stable, sur un renvoi
-    √ rejette une mutation dont l'utilisateur n'a pas la permission — comme en ligne
-    √ rejette la mutation d'un membre qui a la permission mais PAS le rôle
-    √ ne divulgue JAMAIS le résultat mémorisé d'un autre utilisateur
-    √ rejette DÉFINITIVEMENT un identifiant d'entité déjà pris, sans geler la file
-    √ rejette un payload invalide sans ouvrir de transaction
-    √ rejette une règle métier violée en gardant le motif lisible
-    √ garde en file une opération dont le handler n'existe pas encore
-    √ rejoue le lot dans l'ordre du timestamp appareil, quel que soit l'ordre d'envoi
-    √ n'écrit rien et arrête le lot sur une panne technique (ordre préservé)
-Tests:       12 passed, 12 total
+$ flutter test
+00:04 +73: All tests passed!
+
+Répartition :
+  11 tests — test/money_test.dart
+  10 tests — test/quantity_test.dart
+  14 tests — test/mutation_queue_test.dart
+   9 tests — test/sync_engine_test.dart
+   9 tests — test/router_redirect_test.dart
+  10 tests — test/dio_client_test.dart
+  10 tests — test/widget_test.dart
 ```
 
-Tests d'intégration du sync, sur la vraie base PostgreSQL :
+Analyse statique :
 ```
-$ npx jest --config ./test/jest-e2e.json sync --runInBand --verbose
-PASS test/sync.e2e-spec.ts
-  Sync (e2e)
-    √ refuse la synchronisation sans token
-    √ applique une perte saisie hors-ligne : mouvement + projection
-    √ ne réapplique JAMAIS une mutation renvoyée (idempotence)
-    √ n'applique qu'une fois deux envois CONCURRENTS de la même mutation
-    √ rejette une mutation qui rendrait le stock négatif, SANS effet de bord
-    √ mémorise le rejet : le renvoi donne le même verdict, sans retraitement
-    √ autorise le négatif sur un produit en backorder
-    √ rejette la perte déclarée par un vendeur : la matrice vaut aussi hors-ligne
-    √ rejette un payload non conforme au contrat
-    √ garde en file une opération dont la feature n'est pas encore livrée
-    √ applique le lot dans l'ordre du timestamp appareil, pas celui d'envoi
-    √ refuse le vendeur À QUI la permission a été accordée : le rôle manque toujours
-    √ rejette DÉFINITIVEMENT un id de mouvement déjà pris, sans geler la file
-    √ ne renvoie pas à un autre compte le résultat mémorisé d'un collègue
-  StockLedgerService (socle partagé)
-    √ n'empêche JAMAIS une entrée, même si le disponible est déjà négatif
-    √ refuse la sortie qui creuse un disponible déjà négatif
-    √ refuse un mouvement de quantité nulle
-Tests:       17 passed, 17 total
+$ flutter analyze
+4 issues found.   (0 error, 0 warning — 4 infos `prefer_initializing_formals`
+                   NON corrigeables : Dart interdit un paramètre nommé privé)
 ```
 
-Suites complètes, après ajout (aucune régression) :
+Backend — aucune régression après la modification de `/auth/me` :
 ```
-$ npm test
-PASS src/common/roles.guard.spec.ts
-PASS src/common/jwt-access.guard.spec.ts
-PASS src/auth/auth.service.spec.ts
-PASS src/sync/sync.service.spec.ts
-Test Suites: 4 passed, 4 total
-Tests:       33 passed, 33 total
-
-$ npm run test:e2e
-PASS test/sync.e2e-spec.ts
-PASS test/auth.e2e-spec.ts
-Test Suites: 2 passed, 2 total
-Tests:       34 passed, 34 total
+$ npm run build   → OK
+$ npm test        → Test Suites: 4 passed · Tests: 33 passed
+$ npm run test:e2e → Test Suites: 2 passed · Tests: 34 passed
 ```
 
-Build + serveur réellement démarré, contrat servi :
-```
-$ npm run build && node dist/main.js
-$ curl -s http://localhost:3000/api/health
-{"status":"ok","timestamp":"2026-09-09T07:16:03.149Z"}
+### 🐛 Bug corrigé au passage : `npm run test:e2e` était CASSÉ
 
-$ curl -X POST http://localhost:3000/api/sync -d '{"mutations":[]}'   # sans token
-{"statusCode":401,"message":"Access token manquant","error":"UNAUTHORIZED","code":"ACCESS_TOKEN_MISSING"}
+La commande documentée dans `CLAUDE.md` **échouait sur les 34 tests**
+(`UnsupportedMediaTypeError: unsupported charset "UTF-8"`) : les deux suites e2e tournaient
+en parallèle sur la même base de dev. Elles passaient uniquement si on ajoutait `--runInBand`
+à la main — ce que faisait la session précédente, sans le committer.
+**Corrigé dans `backend/package.json`** : le script porte désormais `--runInBand`.
+→ Leçon : toujours valider la commande **telle qu'elle est documentée**, pas une variante locale.
 
-# OpenAPI : POST /api/sync présent, tag « Synchronisation »,
-# corps SyncBatchDto → réponse SyncBatchResultDto  (61 opérations, 61 schémas, 20 tags)
-```
+### Audit `security-reviewer` — 4 points bloquants trouvés, tous corrigés
 
-Aller-retour réel à travers le serveur — idempotence d'un **rejet** :
-```
-$ curl -X POST /api/sync … (mutation MANUAL sur un produit inexistant)
-{"results":[{"clientMutationId":"b72d279c-…","status":"REJETEE","code":"NOT_FOUND",
-             "reason":"Produit introuvable : a3796d2b-…","alreadyProcessed":false}]}
+Aucune faille exploitable de l'extérieur (pas de secret, pas de token mal stocké, pas de
+contournement de permission côté client, pas d'injection). Mais 4 défauts qui **détruisaient
+une session sur un simple hoquet serveur** — et donc l'accès aux ventes hors-ligne non
+synchronisées. Tous corrigés, chacun avec son test :
 
-$ (même mutation renvoyée)
-{"results":[{"clientMutationId":"b72d279c-…","status":"REJETEE","code":"NOT_FOUND",
-             "reason":"Produit introuvable : a3796d2b-…","alreadyProcessed":true}]}
-```
+1. **Refresh** : un 500 / 429 / timeout effaçait les tokens → n'efface plus que sur verdict
+   définitif (`dio_client.dart`).
+2. **Démarrage** : `_restoreSession()` effaçait la session sur n'importe quelle erreur → ne
+   le fait plus que sur 401 / `requiresRelogin` (`auth_controller.dart`).
+3. **Hors-ligne au lancement** : l'app restait bloquée sur un spinner **sans issue** → écran
+   « Serveur injoignable » avec bouton *Réessayer* (`adaptive_shell.dart`).
+4. **Rejets invisibles** : une mutation `REJETEE` n'était affichée nulle part, violation
+   directe de `docs/context.md` §6 (une vente refusée disparaissait silencieusement) →
+   `rejectedMutationsProvider` + affichage dans les deux shells.
 
-### Audit sécurité — 3 points importants trouvés, tous corrigés
+Mineurs également corrigés : double rotation du refresh sur 401 décalés · `AuthSession.toString()`
+n'imprime plus les tokens en clair · une ligne de payload corrompue ne bloque plus toute la
+file (« poison pill ») · ajout du fichier de tests `dio_client_test.dart` qui manquait.
 
-Aucun problème critique. Le noyau (atomicité, anti-stock-négatif sous concurrence, idempotence sous
-concurrence, SQL paramétré, audit transactionnel, whitelist stricte) a été vérifié conforme.
-Corrigé dans la foulée, avec un test dédié pour chaque :
+**Deuxième passe d'audit — feu vert obtenu**, après 4 correctifs supplémentaires :
+- le `catch` du poison pill n'attrapait que `FormatException` : un JSON **valide mais pas un
+  objet** (`[1,2]`) levait un `TypeError` et rebloquait tout le lot. `catch` élargi ;
+- un 403 sur `/auth/me` affichait « Serveur injoignable » avec un bouton *Réessayer* qui
+  bouclait → message clair, sans effacer les tokens ;
+- ajout d'une **fenêtre de silence de 5 s** après un échec passager du refresh : sans elle,
+  dix requêtes en 401 déclenchaient dix tentatives et brûlaient le quota throttlé ;
+- deux tests ajoutés, dont celui qui **fige la décision du `statusCode == 0`** — c'est
+  précisément celle qu'un futur contributeur sera tenté de transformer en retry, ce qui
+  rouvrirait la détection de vol côté serveur.
 
-1. **Un id d'entité déjà pris gelait la file de l'appareil.** Le client fournit les UUID (contrat §1) ;
-   un `payload.id` déjà utilisé faisait échouer la transaction sur une violation d'unicité qui était
-   interprétée comme « course d'idempotence », donc renvoyée en `SYNC_RETRY_LATER` — le client
-   renvoyait alors la mutation **indéfiniment**, bloquant tout ce qui la suivait. Désormais la
-   violation est discriminée sur la contrainte : seule celle qui porte sur `clientMutationId` est une
-   course, toute autre est un `CONFLICT` **définitif**.
-   > Piège Prisma 7 : avec le driver adapter PostgreSQL, la contrainte fautive n'est PAS dans
-   > `meta.target` (absent) mais dans `meta.driverAdapterError.cause.constraint.index`.
-2. **Mémoire d'idempotence non cloisonnée par utilisateur.** Rejouer le `clientMutationId` d'un
-   collègue renvoyait SON résultat (id de mouvement, motif de rejet contenant produit, emplacement et
-   quantité disponible), et pouvait faire croire à l'appelant que son opération était appliquée alors
-   que rien ne l'avait été. Le résultat mémorisé n'est plus rendu qu'à son propriétaire ; sinon
-   `CONFLICT` générique, sans rien divulguer.
-3. **La matrice de rôles n'était pas appliquée par mutation.** Le handler n'exigeait qu'une
-   permission. Un vendeur à qui l'admin accorde `stock.loss` « à la carte » était donc refusé sur
-   `POST /stock/losses` mais **accepté** via `/sync`. Le handler déclare maintenant `requiredRoles`,
-   vérifié avant les permissions, exactement comme `RolesGuard` en ligne.
+### ⚠️ Réserve ouverte — `flutter build windows` ne passe pas ENCORE sur cette machine
 
-Corrections mineures appliquées au passage : refus d'accès tracés en `warn` (supervision) ·
-`AuditLog.ipAddress` renseigné · `deviceTimestamp` refusé au-delà de +24 h (horloge déréglée ou
-tentative de forcer l'ordre du lot) · création de la ligne de projection en
-`INSERT … ON CONFLICT DO NOTHING` — un upsert concurrent aurait levé une erreur d'unicité qui, en
-PostgreSQL, avorte toute la transaction · lecture verrouillée rendue défensive.
+Ce n'est **pas** un défaut du code (analyse propre, 73 tests verts), mais deux prérequis
+d'environnement :
+
+1. **Mode développeur Windows** — *réglé cette session* (symlinks de plugins Flutter,
+   `HKLM\...\AppModelUnlock\AllowDevelopmentWithoutDevLicense = 1`).
+2. **Composant ATL de Visual Studio — MANQUANT.** `flutter_secure_storage_windows` exige
+   `atlstr.h`, absent des Build Tools 2019 installés :
+   ```
+   fatal error C1083: Impossible d'ouvrir le fichier include : 'atlstr.h'
+   ```
+   Correctif : ajouter `Microsoft.VisualStudio.Component.VC.ATL` via Visual Studio Installer.
+   **Non tenté volontairement** : il ne reste que **~1,0 Go libre sur `C:`**, l'installation
+   risquait de saturer le disque système. **Libérer de l'espace d'abord.**
+
+Le build **Android** n'a pas été tenté non plus : `flutter doctor` signale la toolchain
+Android absente (`[X] Android toolchain`).
+
+→ **À faire par le prochain dev** : libérer de l'espace disque, installer le composant ATL,
+puis lancer `flutter build windows --release` et coller la sortie ici. Tant que ce n'est pas
+fait, la Phase 0 est fonctionnellement terminée mais son critère « preuve de build » ne l'est
+qu'à moitié.
 
 ### État exact du code
-- `backend/` compile, **67 tests passent** (33 unitaires + 34 e2e), serveur démarre, `/docs` répond.
-- Auth **complète**, socle de sync **complet et prouvé**.
-- Features métier **non implémentées** (contrat figé, 501) — sauf le mouvement de stock, dont le
-  noyau existe désormais (`StockLedgerService`) sans être encore exposé en ligne.
-- `app/` (Flutter) n'existe toujours pas.
-- Bloqué sur : rien.
+- `backend/` : compile, **67 tests** (33 unitaires + 34 e2e), serveur démarre, `/docs` répond.
+- `app/` : **73 tests**, analyse propre. Session, sync et thème en place ;
+  **aucun écran métier** — ils arrivent avec les features P0.
+- Bloqué sur : rien (la réserve build est un prérequis machine, pas un blocage de code).
 
-### ⚠️ Prérequis d'environnement découvert cette session
-**Node ≥ 22.12 (ou 20.19+, ou 24+) est OBLIGATOIRE** : Prisma 7 refuse de s'installer sur Node 23.x
-(`Prisma only supports Node.js versions 20.19+, 22.12+, 24.0+`) et `npm install` échoue en preinstall.
-Testé et validé sur **Node 22.23.2**. Sur macOS : `brew install node@22` puis
-`export PATH="/opt/homebrew/opt/node@22/bin:$PATH"`.
-
-Rappel de mise en route d'une machine vierge :
+### Mise en route d'une machine vierge
 ```bash
+# Infra
 cd infra && docker compose -f docker-compose.dev.yml up -d
+
+# Backend  (Node 22.12+ OBLIGATOIRE — Prisma 7 refuse Node 23.x)
 cd ../backend && cp .env.example .env      # puis générer JWT_ACCESS_SECRET
 npm install && npx prisma generate && npx prisma migrate deploy && npm run seed
+npm run start:dev
+
+# App  (Flutter 3.44+ ; ici hors PATH, dans C:\flutter\bin)
+cd ../app && flutter pub get
+dart run build_runner build     # freezed + json_serializable + drift
+flutter test
 ```
-> `npx prisma migrate dev` ne régénère pas toujours le client dans `src/generated/prisma` :
-> après toute modification du schéma, enchaîner explicitement `npx prisma generate`.
+> Le code généré (`*.g.dart`, `*.freezed.dart`) est **gitignoré**, comme le client Prisma :
+> lancer `build_runner` après tout `git pull` qui touche un modèle ou la base Drift.
 
-### Prochaine étape précise — étape 4 de la Phase 0 : structure Flutter de base (`app/`)
-C'est la **dernière** brique avant les features P0. À livrer par le Dev B (frontend) :
-1. `flutter create app` à la racine, structure de `CLAUDE.md` (`lib/core`, `lib/data`,
-   `lib/features`, `lib/ui/desktop`, `lib/ui/mobile`) et de `CONVENTIONS.md`.
-2. **Client Dio unique** : base URL configurable, intercepteur JWT + refresh automatique sur 401
-   (rotation du refresh — l'ancien token devient invalide, voir §Auth), stockage des tokens en
-   `flutter_secure_storage` **uniquement**.
-3. **go_router** : shell desktop / shell mobile, redirection vers login si pas de session, et vers
-   « changement de mot de passe obligatoire » si `mustChangePassword`.
-4. **Base Drift + file de mutations locale** miroir du contrat : `clientMutationId` (UUID v7 généré
-   à la saisie), `deviceId`, `operationType`, `payload`, `deviceTimestamp`, statut local
-   (`en_attente` / `confirmée` / `rejetée` + code + motif).
-5. **Moteur d'envoi** : lots ≤ 200 triés par `deviceTimestamp`, POST `/api/sync`, puis application des
-   résultats — `CONFIRMEE` ⇒ retirer de la file · `REJETEE` ⇒ marquer échouée avec le `code` et le
-   motif, action utilisateur requise · `NON_TRAITEE` ⇒ **laisser en file**, réessayer plus tard.
-6. Thème (sombre, accent cyan/bleu électrique — `docs/spec-fonctionnelle.md`) + les 6 états d'écran
-   `Loading / Empty / Error / Success / Offline / SyncPending`.
-7. Preuve attendue : `flutter test` + `flutter build` réels, et une capture de l'écran de login.
+### ➡️ Prochaine étape précise : **feature P0 n°1 — Authentification + utilisateurs + rôles**
 
-> Un endpoint de **delta sync descendant** (téléchargement du sous-ensemble par rôle, curseur serveur)
-> n'existe pas encore : il n'est pas dans le socle exigé par la Phase 0 et sera fait avec les features
-> qui ont des données à descendre. À prévoir avant la mise en service réelle.
->
-> Rappel : **ne commencer aucune feature métier P0** tant que l'étape 4 n'est pas terminée.
+La Phase 0 est finie : on entre dans les **tranches verticales**, une feature complète à la
+fois (`CLAUDE.md` § Méthodologie). La n°1 est en grande partie faite **côté backend** ; il
+reste à la terminer de bout en bout.
+
+Reste à faire pour la clore :
+1. **UI desktop** : écran de gestion des utilisateurs (liste paginée, création, modification
+   des rôles/permissions, désactivation, réinitialisation de mot de passe, révocation de
+   sessions). Les endpoints existent déjà : `POST|GET /api/users`, `PATCH /api/users/:id`,
+   `POST /api/users/:id/reset-password|revoke-sessions`.
+2. **UI mobile** : consultation de son propre profil ; la gestion des comptes reste desktop
+   (`spec-fonctionnelle.md` §29 : la configuration lourde est desktop).
+3. **`AuditLog` sur les actions de comptes** — dette explicitement reportée depuis l'étape 2 :
+   création, changement de rôles/permissions, reset de mot de passe, révocation doivent
+   écrire dans `AuditLog`, **dans la même transaction** que la mutation, acteur pris via
+   `@CurrentUser()`. C'est le bon moment : c'est la feature qui les produit.
+4. **Tests** : e2e backend pour l'audit, tests de widgets pour les écrans.
+5. Revue `reviewer` + audit `security-reviewer`, puis cocher la checklist de `docs/plan.md`.
+
+> Rappel : **ne pas démarrer la feature P0 n°2** (Produits) tant que la n°1 n'est pas
+> terminée ET testée.
 
 ## Sessions précédentes (à conserver — savoir durable)
 
-### Étapes 1 et 2 — schéma, OpenAPI, auth, seed (2026-09-09, Dev A)
-- **Schéma** : 35 tables migrées (`20260909024741_phase0_schema_initial`).
-- **Contrat OpenAPI** : servi sur `/docs` (préfixe `api` pour les routes), squelette figé pour les
-  features non développées — chaque route répond **501 `NOT_IMPLEMENTED`**, jamais une 404 trompeuse
-  (`backend/src/common/api-contract.module.ts`).
-- **Auth** : création de compte par l'admin seul ; login email OU téléphone, argon2id ; access JWT
-  15 min ; refresh **opaque** stocké en SHA-256, 90 j glissants, **rotation à chaque appel**,
-  révocable — rejouer un token révoqué ferme **toutes** les sessions ; `mustChangePassword`
-  verrouille l'API sauf `change-password` / `logout` ; guards globaux `JwtAccessGuard` puis
-  `RolesGuard`.
-- **Seed** (`npm run seed`, idempotent) : 38 permissions, 3 rôles, 3 emplacements, 2 tarifs,
-  2 taux de TVA, 1 admin.
-- **Audit sécurité passé**, avec corrections appliquées : rate limiting sur `/auth/login` (10/15 min)
-  et `/auth/refresh` (30), rotation du refresh rendue atomique, anti-énumération temporelle,
-  réutilisation du mot de passe courant refusée, dernier admin protégé, `extraPermissions` validé,
-  Swagger fermé en production, codes `ACCESS_TOKEN_MISSING` / `ACCESS_TOKEN_INVALID` distincts.
+### Étape 3 — socle de sync (2026-09-09, Ratybox)
+- `POST /api/sync` idempotent : `CONFIRMEE` / `REJETEE` mémorisés, `NON_TRAITEE` jamais.
+- `StockLedgerService` (`src/stock/`) : règle 2 (mouvement source de vérité + projection dans
+  la même transaction) + anti-stock-négatif, avec `SELECT … FOR UPDATE` contre les ventes
+  concurrentes de la dernière unité. **Tout mouvement de stock doit passer par lui.**
+- Étendre le sync = **écrire un handler**, jamais toucher au moteur (voir `CONVENTIONS.md` § Sync).
+  Un seul handler existe : `MANUAL` (perte/casse). Les autres types répondent `NON_TRAITEE`.
+- Migration additive `20260909065518_sync_rejection_code`.
+- Audit passé, 3 correctifs : id d'entité déjà pris ne gèle plus la file · mémoire
+  d'idempotence cloisonnée par utilisateur · rôle **ET** permission vérifiés par mutation.
 
-### Pièges d'infrastructure déjà rencontrés — ne pas les re-découvrir
-- **`DATABASE_URL` est câblé à DEUX endroits** : `prisma7.config.ts` = **CLI**, `PrismaService` =
-  **runtime**. En Prisma 7 le `datasource` du schéma n'a pas de ligne `url` et le client exige un
-  *driver adapter* (`new PrismaPg({ connectionString })`), sinon : « *PrismaClient was instantiated
-  without any options. A driver adapter is required* ». Les deux lisent `backend/.env`.
-- **Client Prisma généré dans `src/generated/`** (et non `backend/generated/`) : hors de `src`, il
-  décalait la sortie du build en `dist/src/main.js` et cassait `npm run start:prod`.
-- **`incremental` retiré de `tsconfig.json`** : combiné au `deleteOutDir` de Nest, tsc croyait le
+### Étapes 1 et 2 — schéma, OpenAPI, auth, seed (2026-09-09, MEDMEDBEN)
+- **Schéma** : 35 tables (`20260909024741_phase0_schema_initial`).
+- **Contrat OpenAPI** sur `/docs` ; les routes non implémentées répondent **501
+  `NOT_IMPLEMENTED`**, jamais une 404 trompeuse.
+- **Auth** : comptes créés par l'admin seul ; login email OU téléphone (argon2id) ; access JWT
+  15 min ; refresh **opaque** stocké en SHA-256, 90 j glissants, **rotation à chaque appel**,
+  révocable ; `mustChangePassword` verrouille l'API ; guards globaux `JwtAccessGuard` puis
+  `RolesGuard`.
+- **Seed** idempotent : 38 permissions, 3 rôles, 3 emplacements, 2 tarifs, 2 TVA, 1 admin.
+
+### Pièges d'infrastructure — ne pas les re-découvrir
+- **Node ≥ 22.12 obligatoire** (Prisma 7 refuse Node 23.x). Validé sur 22.14 et 22.23.2.
+- **`DATABASE_URL` est câblé à DEUX endroits** : `prisma7.config.ts` = **CLI**,
+  `PrismaService` = **runtime** (Prisma 7 exige un *driver adapter* `PrismaPg`).
+- **Client Prisma généré dans `src/generated/`** : ailleurs, il décale la sortie du build.
+- **`incremental` retiré de `tsconfig.json`** : avec le `deleteOutDir` de Nest, tsc croyait le
   build à jour alors que `dist/` venait d'être supprimé → build silencieusement vide.
-- ⚠️ **Reste à supprimer à la main** : l'ancien dossier `backend/generated/` (mort, gitignoré).
+- **`npx prisma migrate dev` ne régénère pas toujours le client** : enchaîner `npx prisma generate`.
+- **Flutter est hors PATH** sur cette machine : `export PATH="/c/flutter/bin:$PATH"`.
+- ⚠️ **Reste à supprimer à la main** : `backend/generated/` (mort, gitignoré).
 
 ### Permissions — règles à ne pas oublier
 - `docs/permissions.md` est **VALIDÉE (2026-09-09)**. Traduction technique unique :
   `backend/src/common/permissions.ts`, lu par le seed **et** par les guards.
-- Le **vendeur n'a aucun accès aux fournisseurs** (ligne « Gérer fournisseurs » scindée en
-  lecture/gestion) — verrouillé par un test e2e.
-- ⚠️ Le seed fait autorité sur les permissions des rôles (il utilise `set`). Après toute modification
-  de `permissions.ts`, **relancer `npm run seed`** — sinon la base garde l'ancien jeu et les tokens
-  émis restent périmés.
-- **Garde-fou structurel** : une route authentifiée **sans `@Roles` explicite est refusée**
-  (`FORBIDDEN_ROLE`). Oublier le décorateur ferme la route au lieu de l'ouvrir.
+- Le **vendeur n'a aucun accès aux fournisseurs** — verrouillé par un test e2e.
+- ⚠️ Le seed fait autorité sur les permissions des rôles (il utilise `set`). Après toute
+  modification de `permissions.ts`, **relancer `npm run seed`**.
+- **Garde-fou structurel** : une route authentifiée **sans `@Roles` explicite est refusée**.
 
 ## Dette assumée (à traiter à sa feature)
-- **Audit des actions de gestion de comptes** (création, changement de rôles/permissions, reset de
-  mot de passe, révocation) : n'écrit toujours pas dans `AuditLog`. Feature P0 n°11 « Historique /
-  audit », à faire dans la même transaction que la mutation, acteur pris via `@CurrentUser()`.
-  _(Le sync, lui, écrit déjà son audit.)_
-- **Réservation de stock** (`Stock.reservedQuantity`) : le disponible la déduit déjà, mais **rien ne
-  la remplit** — quand on réserve et quand la réservation expire reste à décider (feature Ventes).
-- **Débit et taille de corps sur `/sync`** (relevé à l'audit, non corrigé) : la route hérite du
-  throttle global (120 req/min **par IP** — or tous les postes du magasin sortent derrière la même IP)
-  et de la limite de corps par défaut d'Express (**100 ko**). Un lot de 200 ventes dépassera 100 ko et
-  serait refusé en 413. Les deux valeurs doivent être calibrées **quand le premier handler lourd
-  arrivera** (vente), pas au jugé maintenant.
-- **Payload d'un rejet de validation stocké tel quel** (`SyncMutation.payload`) : un compte
-  authentifié peut faire grossir la table avec du JSON arbitraire, borné seulement par la limite de
-  corps. À plafonner/tronquer si la volumétrie devient un sujet.
-- **Formatage** : le dépôt n'est pas `prettier`-clean (37 fichiers, tous antérieurs à cette session
-  compris ; seule la largeur de ligne diffère). Le passage de `npm run format` est à faire en une
-  fois, dans un commit dédié, quand les deux devs sont d'accord — pas au milieu d'une feature.
+- **`AuditLog` sur la gestion de comptes** → à faire dans la feature P0 n°1, ci-dessus.
+- **UX de réconciliation des mutations rejetées** — `docs/context.md` §6 exige que
+  l'utilisateur puisse **agir** sur un rejet (annuler / corriger). Aujourd'hui le rejet est
+  bien COMPTÉ et affiché dans l'indicateur, mais aucun écran ne liste les mutations rejetées
+  avec leur motif, et `MutationQueue.discard()` n'a encore aucun appelant. **Prérequis de la
+  première feature qui crée des mutations (Ventes)** — sinon le §6 reste à moitié tenu.
+- **Fenêtre de grâce sur le refresh token** (relevée à l'audit, non corrigée) : si la rotation
+  aboutit côté serveur mais que la réponse se perd, le client se retrouve avec un refresh
+  mort-né et doit se reconnecter. Correctif propre = accepter côté serveur un refresh révoqué
+  depuis moins de ~30 s en renvoyant le successeur déjà émis, au lieu de déclencher la
+  détection de vol. À faire quand on touchera à l'auth.
+- **Réservation de stock** (`Stock.reservedQuantity`) : le disponible la déduit déjà, mais
+  **rien ne la remplit**. À trancher au démarrage de la feature Ventes.
+- **Débit et taille de corps sur `/sync`** : throttle global 120 req/min **par IP** (tous les
+  postes du magasin sortent derrière la même IP) et limite de corps Express de **100 ko** —
+  un lot de 200 ventes dépassera. À calibrer quand le premier handler lourd arrivera.
+- **Base Drift locale non chiffrée** : conforme au besoin actuel (seuls les tokens exigent le
+  stockage sécurisé), à reconsidérer si des appareils mobiles non maîtrisés entrent dans le périmètre.
+- **Delta sync descendant** (téléchargement du sous-ensemble par rôle, curseur serveur) :
+  n'existe pas encore. À faire avec les features qui ont des données à descendre, avant la
+  mise en service réelle.
+- **Formatage** : le dépôt n'est pas `prettier`-clean. À passer en une fois, dans un commit
+  dédié, quand les deux devs sont d'accord — pas au milieu d'une feature.
 
 ## Avancement par feature
 
 | Feature | Statut | Backend | Frontend | Tests | Sécurité |
 |---|---|---|---|---|---|
-| Phase 0 — Fondation (schéma + OpenAPI + auth + socle sync) | 🟡 En cours | 🟢 Schéma · 🟢 OpenAPI · 🟢 Auth · 🟢 Socle sync | 🔴 Étape 4 à faire | 🟢 33 unit + 34 e2e | 🟢 Audits passés |
-| Auth + rôles/permissions | 🟢 Backend terminé | 🟢 Login/refresh/logout/guards/seed | 🔴 À faire | 🟢 38 tests | 🟢 Audit passé |
-| Socle offline/sync (moteur + contrat) | 🟢 Backend terminé | 🟢 `POST /api/sync` idempotent + rejets | 🔴 À faire (étape 4) | 🟢 29 tests | 🟢 Audit passé, 3 correctifs |
+| **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
+| Auth + rôles/permissions (P0 n°1) | 🟡 Backend fait, UI à faire | 🟢 Complet | 🔴 Écrans à faire | 🟢 38 tests | 🟢 Audit passé |
 | Produits + catégories + emplacements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
-| Ventes (tarifs, TVA/facture, caisse) + dettes clients + paiements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Réceptions (dont partielles) | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
@@ -321,13 +297,13 @@ C'est la **dernière** brique avant les features P0. À livrer par le Dev B (fro
 | Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Planning hebdomadaire | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Historique/audit | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Génération PDF/Excel, devis, étiquettes code-barres (P1) | 🔴 Non commencé | — | — | — | — |
-| Handlers de sync par opération P0 (vente, réception, transfert, inventaire) | 🔴 Non commencé | 🟡 Moteur prêt, 1 handler livré | — | — | — |
+| Handlers de sync par opération P0 | 🔴 Non commencé | 🟡 Moteur prêt, 1 handler livré | — | — | — |
+| Génération PDF/Excel, devis, étiquettes (P1) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟡 en cours · 🟢 terminé et prouvé
 
 ## Décisions en attente
-- ~~Matrice de permissions CRUD détaillée par entité~~ → **VALIDÉE le 2026-09-09** (`docs/permissions.md`).
+- ~~Matrice de permissions CRUD~~ → **VALIDÉE le 2026-09-09** (`docs/permissions.md`).
 - Confirmer les canaux de notification temps réel (WebSocket) au moment de la feature Notifications (P1).
 - **Quand réserve-t-on du stock** (`reservedQuantity`) et quand la réservation expire-t-elle ?
   À trancher au démarrage de la feature Ventes.
