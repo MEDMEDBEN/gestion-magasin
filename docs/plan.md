@@ -20,7 +20,7 @@ UI desktop et mobile, intégration API (Dio/Riverpod), moteur de sync offline (D
 - [x] **Schéma Prisma complet P0** — liste exhaustive et figée des tables ci-dessous _(2026-09-09 — 35 tables migrées, preuve dans `docs/tasks.md`)_
 - [x] Contrat OpenAPI complet pour tous les endpoints P0 (forme uniquement) _(2026-09-09 — 46 endpoints, 57 DTO, servi sur /docs)_
 - [x] Auth JWT (login, refresh révocable via table `RefreshToken`, guards par rôle) fonctionnel _(2026-09-09 — 38 tests, audit sécurité passé)_
-- [ ] **Socle du contrat de sync** : UUID client, table de mutations, endpoint idempotent, validation serveur avec rejet (voir `docs/context.md`)
+- [x] **Socle du contrat de sync** : UUID client, table de mutations, endpoint idempotent, validation serveur avec rejet (voir `docs/context.md`) _(2026-09-09 — `POST /api/sync`, 12 tests unitaires + 17 e2e, audit sécurité passé, preuve dans `docs/tasks.md`)_
 - [ ] Structure Flutter de base (navigation desktop/mobile, thème, client Dio configuré sur le contrat, base Drift + file de mutations)
 - [x] `docker-compose.dev.yml` local (PostgreSQL + Redis + MinIO) _(2026-09-09 — démarré et vérifié)_
 - [x] **Matrice de permissions CRUD** des entités P0 validée par l'utilisateur _(2026-09-09 — voir docs/permissions.md)_

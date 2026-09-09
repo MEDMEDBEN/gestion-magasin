@@ -43,4 +43,7 @@ export enum ErrorCode {
 
   // Synchronisation offline (docs/context.md)
   SYNC_MUTATION_REJECTED = 'SYNC_MUTATION_REJECTED',
+  /// Échec TEMPORAIRE côté serveur : la mutation n'est pas mémorisée, le client
+  /// la garde en file et la renverra telle quelle (contrat de sync § idempotence).
+  SYNC_RETRY_LATER = 'SYNC_RETRY_LATER',
 }

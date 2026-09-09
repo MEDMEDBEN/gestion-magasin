@@ -108,4 +108,26 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
 - **2026-09-09** — Devis (`Quote`) ajouté : convertible en vente, sans impact stock.
 - **2026-09-09** — Auth : pas d'inscription publique (l'admin crée les comptes, changement de mot de passe à la 1re connexion) ; session persistante via refresh token long (90 j) révocable ; sync initiale du sous-ensemble du rôle puis delta sync. Voir `docs/spec-fonctionnelle.md` §2bis.
 
+- **2026-09-09** — Socle de sync livré (`POST /api/sync`). Trois décisions prises en l'implémentant :
+  1. **Trois issues, deux mémorisées.** `CONFIRMEE` et `REJETEE` sont définitives et mémorisées sur
+     `clientMutationId` ; `NON_TRAITEE` ne l'est jamais (panne technique, ou opération dont la feature
+     n'est pas encore livrée) et la mutation reste dans la file du client. Raison : mémoriser un rejet
+     pour cause de « feature absente » condamnerait définitivement une mutation légitime.
+  2. **Colonne `SyncMutation.rejectionCode`** ajoutée (migration additive `20260909065518_sync_rejection_code`).
+     Raison : sur un renvoi, le client doit retrouver le **code** métier stable du rejet, pas seulement
+     le texte français (CONVENTIONS.md — le front ne se base jamais sur le message).
+  3. **Rôle ET permission vérifiés par mutation**, pas seulement la permission. La matrice de
+     `docs/permissions.md` combine les deux et un membre peut recevoir une permission « à la carte » ;
+     ne contrôler que la permission aurait fait du sync une porte dérobée (un vendeur avec
+     `stock.loss` accordé aurait été refusé en ligne mais accepté hors-ligne).
+  4. **Une référence introuvable (`NOT_FOUND`) est un rejet DÉFINITIF**, pas un « réessayer plus
+     tard ». Raison : la file d'un appareil est ordonnée, l'entité référencée est donc synchronisée
+     avant l'opération qui l'utilise ; traiter le cas comme temporaire ferait boucler indéfiniment
+     une mutation portant un id erroné. **À rediscuter** si une opération devait un jour référencer
+     une entité créée sur un AUTRE appareil.
+  5. **Un lot s'arrête à la première panne technique.** Les mutations suivantes repartent `NON_TRAITEE`.
+     Raison : les opérations d'un appareil sont ordonnées ; en appliquer une après un trou casserait
+     l'ordre (ex. paiement appliqué avant la vente qu'il solde). Un **rejet métier**, lui, n'arrête
+     rien : c'est un verdict, pas une panne.
+
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->

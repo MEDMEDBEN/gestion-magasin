@@ -44,6 +44,15 @@ src/<feature>/
 
 ### Sync
 - Endpoint de sync idempotent (dédup sur `client_mutation_id`), validation qui peut rejeter (voir `docs/context.md`). Toute mutation offline passe par ce chemin.
+- **Rendre une opération synchronisable = écrire un handler, jamais toucher au moteur.** Créer
+  `src/sync/handlers/<operation>.handler.ts` implémentant `SyncMutationHandler` (type d'opération,
+  permissions exigées — les MÊMES qu'en ligne —, entité auditée, `validate()` du payload via un DTO
+  dédié dans `src/sync/dto/`, `apply()` dans la transaction fournie), puis l'inscrire dans
+  `SYNC_MUTATION_HANDLERS` (`src/sync/sync.module.ts`). `apply()` reçoit la transaction du moteur :
+  lever une `BusinessException` = rejet, rien n'est appliqué.
+- **Tout mouvement de stock passe par `StockLedgerService.applyMovement()`** (`src/stock/`), en ligne
+  comme hors-ligne : c'est lui qui tient la règle 2 (mouvement source de vérité + projection dans la
+  même transaction) et l'anti-stock-négatif. Ne jamais écrire `Stock.quantity` ailleurs.
 
 ## Frontend (Flutter)
 

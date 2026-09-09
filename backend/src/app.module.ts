@@ -10,6 +10,7 @@ import { JwtAccessGuard } from './common/jwt-access.guard';
 import { RolesGuard } from './common/roles.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './products/products.module';
+import { SyncModule } from './sync/sync.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     ProductsModule,
+    SyncModule,
     ApiContractModule,
   ],
   controllers: [AppController],

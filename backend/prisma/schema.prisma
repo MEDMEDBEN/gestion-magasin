@@ -1056,6 +1056,8 @@ model SyncMutation {
   operationType    OperationType
   payload          Json
   status           SyncMutationStatus
+  /// Code métier stable du rejet (ErrorCode) — le client réagit à CE code, jamais au texte.
+  rejectionCode    String?
   /// Motif lisible en cas de REJETEE (ex : stock insuffisant).
   rejectionReason  String?
   /// Entité créée/modifiée si CONFIRMEE — permet de renvoyer le même résultat sur retry.
