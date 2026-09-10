@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
-import '../../../ui/theme/app_theme.dart';
+import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/screen_state.dart';
 import '../application/auth_controller.dart';
 
-/// Changement de mot de passe imposé à la première connexion (CLAUDE.md règle 14).
-/// Tant qu'il n'est pas fait, le serveur refuse TOUTE autre route.
+/// Changement de mot de passe. Deux usages, un seul écran :
+/// - **forcé** à la première connexion (`mustChangePassword`, règle 14) : le
+///   serveur refuse TOUTE autre route tant que ce n'est pas fait, donc pas de
+///   retour possible ;
+/// - **volontaire** depuis le profil : l'utilisateur peut renoncer.
 class ChangePasswordScreen extends ConsumerStatefulWidget {
-  const ChangePasswordScreen({super.key});
+  const ChangePasswordScreen({super.key, this.forced = true});
+
+  /// Vrai quand l'app y a été redirigée par `mustChangePassword`.
+  final bool forced;
 
   @override
   ConsumerState<ChangePasswordScreen> createState() =>
@@ -20,6 +29,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   final _current = TextEditingController();
   final _next = TextEditingController();
   final _confirm = TextEditingController();
+  bool _obscure = true;
 
   @override
   void dispose() {
@@ -31,54 +41,90 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     await ref.read(authControllerProvider.notifier).changePassword(
           currentPassword: _current.text,
           newPassword: _next.text,
         );
+
+    if (!mounted) return;
+    final state = ref.read(authControllerProvider);
+    if (!state.hasError && !widget.forced && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mot de passe modifié.')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
     final auth = ref.watch(authControllerProvider);
     final isLoading = auth.isLoading;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Changement de mot de passe')),
+      appBar: AppBar(
+        title: const Text('Mot de passe'),
+        automaticallyImplyLeading: !widget.forced,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Votre mot de passe est temporaire. Choisissez-en un nouveau '
-                    'pour accéder à l’application.',
-                    style: TextStyle(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 24),
+                  if (widget.forced)
+                    const AmpereInlineAlert(
+                      tone: StatusTone.warn,
+                      icon: LucideIcons.shield,
+                      message: 'Votre mot de passe est temporaire. '
+                          'Choisissez-en un nouveau pour accéder à l’application.',
+                    )
+                  else
+                    Text(
+                      'Choisissez un nouveau mot de passe. '
+                      'Vos autres appareils devront se reconnecter.',
+                      style: AmpereType.body.copyWith(color: colors.ink2),
+                    ),
+                  const SizedBox(height: 22),
+
+                  const AmpereFieldLabel('Mot de passe actuel'),
                   TextFormField(
                     controller: _current,
-                    obscureText: true,
+                    obscureText: _obscure,
                     enabled: !isLoading,
-                    decoration: const InputDecoration(
-                      labelText: 'Mot de passe actuel',
+                    style: AmpereType.input.copyWith(color: colors.ink),
+                    decoration: InputDecoration(
+                      prefixIcon: const Icon(LucideIcons.lock, size: 17),
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() => _obscure = !_obscure),
+                        tooltip: _obscure ? 'Afficher' : 'Masquer',
+                        icon: Icon(
+                          _obscure ? LucideIcons.eyeOff : LucideIcons.eye,
+                          size: 17,
+                        ),
+                      ),
                     ),
                     validator: (v) => (v == null || v.isEmpty)
                         ? 'Saisissez le mot de passe actuel'
                         : null,
                   ),
                   const SizedBox(height: 16),
+
+                  const AmpereFieldLabel('Nouveau mot de passe'),
                   TextFormField(
                     controller: _next,
-                    obscureText: true,
+                    obscureText: _obscure,
                     enabled: !isLoading,
+                    style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
-                      labelText: 'Nouveau mot de passe',
+                      prefixIcon: Icon(LucideIcons.keyRound, size: 17),
                       helperText: '8 caractères minimum',
                     ),
                     validator: (v) {
@@ -93,39 +139,60 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
+
+                  const AmpereFieldLabel('Confirmer'),
                   TextFormField(
                     controller: _confirm,
-                    obscureText: true,
+                    obscureText: _obscure,
                     enabled: !isLoading,
+                    style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
-                      labelText: 'Confirmer le nouveau mot de passe',
+                      prefixIcon: Icon(LucideIcons.keyRound, size: 17),
                     ),
                     onFieldSubmitted: (_) => _submit(),
                     validator: (v) =>
                         v != _next.text ? 'Les mots de passe diffèrent' : null,
                   ),
+
                   if (auth.hasError) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      switch (auth.error!) {
+                    AmpereInlineAlert(
+                      message: switch (auth.error!) {
                         ApiException(:final userMessage) => userMessage,
                         _ => 'Changement impossible',
                       },
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.danger),
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: isLoading ? null : _submit,
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Valider'),
+
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    height: AmpereGeometry.touchPrimary,
+                    child: FilledButton(
+                      onPressed: isLoading ? null : _submit,
+                      child: isLoading
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.onAccent,
+                              ),
+                            )
+                          : const Text('Valider'),
+                    ),
                   ),
+
+                  if (widget.forced) ...[
+                    const SizedBox(height: 10),
+                    TextButton.icon(
+                      onPressed: isLoading
+                          ? null
+                          : () =>
+                              ref.read(authControllerProvider.notifier).logout(),
+                      icon: const Icon(LucideIcons.logOut, size: 17),
+                      label: const Text('Se déconnecter'),
+                    ),
+                  ],
                 ],
               ),
             ),

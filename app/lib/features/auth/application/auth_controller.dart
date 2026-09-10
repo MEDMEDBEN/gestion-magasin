@@ -115,11 +115,15 @@ class AuthController extends AsyncNotifier<AuthState> {
     });
   }
 
-  Future<void> logout() async {
+  /// `allDevices` ferme TOUTES les sessions du compte (perte, vol, départ).
+  Future<void> logout({bool allDevices = false}) async {
     final tokenStore = ref.read(tokenStoreProvider);
     final refreshToken = await tokenStore.readRefreshToken();
     try {
-      await ref.read(authApiProvider).logout(refreshToken: refreshToken);
+      await ref.read(authApiProvider).logout(
+            refreshToken: refreshToken,
+            allDevices: allDevices,
+          );
     } on ApiException {
       // Hors-ligne : on ne peut pas révoquer côté serveur, mais on nettoie
       // localement — le token expirera de lui-même.

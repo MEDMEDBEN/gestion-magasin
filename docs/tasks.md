@@ -1,218 +1,120 @@
 # État d'avancement
 
-> Les deux devs travaillent à des heures différentes, jamais en simultané — ce fichier EST le relais entre vous deux.
-> Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer la session.
-> Au retour, dire simplement "lis tasks.md et continue" plutôt que de reprendre l'historique complet.
+> Les deux devs travaillent à des heures différentes, jamais en simultané — ce fichier EST le relais.
+> Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
+> **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
 ## Phase actuelle
-**`Phase 0 — Fondation` : TERMINÉE.** Les 6 cases de `docs/plan.md` sont cochées.
-Prochaine phase : **features P0, dans l'ordre**, en commençant par la n°1.
-
-> ⚠️ Une réserve à lever avant de considérer la Phase 0 close côté machine :
-> `flutter build windows` ne passe pas encore ici — prérequis d'environnement, pas un défaut de code.
-> Détail et solution dans « Réserve ouverte » plus bas.
+`Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~85 % faite.
 
 ## Dernier relais
-- Date : 2026-09-09
-- Qui a travaillé : **MEDMEDBEN** (backend + frontend cette session)
-- Ce qui a été fait : **étape 4 de la Phase 0 — structure Flutter de base (`app/`)**.
-  Les étapes 1 à 3 n'ont pas été retouchées, sauf une ligne sur `/auth/me` (voir plus bas).
+- Date : 2026-09-10 · Qui : **MEDMEDBEN** · Session interrompue (budget de tokens)
 
-> 📌 **Signature du relais** : nous nous signions tous les deux « Dev A », ce qui rendait
-> `tasks.md` ambigu sur qui avait fait quoi. À partir de maintenant, **signer par nom**
-> (MEDMEDBEN / Ratybox) plutôt que par rôle.
+### ✅ FAIT ET PROUVÉ
 
-### 1. Ce qui a été livré dans `app/`
+**B. Dette AuditLog — SOLDÉE.**
+`backend/src/users/users.service.ts` réécrit : chaque mutation sensible (création, changement de
+rôle/permissions, activation/désactivation, reset de mot de passe, révocation) s'exécute dans un
+`prisma.$transaction` et écrit son `AuditLog` DANS la même transaction (règles 3 et 7).
+- Acteur pris via `@CurrentUser()` + IP via `@Ip()` → `ActorContext` (`users.controller.ts`).
+- `auditSnapshot()` ne sérialise JAMAIS `passwordHash` ni un mot de passe : le journal est
+  lisible par l'admin, il ne doit pas devenir une fuite. Un reset ne trace que le FAIT du reset.
+- `revokeAllInTx()` duplique volontairement `AuthService.revokeAllForUser` : ce dernier utilise sa
+  propre connexion et casserait l'atomicité.
 
-Projet Flutter 3.44.8 (`flutter create`, plateformes **windows + android** — le web est
-hors périmètre et a été retiré), structure conforme à `CLAUDE.md` et `CONVENTIONS.md` :
-
-```
-app/lib/
-├── core/        config · error (codes miroir du backend) · money · quantity · providers · router
-├── data/        api (dio_client, auth_api, sync_api) · local (token_store, drift, mutation_queue)
-│                models (freezed) · sync (sync_engine)
-├── features/    auth/ (application + presentation)
-└── ui/          theme · widgets · desktop/ · mobile/
-```
-
-- **Client Dio UNIQUE** avec intercepteur JWT + refresh automatique sur 401.
-- **Tokens en `flutter_secure_storage` uniquement** — jamais dans Drift, jamais en clair.
-- **go_router** : redirections login / changement de mot de passe obligatoire.
-- **Drift + file de mutations** : miroir exact du corps de `POST /api/sync`.
-- **Moteur de sync** : lots ≤ 200 triés par `deviceTimestamp`, application des 3 verdicts.
-- **Thème sombre** bleu nuit + accent cyan, et les **6 états d'écran** obligatoires.
-
-### 2. Points de conception à connaître avant de toucher à `app/`
-
-- **Le refresh est mutualisé (`_refreshInFlight`)** et ne doit JAMAIS cesser de l'être.
-  Le serveur fait une **rotation** du refresh token et traite le rejeu d'un token révoqué
-  comme un **vol** : il ferme *toutes* les sessions. Deux refresh concurrents
-  déconnecteraient donc l'utilisateur de tous ses appareils.
-- **Une panne serveur n'efface JAMAIS la session.** Sur 5xx / 429 / 408, on conserve les
-  tokens et on réessaiera : effacer couperait l'accès à des ventes hors-ligne encore en file.
-  Seuls un 401 définitif et une absence totale de réponse (`statusCode == 0`, cas ambigu)
-  ferment la session.
-- **`clientMutationId` est généré à la SAISIE et n'est jamais régénéré.** C'est toute la
-  garantie d'idempotence. Corriger une mutation rejetée = créer une **nouvelle** mutation.
-- **Les compteurs de sync sont des `StreamProvider`** (requêtes Drift observées), pas des
-  `Future` : l'indicateur doit bouger tout seul après une saisie ou un cycle de sync.
-- **Aucun `double`** ne porte un montant ni une quantité : `Money = int` (centimes),
-  `Quantity = Decimal`, transport JSON en chaîne.
-- **Le séparateur de milliers est construit par `String.fromCharCode(0x202F)`**, jamais écrit
-  en littéral : une espace invisible dans le source avait déjà provoqué des tests
-  faux-négatifs impossibles à lire.
-
-### 3. Une modification du backend, assumée
-
-`GET /api/auth/me` reçoit `@AllowPasswordChange()` : l'app doit pouvoir afficher **qui**
-elle verrouille sur l'écran de changement de mot de passe. La route ne rend que le profil du
-demandeur, aucune action métier n'est déverrouillée. Le test e2e correspondant vérifie
-désormais qu'une vraie **route métier** (`/api/products`) est bien bloquée en 403, et que
-`/auth/me` répond 200 — le test est plus fort qu'avant.
+**A. Écrans (design AMPÈRE appliqué) — faits :**
+- `ui/theme/ampere_colors.dart` : `ThemeExtension` avec les **4 palettes** (§2.1-§2.4) — desktop et
+  mobile n'ont pas les mêmes valeurs, la palette suit la LARGEUR d'écran (`main.dart` builder).
+- `ui/theme/ampere_typography.dart` : échelles §3.1/§3.2 + géométrie §4 (rayons, cibles tactiles).
+- `ui/theme/app_theme.dart` : `AppTheme.mobile(dark:)` / `AppTheme.desktop(dark:)`.
+- `ui/theme/theme_controller.dart` : thème **persisté** en `LocalSettings` (Drift), sombre par défaut.
+- Police **Archivo** variable bundlée : `app/fonts/Archivo-Variable.ttf` (+ `OFL.txt`), déclarée
+  dans `pubspec.yaml`. Icônes **Lucide** (`lucide_icons_flutter`).
+- `ui/widgets/screen_state.dart` refait : 7 états (dont `noResults`), **squelettes** au chargement
+  (§8 interdit la roue centrée), `SyncIndicator`, `AmpereBadge`, `AmpereIconChip`,
+  `AmpereFieldLabel`, `AmpereInlineAlert`.
+- Écrans : `login_screen.dart` (refait), `change_password_screen.dart` (refait — gère **forcé ET
+  volontaire** via `forced:`), `profile_screen.dart` (**nouveau** : identité, rôles, changement de
+  mot de passe, « déconnecter tous mes appareils », bascule de thème, déconnexion).
+- Gestion utilisateurs ADMIN (**nouveau**) : `features/users/` — `users_controller.dart`,
+  `users_screen.dart` (liste, recherche, badges, menu d'actions : modifier / activer-désactiver /
+  reset mot de passe / révoquer sessions), `user_form_sheet.dart` (création + édition + choix du
+  rôle parmi les 3 figés).
+- Data : `data/api/users_api.dart`, `data/models/user_models.dart`, provider `usersApiProvider`.
+- Shells recâblés : `desktop_shell.dart` (sidebar 246 px, barre 56 px, bascule thème),
+  `mobile_shell.dart` (onglets par rôle, badge sync permanent). L'entrée « Utilisateurs »
+  n'apparaît que pour l'ADMIN.
 
 ### Preuves réelles (sorties collées)
-
-Tests Flutter — 73, dont 10 sur l'intercepteur de refresh :
 ```
+$ cd backend && npm test
+Test Suites: 4 passed, 4 total · Tests: 33 passed, 33 total
+
+$ npm run test:e2e
+PASS test/users-audit.e2e-spec.ts   <-- NOUVEAU (9 tests)
+PASS test/sync.e2e-spec.ts
+PASS test/auth.e2e-spec.ts
+Test Suites: 3 passed, 3 total · Tests: 43 passed, 43 total
+
+  Audit de la gestion des comptes (e2e)
+    √ la création d'un compte est tracée, avec son auteur
+    √ la trace ne contient JAMAIS de mot de passe
+    √ un changement de RÔLE est tracé avec l'avant et l'après
+    √ une désactivation est tracée
+    √ une réinitialisation de mot de passe est tracée sans le secret
+    √ une révocation de sessions est tracée avec leur nombre
+    √ une mutation REFUSÉE n'écrit AUCUNE trace (atomicité)
+    √ désactiver le DERNIER admin actif est refusé, et ne trace rien
+    √ l'audit reste réservé à l'ADMIN
+
+$ cd app && flutter analyze
+No issues found!          (0 error, 0 warning, 0 info)
+
 $ flutter test
-00:04 +73: All tests passed!
-
-Répartition :
-  11 tests — test/money_test.dart
-  10 tests — test/quantity_test.dart
-  14 tests — test/mutation_queue_test.dart
-   9 tests — test/sync_engine_test.dart
-   9 tests — test/router_redirect_test.dart
-  10 tests — test/dio_client_test.dart
-  10 tests — test/widget_test.dart
+00:05 +86: All tests passed!     (86 tests, dont 8 nouveaux sur users_screen)
 ```
 
-Analyse statique :
-```
-$ flutter analyze
-4 issues found.   (0 error, 0 warning — 4 infos `prefer_initializing_formals`
-                   NON corrigeables : Dart interdit un paramètre nommé privé)
-```
+### ⛔ CE QU'IL RESTE À FAIRE (reprise ICI)
 
-Backend — aucune régression après la modification de `/auth/me` :
-```
-$ npm run build   → OK
-$ npm test        → Test Suites: 4 passed · Tests: 33 passed
-$ npm run test:e2e → Test Suites: 2 passed · Tests: 34 passed
-```
+1. **`flutter build windows --release` : NON EXÉCUTÉ cette session** (interrompu volontairement).
+   Le mode développeur Windows est désormais actif, mais le blocage précédent était le composant
+   **ATL de Visual Studio** (`fatal error C1083: 'atlstr.h'`), exigé par
+   `flutter_secure_storage_windows`. Prérequis : libérer de l'espace sur `C:` (il restait ~1,0 Go)
+   puis ajouter `Microsoft.VisualStudio.Component.VC.ATL` via Visual Studio Installer.
+   **Le noter ici sans le contourner** si ça ne passe toujours pas.
+2. **Audit `security-reviewer`** sur cette feature : **PAS ENCORE LANCÉ** (obligatoire avant de
+   marquer la feature terminée — `CLAUDE.md` § Méthodologie 5).
+3. **Revue `reviewer`** : pas encore lancée.
+4. Cocher la checklist de la feature dans `docs/plan.md`.
+5. Vérification manuelle humaine (capture d'écran) — critère « tâche terminée ».
 
-### 🐛 Bug corrigé au passage : `npm run test:e2e` était CASSÉ
+### 🎨 DESIGN SYSTEM — NOUVEAU DOCUMENT, À LIRE AVANT TOUT ÉCRAN
 
-La commande documentée dans `CLAUDE.md` **échouait sur les 34 tests**
-(`UnsupportedMediaTypeError: unsupported charset "UTF-8"`) : les deux suites e2e tournaient
-en parallèle sur la même base de dev. Elles passaient uniquement si on ajoutait `--runInBand`
-à la main — ce que faisait la session précédente, sans le committer.
-**Corrigé dans `backend/package.json`** : le script porte désormais `--runInBand`.
-→ Leçon : toujours valider la commande **telle qu'elle est documentée**, pas une variante locale.
+**`docs/design-system.md` (AMPÈRE)** a été ajouté et **fait foi pour l'APPARENCE**.
+Portée : couleurs, typographie (**Archivo**), espacements, rayons, icônes (**Lucide**), aspect des
+composants et des états, thème **sombre par défaut** + clair.
+**Il ne change AUCUNE logique** : rôles (3, figés), schéma, permissions, numérotation, workflows
+restent régis par `CLAUDE.md` / `spec-fonctionnelle.md` / `permissions.md` / `context.md`.
+**En cas de contradiction, la logique du projet gagne.**
 
-### Audit `security-reviewer` — 4 points bloquants trouvés, tous corrigés
+Déjà implémenté et à RÉUTILISER — ne pas réinventer un thème :
+| Besoin | Où |
+|---|---|
+| Jetons de couleur (4 palettes §2.1-§2.4) | `app/lib/ui/theme/ampere_colors.dart` → `AmpereColors.of(context)` |
+| Typographie §3 + géométrie §4 | `app/lib/ui/theme/ampere_typography.dart` (`AmpereType`, `AmpereGeometry`) |
+| ThemeData | `app/lib/ui/theme/app_theme.dart` → `AppTheme.mobile(dark:)` / `AppTheme.desktop(dark:)` |
+| Thème persisté | `app/lib/ui/theme/theme_controller.dart` (`themeModeProvider`) |
+| États d'écran, badges, pastilles, alertes | `app/lib/ui/widgets/screen_state.dart` |
 
-Aucune faille exploitable de l'extérieur (pas de secret, pas de token mal stocké, pas de
-contournement de permission côté client, pas d'injection). Mais 4 défauts qui **détruisaient
-une session sur un simple hoquet serveur** — et donc l'accès aux ventes hors-ligne non
-synchronisées. Tous corrigés, chacun avec son test :
+⚠️ La palette suit la **largeur d'écran** (desktop ≠ mobile), choisie dans le `builder` de
+`main.dart`. Un widget ne lit JAMAIS le thème : il lit `AmpereColors.of(context)`.
 
-1. **Refresh** : un 500 / 429 / timeout effaçait les tokens → n'efface plus que sur verdict
-   définitif (`dio_client.dart`).
-2. **Démarrage** : `_restoreSession()` effaçait la session sur n'importe quelle erreur → ne
-   le fait plus que sur 401 / `requiresRelogin` (`auth_controller.dart`).
-3. **Hors-ligne au lancement** : l'app restait bloquée sur un spinner **sans issue** → écran
-   « Serveur injoignable » avec bouton *Réessayer* (`adaptive_shell.dart`).
-4. **Rejets invisibles** : une mutation `REJETEE` n'était affichée nulle part, violation
-   directe de `docs/context.md` §6 (une vente refusée disparaissait silencieusement) →
-   `rejectedMutationsProvider` + affichage dans les deux shells.
+### ▶️ OÙ REPRENDRE EXACTEMENT
 
-Mineurs également corrigés : double rotation du refresh sur 401 décalés · `AuthSession.toString()`
-n'imprime plus les tokens en clair · une ligne de payload corrompue ne bloque plus toute la
-file (« poison pill ») · ajout du fichier de tests `dio_client_test.dart` qui manquait.
-
-**Deuxième passe d'audit — feu vert obtenu**, après 4 correctifs supplémentaires :
-- le `catch` du poison pill n'attrapait que `FormatException` : un JSON **valide mais pas un
-  objet** (`[1,2]`) levait un `TypeError` et rebloquait tout le lot. `catch` élargi ;
-- un 403 sur `/auth/me` affichait « Serveur injoignable » avec un bouton *Réessayer* qui
-  bouclait → message clair, sans effacer les tokens ;
-- ajout d'une **fenêtre de silence de 5 s** après un échec passager du refresh : sans elle,
-  dix requêtes en 401 déclenchaient dix tentatives et brûlaient le quota throttlé ;
-- deux tests ajoutés, dont celui qui **fige la décision du `statusCode == 0`** — c'est
-  précisément celle qu'un futur contributeur sera tenté de transformer en retry, ce qui
-  rouvrirait la détection de vol côté serveur.
-
-### ⚠️ Réserve ouverte — `flutter build windows` ne passe pas ENCORE sur cette machine
-
-Ce n'est **pas** un défaut du code (analyse propre, 73 tests verts), mais deux prérequis
-d'environnement :
-
-1. **Mode développeur Windows** — *réglé cette session* (symlinks de plugins Flutter,
-   `HKLM\...\AppModelUnlock\AllowDevelopmentWithoutDevLicense = 1`).
-2. **Composant ATL de Visual Studio — MANQUANT.** `flutter_secure_storage_windows` exige
-   `atlstr.h`, absent des Build Tools 2019 installés :
-   ```
-   fatal error C1083: Impossible d'ouvrir le fichier include : 'atlstr.h'
-   ```
-   Correctif : ajouter `Microsoft.VisualStudio.Component.VC.ATL` via Visual Studio Installer.
-   **Non tenté volontairement** : il ne reste que **~1,0 Go libre sur `C:`**, l'installation
-   risquait de saturer le disque système. **Libérer de l'espace d'abord.**
-
-Le build **Android** n'a pas été tenté non plus : `flutter doctor` signale la toolchain
-Android absente (`[X] Android toolchain`).
-
-→ **À faire par le prochain dev** : libérer de l'espace disque, installer le composant ATL,
-puis lancer `flutter build windows --release` et coller la sortie ici. Tant que ce n'est pas
-fait, la Phase 0 est fonctionnellement terminée mais son critère « preuve de build » ne l'est
-qu'à moitié.
-
-### État exact du code
-- `backend/` : compile, **67 tests** (33 unitaires + 34 e2e), serveur démarre, `/docs` répond.
-- `app/` : **73 tests**, analyse propre. Session, sync et thème en place ;
-  **aucun écran métier** — ils arrivent avec les features P0.
-- Bloqué sur : rien (la réserve build est un prérequis machine, pas un blocage de code).
-
-### Mise en route d'une machine vierge
-```bash
-# Infra
-cd infra && docker compose -f docker-compose.dev.yml up -d
-
-# Backend  (Node 22.12+ OBLIGATOIRE — Prisma 7 refuse Node 23.x)
-cd ../backend && cp .env.example .env      # puis générer JWT_ACCESS_SECRET
-npm install && npx prisma generate && npx prisma migrate deploy && npm run seed
-npm run start:dev
-
-# App  (Flutter 3.44+ ; ici hors PATH, dans C:\flutter\bin)
-cd ../app && flutter pub get
-dart run build_runner build     # freezed + json_serializable + drift
-flutter test
-```
-> Le code généré (`*.g.dart`, `*.freezed.dart`) est **gitignoré**, comme le client Prisma :
-> lancer `build_runner` après tout `git pull` qui touche un modèle ou la base Drift.
-
-### ➡️ Prochaine étape précise : **feature P0 n°1 — Authentification + utilisateurs + rôles**
-
-La Phase 0 est finie : on entre dans les **tranches verticales**, une feature complète à la
-fois (`CLAUDE.md` § Méthodologie). La n°1 est en grande partie faite **côté backend** ; il
-reste à la terminer de bout en bout.
-
-Reste à faire pour la clore :
-1. **UI desktop** : écran de gestion des utilisateurs (liste paginée, création, modification
-   des rôles/permissions, désactivation, réinitialisation de mot de passe, révocation de
-   sessions). Les endpoints existent déjà : `POST|GET /api/users`, `PATCH /api/users/:id`,
-   `POST /api/users/:id/reset-password|revoke-sessions`.
-2. **UI mobile** : consultation de son propre profil ; la gestion des comptes reste desktop
-   (`spec-fonctionnelle.md` §29 : la configuration lourde est desktop).
-3. **`AuditLog` sur les actions de comptes** — dette explicitement reportée depuis l'étape 2 :
-   création, changement de rôles/permissions, reset de mot de passe, révocation doivent
-   écrire dans `AuditLog`, **dans la même transaction** que la mutation, acteur pris via
-   `@CurrentUser()`. C'est le bon moment : c'est la feature qui les produit.
-4. **Tests** : e2e backend pour l'audit, tests de widgets pour les écrans.
-5. Revue `reviewer` + audit `security-reviewer`, puis cocher la checklist de `docs/plan.md`.
-
-> Rappel : **ne pas démarrer la feature P0 n°2** (Produits) tant que la n°1 n'est pas
-> terminée ET testée.
+Tout le code ci-dessus est **committé, compile, analyse propre, tests verts**. Il ne reste
+QUE les points 1 à 5 de la liste précédente pour clore la feature P0 #1. **Aucun code métier
+n'est à réécrire.** Ensuite → feature P0 #2 (Produits + catégories + emplacements + codes-barres),
+dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.ts`).
 
 ## Sessions précédentes (à conserver — savoir durable)
 
@@ -286,7 +188,7 @@ Reste à faire pour la clore :
 | Feature | Statut | Backend | Frontend | Tests | Sécurité |
 |---|---|---|---|---|---|
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
-| Auth + rôles/permissions (P0 n°1) | 🟡 Backend fait, UI à faire | 🟢 Complet | 🔴 Écrans à faire | 🟢 38 tests | 🟢 Audit passé |
+| **Auth + utilisateurs (P0 #1)** | 🟡 **~85 %** — reste build+audits | 🟢 Complet **+ AuditLog** | 🟢 Login · MDP · Profil · Gestion users | 🟢 43 e2e + 86 app | 🔴 **Audit à lancer** |
 | Produits + catégories + emplacements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

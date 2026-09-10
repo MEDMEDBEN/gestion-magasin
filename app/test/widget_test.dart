@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/presentation/login_screen.dart';
+import 'package:gestion_magasin/ui/theme/ampere_colors.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 import 'package:gestion_magasin/ui/widgets/screen_state.dart';
 
@@ -14,11 +15,11 @@ class _SignedOutAuthController extends AuthController {
   Future<AuthState> build() async => const AuthSignedOut();
 }
 
-Widget _wrap(Widget child) => ProviderScope(
+Widget _wrap(Widget child, {bool dark = true}) => ProviderScope(
       overrides: [
         authControllerProvider.overrideWith(_SignedOutAuthController.new),
       ],
-      child: MaterialApp(theme: AppTheme.dark(), home: child),
+      child: MaterialApp(theme: AppTheme.mobile(dark: dark), home: child),
     );
 
 void main() {
@@ -27,8 +28,9 @@ void main() {
       await tester.pumpWidget(_wrap(const LoginScreen()));
       await tester.pumpAndSettle();
 
-      expect(find.text('Email ou téléphone'), findsOneWidget);
-      expect(find.text('Mot de passe'), findsOneWidget);
+      // Étiquette AU-DESSUS du champ, en capitales (AMPÈRE §6).
+      expect(find.text('EMAIL OU TÉLÉPHONE'), findsOneWidget);
+      expect(find.text('MOT DE PASSE'), findsOneWidget);
       expect(find.widgetWithText(FilledButton, 'Se connecter'), findsOneWidget);
     });
 
@@ -48,8 +50,6 @@ void main() {
       await tester.pumpWidget(_wrap(const LoginScreen()));
       await tester.pumpAndSettle();
 
-      // L'écran de test est étroit : on fait défiler jusqu'au bouton avant de
-      // le toucher, sinon il est hors de la zone tactile.
       final button = find.widgetWithText(FilledButton, 'Se connecter');
       await tester.ensureVisible(button);
       await tester.pumpAndSettle();
@@ -64,16 +64,18 @@ void main() {
       await tester.pumpWidget(_wrap(const LoginScreen()));
       await tester.pumpAndSettle();
 
-      final field = tester.widget<TextField>(
-        find.descendant(
-          of: find.ancestor(
-            of: find.text('Mot de passe'),
-            matching: find.byType(TextFormField),
-          ),
-          matching: find.byType(TextField),
-        ),
-      );
-      expect(field.obscureText, isTrue);
+      final fields = tester.widgetList<TextField>(find.byType(TextField));
+      // Identifiant en clair, mot de passe masqué.
+      expect(fields.first.obscureText, isFalse);
+      expect(fields.last.obscureText, isTrue);
+    });
+
+    testWidgets('rend aussi bien en thème clair', (tester) async {
+      await tester.pumpWidget(_wrap(const LoginScreen(), dark: false));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.widgetWithText(FilledButton, 'Se connecter'), findsOneWidget);
     });
   });
 
@@ -86,7 +88,9 @@ void main() {
       expect(find.text('Synchronisé'), findsOneWidget);
     });
 
-    testWidgets('affiche le nombre de mutations en attente', (tester) async {
+    testWidgets('affiche le nombre exact de mutations en attente', (
+      tester,
+    ) async {
       await tester.pumpWidget(_wrap(const SyncIndicator(pendingCount: 3)));
 
       expect(find.text('3 en attente'), findsOneWidget);
@@ -110,12 +114,39 @@ void main() {
   });
 
   group('ScreenStateView', () {
-    testWidgets('rend chacun des 6 états sans planter', (tester) async {
+    testWidgets('rend chacun des états sans planter', (tester) async {
       for (final status in ScreenStatus.values) {
         await tester.pumpWidget(_wrap(ScreenStateView(status: status)));
         await tester.pump();
         expect(tester.takeException(), isNull, reason: 'état $status');
       }
+    });
+
+    testWidgets('« aucun résultat » reprend le terme recherché', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          const ScreenStateView(
+            status: ScreenStatus.noResults,
+            searchTerm: 'benali',
+          ),
+        ),
+      );
+
+      expect(find.textContaining('benali'), findsOneWidget);
+    });
+
+    testWidgets('l’erreur garantit que la saisie est conservée', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(const ScreenStateView(status: ScreenStatus.error)),
+      );
+
+      // §8 : dire ce qui s'est passé, pas le code technique.
+      expect(find.textContaining('conservées'), findsOneWidget);
+      expect(find.textContaining('500'), findsNothing);
     });
 
     testWidgets('propose de réessayer sur erreur', (tester) async {
@@ -131,6 +162,30 @@ void main() {
 
       await tester.tap(find.text('Réessayer'));
       expect(retried, isTrue);
+    });
+
+    testWidgets('le chargement affiche des squelettes, pas une roue', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(const ScreenStateView(status: ScreenStatus.loading)),
+      );
+      await tester.pump();
+
+      expect(find.byType(AmpereSkeletonList), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+  });
+
+  group('AmpereBadge', () {
+    testWidgets('affiche TOUJOURS un libellé, jamais la couleur seule', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(const AmpereBadge(label: 'Désactivé', tone: StatusTone.neutral)),
+      );
+
+      expect(find.text('Désactivé'), findsOneWidget);
     });
   });
 }

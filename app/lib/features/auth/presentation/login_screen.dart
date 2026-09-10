@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
-import '../../../ui/theme/app_theme.dart';
+import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/screen_state.dart';
 import '../application/auth_controller.dart';
 
-/// Écran de connexion — commun desktop et mobile : un formulaire centré,
-/// borné en largeur, fonctionne bien sur les deux. Les écrans qui divergent
-/// vraiment vivent dans `ui/desktop` et `ui/mobile`.
+/// Connexion — formulaire centré borné en largeur : la même mise en page tient
+/// sur desktop et mobile. La palette, elle, suit la plateforme (AMPÈRE §2).
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -38,6 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
     final auth = ref.watch(authControllerProvider);
     final isLoading = auth.isLoading;
 
@@ -46,71 +49,71 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       AuthSignedOut(:final message) => message,
       _ => null,
     };
-    final errorText = auth.hasError
-        ? _messageFor(auth.error!)
-        : signedOutMessage;
+    final errorText = auth.hasError ? _messageFor(auth.error!) : signedOutMessage;
 
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: const BoxConstraints(maxWidth: 420),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Touche d'identité électrique, discrète.
-                  const Icon(
-                    Icons.electrical_services,
-                    size: 48,
-                    color: AppColors.accent,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Gestion magasin',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
+                  // `zap` est le SEUL éclair du système (AMPÈRE §5).
+                  Align(
+                    child: AmpereIconChip(
+                      icon: LucideIcons.zap,
+                      size: 56,
                     ),
                   ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Gestion magasin',
+                    textAlign: TextAlign.center,
+                    style: AmpereType.screenTitle.copyWith(color: colors.ink),
+                  ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Matériel électrique — magasin & dépôt',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: AppColors.textSecondary),
+                    style: AmpereType.body.copyWith(color: colors.ink2),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 30),
+
+                  const AmpereFieldLabel('Email ou téléphone'),
                   TextFormField(
                     controller: _identifier,
                     autofocus: true,
                     enabled: !isLoading,
+                    style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
-                      labelText: 'Email ou téléphone',
-                      prefixIcon: Icon(Icons.person_outline),
+                      prefixIcon: Icon(LucideIcons.user, size: 17),
                     ),
                     textInputAction: TextInputAction.next,
-                    validator: (value) =>
-                        (value == null || value.trim().isEmpty)
-                            ? 'Saisissez votre identifiant'
-                            : null,
+                    validator: (value) => (value == null || value.trim().isEmpty)
+                        ? 'Saisissez votre identifiant'
+                        : null,
                   ),
                   const SizedBox(height: 16),
+
+                  const AmpereFieldLabel('Mot de passe'),
                   TextFormField(
                     controller: _password,
                     enabled: !isLoading,
                     obscureText: _obscure,
+                    style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: InputDecoration(
-                      labelText: 'Mot de passe',
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      prefixIcon: const Icon(LucideIcons.lock, size: 17),
                       suffixIcon: IconButton(
                         onPressed: () => setState(() => _obscure = !_obscure),
+                        tooltip: _obscure ? 'Afficher' : 'Masquer',
                         icon: Icon(
-                          _obscure ? Icons.visibility_off : Icons.visibility,
+                          _obscure ? LucideIcons.eyeOff : LucideIcons.eye,
+                          size: 17,
                         ),
                       ),
                     ),
@@ -119,33 +122,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ? 'Saisissez votre mot de passe'
                         : null,
                   ),
+
                   if (errorText != null) ...[
                     const SizedBox(height: 16),
-                    Text(
-                      errorText,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.danger),
-                    ),
+                    AmpereInlineAlert(message: errorText),
                   ],
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: isLoading ? null : _submit,
-                    child: isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Se connecter'),
+
+                  const SizedBox(height: 22),
+                  // L'action principale, unique et en accent (§1.3).
+                  SizedBox(
+                    height: AmpereGeometry.touchPrimary,
+                    child: FilledButton(
+                      onPressed: isLoading ? null : _submit,
+                      child: isLoading
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.onAccent,
+                              ),
+                            )
+                          : const Text('Se connecter'),
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
+                  Text(
                     "Votre compte est créé par l'administrateur.",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
+                    style: AmpereType.meta.copyWith(color: colors.ink3),
                   ),
                 ],
               ),
@@ -156,7 +161,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  /// On n'affiche jamais un message technique brut à l'utilisateur.
+  /// On n'affiche jamais un message technique brut (§8 : dire ce qui s'est
+  /// passé, pas le code).
   String _messageFor(Object error) => switch (error) {
         ApiException(:final userMessage) => userMessage,
         _ => 'Connexion impossible',

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Ip,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -16,6 +17,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  AuthenticatedUser,
+  CurrentUser,
   RequirePermissions,
   RoleCode,
   Roles,
@@ -30,7 +33,7 @@ import {
   UserDto,
   UserListDto,
 } from './dto/user.dto';
-import { UsersService } from './users.service';
+import { ActorContext, UsersService } from './users.service';
 
 /// Toute la gestion des comptes est réservée à l'ADMIN (docs/permissions.md § Administration).
 @ApiTags('Utilisateurs')
@@ -50,8 +53,12 @@ export class UsersController {
       '`mustChangePassword` est forcé à vrai.',
   })
   @ApiOkResponse({ type: UserDto })
-  create(@Body() dto: CreateUserDto): Promise<UserDto> {
-    return this.usersService.create(dto);
+  create(
+    @Body() dto: CreateUserDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<UserDto> {
+    return this.usersService.create(dto, UsersController.actorOf(actor, ip));
   }
 
   @Get()
@@ -77,8 +84,10 @@ export class UsersController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<UserDto> {
-    return this.usersService.update(id, dto);
+    return this.usersService.update(id, dto, UsersController.actorOf(actor, ip));
   }
 
   @Post(':id/reset-password')
@@ -90,15 +99,31 @@ export class UsersController {
   resetPassword(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResetPasswordDto,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<UserDto> {
-    return this.usersService.resetPassword(id, dto);
+    return this.usersService.resetPassword(
+      id,
+      dto,
+      UsersController.actorOf(actor, ip),
+    );
   }
 
   @Post(':id/revoke-sessions')
   @ApiOperation({ summary: 'Révoque toutes les sessions (téléphone volé, départ)' })
   revokeSessions(
     @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<{ revoked: number }> {
-    return this.usersService.revokeSessions(id);
+    return this.usersService.revokeSessions(
+      id,
+      UsersController.actorOf(actor, ip),
+    );
+  }
+
+  /// L'acteur d'une action sensible : QUI, depuis OÙ (spec §24).
+  private static actorOf(user: AuthenticatedUser, ip?: string): ActorContext {
+    return { userId: user.id, ipAddress: ip };
   }
 }

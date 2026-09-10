@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../data/api/auth_api.dart';
 import '../data/api/dio_client.dart';
 import '../data/api/sync_api.dart';
+import '../data/api/users_api.dart';
 import '../data/local/app_database.dart';
 import '../data/local/mutation_queue.dart';
 import '../data/local/token_store.dart';
@@ -43,6 +44,9 @@ final authApiProvider =
 
 final syncApiProvider =
     Provider<SyncApi>((ref) => SyncApi(ref.watch(dioClientProvider).dio));
+
+final usersApiProvider =
+    Provider<UsersApi>((ref) => UsersApi(ref.watch(dioClientProvider).dio));
 
 final syncEngineProvider = Provider<SyncEngine>(
   (ref) => SyncEngine(
