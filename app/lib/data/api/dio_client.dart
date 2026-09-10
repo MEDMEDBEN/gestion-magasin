@@ -11,12 +11,11 @@ import '../local/token_store.dart';
 /// qui utilise cette instance.
 class DioClient {
   DioClient({
-    required TokenStore tokenStore,
-    required Future<void> Function() onSessionExpired,
+    required this._tokenStore,
+    required this._onSessionExpired,
     String? baseUrl,
     Dio? dio,
-  }) : _tokenStore = tokenStore,
-       _onSessionExpired = onSessionExpired {
+  }) {
     this.dio = dio ??
         Dio(
           BaseOptions(

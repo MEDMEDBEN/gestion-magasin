@@ -36,9 +36,7 @@ class SyncOutcome {
 /// Le moteur ne décide RIEN sur le fond : il transporte, puis obéit au verdict
 /// serveur. C'est le serveur qui fait autorité (docs/context.md §4).
 class SyncEngine {
-  SyncEngine({required SyncApi api, required MutationQueue queue})
-      : _api = api,
-        _queue = queue;
+  SyncEngine({required this._api, required this._queue});
 
   final SyncApi _api;
   final MutationQueue _queue;
