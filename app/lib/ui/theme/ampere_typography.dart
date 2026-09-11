@@ -11,30 +11,57 @@ class AmpereType {
   /// une colonne de montants ne s'aligne pas.
   static const List<FontFeature> tabular = [FontFeature.tabularFigures()];
 
+  // Chaque style porte EXPLICITEMENT la famille : un style passé tel quel à un
+  // composant (libellé de bouton, bouton de menu…) n'hérite pas toujours de
+  // `ThemeData.fontFamily`, et retomberait sur la police système.
+
   // ── Mobile (§3.2) ─────────────────────────────────────────────────────────
-  static const screenTitle =
-      TextStyle(fontSize: 23, height: 1.2, fontWeight: FontWeight.w800);
-  static const sectionTitle =
-      TextStyle(fontSize: 17, height: 1.25, fontWeight: FontWeight.w800);
+  static const screenTitle = TextStyle(
+    fontFamily: family,
+    fontSize: 23,
+    height: 1.2,
+    fontWeight: FontWeight.w800,
+  );
+  static const sectionTitle = TextStyle(
+    fontFamily: family,
+    fontSize: 17,
+    height: 1.25,
+    fontWeight: FontWeight.w800,
+  );
   static const numericHero = TextStyle(
+    fontFamily: family,
     fontSize: 34,
     height: 1.1,
     fontWeight: FontWeight.w700,
     fontFeatures: tabular,
   );
   static const numeric = TextStyle(
+    fontFamily: family,
     fontSize: 24,
     height: 1.1,
     fontWeight: FontWeight.w700,
     fontFeatures: tabular,
   );
-  static const rowTitle =
-      TextStyle(fontSize: 14.5, height: 1.35, fontWeight: FontWeight.w600);
-  static const body =
-      TextStyle(fontSize: 15, height: 1.55, fontWeight: FontWeight.w400);
-  static const meta =
-      TextStyle(fontSize: 12.5, height: 1.5, fontWeight: FontWeight.w400);
+  static const rowTitle = TextStyle(
+    fontFamily: family,
+    fontSize: 14.5,
+    height: 1.35,
+    fontWeight: FontWeight.w600,
+  );
+  static const body = TextStyle(
+    fontFamily: family,
+    fontSize: 15,
+    height: 1.55,
+    fontWeight: FontWeight.w400,
+  );
+  static const meta = TextStyle(
+    fontFamily: family,
+    fontSize: 12.5,
+    height: 1.5,
+    fontWeight: FontWeight.w400,
+  );
   static const label = TextStyle(
+    fontFamily: family,
     fontSize: 10.5,
     height: 1.3,
     fontWeight: FontWeight.w600,
@@ -42,49 +69,75 @@ class AmpereType {
   );
 
   /// 16 px minimum dans un champ : en dessous, iOS zoome à la saisie (§3.2).
-  static const input =
-      TextStyle(fontSize: 16, height: 1.3, fontWeight: FontWeight.w600);
+  static const input = TextStyle(
+    fontFamily: family,
+    fontSize: 16,
+    height: 1.3,
+    fontWeight: FontWeight.w600,
+  );
 
   // ── Desktop (§3.1) ────────────────────────────────────────────────────────
   static const h1 = TextStyle(
+    fontFamily: family,
     fontSize: 26,
     height: 1.15,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.78,
   );
   static const h2 = TextStyle(
+    fontFamily: family,
     fontSize: 21,
     height: 1.2,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.42,
   );
   static const h3 = TextStyle(
+    fontFamily: family,
     fontSize: 19,
     height: 1.25,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.38,
   );
   static const h4 = TextStyle(
+    fontFamily: family,
     fontSize: 16,
     height: 1.3,
     fontWeight: FontWeight.w600,
     letterSpacing: -0.32,
   );
-  static const cardTitle =
-      TextStyle(fontSize: 14.5, height: 1.35, fontWeight: FontWeight.w600);
-  static const bodyDesktop =
-      TextStyle(fontSize: 13.5, height: 1.5, fontWeight: FontWeight.w400);
-  static const bodyStrong =
-      TextStyle(fontSize: 13, height: 1.4, fontWeight: FontWeight.w600);
-  static const metaDesktop =
-      TextStyle(fontSize: 11.5, height: 1.45, fontWeight: FontWeight.w400);
+  static const cardTitle = TextStyle(
+    fontFamily: family,
+    fontSize: 14.5,
+    height: 1.35,
+    fontWeight: FontWeight.w600,
+  );
+  static const bodyDesktop = TextStyle(
+    fontFamily: family,
+    fontSize: 13.5,
+    height: 1.5,
+    fontWeight: FontWeight.w400,
+  );
+  static const bodyStrong = TextStyle(
+    fontFamily: family,
+    fontSize: 13,
+    height: 1.4,
+    fontWeight: FontWeight.w600,
+  );
+  static const metaDesktop = TextStyle(
+    fontFamily: family,
+    fontSize: 11.5,
+    height: 1.45,
+    fontWeight: FontWeight.w400,
+  );
   static const labelDesktop = TextStyle(
+    fontFamily: family,
     fontSize: 10,
     height: 1.3,
     fontWeight: FontWeight.w600,
     letterSpacing: 1.4, // .14em
   );
   static const mono = TextStyle(
+    fontFamily: family,
     fontSize: 11.5,
     height: 1.3,
     fontWeight: FontWeight.w400,

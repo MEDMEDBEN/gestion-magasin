@@ -154,8 +154,9 @@ Future<T?> showAmpereSidePanel<T>({
           height: double.infinity,
           child: Material(
             color: colors.surface,
-            // Élévation 2 : la couche flotte réellement au-dessus de la liste (§4).
-            elevation: 24,
+            // La scène assombrie (`scrim`) et la bordure gauche détachent déjà le
+            // panneau : une ombre Material dessinerait ici une bande noire dure,
+            // à l'opposé de l'élévation douce voulue par §4.
             shape: Border(left: BorderSide(color: colors.line)),
             child: SafeArea(child: builder(context)),
           ),

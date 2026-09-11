@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/ui/theme/ampere_colors.dart';
+import 'package:gestion_magasin/ui/theme/ampere_typography.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 import 'package:gestion_magasin/ui/theme/theme_controller.dart';
 import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
@@ -113,6 +114,35 @@ void main() {
       final border = (ring()! as BoxDecoration).border! as Border;
       expect(border.top.width, 2);
       expect(border.top.color, AmpereColors.desktopDark.accent);
+    });
+  });
+
+  group('police Archivo partout (§3)', () {
+    test('chaque style AMPÈRE porte explicitement la famille', () {
+      for (final style in [
+        AmpereType.screenTitle, AmpereType.sectionTitle, AmpereType.numericHero,
+        AmpereType.numeric, AmpereType.rowTitle, AmpereType.body, AmpereType.meta,
+        AmpereType.label, AmpereType.input, AmpereType.h1, AmpereType.h2,
+        AmpereType.h3, AmpereType.h4, AmpereType.cardTitle, AmpereType.bodyDesktop,
+        AmpereType.bodyStrong, AmpereType.metaDesktop, AmpereType.labelDesktop,
+        AmpereType.mono,
+      ]) {
+        expect(style.fontFamily, AmpereType.family);
+      }
+    });
+
+    test('les libellés de bouton sont en Archivo, pas en police système', () {
+      // Vu à la vérification visuelle : le style de bouton n'hérite pas de
+      // ThemeData.fontFamily — sous Windows il serait tombé sur Segoe UI.
+      for (final theme in [AppTheme.desktop(dark: true), AppTheme.mobile(dark: false)]) {
+        for (final style in [
+          theme.filledButtonTheme.style!,
+          theme.outlinedButtonTheme.style!,
+          theme.textButtonTheme.style!,
+        ]) {
+          expect(style.textStyle!.resolve({})!.fontFamily, AmpereType.family);
+        }
+      }
     });
   });
 }
