@@ -112,6 +112,29 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
   ],
 };
 
+/// Permissions qu'aucun compte NON administrateur ne peut recevoir « à la carte ».
+///
+/// - les trois « Règles fermes » de docs/permissions.md (prix & tarifs, remise,
+///   confirmation de commande) : non négociables ;
+/// - l'administration (comptes, paramètres, audit) : réservée au rôle ADMIN.
+///
+/// Sans ce verrou, un admin pourrait accorder `sale.discount` à un vendeur, et le
+/// service Ventes — ouvert au rôle VENDEUR — l'accepterait.
+export const ADMIN_ONLY_PERMISSIONS: readonly PermissionCode[] = [
+  P.PRICE_MANAGE,
+  P.SALE_DISCOUNT,
+  P.PURCHASE_CONFIRM,
+  P.USER_MANAGE,
+  P.SETTINGS_MANAGE,
+  P.AUDIT_READ,
+];
+
+export const ROLE_LABELS: Record<RoleCode, string> = {
+  [RoleCode.ADMIN]: 'Administrateur',
+  [RoleCode.VENDEUR]: 'Vendeur / Caissier',
+  [RoleCode.MAGASINIER]: 'Magasinier',
+};
+
 export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [P.PRODUCT_READ]: 'Consulter les produits, catégories et emplacements',
   [P.PRODUCT_WRITE]: 'Créer et modifier un produit',

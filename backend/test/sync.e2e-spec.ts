@@ -1,13 +1,12 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import * as request from 'supertest';
-import { AppModule } from '../src/app.module';
+import { hashPassword } from '../src/auth/password';
 import { RoleCode } from '../src/common/auth.decorators';
-import { HttpExceptionFilter } from '../src/common/http-exception.filter';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { Prisma } from '../src/generated/prisma/client';
 import { StockLedgerService } from '../src/stock/stock-ledger.service';
+import { createE2eApp } from './helpers/e2e-app';
 
 /// Contrat de synchronisation offline (docs/context.md §3-§5) vérifié de bout en bout
 /// sur la VRAIE base : idempotence, anti-stock-négatif, absence d'effet de bord.
@@ -73,22 +72,10 @@ describe('Sync (e2e)', () => {
     prisma.stockMovement.count({ where: { productId: id } });
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalFilters(new HttpExceptionFilter());
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
-    );
-    await app.init();
-
-    prisma = app.get(PrismaService);
+    ({ app, prisma, server } = await createE2eApp());
     ledger = app.get(StockLedgerService);
-    server = app.getHttpServer();
 
-    const { AuthService } = await import('../src/auth/auth.service');
-    const passwordHash = await AuthService.hashPassword(PASSWORD);
+    const passwordHash = await hashPassword(PASSWORD);
     for (const [email, role] of [
       [magasinierEmail, RoleCode.MAGASINIER],
       [vendeurEmail, RoleCode.VENDEUR],

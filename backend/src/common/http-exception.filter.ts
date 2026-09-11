@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { Prisma } from '../generated/prisma/client';
 import { ErrorCode } from './error-codes';
 
 /// Garantit le format d'erreur uniforme `{ statusCode, message, error, code? }`
@@ -30,12 +31,22 @@ export class HttpExceptionFilter implements ExceptionFilter {
         statusCode: status,
         message: payload.message ?? exception.message,
         error: payload.error ?? HttpStatus[status],
-        // Les erreurs de validation class-validator n'ont pas de code métier : on en pose un.
-        code:
-          payload.code ??
-          (status === HttpStatus.BAD_REQUEST
-            ? ErrorCode.VALIDATION_FAILED
-            : undefined),
+        code: payload.code ?? HttpExceptionFilter.defaultCode(status),
+      });
+      return;
+    }
+
+    // Violation d'unicité levée par la base (deux créations concurrentes du même
+    // email, du même code-barres…) : c'est un conflit métier, pas une panne.
+    if (
+      exception instanceof Prisma.PrismaClientKnownRequestError &&
+      exception.code === 'P2002'
+    ) {
+      response.status(HttpStatus.CONFLICT).json({
+        statusCode: HttpStatus.CONFLICT,
+        message: 'Cette valeur est déjà utilisée par un autre enregistrement',
+        error: HttpStatus[HttpStatus.CONFLICT],
+        code: ErrorCode.CONFLICT,
       });
       return;
     }
@@ -47,5 +58,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
       message: 'Erreur interne du serveur',
       error: 'Internal Server Error',
     });
+  }
+
+  /// Code métier posé quand l'exception n'en porte pas (erreurs du framework).
+  private static defaultCode(status: number): ErrorCode | undefined {
+    switch (status) {
+      // Les erreurs de validation class-validator n'ont pas de code métier.
+      case HttpStatus.BAD_REQUEST:
+        return ErrorCode.VALIDATION_FAILED;
+      // Levée par le ThrottlerGuard.
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return ErrorCode.RATE_LIMITED;
+      default:
+        return undefined;
+    }
   }
 }

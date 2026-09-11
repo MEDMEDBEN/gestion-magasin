@@ -1,10 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
+  ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import {
@@ -16,6 +18,7 @@ import {
   Roles,
 } from '../common/auth.decorators';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
+import { intFromEnv } from '../common/env';
 import { AuthService } from './auth.service';
 import {
   AuthUserDto,
@@ -23,25 +26,29 @@ import {
   LoginDto,
   LoginResponseDto,
   LogoutDto,
+  LogoutResponseDto,
   RefreshDto,
 } from './dto/auth.dto';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
-/// Limites anti-brute-force, surchargeables par variable d'environnement
-/// (les tests d'intégration enchaînent volontairement beaucoup de connexions).
-const LOGIN_LIMIT = Number(process.env.AUTH_LOGIN_LIMIT ?? 10);
-const REFRESH_LIMIT = Number(process.env.AUTH_REFRESH_LIMIT ?? 30);
+/// Fenêtre des limites anti-brute-force. Les limites sont lues À CHAQUE requête
+/// (surchargeables par variable d'environnement, validées au démarrage) : lues à
+/// l'import du module, elles ignoreraient le `.env` chargé ensuite.
 const RATE_WINDOW_MS = 900_000; // 15 min
+const loginLimit = () => intFromEnv('AUTH_LOGIN_LIMIT', 10);
+const refreshLimit = () => intFromEnv('AUTH_REFRESH_LIMIT', 30);
+const changePasswordLimit = () => intFromEnv('AUTH_CHANGE_PASSWORD_LIMIT', 5);
 
 @ApiTags('Auth')
+@ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: '`RATE_LIMITED`' })
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  // Anti-brute-force : 10 tentatives / 15 min par IP par défaut.
-  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: LOGIN_LIMIT } })
+  // Anti-brute-force : 10 tentatives / 15 min par IP (réelle — voir `configureApp`).
+  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: loginLimit } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -57,52 +64,61 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: REFRESH_LIMIT } })
+  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: refreshLimit } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Renouvelle les tokens (rotation)',
     description:
       'Le refresh présenté est révoqué et remplacé. Rejouer un token déjà révoqué ' +
-      "ferme toutes les sessions de l'utilisateur.",
+      "ferme toutes les sessions de l'utilisateur (et le trace dans l'audit).",
   })
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
-  refresh(@Body() dto: RefreshDto): Promise<LoginResponseDto> {
-    return this.authService.refresh(dto.refreshToken);
+  refresh(@Body() dto: RefreshDto, @Ip() ip: string): Promise<LoginResponseDto> {
+    return this.authService.refresh(dto.refreshToken, ip);
   }
 
   @Roles(...ALL_ROLES)
   @AllowPasswordChange()
+  // Un appareil compromis ne doit pas pouvoir deviner le mot de passe actuel en boucle.
+  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: changePasswordLimit } })
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Change le mot de passe (obligatoire à la première connexion)',
     description:
-      'Lève `mustChangePassword`, révoque toutes les sessions et renvoie des tokens neufs.',
+      'Lève `mustChangePassword`, révoque toutes les sessions et renvoie des tokens neufs. ' +
+      'Refusé pour un compte désactivé. Tracé dans l’audit (sans le secret).',
   })
   @ApiOkResponse({ type: LoginResponseDto })
+  @ApiForbiddenResponse({
+    type: ErrorResponseDto,
+    description: '`CURRENT_PASSWORD_INVALID` ou `ACCOUNT_DISABLED`',
+  })
   changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
+    @Ip() ip: string,
   ): Promise<LoginResponseDto> {
-    return this.authService.changePassword(user.id, dto);
+    return this.authService.changePassword(user.id, dto, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
-  @Roles(...ALL_ROLES)
-  @AllowPasswordChange()
+  /// Publique : le refresh token (256 bits) EST la preuve de possession. Un logout
+  /// ne doit jamais dépendre d'un access token expiré (voir `LogoutDto`).
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Déconnexion — révoque un refresh token, ou toutes les sessions',
+    summary: 'Déconnexion — ferme cette session, ou toutes (allDevices)',
   })
-  logout(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: LogoutDto,
-  ): Promise<{ revoked: number }> {
-    return this.authService.logout(user.id, dto);
+  @ApiOkResponse({ type: LogoutResponseDto })
+  logout(@Body() dto: LogoutDto, @Ip() ip: string): Promise<LogoutResponseDto> {
+    return this.authService.logout(dto, ip);
   }
 
   @Roles(...ALL_ROLES)

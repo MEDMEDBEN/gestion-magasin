@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 
 import { AuthModule } from './auth/auth.module';
 import { ApiContractModule } from './common/api-contract.module';
+import { intFromEnv, validateEnv } from './common/env';
 import { JwtAccessGuard } from './common/jwt-access.guard';
 import { RolesGuard } from './common/roles.guard';
 import { PrismaModule } from './prisma/prisma.module';
@@ -15,10 +16,19 @@ import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env'] }),
-    // Limite globale anti-brute-force. /auth/login et /auth/refresh sont bridés
-    // plus sévèrement au niveau du controller.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // `validate` : refus de démarrer sur une configuration dangereuse
+    // (clé JWT d'exemple ou trop courte, limite non numérique…).
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env'],
+      validate: validateEnv,
+    }),
+    // Limite globale anti-brute-force, PAR IP réelle (voir `configureApp`).
+    // /auth/login, /auth/refresh et /auth/change-password sont bridés plus
+    // sévèrement au niveau du controller.
+    ThrottlerModule.forRoot([
+      { ttl: 60_000, limit: () => intFromEnv('API_RATE_LIMIT', 120) },
+    ]),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -28,7 +38,6 @@ import { UsersModule } from './users/users.module';
   ],
   controllers: [AppController],
   providers: [
-
     // Ordre significatif : on limite le débit, puis on authentifie, puis on autorise.
     // Les guards sont globaux pour qu'aucune route ne puisse être exposée par oubli.
     { provide: APP_GUARD, useClass: ThrottlerGuard },

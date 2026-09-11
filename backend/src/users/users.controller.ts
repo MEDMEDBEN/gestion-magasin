@@ -2,20 +2,26 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Ip,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -25,22 +31,29 @@ import {
 } from '../common/auth.decorators';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
+import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateUserDto,
+  PermissionCatalogDto,
   ResetPasswordDto,
+  RevokedSessionsDto,
   UpdateUserDto,
   UserDto,
   UserListDto,
 } from './dto/user.dto';
-import { ActorContext, UsersService } from './users.service';
+import { UsersService } from './users.service';
 
 /// Toute la gestion des comptes est réservée à l'ADMIN (docs/permissions.md § Administration).
+///
+/// `FreshAccessGuard` : l'accès est relu EN BASE à chaque appel, pas seulement
+/// dans le token — un admin désactivé ou rétrogradé perd la main immédiatement.
 @ApiTags('Utilisateurs')
 @ApiBearerAuth()
 @ApiForbiddenResponse({ type: ErrorResponseDto })
 @Roles(RoleCode.ADMIN)
 @RequirePermissions(PERMISSIONS.USER_MANAGE)
+@UseGuards(FreshAccessGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -52,7 +65,8 @@ export class UsersController {
       "Pas d'inscription publique. Le mot de passe fourni est temporaire : " +
       '`mustChangePassword` est forcé à vrai.',
   })
-  @ApiOkResponse({ type: UserDto })
+  @ApiCreatedResponse({ type: UserDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
   create(
     @Body() dto: CreateUserDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -68,6 +82,17 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
+  /// Déclarée AVANT `:id` : sinon Express la prendrait pour un identifiant.
+  @Get('permission-catalog')
+  @ApiOperation({
+    summary: 'Rôles et permissions attribuables',
+    description: 'Lu dans la matrice validée (docs/permissions.md) — source unique.',
+  })
+  @ApiOkResponse({ type: PermissionCatalogDto })
+  permissionCatalog(): PermissionCatalogDto {
+    return this.usersService.permissionCatalog();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Détail d’un utilisateur' })
   @ApiOkResponse({ type: UserDto })
@@ -78,9 +103,12 @@ export class UsersController {
   @Patch(':id')
   @ApiOperation({
     summary: 'Modifie un utilisateur (rôles, permissions, activation)',
-    description: 'Désactiver un compte révoque immédiatement toutes ses sessions.',
+    description:
+      'Désactiver un compte révoque immédiatement toutes ses sessions. Un admin ne ' +
+      'modifie ni ses propres rôles/permissions ni sa propre activation.',
   })
   @ApiOkResponse({ type: UserDto })
+  @ApiConflictResponse({ type: ErrorResponseDto, description: '`LAST_ACTIVE_ADMIN`' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
@@ -91,6 +119,7 @@ export class UsersController {
   }
 
   @Post(':id/reset-password')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Réinitialise le mot de passe',
     description: 'Repose un mot de passe temporaire et coupe toutes les sessions.',
@@ -110,12 +139,19 @@ export class UsersController {
   }
 
   @Post(':id/revoke-sessions')
-  @ApiOperation({ summary: 'Révoque toutes les sessions (téléphone volé, départ)' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Révoque toutes les sessions (téléphone volé, départ)',
+    description:
+      'Plus aucun renouvellement de session possible ; un access token déjà émis ' +
+      'reste valable au plus 15 min.',
+  })
+  @ApiOkResponse({ type: RevokedSessionsDto })
   revokeSessions(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() actor: AuthenticatedUser,
     @Ip() ip: string,
-  ): Promise<{ revoked: number }> {
+  ): Promise<RevokedSessionsDto> {
     return this.usersService.revokeSessions(
       id,
       UsersController.actorOf(actor, ip),

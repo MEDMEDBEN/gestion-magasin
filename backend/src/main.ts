@@ -1,22 +1,12 @@
-import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { HttpExceptionFilter } from './common/http-exception.filter';
+import { configureApp } from './common/app-setup';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
-
-  app.setGlobalPrefix('api');
-  app.useGlobalFilters(new HttpExceptionFilter());
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true, // supprime les champs non déclarés dans le DTO
-      forbidNonWhitelisted: true, // ... et refuse la requête si on en envoie
-      transform: true,
-      transformOptions: { enableImplicitConversion: false },
-    }),
-  );
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  configureApp(app);
 
   const config = new DocumentBuilder()
     .setTitle('Gestion magasin — API')

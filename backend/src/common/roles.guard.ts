@@ -14,6 +14,19 @@ import {
 } from './auth.decorators';
 import { BusinessException } from './business.exception';
 import { ErrorCode } from './error-codes';
+import { AccessRequirement, assertAccess } from './user-access';
+
+/// Exigences déclarées sur la route (méthode, sinon classe).
+export function routeRequirement(
+  reflector: Reflector,
+  context: ExecutionContext,
+): AccessRequirement {
+  const targets = [context.getHandler(), context.getClass()];
+  return {
+    roles: reflector.getAllAndOverride<RoleCode[]>(ROLES_KEY, targets),
+    permissions: reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, targets),
+  };
+}
 
 /// Applique la matrice de `docs/permissions.md`.
 ///
@@ -42,43 +55,8 @@ export class RolesGuard implements CanActivate {
       );
     }
 
-    const requiredRoles = this.reflector.getAllAndOverride<RoleCode[]>(
-      ROLES_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-    if (!requiredRoles || requiredRoles.length === 0) {
-      throw new BusinessException(
-        ErrorCode.FORBIDDEN_ROLE,
-        'Route sans @Roles explicite — accès refusé par défaut',
-        HttpStatus.FORBIDDEN,
-      );
-    }
-    if (!requiredRoles.some((role) => user.roles.includes(role))) {
-      throw new BusinessException(
-        ErrorCode.FORBIDDEN_ROLE,
-        'Rôle insuffisant pour cette action',
-        HttpStatus.FORBIDDEN,
-      );
-    }
-
-    // Permissions atomiques : exigées TOUTES, en plus du rôle.
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
-      PERMISSIONS_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-    if (requiredPermissions?.length) {
-      const missing = requiredPermissions.filter(
-        (permission) => !user.permissions.includes(permission),
-      );
-      if (missing.length > 0) {
-        throw new BusinessException(
-          ErrorCode.FORBIDDEN_PERMISSION,
-          `Permission manquante : ${missing.join(', ')}`,
-          HttpStatus.FORBIDDEN,
-        );
-      }
-    }
-
+    // Accès lu dans le token : pas de requête DB à chaque appel.
+    assertAccess(routeRequirement(this.reflector, context), user);
     return true;
   }
 }

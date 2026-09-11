@@ -14,12 +14,26 @@ export enum ErrorCode {
   REFRESH_TOKEN_REVOKED = 'REFRESH_TOKEN_REVOKED',
   FORBIDDEN_ROLE = 'FORBIDDEN_ROLE',
   FORBIDDEN_PERMISSION = 'FORBIDDEN_PERMISSION',
+  /// Changement de mot de passe : le mot de passe ACTUEL saisi est faux
+  /// (distinct d'INVALID_CREDENTIALS, qui concerne la connexion).
+  CURRENT_PASSWORD_INVALID = 'CURRENT_PASSWORD_INVALID',
+
+  // Gestion des comptes
+  /// Un admin ne modifie ni ses propres rôles, ni sa propre activation.
+  SELF_MODIFICATION_FORBIDDEN = 'SELF_MODIFICATION_FORBIDDEN',
+  /// L'opération laisserait le système sans aucun administrateur actif.
+  LAST_ACTIVE_ADMIN = 'LAST_ACTIVE_ADMIN',
+  /// Permission réservée à l'ADMIN (docs/permissions.md § Règles fermes),
+  /// non attribuable « à la carte » à un compte non administrateur.
+  PERMISSION_NOT_GRANTABLE = 'PERMISSION_NOT_GRANTABLE',
 
   // Générique
   VALIDATION_FAILED = 'VALIDATION_FAILED',
   NOT_FOUND = 'NOT_FOUND',
   CONFLICT = 'CONFLICT',
   NOT_IMPLEMENTED = 'NOT_IMPLEMENTED',
+  /// Trop de requêtes dans la fenêtre (anti-brute-force) : réessayer plus tard.
+  RATE_LIMITED = 'RATE_LIMITED',
 
   // Stock (règles 2, 9 de CLAUDE.md)
   STOCK_NEGATIVE = 'STOCK_NEGATIVE',

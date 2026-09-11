@@ -1,54 +1,47 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
+import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { isEmailIdentifier } from '../common/identifiers';
 import { AccessTokenPayload } from '../common/jwt-access.guard';
+import {
+  resolvePermissions,
+  USER_ACCESS_INCLUDE,
+  UserWithAccess,
+} from '../common/user-access';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AuthUserDto,
   ChangePasswordDto,
   LoginDto,
   LoginResponseDto,
+  LogoutDto,
+  LogoutResponseDto,
   TokensDto,
 } from './dto/auth.dto';
+import { hashPassword, verifyPassword } from './password';
 
-/// Utilisateur + rôles + permissions, tel que chargé pour construire un token.
-type UserWithAccess = {
-  id: string;
-  email: string | null;
-  phone: string | null;
-  fullName: string;
-  passwordHash: string;
-  isActive: boolean;
-  mustChangePassword: boolean;
-  roles: { code: string; permissions: { code: string }[] }[];
-  permissions: { code: string }[];
-};
+/// Appareil auquel rattacher une session (révocation ciblée, téléphone volé).
+interface DeviceInfo {
+  deviceId?: string | null;
+  deviceName?: string | null;
+}
+
+type Db = Prisma.TransactionClient;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
-
-  private static readonly USER_ACCESS_INCLUDE = {
-    roles: { include: { permissions: { select: { code: true } } } },
-    permissions: { select: { code: true } },
-  } as const;
-
-  /// argon2id : paramètres par défaut de la lib (déjà conformes aux recommandations OWASP).
-  static hashPassword(plain: string): Promise<string> {
-    return argon2.hash(plain, { type: argon2.argon2id });
-  }
-
-  static verifyPassword(hash: string, plain: string): Promise<boolean> {
-    return argon2.verify(hash, plain).catch(() => false);
-  }
 
   /// Le refresh token est opaque (256 bits aléatoires) et n'est stocké que sous forme de
   /// SHA-256. Un hash déterministe est nécessaire pour retrouver la ligne ; argon2 (salé)
@@ -65,34 +58,44 @@ export class AuthService {
     return Number(this.config.get('JWT_ACCESS_EXPIRES_SECONDS') ?? 900);
   }
 
-  private static resolvePermissions(user: UserWithAccess): string[] {
-    const fromRoles = user.roles.flatMap((role) =>
-      role.permissions.map((permission) => permission.code),
+  private static accountDisabled(): BusinessException {
+    return new BusinessException(
+      ErrorCode.ACCOUNT_DISABLED,
+      'Ce compte est désactivé',
+      HttpStatus.FORBIDDEN,
     );
-    const direct = user.permissions.map((permission) => permission.code);
-    return [...new Set([...fromRoles, ...direct])].sort();
   }
 
-  private toAuthUser(user: UserWithAccess): AuthUserDto {
+  private static toAuthUser(user: UserWithAccess): AuthUserDto {
     return {
       id: user.id,
       email: user.email,
       phone: user.phone,
       fullName: user.fullName,
       roles: user.roles.map((role) => role.code),
-      permissions: AuthService.resolvePermissions(user),
+      permissions: resolvePermissions(user),
       mustChangePassword: user.mustChangePassword,
     };
   }
 
+  /// SEUL point d'émission de tokens du système.
+  ///
+  /// Refuse un compte désactivé quel que soit l'appelant : un futur chemin qui
+  /// oublierait le contrôle ne pourrait pas, pour autant, rendre l'accès à un
+  /// compte fermé (défense en profondeur — audit C1).
   private async issueTokens(
+    db: Db,
     user: UserWithAccess,
-    device?: { deviceId?: string; deviceName?: string },
+    device: DeviceInfo = {},
   ): Promise<TokensDto> {
+    if (!user.isActive) {
+      throw AuthService.accountDisabled();
+    }
+
     const payload: AccessTokenPayload = {
       sub: user.id,
       roles: user.roles.map((role) => role.code),
-      permissions: AuthService.resolvePermissions(user),
+      permissions: resolvePermissions(user),
       mustChangePassword: user.mustChangePassword,
     };
     const accessToken = await this.jwt.signAsync(payload, {
@@ -103,12 +106,12 @@ export class AuthService {
     const expiresAt = new Date(
       Date.now() + this.refreshTtlDays() * 24 * 60 * 60 * 1000,
     );
-    await this.prisma.refreshToken.create({
+    await db.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: AuthService.hashRefreshToken(refreshToken),
-        deviceId: device?.deviceId ?? null,
-        deviceName: device?.deviceName ?? null,
+        deviceId: device.deviceId ?? null,
+        deviceName: device.deviceName ?? null,
         expiresAt,
       },
     });
@@ -121,26 +124,31 @@ export class AuthService {
   private static dummyHash?: string;
 
   private static async equalizeTiming(): Promise<void> {
-    AuthService.dummyHash ??= await AuthService.hashPassword(
-      'hash-factice-anti-enumeration',
-    );
-    await AuthService.verifyPassword(AuthService.dummyHash, 'peu-importe');
+    AuthService.dummyHash ??= await hashPassword('hash-factice-anti-enumeration');
+    await verifyPassword(AuthService.dummyHash, 'peu-importe');
+  }
+
+  /// L'identifiant arrive déjà normalisé (`LoginDto`). Sa forme dit quelle colonne
+  /// interroger : un email contient `@`, un téléphone jamais — aucune ambiguïté.
+  /// L'email est comparé sans casse pour les comptes créés avant la normalisation.
+  private findByIdentifier(identifier: string): Promise<UserWithAccess | null> {
+    return this.prisma.user.findFirst({
+      where: isEmailIdentifier(identifier)
+        ? { email: { equals: identifier, mode: 'insensitive' } }
+        : { phone: identifier },
+      include: USER_ACCESS_INCLUDE,
+    });
   }
 
   async login(dto: LoginDto): Promise<LoginResponseDto> {
-    const user = (await this.prisma.user.findFirst({
-      where: {
-        OR: [{ email: dto.identifier }, { phone: dto.identifier }],
-      },
-      include: AuthService.USER_ACCESS_INCLUDE,
-    })) as UserWithAccess | null;
+    const user = await this.findByIdentifier(dto.identifier);
 
     // Même erreur ET même temps de réponse qu'un mot de passe faux :
     // ne révéler ni par le message, ni par le chrono, quels comptes existent.
     if (!user) {
       await AuthService.equalizeTiming();
     }
-    if (!user || !(await AuthService.verifyPassword(user.passwordHash, dto.password))) {
+    if (!user || !(await verifyPassword(user.passwordHash, dto.password))) {
       throw new BusinessException(
         ErrorCode.INVALID_CREDENTIALS,
         'Identifiant ou mot de passe incorrect',
@@ -148,24 +156,31 @@ export class AuthService {
       );
     }
     if (!user.isActive) {
-      throw new BusinessException(
-        ErrorCode.ACCOUNT_DISABLED,
-        'Ce compte est désactivé',
-        HttpStatus.FORBIDDEN,
-      );
+      throw AuthService.accountDisabled();
     }
 
-    const tokens = await this.issueTokens(user, dto);
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
+    const tokens = await this.prisma.$transaction(async (tx) => {
+      // Une reconnexion depuis le même appareil remplace sa session précédente :
+      // sinon chaque réinstallation laisserait une session orpheline valide 90 j.
+      if (dto.deviceId) {
+        await tx.refreshToken.updateMany({
+          where: { userId: user.id, deviceId: dto.deviceId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+      const issued = await this.issueTokens(tx, user, dto);
+      await tx.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+      return issued;
     });
 
-    return { ...tokens, user: this.toAuthUser(user) };
+    return { ...tokens, user: AuthService.toAuthUser(user) };
   }
 
   /// Rotation : le refresh présenté est révoqué et remplacé à chaque appel.
-  async refresh(refreshToken: string): Promise<LoginResponseDto> {
+  async refresh(refreshToken: string, ipAddress?: string): Promise<LoginResponseDto> {
     const tokenHash = AuthService.hashRefreshToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -180,12 +195,7 @@ export class AuthService {
     }
     if (stored.revokedAt) {
       // Un token déjà révoqué qui resurgit = vol probable → on coupe toutes les sessions.
-      await this.revokeAllForUser(stored.userId);
-      throw new BusinessException(
-        ErrorCode.REFRESH_TOKEN_REVOKED,
-        'Refresh token révoqué — toutes les sessions ont été fermées',
-        HttpStatus.UNAUTHORIZED,
-      );
+      return this.handleReuse(stored.userId, ipAddress);
     }
     if (stored.expiresAt.getTime() <= Date.now()) {
       throw new BusinessException(
@@ -195,69 +205,99 @@ export class AuthService {
       );
     }
 
-    const user = (await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: stored.userId },
-      include: AuthService.USER_ACCESS_INCLUDE,
-    })) as UserWithAccess | null;
+      include: USER_ACCESS_INCLUDE,
+    });
     if (!user || !user.isActive) {
       await this.revokeAllForUser(stored.userId);
-      throw new BusinessException(
-        ErrorCode.ACCOUNT_DISABLED,
-        'Ce compte est désactivé',
-        HttpStatus.FORBIDDEN,
-      );
+      throw AuthService.accountDisabled();
     }
 
-    // Révocation ATOMIQUE : `revokedAt: null` dans le WHERE fait de cet update le
-    // point de sérialisation. Deux refresh concurrents avec le même token → un seul
-    // gagne (count === 1), l'autre voit count === 0 et est traité comme un rejeu.
-    const claimed = await this.prisma.refreshToken.updateMany({
-      where: { id: stored.id, revokedAt: null },
-      data: { revokedAt: new Date(), lastUsedAt: new Date() },
+    const tokens = await this.prisma.$transaction(async (tx) => {
+      // Révocation ATOMIQUE : `revokedAt: null` dans le WHERE fait de cet update le
+      // point de sérialisation. Deux refresh concurrents avec le même token → un seul
+      // gagne (count === 1), l'autre voit count === 0 et est traité comme un rejeu.
+      const claimed = await tx.refreshToken.updateMany({
+        where: { id: stored.id, revokedAt: null },
+        data: { revokedAt: new Date(), lastUsedAt: new Date() },
+      });
+      if (claimed.count === 0) return null;
+      return this.issueTokens(tx, user, stored);
     });
-    if (claimed.count === 0) {
-      await this.revokeAllForUser(stored.userId);
-      throw new BusinessException(
-        ErrorCode.REFRESH_TOKEN_REVOKED,
-        'Refresh token révoqué — toutes les sessions ont été fermées',
-        HttpStatus.UNAUTHORIZED,
-      );
+    if (!tokens) {
+      return this.handleReuse(stored.userId, ipAddress);
     }
-
-    const tokens = await this.issueTokens(user, {
-      deviceId: stored.deviceId ?? undefined,
-      deviceName: stored.deviceName ?? undefined,
-    });
-    return { ...tokens, user: this.toAuthUser(user) };
+    return { ...tokens, user: AuthService.toAuthUser(user) };
   }
 
-  async logout(
-    userId: string,
-    options: { refreshToken?: string; allDevices?: boolean },
-  ): Promise<{ revoked: number }> {
-    if (options.allDevices) {
-      return { revoked: await this.revokeAllForUser(userId) };
-    }
-    if (!options.refreshToken) {
-      throw new BusinessException(
-        ErrorCode.REFRESH_TOKEN_INVALID,
-        'Fournir refreshToken, ou allDevices=true',
-        HttpStatus.BAD_REQUEST,
+  /// Réaction à un refresh token rejoué : toutes les sessions tombent, et la
+  /// détection est TRACÉE — l'admin doit pouvoir voir qu'un vol a été présumé.
+  private async handleReuse(userId: string, ipAddress?: string): Promise<never> {
+    const revoked = await this.prisma.$transaction(async (tx) => {
+      const count = await this.revokeAllForUser(userId, tx);
+      await writeAudit(
+        tx,
+        { userId: null, ipAddress },
+        {
+          action: 'UPDATE',
+          entityType: 'User',
+          entityId: userId,
+          newValue: { operation: 'REFRESH_TOKEN_REUSE_DETECTED', revokedSessions: count },
+        },
       );
-    }
-    const result = await this.prisma.refreshToken.updateMany({
-      where: {
-        tokenHash: AuthService.hashRefreshToken(options.refreshToken),
-        userId,
-        revokedAt: null,
-      },
-      data: { revokedAt: new Date() },
+      return count;
     });
-    return { revoked: result.count };
+    this.logger.warn(
+      `Refresh token rejoué pour ${userId} (IP ${ipAddress ?? '?'}) — ${revoked} session(s) fermée(s)`,
+    );
+    throw new BusinessException(
+      ErrorCode.REFRESH_TOKEN_REVOKED,
+      'Refresh token révoqué — toutes les sessions ont été fermées',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 
-  async revokeAllForUser(userId: string): Promise<number> {
-    const result = await this.prisma.refreshToken.updateMany({
+  /// Ferme la session portée par ce refresh token, ou TOUTES celles de son
+  /// titulaire (`allDevices`). Le token est la preuve de possession (route publique).
+  /// Un token inconnu ne révèle rien : `{ revoked: 0 }`.
+  async logout(dto: LogoutDto, ipAddress?: string): Promise<LogoutResponseDto> {
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash: AuthService.hashRefreshToken(dto.refreshToken) },
+      select: { id: true, userId: true },
+    });
+    if (!stored) return { revoked: 0 };
+
+    if (!dto.allDevices) {
+      const result = await this.prisma.refreshToken.updateMany({
+        where: { id: stored.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      return { revoked: result.count };
+    }
+
+    const revoked = await this.prisma.$transaction(async (tx) => {
+      const count = await this.revokeAllForUser(stored.userId, tx);
+      await writeAudit(
+        tx,
+        { userId: stored.userId, ipAddress },
+        {
+          action: 'UPDATE',
+          entityType: 'User',
+          entityId: stored.userId,
+          newValue: { operation: 'LOGOUT_ALL_DEVICES', revokedSessions: count },
+        },
+      );
+      return count;
+    });
+    return { revoked };
+  }
+
+  /// Révoque toutes les sessions actives d'un compte. Accepte la transaction de
+  /// l'appelant : une révocation qui fait partie d'une mutation plus large
+  /// (désactivation, reset) doit réussir ou échouer AVEC elle.
+  async revokeAllForUser(userId: string, db: Db = this.prisma): Promise<number> {
+    const result = await db.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
@@ -266,14 +306,17 @@ export class AuthService {
 
   /// Change le mot de passe, lève `mustChangePassword`, ferme toutes les sessions
   /// existantes et rend un couple de tokens neuf (l'appelant reste connecté).
+  /// Tout ou rien, et tracé : un changement sans révocation laisserait vivre les
+  /// sessions d'un éventuel voleur.
   async changePassword(
     userId: string,
     dto: ChangePasswordDto,
+    actor: ActorContext,
   ): Promise<LoginResponseDto> {
-    const user = (await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: AuthService.USER_ACCESS_INCLUDE,
-    })) as UserWithAccess | null;
+      include: USER_ACCESS_INCLUDE,
+    });
     if (!user) {
       throw new BusinessException(
         ErrorCode.NOT_FOUND,
@@ -281,11 +324,17 @@ export class AuthService {
         HttpStatus.NOT_FOUND,
       );
     }
-    if (!(await AuthService.verifyPassword(user.passwordHash, dto.currentPassword))) {
+    // Un compte désactivé qui détient encore un access token (≤ 15 min) ne doit
+    // pas pouvoir s'en servir pour obtenir des tokens neufs — audit C1.
+    if (!user.isActive) {
+      await this.revokeAllForUser(userId);
+      throw AuthService.accountDisabled();
+    }
+    if (!(await verifyPassword(user.passwordHash, dto.currentPassword))) {
       throw new BusinessException(
-        ErrorCode.INVALID_CREDENTIALS,
+        ErrorCode.CURRENT_PASSWORD_INVALID,
         'Mot de passe actuel incorrect',
-        HttpStatus.UNAUTHORIZED,
+        HttpStatus.FORBIDDEN,
       );
     }
     // Sans ceci, la première connexion pourrait « changer » le mot de passe temporaire
@@ -297,27 +346,38 @@ export class AuthService {
       );
     }
 
-    const passwordHash = await AuthService.hashPassword(dto.newPassword);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash, mustChangePassword: false },
-    });
-    await this.revokeAllForUser(userId);
+    const passwordHash = await hashPassword(dto.newPassword);
+    const updated = { ...user, passwordHash, mustChangePassword: false };
 
-    const updated: UserWithAccess = {
-      ...user,
-      passwordHash,
-      mustChangePassword: false,
-    };
-    const tokens = await this.issueTokens(updated);
-    return { ...tokens, user: this.toAuthUser(updated) };
+    const tokens = await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, mustChangePassword: false },
+      });
+      const revoked = await this.revokeAllForUser(userId, tx);
+      const issued = await this.issueTokens(tx, updated, dto);
+      // Le mot de passe n'apparaît JAMAIS dans le journal : seul le fait est tracé.
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'User',
+        entityId: userId,
+        newValue: {
+          operation: 'PASSWORD_CHANGE',
+          wasTemporary: user.mustChangePassword,
+          revokedSessions: revoked,
+        },
+      });
+      return issued;
+    });
+
+    return { ...tokens, user: AuthService.toAuthUser(updated) };
   }
 
   async me(userId: string): Promise<AuthUserDto> {
-    const user = (await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: AuthService.USER_ACCESS_INCLUDE,
-    })) as UserWithAccess | null;
+      include: USER_ACCESS_INCLUDE,
+    });
     if (!user) {
       throw new BusinessException(
         ErrorCode.NOT_FOUND,
@@ -325,6 +385,11 @@ export class AuthService {
         HttpStatus.NOT_FOUND,
       );
     }
-    return this.toAuthUser(user);
+    // L'app interroge /auth/me au démarrage : un compte désactivé y est détecté
+    // sans attendre l'expiration de son access token.
+    if (!user.isActive) {
+      throw AuthService.accountDisabled();
+    }
+    return AuthService.toAuthUser(user);
   }
 }

@@ -1,11 +1,12 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import * as argon2 from 'argon2';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { hashPassword } from '../src/auth/password';
 import { RoleCode } from '../src/common/auth.decorators';
 import {
   PERMISSION_DESCRIPTIONS,
   PERMISSIONS,
+  ROLE_LABELS,
   ROLE_PERMISSIONS,
 } from '../src/common/permissions';
 
@@ -16,12 +17,6 @@ if (!connectionString) {
   throw new Error('DATABASE_URL est absent — impossible de seeder.');
 }
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
-
-const ROLE_LABELS: Record<RoleCode, string> = {
-  [RoleCode.ADMIN]: 'Administrateur',
-  [RoleCode.VENDEUR]: 'Vendeur / Caissier',
-  [RoleCode.MAGASINIER]: 'Magasinier',
-};
 
 async function seedPermissions(): Promise<void> {
   for (const code of Object.values(PERMISSIONS)) {
@@ -108,7 +103,9 @@ async function seedAdminUser(): Promise<void> {
     return;
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: 'insensitive' } },
+  });
   if (existing) {
     console.log(`  ✔ admin ${email} déjà présent — mot de passe inchangé`);
     return;
@@ -116,9 +113,10 @@ async function seedAdminUser(): Promise<void> {
 
   await prisma.user.create({
     data: {
-      email,
+      // Même normalisation que l'API : les emails sont stockés en minuscules.
+      email: email.trim().toLowerCase(),
       fullName: process.env.SEED_ADMIN_NAME ?? 'Administrateur',
-      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
+      passwordHash: await hashPassword(password),
       // Mot de passe TEMPORAIRE : changement imposé à la première connexion.
       mustChangePassword: true,
       roles: { connect: { code: RoleCode.ADMIN } },
