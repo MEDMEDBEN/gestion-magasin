@@ -29,6 +29,35 @@
   logout public, refus de démarrer avec la clé JWT d'exemple — vérifiés au `curl`.
 - ⏳ **Contre-audits `security-reviewer` + `reviewer` en cours** sur ces correctifs.
 
+### 📋 Plan de la P0 #2 — Produits + catégories + emplacements + codes-barres (préparé, non commencé)
+Contrat existant (routes 501) : `products.controller.ts`, `locations.controller.ts`. Ajustements prévus :
+1. **Backend**
+   - Migration additive : séquence PostgreSQL `product_internal_barcode_seq`.
+   - `common/barcode/` : code interne **EAN-13 préfixe `20`** (préfixe « usage interne » GS1, jamais
+     porté par un produit fabricant) + 10 chiffres de séquence + clé ; contrôle de clé des GTIN
+     saisis (8/12/13 chiffres) ; retry sur collision (contrainte unique) — règle 15.
+   - Produits : liste paginée `{data, meta}` (le contrat renvoie un tableau nu → corrigé), recherche
+     nom/SKU/code-barres/marque, filtres catégorie + inactifs, tri whitelisté ; création (ADMIN,
+     `product.write`, id client accepté) ; PATCH (sku/barcode corrigeables, `isActive` exige
+     `product.disable`) ; audit create/update ; `setPrice` reste 501 (feature Ventes/tarifs).
+   - Catégories : liste plate (le client fait l'arbre), création, **PATCH à ajouter** ; 2 niveaux
+     (catégorie → sous-catégorie), nom unique par parent (sans casse).
+   - Emplacements : seuls les `EMPLACEMENT` se créent (MAGASIN/DEPOT/TRANSIT = uniques, seed) ;
+     code dérivé `A-02-04-03` si absent ; **PATCH à ajouter** (renommer, désactiver).
+   - Référentiels en lecture : `GET /pricing/tax-rates`, `GET /pricing/tiers` (le formulaire produit
+     choisit la TVA).
+   - **Descente delta du catalogue** (`docs/context.md` : catalogue complet en local, delta only) :
+     `GET /api/catalog/changes?cursor=` → produits/catégories/emplacements/TVA modifiés depuis un
+     curseur opaque `(updatedAt, id)` par type (robuste aux mises à jour de masse au même instant),
+     inactifs compris, pages bornées + `hasMore`.
+2. **App** : `features/catalog/` (data/application/presentation{desktop,mobile}) ; Drift v3 (tables
+   catalogue + curseur) ; lecture **cache-first** ; écrans Produits (tableau desktop SKU mono /
+   liste mobile), fiche produit (lecture pour tous, édition ADMIN), Catégories (ADMIN),
+   Emplacements (ADMIN + MAGASINIER) ; onglet mobile « Plus » au-delà de 4 destinations (§7).
+   Saisie code-barres : champ texte (douchette USB = clavier) — le scan caméra est la P1 n°13.
+3. **Tests** : unitaires (EAN-13, curseur), e2e (CRUD, matrice des 3 rôles, génération unique +
+   collision, règles catégories/emplacements, delta), app (dépôt local, écrans, formulaires).
+
 ## Relais précédent
 - Date : 2026-09-10 · Qui : **MEDMEDBEN** · Session interrompue (budget de tokens)
 
