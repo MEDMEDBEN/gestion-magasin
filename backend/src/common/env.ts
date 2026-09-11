@@ -10,6 +10,9 @@ const EXAMPLE_JWT_SECRET = 'CHANGER_CETTE_CLE_ALEATOIRE';
 /// HS256 : une clé plus courte que la sortie du hash affaiblit la signature.
 const MIN_JWT_SECRET_BYTES = 32;
 
+/// Nombre maximal de sauts de proxy de confiance (Traefik seul en production).
+const MAX_TRUST_PROXY_HOPS = 2;
+
 /// Variables entières, avec leur valeur minimale admise.
 const INTEGER_VARIABLES: Record<string, number> = {
   JWT_ACCESS_EXPIRES_SECONDS: 1,
@@ -57,6 +60,16 @@ export function validateEnv(
     if (!isIntegerAtLeast(raw, min)) {
       errors.push(`${name} doit être un entier ≥ ${min} (reçu : « ${String(raw)} »)`);
     }
+  }
+
+  // Au-delà du nombre RÉEL de proxys, `X-Forwarded-For` redevient falsifiable
+  // par le client. L'architecture n'en compte qu'un (Traefik) : plafond à 2.
+  const hops = config.TRUST_PROXY_HOPS;
+  if (hops !== undefined && hops !== '' && Number(hops) > MAX_TRUST_PROXY_HOPS) {
+    errors.push(
+      `TRUST_PROXY_HOPS ne peut dépasser ${MAX_TRUST_PROXY_HOPS} (reçu : « ${String(hops)} ») ` +
+        '— en production, Traefik est le seul proxy : 1',
+    );
   }
 
   if (errors.length > 0) {

@@ -35,6 +35,9 @@ export interface AuthenticatedUser {
   roles: string[];
   permissions: string[];
   mustChangePassword: boolean;
+  /// Session (ligne `RefreshToken`) émise avec cet access token. Relue par
+  /// `FreshAccessGuard` : une session révoquée ne passe plus les routes sensibles.
+  sessionId?: string;
 }
 
 /// Injecte l'utilisateur authentifié résolu par le JwtAccessGuard.

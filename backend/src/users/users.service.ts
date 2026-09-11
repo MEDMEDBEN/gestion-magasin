@@ -36,7 +36,7 @@ type Db = Prisma.TransactionClient;
 /// peuvent retirer un administrateur actif. Sans lui, deux admins qui se
 /// désactivent mutuellement au même instant passent tous deux le contrôle
 /// « dernier admin » et le système se retrouve sans administrateur.
-const ADMIN_SET_LOCK = 0x41444d494e; // « ADMIN »
+const ADMIN_SET_LOCK = BigInt(0x41444d494e); // « ADMIN » — bigint, type de pg_advisory_xact_lock
 
 const SORTABLE_FIELDS = ['fullName', 'email', 'createdAt', 'lastLoginAt'] as const;
 
@@ -198,7 +198,9 @@ export class UsersService {
       dto.roles !== undefined ||
       dto.extraPermissions !== undefined ||
       dto.isActive !== undefined;
-    if (actor.userId === id && touchesAccess) {
+    // Comparaison sur la forme canonique (minuscules) : PostgreSQL retrouve la
+    // même ligne quelle que soit la casse de l'UUID (contre-audit N2).
+    if (actor.userId?.toLowerCase() === id.toLowerCase() && touchesAccess) {
       throw new BusinessException(
         ErrorCode.SELF_MODIFICATION_FORBIDDEN,
         'Vos rôles, permissions et activation sont modifiés par un autre administrateur',
@@ -208,7 +210,7 @@ export class UsersService {
 
     return this.prisma.$transaction(async (tx) => {
       if (touchesAccess) {
-        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`);
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`;
       }
       // Lu SOUS le verrou : l'« avant » de l'audit et le contrôle « dernier
       // admin » portent sur l'état réel, pas sur une lecture périmée.

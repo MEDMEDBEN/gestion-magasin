@@ -19,6 +19,7 @@ import {
 } from '../common/auth.decorators';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { intFromEnv } from '../common/env';
+import { normalizeIdentifier } from '../common/identifiers';
 import { AuthService } from './auth.service';
 import {
   AuthUserDto,
@@ -40,6 +41,15 @@ const loginLimit = () => intFromEnv('AUTH_LOGIN_LIMIT', 10);
 const refreshLimit = () => intFromEnv('AUTH_REFRESH_LIMIT', 30);
 const changePasswordLimit = () => intFromEnv('AUTH_CHANGE_PASSWORD_LIMIT', 5);
 
+/// Quota de connexion compté par IP ET par identifiant visé : tous les postes du
+/// magasin sortent par la même IP — compté par IP seule, un employé malveillant
+/// bloquerait les connexions de TOUT le magasin en échouant 10 fois (contre-audit
+/// N10). Un attaquant reste limité à 10 essais / 15 min par compte et par IP.
+const loginTracker = (req: { ip?: string; body?: { identifier?: unknown } }): string => {
+  const identifier = normalizeIdentifier(req.body?.identifier);
+  return `${req.ip}|${typeof identifier === 'string' ? identifier : ''}`;
+};
+
 @ApiTags('Auth')
 @ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: '`RATE_LIMITED`' })
 @Controller('auth')
@@ -47,8 +57,10 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  // Anti-brute-force : 10 tentatives / 15 min par IP (réelle — voir `configureApp`).
-  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: loginLimit } })
+  // Anti-brute-force : 10 tentatives / 15 min par IP réelle (`configureApp`) et par compte.
+  @Throttle({
+    default: { ttl: RATE_WINDOW_MS, limit: loginLimit, getTracker: loginTracker },
+  })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -111,6 +123,7 @@ export class AuthController {
   /// Publique : le refresh token (256 bits) EST la preuve de possession. Un logout
   /// ne doit jamais dépendre d'un access token expiré (voir `LogoutDto`).
   @Public()
+  @Throttle({ default: { ttl: RATE_WINDOW_MS, limit: refreshLimit } })
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

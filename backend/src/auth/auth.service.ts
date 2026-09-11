@@ -92,21 +92,14 @@ export class AuthService {
       throw AuthService.accountDisabled();
     }
 
-    const payload: AccessTokenPayload = {
-      sub: user.id,
-      roles: user.roles.map((role) => role.code),
-      permissions: resolvePermissions(user),
-      mustChangePassword: user.mustChangePassword,
-    };
-    const accessToken = await this.jwt.signAsync(payload, {
-      expiresIn: this.accessTtlSeconds(),
-    });
-
+    // La session est créée D'ABORD : l'access token porte son id (`sid`), ce qui
+    // permet aux routes sensibles de refuser un token dont la session a été
+    // révoquée entre-temps (contre-audit N1).
     const refreshToken = randomBytes(32).toString('hex');
     const expiresAt = new Date(
       Date.now() + this.refreshTtlDays() * 24 * 60 * 60 * 1000,
     );
-    await db.refreshToken.create({
+    const session = await db.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: AuthService.hashRefreshToken(refreshToken),
@@ -114,6 +107,18 @@ export class AuthService {
         deviceName: device.deviceName ?? null,
         expiresAt,
       },
+      select: { id: true },
+    });
+
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      sid: session.id,
+      roles: user.roles.map((role) => role.code),
+      permissions: resolvePermissions(user),
+      mustChangePassword: user.mustChangePassword,
+    };
+    const accessToken = await this.jwt.signAsync(payload, {
+      expiresIn: this.accessTtlSeconds(),
     });
 
     return { accessToken, refreshToken, expiresIn: this.accessTtlSeconds() };
@@ -260,20 +265,43 @@ export class AuthService {
 
   /// Ferme la session portée par ce refresh token, ou TOUTES celles de son
   /// titulaire (`allDevices`). Le token est la preuve de possession (route publique).
-  /// Un token inconnu ne révèle rien : `{ revoked: 0 }`.
+  ///
+  /// - Session seule : idempotent — un token inconnu ou déjà fermé rend `{ revoked: 0 }`.
+  /// - `allDevices` : exige une session VALIDE. Sinon, un token volé puis révoqué
+  ///   (ou simplement expiré) permettrait de déconnecter indéfiniment la victime,
+  ///   et l'audit attribuerait l'action à la victime elle-même (contre-audit N3).
+  ///   Un token révoqué est traité comme un rejeu : sessions fermées ET vol tracé.
   async logout(dto: LogoutDto, ipAddress?: string): Promise<LogoutResponseDto> {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: AuthService.hashRefreshToken(dto.refreshToken) },
-      select: { id: true, userId: true },
+      select: { id: true, userId: true, revokedAt: true, expiresAt: true },
     });
-    if (!stored) return { revoked: 0 };
 
     if (!dto.allDevices) {
+      if (!stored) return { revoked: 0 };
       const result = await this.prisma.refreshToken.updateMany({
         where: { id: stored.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
       return { revoked: result.count };
+    }
+
+    if (!stored) {
+      throw new BusinessException(
+        ErrorCode.REFRESH_TOKEN_INVALID,
+        'Session inconnue — aucune session fermée',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+    if (stored.revokedAt) {
+      return this.handleReuse(stored.userId, ipAddress);
+    }
+    if (stored.expiresAt.getTime() <= Date.now()) {
+      throw new BusinessException(
+        ErrorCode.REFRESH_TOKEN_EXPIRED,
+        'Session expirée — aucune session fermée',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
 
     const revoked = await this.prisma.$transaction(async (tx) => {
@@ -285,7 +313,11 @@ export class AuthService {
           action: 'UPDATE',
           entityType: 'User',
           entityId: stored.userId,
-          newValue: { operation: 'LOGOUT_ALL_DEVICES', revokedSessions: count },
+          newValue: {
+            operation: 'LOGOUT_ALL_DEVICES',
+            revokedSessions: count,
+            refreshTokenId: stored.id,
+          },
         },
       );
       return count;
@@ -350,10 +382,21 @@ export class AuthService {
     const updated = { ...user, passwordHash, mustChangePassword: false };
 
     const tokens = await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: userId },
+      // Compare-and-swap : l'écriture n'a lieu que si le mot de passe VÉRIFIÉ
+      // ci-dessus est toujours celui en base, et le compte toujours actif. Sinon un
+      // reset par l'admin (compte compromis) commité pendant le hachage serait
+      // écrasé par le mot de passe de l'attaquant (contre-audit N4).
+      const written = await tx.user.updateMany({
+        where: { id: userId, isActive: true, passwordHash: user.passwordHash },
         data: { passwordHash, mustChangePassword: false },
       });
+      if (written.count === 0) {
+        throw new BusinessException(
+          ErrorCode.CONFLICT,
+          'Le mot de passe de ce compte a été modifié entre-temps — reconnectez-vous',
+          HttpStatus.CONFLICT,
+        );
+      }
       const revoked = await this.revokeAllForUser(userId, tx);
       const issued = await this.issueTokens(tx, updated, dto);
       // Le mot de passe n'apparaît JAMAIS dans le journal : seul le fait est tracé.

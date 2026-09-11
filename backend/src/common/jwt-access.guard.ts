@@ -20,6 +20,8 @@ import { ErrorCode } from './error-codes';
 /// révocation de permission prenne effet (durée de vie volontairement courte).
 export interface AccessTokenPayload {
   sub: string;
+  /// Id de la session (`RefreshToken`) émise en même temps que ce token.
+  sid: string;
   roles: string[];
   permissions: string[];
   mustChangePassword: boolean;
@@ -67,6 +69,7 @@ export class JwtAccessGuard implements CanActivate {
       roles: payload.roles ?? [],
       permissions: payload.permissions ?? [],
       mustChangePassword: payload.mustChangePassword ?? false,
+      sessionId: payload.sid,
     };
     (request as Request & { user: AuthenticatedUser }).user = user;
 

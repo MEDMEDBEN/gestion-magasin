@@ -32,6 +32,7 @@ describe('JwtAccessGuard — émission et vérification du JWT', () => {
   const jwt = new JwtService({ secret: SECRET });
   const payload: AccessTokenPayload = {
     sub: '00000000-0000-7000-8000-000000000001',
+    sid: '00000000-0000-7000-8000-0000000000aa',
     roles: ['VENDEUR'],
     permissions: ['sale.create'],
     mustChangePassword: false,

@@ -6,7 +6,6 @@ import {
   HttpStatus,
   Ip,
   Param,
-  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -29,6 +28,7 @@ import {
   RoleCode,
   Roles,
 } from '../common/auth.decorators';
+import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { FreshAccessGuard } from '../common/fresh-access.guard';
@@ -96,7 +96,7 @@ export class UsersController {
   @Get(':id')
   @ApiOperation({ summary: 'Détail d’un utilisateur' })
   @ApiOkResponse({ type: UserDto })
-  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<UserDto> {
+  findOne(@Param('id', CanonicalUuidPipe) id: string): Promise<UserDto> {
     return this.usersService.findOne(id);
   }
 
@@ -110,7 +110,7 @@ export class UsersController {
   @ApiOkResponse({ type: UserDto })
   @ApiConflictResponse({ type: ErrorResponseDto, description: '`LAST_ACTIVE_ADMIN`' })
   update(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateUserDto,
     @CurrentUser() actor: AuthenticatedUser,
     @Ip() ip: string,
@@ -126,7 +126,7 @@ export class UsersController {
   })
   @ApiOkResponse({ type: UserDto })
   resetPassword(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: ResetPasswordDto,
     @CurrentUser() actor: AuthenticatedUser,
     @Ip() ip: string,
@@ -143,12 +143,12 @@ export class UsersController {
   @ApiOperation({
     summary: 'Révoque toutes les sessions (téléphone volé, départ)',
     description:
-      'Plus aucun renouvellement de session possible ; un access token déjà émis ' +
-      'reste valable au plus 15 min.',
+      'Plus aucun renouvellement de session possible. Les routes sensibles refusent ' +
+      'aussitôt les tokens de ces sessions ; les autres les acceptent au plus 15 min.',
   })
   @ApiOkResponse({ type: RevokedSessionsDto })
   revokeSessions(
-    @Param('id', ParseUUIDPipe) id: string,
+    @Param('id', CanonicalUuidPipe) id: string,
     @CurrentUser() actor: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<RevokedSessionsDto> {
