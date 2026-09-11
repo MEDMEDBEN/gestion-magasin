@@ -115,6 +115,24 @@ String _encode(Map<String, dynamic> body) {
   return '{$entries}';
 }
 
+/// Aucune réponse du tout : serveur injoignable (coupure réseau).
+class _OfflineAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    throw DioException.connectionError(
+      requestOptions: options,
+      reason: 'hors ligne',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 /// L'intercepteur de refresh est la pièce la plus dangereuse du client :
 /// une erreur y ferme la session de tout le monde, et coupe l'accès aux
 /// ventes hors-ligne encore en file. Ces tests verrouillent son comportement.
@@ -352,5 +370,42 @@ void main() {
 
     // Une tentative initiale + un seul rejeu, pas une boucle infinie.
     expect(protectedCalls, 2);
+  });
+
+  group('joignabilité du serveur (indicateur « Hors ligne »)', () {
+    DioClient reporting(HttpClientAdapter adapter, List<bool> reports) {
+      final client = DioClient(
+        tokenStore: tokenStore,
+        onSessionExpired: () async {},
+        onReachability: reports.add,
+        baseUrl: 'http://test.local/api',
+      );
+      client.dio.httpClientAdapter = adapter;
+      return client;
+    }
+
+    test('une réponse, même en erreur, prouve que le serveur est joignable', () async {
+      final reports = <bool>[];
+      final client = reporting(
+        _ScriptedAdapter((_) => _json({'code': 'NOT_FOUND'}, 404)),
+        reports,
+      );
+
+      await expectLater(client.dio.get<void>('/inconnu'), throwsA(isA<DioException>()));
+      await client.dio.get<void>('/ok').catchError((_) => Response<void>(
+            requestOptions: RequestOptions(),
+          ));
+
+      expect(reports, everyElement(isTrue));
+    });
+
+    test('aucune réponse signale un serveur injoignable', () async {
+      final reports = <bool>[];
+      final client = reporting(_OfflineAdapter(), reports);
+
+      await expectLater(client.dio.get<void>('/products'), throwsA(isA<DioException>()));
+
+      expect(reports, [false]);
+    });
   });
 }

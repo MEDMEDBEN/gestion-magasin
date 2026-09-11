@@ -22,11 +22,11 @@ abstract class AuthUser with _$AuthUser {
 }
 
 /// L'UI masque ce que le serveur refuserait de toute façon — le backend
-/// reste seul juge (CLAUDE.md règle 1).
+/// reste seul juge (CLAUDE.md règle 1). Les tests d'accès de l'UI sont le
+/// MIROIR des guards serveur : rôle requis ET permission requise.
 extension AuthUserAccess on AuthUser {
   bool hasRole(String role) => roles.contains(role);
   bool can(String permission) => permissions.contains(permission);
-  bool get isAdmin => hasRole('ADMIN');
 }
 
 /// Miroir de `LoginResponseDto`.

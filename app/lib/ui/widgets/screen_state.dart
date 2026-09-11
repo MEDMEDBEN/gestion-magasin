@@ -231,11 +231,15 @@ class SyncIndicator extends StatelessWidget {
           Icon(icon, size: 14, color: tone.foreground(colors)),
           const SizedBox(width: 6),
           // La couleur ne porte jamais l'info seule : le libellé est toujours là (§12.4).
-          Text(
-            label,
-            style: AmpereType.meta.copyWith(
-              color: tone.foreground(colors),
-              fontWeight: FontWeight.w600,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AmpereType.meta.copyWith(
+                color: tone.foreground(colors),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -273,11 +277,17 @@ class AmpereBadge extends StatelessWidget {
             Icon(icon, size: 12, color: tone.foreground(colors)),
             const SizedBox(width: 5),
           ],
-          Text(
-            label,
-            style: AmpereType.metaDesktop.copyWith(
-              color: tone.foreground(colors),
-              fontWeight: FontWeight.w600,
+          // Élastique : au zoom texte (§12), le libellé s'abrège au lieu de
+          // déborder de sa ligne.
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AmpereType.metaDesktop.copyWith(
+                color: tone.foreground(colors),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

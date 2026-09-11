@@ -16,12 +16,19 @@ class ErrorCodes {
   static const String refreshTokenRevoked = 'REFRESH_TOKEN_REVOKED';
   static const String forbiddenRole = 'FORBIDDEN_ROLE';
   static const String forbiddenPermission = 'FORBIDDEN_PERMISSION';
+  static const String currentPasswordInvalid = 'CURRENT_PASSWORD_INVALID';
+
+  // Gestion des comptes
+  static const String selfModificationForbidden = 'SELF_MODIFICATION_FORBIDDEN';
+  static const String lastActiveAdmin = 'LAST_ACTIVE_ADMIN';
+  static const String permissionNotGrantable = 'PERMISSION_NOT_GRANTABLE';
 
   // Générique
   static const String validationFailed = 'VALIDATION_FAILED';
   static const String notFound = 'NOT_FOUND';
   static const String conflict = 'CONFLICT';
   static const String notImplemented = 'NOT_IMPLEMENTED';
+  static const String rateLimited = 'RATE_LIMITED';
 
   // Stock
   static const String stockNegative = 'STOCK_NEGATIVE';
@@ -61,6 +68,7 @@ class ErrorCodes {
   /// Messages destinés à l'utilisateur, en français, dérivés du code stable.
   static String userMessage(String? code, String fallback) => switch (code) {
         invalidCredentials => 'Identifiant ou mot de passe incorrect',
+        currentPasswordInvalid => 'Mot de passe actuel incorrect',
         accountDisabled => 'Ce compte est désactivé',
         passwordChangeRequired => 'Vous devez changer votre mot de passe',
         refreshTokenExpired ||
@@ -69,6 +77,13 @@ class ErrorCodes {
           'Session expirée, reconnectez-vous',
         forbiddenRole || forbiddenPermission =>
           "Vous n'avez pas les droits pour cette action",
+        selfModificationForbidden =>
+          'Vos rôles et votre activation sont modifiés par un autre administrateur',
+        lastActiveAdmin =>
+          'Impossible : ce compte est le dernier administrateur actif',
+        permissionNotGrantable =>
+          'Cette permission est réservée à l’administrateur',
+        rateLimited => 'Trop de tentatives. Patientez quelques minutes.',
         stockNegative ||
         stockInsufficient =>
           'Stock insuffisant pour cette opération',

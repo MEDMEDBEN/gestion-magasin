@@ -18,6 +18,15 @@ enum LocalMutationStatus { enAttente, confirmee, rejetee }
 /// régénérée à un renvoi, sinon le serveur appliquerait l'opération deux fois.
 class PendingMutations extends Table {
   TextColumn get clientMutationId => text()();
+
+  /// Compte qui a saisi l'opération (schéma v2 — audit I2). Le serveur attribue
+  /// une mutation au porteur du token qui l'envoie : sur un poste partagé, sans
+  /// cette colonne, les pertes laissées en attente par le magasinier partiraient
+  /// avec le token du vendeur suivant (rejetées), ou une ligne forgée par un
+  /// vendeur serait exécutée avec les droits de l'admin connecté après lui.
+  /// `null` = ligne antérieure à la v2 : auteur inconnu, jamais envoyée.
+  TextColumn get authorUserId => text().nullable()();
+
   TextColumn get deviceId => text()();
   TextColumn get operationType => text()();
 
@@ -62,7 +71,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(pendingMutations, pendingMutations.authorUserId);
+          }
+        },
+      );
 
   static QueryExecutor _open() {
     return LazyDatabase(() async {

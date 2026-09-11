@@ -47,7 +47,11 @@ PostgreSQL et Redis ne sont **jamais accessibles depuis l'extérieur** — uniqu
 1. Créer le VPS, pointer le DNS des deux sous-domaines vers son IP
 2. `ssh` sur le VPS, installer Docker + Docker Compose
 3. Cloner le repo Git sur le VPS
-4. Copier `infra/.env.example` → `infra/.env`, remplir toutes les valeurs (mots de passe, clés JWT générées aléatoirement)
+4. Copier `infra/.env.example` → `infra/.env`, remplir toutes les valeurs (mots de passe, clés JWT générées aléatoirement).
+   Le backend **refuse de démarrer** si `JWT_ACCESS_SECRET` vaut la valeur d'exemple ou fait moins de 32 octets
+   (`openssl rand -base64 48`). Garder **`TRUST_PROXY_HOPS=1`** (Traefik est le seul proxy) : sans lui, le quota
+   anti-brute-force est partagé par tous les clients et l'audit enregistre l'IP de Traefik ; ne jamais mettre plus
+   que le nombre réel de proxys.
 5. `cd infra && docker compose up -d --build`
 6. Vérifier que `https://api.tondomaine.com` répond (Traefik doit avoir généré le certificat automatiquement en quelques secondes)
 7. Lancer les migrations Prisma une fois : `docker compose exec backend npx prisma migrate deploy`
@@ -56,7 +60,7 @@ PostgreSQL et Redis ne sont **jamais accessibles depuis l'extérieur** — uniqu
 
 Le projet est **stateless côté serveur** (pas de session stockée en mémoire) :
 - **Access token JWT** (15 min) : envoyé à chaque requête, vérifié par signature, jamais stocké côté serveur
-- **Refresh token** (30 jours) : stocké **hashé** dans une table PostgreSQL (`RefreshToken` — à ajouter au schéma Prisma en Phase 0), avec une date d'expiration et un lien vers l'utilisateur/appareil
+- **Refresh token** (90 jours glissants, opaque) : stocké **hashé** (SHA-256) dans la table PostgreSQL `RefreshToken`, avec une date d'expiration et un lien vers l'utilisateur/appareil ; rotation à chaque usage, rejeu = toutes les sessions fermées (et tracé)
 
 **Pourquoi une table plutôt que juste un JWT refresh** : ça permet de **révoquer une session précise** (ex: employé qui quitte, téléphone volé) sans attendre l'expiration naturelle — chose impossible avec un JWT refresh pur, qui reste valide jusqu'à expiration même si tu "déconnectes" l'utilisateur ailleurs.
 

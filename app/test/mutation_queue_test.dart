@@ -16,8 +16,15 @@ void main() {
 
   tearDown(() => db.close());
 
-  Future<String> enqueueAt(DateTime timestamp, {String type = 'MANUAL'}) {
+  const author = 'compte-a';
+
+  Future<String> enqueueAt(
+    DateTime timestamp, {
+    String type = 'MANUAL',
+    String authorUserId = author,
+  }) {
     return queue.enqueue(
+      authorUserId: authorUserId,
       deviceId: 'appareil-test',
       operationType: type,
       payload: {'quantity': '2.000'},
@@ -28,8 +35,8 @@ void main() {
   test('une mutation enfilée est en attente et compte dans le total', () async {
     await enqueueAt(DateTime.utc(2026, 9, 9, 10));
 
-    expect(await queue.pendingCount(), 1);
-    final batch = await queue.nextBatch();
+    expect(await queue.pendingCount(authorUserId: author), 1);
+    final batch = await queue.nextBatch(authorUserId: author);
     expect(batch, hasLength(1));
     expect(batch.first.status, LocalMutationStatus.enAttente);
   });
@@ -46,7 +53,7 @@ void main() {
     final early = await enqueueAt(DateTime.utc(2026, 9, 9, 8));
     final middle = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
 
-    final batch = await queue.nextBatch();
+    final batch = await queue.nextBatch(authorUserId: author);
 
     expect(
       batch.map((m) => m.clientMutationId).toList(),
@@ -60,7 +67,7 @@ void main() {
       await enqueueAt(DateTime.utc(2026, 9, 9, 8 + i));
     }
 
-    expect(await queue.nextBatch(limit: 3), hasLength(3));
+    expect(await queue.nextBatch(authorUserId: author, limit: 3), hasLength(3));
   });
 
   test('CONFIRMEE retire définitivement la mutation de la file', () async {
@@ -74,8 +81,8 @@ void main() {
       ),
     );
 
-    expect(await queue.pendingCount(), 0);
-    expect(await queue.nextBatch(), isEmpty);
+    expect(await queue.pendingCount(authorUserId: author), 0);
+    expect(await queue.nextBatch(authorUserId: author), isEmpty);
   });
 
   test('REJETEE conserve la mutation avec son code métier stable', () async {
@@ -91,7 +98,7 @@ void main() {
     );
 
     // Elle ne doit PAS repartir toute seule : l'utilisateur doit trancher.
-    expect(await queue.nextBatch(), isEmpty);
+    expect(await queue.nextBatch(authorUserId: author), isEmpty);
 
     final rejected = await queue.byStatus(LocalMutationStatus.rejetee);
     expect(rejected, hasLength(1));
@@ -110,18 +117,18 @@ void main() {
       ),
     );
 
-    expect(await queue.pendingCount(), 1);
-    expect(await queue.nextBatch(), hasLength(1));
+    expect(await queue.pendingCount(authorUserId: author), 1);
+    expect(await queue.nextBatch(authorUserId: author), hasLength(1));
   });
 
   test('un renvoi réutilise le MÊME clientMutationId (idempotence)', () async {
     final id = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
 
-    final first = await queue.nextBatch();
+    final first = await queue.nextBatch(authorUserId: author);
     await queue.applyResult(
       SyncResult(clientMutationId: id, status: SyncStatus.nonTraitee),
     );
-    final second = await queue.nextBatch();
+    final second = await queue.nextBatch(authorUserId: author);
 
     expect(second.first.clientMutationId, first.first.clientMutationId);
     expect(second.first.clientMutationId, id);
@@ -133,7 +140,7 @@ void main() {
     await queue.markAttempted([id]);
     await queue.markAttempted([id]);
 
-    final row = (await queue.nextBatch()).first;
+    final row = (await queue.nextBatch(authorUserId: author)).first;
     expect(row.attemptCount, 2);
     expect(row.status, LocalMutationStatus.enAttente);
     expect(row.lastAttemptAt, isNotNull);
@@ -153,7 +160,7 @@ void main() {
   test('toInputs produit exactement le corps attendu par POST /sync', () async {
     await enqueueAt(DateTime.utc(2026, 9, 9, 10), type: 'MANUAL');
 
-    final inputs = await queue.toInputs(await queue.nextBatch());
+    final inputs = await queue.toInputs(await queue.nextBatch(authorUserId: author));
 
     expect(inputs, hasLength(1));
     final json = inputs.first.toJson();
@@ -172,19 +179,64 @@ void main() {
 
   group('bornes offline', () {
     test('file vide = appareil sain', () async {
-      expect(await queue.isTooStale(), isFalse);
+      expect(await queue.isTooStale(authorUserId: author), isFalse);
     });
 
     test('une mutation récente ne déclenche pas l’alerte', () async {
       await enqueueAt(DateTime.now().toUtc());
-      expect(await queue.isTooStale(), isFalse);
+      expect(await queue.isTooStale(authorUserId: author), isFalse);
     });
 
     test('une mutation trop vieille déclenche l’alerte', () async {
       await enqueueAt(
         DateTime.now().toUtc().subtract(const Duration(hours: 96)),
       );
-      expect(await queue.isTooStale(), isTrue);
+      expect(await queue.isTooStale(authorUserId: author), isTrue);
+    });
+  });
+
+  group('auteur de la mutation (audit I2 — poste partagé)', () {
+    test('chaque compte ne voit et n’envoie que SES mutations', () async {
+      final mine = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
+      final theirs = await enqueueAt(
+        DateTime.utc(2026, 9, 9, 9),
+        authorUserId: 'compte-b',
+      );
+
+      expect(
+        (await queue.nextBatch(authorUserId: author)).map((m) => m.clientMutationId),
+        [mine],
+      );
+      expect(
+        (await queue.nextBatch(authorUserId: 'compte-b')).map((m) => m.clientMutationId),
+        [theirs],
+      );
+      expect(await queue.pendingCount(authorUserId: author), 1);
+    });
+
+    test('les mutations d’un autre compte sont comptées à part', () async {
+      await enqueueAt(DateTime.utc(2026, 9, 9, 10));
+      await enqueueAt(DateTime.utc(2026, 9, 9, 11), authorUserId: 'compte-b');
+      await enqueueAt(DateTime.utc(2026, 9, 9, 12), authorUserId: 'compte-b');
+
+      expect(await queue.watchForeignPendingCount(authorUserId: author).first, 2);
+      expect(await queue.watchPendingCount(authorUserId: author).first, 1);
+    });
+
+    test('les rejets affichés sont ceux du compte connecté', () async {
+      final theirs = await enqueueAt(
+        DateTime.utc(2026, 9, 9, 10),
+        authorUserId: 'compte-b',
+      );
+      await queue.applyResult(
+        SyncResult(clientMutationId: theirs, status: SyncStatus.rejetee),
+      );
+
+      expect(await queue.watchRejected(authorUserId: author).first, isEmpty);
+      expect(
+        await queue.watchRejected(authorUserId: 'compte-b').first,
+        hasLength(1),
+      );
     });
   });
 }

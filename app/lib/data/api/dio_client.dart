@@ -13,6 +13,7 @@ class DioClient {
   DioClient({
     required this._tokenStore,
     required this._onSessionExpired,
+    this._onReachability,
     String? baseUrl,
     Dio? dio,
   }) {
@@ -28,7 +29,16 @@ class DioClient {
     this.dio.interceptors.add(
           InterceptorsWrapper(
             onRequest: _attachAccessToken,
-            onError: _refreshOnUnauthorized,
+            onResponse: (response, handler) {
+              _onReachability?.call(true);
+              handler.next(response);
+            },
+            onError: (error, handler) {
+              // Une réponse, même en erreur, prouve que le serveur est joignable ;
+              // seule l'ABSENCE de réponse signale une coupure.
+              _onReachability?.call(error.response != null);
+              _refreshOnUnauthorized(error, handler);
+            },
           ),
         );
   }
@@ -36,6 +46,10 @@ class DioClient {
   late final Dio dio;
   final TokenStore _tokenStore;
   final Future<void> Function() _onSessionExpired;
+
+  /// Informé à chaque échange : `true` si le serveur a répondu, `false` s'il
+  /// est injoignable. Alimente l'indicateur « Hors ligne » de l'en-tête.
+  final void Function(bool reachable)? _onReachability;
 
   /// Refresh EN VOL, partagé par tous les appels concurrents.
   ///

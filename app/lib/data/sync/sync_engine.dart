@@ -45,12 +45,16 @@ class SyncEngine {
   /// deux fois. Le serveur est idempotent, mais autant ne pas l'éprouver.
   Future<SyncOutcome>? _inFlight;
 
-  Future<SyncOutcome> synchronize() {
-    return _inFlight ??= _run().whenComplete(() => _inFlight = null);
+  /// Pousse les mutations de `authorUserId` — le compte dont la session porte
+  /// l'envoi. Celles d'un autre compte ne partent jamais avec cette session : le
+  /// serveur les attribuerait (et les jugerait) au mauvais utilisateur.
+  Future<SyncOutcome> synchronize({required String authorUserId}) {
+    return _inFlight ??=
+        _run(authorUserId).whenComplete(() => _inFlight = null);
   }
 
-  Future<SyncOutcome> _run() async {
-    final rows = await _queue.nextBatch();
+  Future<SyncOutcome> _run(String authorUserId) async {
+    final rows = await _queue.nextBatch(authorUserId: authorUserId);
     if (rows.isEmpty) {
       return const SyncOutcome(
         sent: 0,
@@ -68,7 +72,7 @@ class SyncEngine {
         sent: 0,
         confirmed: 0,
         rejected: rows.length,
-        stillPending: await _queue.pendingCount(),
+        stillPending: await _queue.pendingCount(authorUserId: authorUserId),
       );
     }
     await _queue.markAttempted(inputs.map((m) => m.clientMutationId).toList());
@@ -83,7 +87,7 @@ class SyncEngine {
         sent: inputs.length,
         confirmed: 0,
         rejected: 0,
-        stillPending: await _queue.pendingCount(),
+        stillPending: await _queue.pendingCount(authorUserId: authorUserId),
         failure: error.userMessage,
       );
     }
@@ -106,21 +110,24 @@ class SyncEngine {
       sent: inputs.length,
       confirmed: confirmed,
       rejected: rejected,
-      stillPending: await _queue.pendingCount(),
+      stillPending: await _queue.pendingCount(authorUserId: authorUserId),
     );
   }
 
   /// Vide la file en boucle tant que le serveur confirme des mutations.
   /// Utile après une longue coupure : la file peut dépasser un lot.
-  Future<SyncOutcome> synchronizeAll({int maxBatches = 10}) async {
-    var last = await synchronize();
+  Future<SyncOutcome> synchronizeAll({
+    required String authorUserId,
+    int maxBatches = 10,
+  }) async {
+    var last = await synchronize(authorUserId: authorUserId);
     var batches = 1;
 
     while (!last.hasFailure &&
         last.stillPending > 0 &&
         last.confirmed > 0 &&
         batches < maxBatches) {
-      last = await synchronize();
+      last = await synchronize(authorUserId: authorUserId);
       batches++;
     }
     return last;

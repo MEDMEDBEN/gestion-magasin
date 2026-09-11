@@ -1,24 +1,28 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/error/api_exception.dart';
-import '../models/user_models.dart';
+import '../../../core/error/api_exception.dart';
+import '../../../core/providers.dart';
+import 'user_models.dart';
 
 /// Accès réseau au module Utilisateurs. Aucune logique métier ici.
 ///
 /// Toutes ces routes sont réservées à l'ADMIN côté serveur
-/// (`@Roles(ADMIN)` + `user.manage`) : l'UI masque, le backend refuse.
+/// (`@Roles(ADMIN)` + `user.manage`, accès relu en base) : l'UI masque, le
+/// backend refuse.
 class UsersApi {
   UsersApi(this._dio);
 
   final Dio _dio;
 
   Future<UserPage> list({int page = 1, int limit = 50, String? query}) {
-    return _guard(() async {
+    return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/users',
         queryParameters: {
           'page': page,
           'limit': limit,
+          'sort': 'fullName:asc',
           if (query != null && query.isNotEmpty) 'q': query,
         },
       );
@@ -26,10 +30,13 @@ class UsersApi {
     });
   }
 
-  Future<ManagedUser> findOne(String id) {
-    return _guard(() async {
-      final response = await _dio.get<Map<String, dynamic>>('/users/$id');
-      return ManagedUser.fromJson(response.data!);
+  /// Rôles et permissions attribuables, lus dans la matrice serveur.
+  Future<PermissionCatalog> permissionCatalog() {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/users/permission-catalog',
+      );
+      return PermissionCatalog.fromJson(response.data!);
     });
   }
 
@@ -41,8 +48,9 @@ class UsersApi {
     required String fullName,
     required String temporaryPassword,
     required List<String> roles,
+    List<String> extraPermissions = const [],
   }) {
-    return _guard(() async {
+    return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(
         '/users',
         data: {
@@ -51,30 +59,18 @@ class UsersApi {
           'fullName': fullName,
           'temporaryPassword': temporaryPassword,
           'roles': roles,
+          if (extraPermissions.isNotEmpty) 'extraPermissions': extraPermissions,
         },
       );
       return ManagedUser.fromJson(response.data!);
     });
   }
 
-  Future<ManagedUser> update(
-    String id, {
-    String? fullName,
-    String? email,
-    String? phone,
-    bool? isActive,
-    List<String>? roles,
-  }) {
-    return _guard(() async {
+  Future<ManagedUser> update(String id, UserChanges changes) {
+    return guardApi(() async {
       final response = await _dio.patch<Map<String, dynamic>>(
         '/users/$id',
-        data: {
-          'fullName': ?fullName,
-          'email': ?email,
-          'phone': ?phone,
-          'isActive': ?isActive,
-          'roles': ?roles,
-        },
+        data: changes.toJson(),
       );
       return ManagedUser.fromJson(response.data!);
     });
@@ -82,7 +78,7 @@ class UsersApi {
 
   /// Repose un mot de passe temporaire ET coupe toutes les sessions du compte.
   Future<ManagedUser> resetPassword(String id, String temporaryPassword) {
-    return _guard(() async {
+    return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(
         '/users/$id/reset-password',
         data: {'temporaryPassword': temporaryPassword},
@@ -91,21 +87,17 @@ class UsersApi {
     });
   }
 
-  /// Téléphone volé, départ d'un employé : coupe l'accès immédiatement.
+  /// Téléphone volé, départ d'un employé : plus aucun renouvellement de
+  /// session possible (un accès déjà ouvert s'éteint sous 15 min au plus).
   Future<int> revokeSessions(String id) {
-    return _guard(() async {
+    return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(
         '/users/$id/revoke-sessions',
       );
       return (response.data?['revoked'] as int?) ?? 0;
     });
   }
-
-  Future<T> _guard<T>(Future<T> Function() call) async {
-    try {
-      return await call();
-    } on DioException catch (error) {
-      throw ApiException.fromDio(error);
-    }
-  }
 }
+
+final usersApiProvider =
+    Provider<UsersApi>((ref) => UsersApi(ref.watch(dioClientProvider).dio));

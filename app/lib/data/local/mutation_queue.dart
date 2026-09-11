@@ -19,7 +19,10 @@ class MutationQueue {
   final Uuid _uuid;
 
   /// Enregistre une opération faite hors-ligne (ou en ligne : le chemin est le même).
+  /// `authorUserId` : le compte connecté qui la saisit — elle ne partira
+  /// qu'avec SA session (audit I2).
   Future<String> enqueue({
+    required String authorUserId,
     required String deviceId,
     required String operationType,
     required Map<String, dynamic> payload,
@@ -32,6 +35,7 @@ class MutationQueue {
     await _db.into(_db.pendingMutations).insert(
           PendingMutationsCompanion.insert(
             clientMutationId: clientMutationId,
+            authorUserId: Value(authorUserId),
             deviceId: deviceId,
             operationType: operationType,
             payload: jsonEncode(payload),
@@ -42,14 +46,22 @@ class MutationQueue {
     return clientMutationId;
   }
 
-  /// Prochain lot à envoyer : uniquement les mutations en attente, dans l'ordre
-  /// du timestamp appareil — l'ordre est ce qui garde la cohérence métier
-  /// (un paiement ne doit pas partir avant la vente qu'il solde).
+  /// Mutations en attente d'UN auteur.
+  Expression<bool> _pendingOf($PendingMutationsTable t, String authorUserId) =>
+      t.status.equalsValue(LocalMutationStatus.enAttente) &
+      t.authorUserId.equals(authorUserId);
+
+  /// Prochain lot à envoyer : uniquement les mutations en attente DE CE COMPTE,
+  /// dans l'ordre du timestamp appareil — l'ordre est ce qui garde la cohérence
+  /// métier (un paiement ne doit pas partir avant la vente qu'il solde).
+  /// Les mutations d'un autre compte restent en quarantaine sur l'appareil :
+  /// elles partiront à la prochaine connexion de leur auteur.
   Future<List<PendingMutation>> nextBatch({
+    required String authorUserId,
     int limit = AppConfig.maxMutationsPerBatch,
   }) {
     return (_db.select(_db.pendingMutations)
-          ..where((t) => t.status.equalsValue(LocalMutationStatus.enAttente))
+          ..where((t) => _pendingOf(t, authorUserId))
           ..orderBy([(t) => OrderingTerm.asc(t.deviceTimestamp)])
           ..limit(limit))
         .get();
@@ -62,38 +74,47 @@ class MutationQueue {
         .get();
   }
 
-  /// Flux temps réel du nombre de mutations en attente.
-  /// L'indicateur de l'UI doit se mettre à jour tout seul après un `enqueue`
-  /// ou un cycle de sync — un `Future` figerait la première valeur.
-  Stream<int> watchPendingCount() {
+  Selectable<int> _countWhere(Expression<bool> condition) {
     final count = _db.pendingMutations.clientMutationId.count();
     final query = _db.selectOnly(_db.pendingMutations)
       ..addColumns([count])
-      ..where(
-        _db.pendingMutations.status.equalsValue(LocalMutationStatus.enAttente),
-      );
-    return query.map((row) => row.read(count) ?? 0).watchSingle();
+      ..where(condition);
+    return query.map((row) => row.read(count) ?? 0);
   }
 
-  /// Flux des mutations REJETÉES — elles exigent une action de l'utilisateur
-  /// (docs/context.md §6) : sans cet affichage, une vente refusée pour stock
-  /// insuffisant disparaîtrait silencieusement et l'utilisateur la croirait faite.
-  Stream<List<PendingMutation>> watchRejected() {
+  /// Flux temps réel du nombre de mutations en attente de ce compte.
+  /// L'indicateur de l'UI doit se mettre à jour tout seul après un `enqueue`
+  /// ou un cycle de sync — un `Future` figerait la première valeur.
+  Stream<int> watchPendingCount({required String authorUserId}) =>
+      _countWhere(_pendingOf(_db.pendingMutations, authorUserId)).watchSingle();
+
+  /// Mutations en attente laissées par un AUTRE compte (ou antérieures à la v2,
+  /// auteur inconnu) : jamais envoyées avec cette session, mais signalées.
+  Stream<int> watchForeignPendingCount({required String authorUserId}) {
+    final t = _db.pendingMutations;
+    return _countWhere(
+      t.status.equalsValue(LocalMutationStatus.enAttente) &
+          (t.authorUserId.isNull() | t.authorUserId.equals(authorUserId).not()),
+    ).watchSingle();
+  }
+
+  /// Flux des mutations REJETÉES de ce compte — elles exigent une action de
+  /// l'utilisateur (docs/context.md §6) : sans cet affichage, une vente refusée
+  /// pour stock insuffisant disparaîtrait silencieusement et l'utilisateur la
+  /// croirait faite.
+  Stream<List<PendingMutation>> watchRejected({required String authorUserId}) {
     return (_db.select(_db.pendingMutations)
-          ..where((t) => t.status.equalsValue(LocalMutationStatus.rejetee))
+          ..where(
+            (t) =>
+                t.status.equalsValue(LocalMutationStatus.rejetee) &
+                t.authorUserId.equals(authorUserId),
+          )
           ..orderBy([(t) => OrderingTerm.desc(t.deviceTimestamp)]))
         .watch();
   }
 
-  Future<int> pendingCount() async {
-    final count = _db.pendingMutations.clientMutationId.count();
-    final query = _db.selectOnly(_db.pendingMutations)
-      ..addColumns([count])
-      ..where(
-        _db.pendingMutations.status.equalsValue(LocalMutationStatus.enAttente),
-      );
-    return (await query.getSingle()).read(count) ?? 0;
-  }
+  Future<int> pendingCount({required String authorUserId}) =>
+      _countWhere(_pendingOf(_db.pendingMutations, authorUserId)).getSingle();
 
   /// Convertit les lignes locales en corps de requête.
   ///
@@ -193,16 +214,16 @@ class MutationQueue {
   /// L'appareil est-il resté trop longtemps sans synchroniser ?
   /// Au-delà, le stock local est trop faux pour autoriser de nouvelles ventes
   /// (docs/context.md § Bornes de données offline).
-  Future<bool> isTooStale() async {
+  Future<bool> isTooStale({required String authorUserId}) async {
     final oldest = await (_db.select(_db.pendingMutations)
-          ..where((t) => t.status.equalsValue(LocalMutationStatus.enAttente))
+          ..where((t) => _pendingOf(t, authorUserId))
           ..orderBy([(t) => OrderingTerm.asc(t.deviceTimestamp)])
           ..limit(1))
         .getSingleOrNull();
     if (oldest == null) return false;
 
     final age = DateTime.now().toUtc().difference(oldest.deviceTimestamp);
-    final count = await pendingCount();
+    final count = await pendingCount(authorUserId: authorUserId);
     return age > AppConfig.maxOfflineDuration ||
         count >= AppConfig.maxPendingMutations;
   }

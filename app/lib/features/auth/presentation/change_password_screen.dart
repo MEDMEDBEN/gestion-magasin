@@ -31,6 +31,12 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   final _confirm = TextEditingController();
   bool _obscure = true;
 
+  /// État LOCAL de l'envoi : l'état global de session ne passe jamais en
+  /// chargement pour un changement de mot de passe (revue C9), et une erreur
+  /// ne survit pas à la fermeture de l'écran.
+  bool _submitting = false;
+  String? _error;
+
   @override
   void dispose() {
     _current.dispose();
@@ -40,28 +46,48 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_submitting || !_formKey.currentState!.validate()) return;
 
-    await ref.read(authControllerProvider.notifier).changePassword(
-          currentPassword: _current.text,
-          newPassword: _next.text,
-        );
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref.read(authControllerProvider.notifier).changePassword(
+            currentPassword: _current.text,
+            newPassword: _next.text,
+          );
+    } on ApiException catch (error) {
+      _fail(error.userMessage);
+      return;
+    } catch (_) {
+      _fail('Changement impossible. Réessayez.');
+      return;
+    }
 
     if (!mounted) return;
-    final state = ref.read(authControllerProvider);
-    if (!state.hasError && !widget.forced && Navigator.of(context).canPop()) {
+    // Forcé : le routeur quitte cet écran de lui-même (mustChangePassword levé).
+    if (!widget.forced && Navigator.of(context).canPop()) {
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('Mot de passe modifié.')),
       );
     }
   }
 
+  void _fail(String message) {
+    if (!mounted) return;
+    setState(() {
+      _submitting = false;
+      _error = message;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final auth = ref.watch(authControllerProvider);
-    final isLoading = auth.isLoading;
+    final isLoading = _submitting;
 
     return Scaffold(
       appBar: AppBar(
@@ -98,6 +124,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   TextFormField(
                     controller: _current,
                     obscureText: _obscure,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     enabled: !isLoading,
                     style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: InputDecoration(
@@ -121,11 +149,15 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   TextFormField(
                     controller: _next,
                     obscureText: _obscure,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    maxLength: 128,
                     enabled: !isLoading,
                     style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
                       prefixIcon: Icon(LucideIcons.keyRound, size: 17),
                       helperText: '8 caractères minimum',
+                      counterText: '',
                     ),
                     validator: (v) {
                       if (v == null || v.length < 8) {
@@ -144,6 +176,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                   TextFormField(
                     controller: _confirm,
                     obscureText: _obscure,
+                    autocorrect: false,
+                    enableSuggestions: false,
                     enabled: !isLoading,
                     style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
@@ -154,14 +188,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                         v != _next.text ? 'Les mots de passe diffèrent' : null,
                   ),
 
-                  if (auth.hasError) ...[
+                  if (_error != null) ...[
                     const SizedBox(height: 16),
-                    AmpereInlineAlert(
-                      message: switch (auth.error!) {
-                        ApiException(:final userMessage) => userMessage,
-                        _ => 'Changement impossible',
-                      },
-                    ),
+                    AmpereInlineAlert(message: _error!),
                   ],
 
                   const SizedBox(height: 22),

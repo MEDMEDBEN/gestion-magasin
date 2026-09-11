@@ -2,15 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/application/auth_controller.dart';
+import 'breakpoints.dart';
 import 'desktop/desktop_shell.dart';
 import 'mobile/mobile_shell.dart';
 import 'widgets/screen_state.dart';
 
-/// Seuil de bascule desktop / mobile.
-/// Le mobile n'est PAS une copie miniature du desktop (spec §29) : les deux
-/// shells sont des mises en page distinctes, sur une logique métier commune.
-const double kDesktopBreakpoint = 900;
-
+/// Choisit la coquille selon la largeur (AMPÈRE §9) : mobile sous 768 px,
+/// desktop au-delà — en rail d'icônes jusqu'à 1180 px (tablette).
 class AdaptiveShell extends ConsumerWidget {
   const AdaptiveShell({super.key});
 
@@ -18,7 +16,10 @@ class AdaptiveShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
 
-    if (auth.isLoading) {
+    // Chargement plein écran UNIQUEMENT tant qu'aucune session n'est connue
+    // (démarrage). Un rechargement ultérieur ne démonte pas la coquille : sinon
+    // l'utilisateur perdrait sa navigation au moindre appel (revue C9).
+    if (!auth.hasValue) {
       return const Scaffold(
         body: ScreenStateView(status: ScreenStatus.loading),
       );
@@ -26,10 +27,11 @@ class AdaptiveShell extends ConsumerWidget {
 
     return switch (auth.value) {
       AuthSignedIn(:final user) => LayoutBuilder(
-          builder: (context, constraints) =>
-              constraints.maxWidth >= kDesktopBreakpoint
-                  ? DesktopShell(user: user)
-                  : MobileShell(user: user),
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            if (!isDesktopWidth(width)) return MobileShell(user: user);
+            return DesktopShell(user: user, compact: width < kDesktopMinWidth);
+          },
         ),
       // Session non résolue : serveur injoignable ou en panne au lancement.
       // On NE déconnecte pas — l'offline-first est le cœur du produit — mais on

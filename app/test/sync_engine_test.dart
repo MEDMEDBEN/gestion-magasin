@@ -52,7 +52,11 @@ void main() {
 
   tearDown(() => db.close());
 
-  Future<String> enqueue([DateTime? at]) => queue.enqueue(
+  const author = 'compte-a';
+
+  Future<String> enqueue([DateTime? at, String authorUserId = author]) =>
+      queue.enqueue(
+        authorUserId: authorUserId,
         deviceId: 'appareil-test',
         operationType: 'MANUAL',
         payload: {'quantity': '1.000'},
@@ -61,7 +65,7 @@ void main() {
 
   test('file vide : aucun appel réseau', () async {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize();
+    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
 
     expect(api.calls, isEmpty);
     expect(outcome.isFullySynced, isTrue);
@@ -72,7 +76,7 @@ void main() {
     await enqueue();
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize();
+    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
 
     expect(outcome.sent, 2);
     expect(outcome.confirmed, 2);
@@ -87,12 +91,12 @@ void main() {
     );
     final engine = SyncEngine(api: api, queue: queue);
 
-    final outcome = await engine.synchronize();
+    final outcome = await engine.synchronize(authorUserId: author);
     expect(outcome.rejected, 1);
     expect(outcome.stillPending, 0);
 
     // Un second cycle ne doit RIEN renvoyer : le verdict est définitif.
-    await engine.synchronize();
+    await engine.synchronize(authorUserId: author);
     expect(api.calls, hasLength(1));
 
     final rejected = await queue.byStatus(LocalMutationStatus.rejetee);
@@ -106,12 +110,12 @@ void main() {
     );
     final engine = SyncEngine(api: api, queue: queue);
 
-    final outcome = await engine.synchronize();
+    final outcome = await engine.synchronize(authorUserId: author);
     expect(outcome.confirmed, 0);
     expect(outcome.rejected, 0);
     expect(outcome.stillPending, 1);
 
-    await engine.synchronize();
+    await engine.synchronize(authorUserId: author);
     expect(api.calls, hasLength(2), reason: 'elle doit repartir');
   });
 
@@ -123,13 +127,13 @@ void main() {
         message: 'Serveur injoignable',
       );
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize();
+    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
 
     expect(outcome.hasFailure, isTrue);
     expect(outcome.stillPending, 1);
     expect(await queue.byStatus(LocalMutationStatus.rejetee), isEmpty);
     // La mutation garde son identifiant : le renvoi restera idempotent.
-    expect((await queue.nextBatch()).single.clientMutationId, id);
+    expect((await queue.nextBatch(authorUserId: author)).single.clientMutationId, id);
   });
 
   test('le lot part dans l’ordre du timestamp appareil', () async {
@@ -137,7 +141,7 @@ void main() {
     final first = await enqueue(DateTime.utc(2026, 9, 9, 9));
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
 
-    await SyncEngine(api: api, queue: queue).synchronize();
+    await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
 
     expect(
       api.calls.single.map((m) => m.clientMutationId).toList(),
@@ -150,7 +154,7 @@ void main() {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
     final engine = SyncEngine(api: api, queue: queue);
 
-    await Future.wait([engine.synchronize(), engine.synchronize()]);
+    await Future.wait([engine.synchronize(authorUserId: author), engine.synchronize(authorUserId: author)]);
 
     expect(api.calls, hasLength(1));
   });
@@ -163,10 +167,10 @@ void main() {
     final engine = SyncEngine(api: api, queue: queue);
 
     // On force des lots de 2 en vidant progressivement.
-    final outcome = await engine.synchronizeAll();
+    final outcome = await engine.synchronizeAll(authorUserId: author);
 
     expect(outcome.stillPending, 0);
-    expect(await queue.pendingCount(), 0);
+    expect(await queue.pendingCount(authorUserId: author), 0);
   });
 
   test('synchronizeAll s’arrête net sur une panne', () async {
@@ -174,9 +178,22 @@ void main() {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee))
       ..failure = const ApiException(statusCode: 0, message: 'hors ligne');
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronizeAll();
+    final outcome = await SyncEngine(api: api, queue: queue).synchronizeAll(authorUserId: author);
 
     expect(outcome.hasFailure, isTrue);
     expect(api.calls, hasLength(1));
+  });
+
+  test('ne pousse JAMAIS les mutations d’un autre compte (poste partagé)', () async {
+    final mine = await enqueue(DateTime.utc(2026, 9, 9, 9));
+    await enqueue(DateTime.utc(2026, 9, 9, 8), 'compte-b');
+    final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
+
+    await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+
+    // Envoyées avec la session de A, celles de B seraient attribuées à A par
+    // le serveur (et jugées selon SES droits) : elles restent en quarantaine.
+    expect(api.calls.single.map((m) => m.clientMutationId), [mine]);
+    expect(await queue.pendingCount(authorUserId: 'compte-b'), 1);
   });
 }

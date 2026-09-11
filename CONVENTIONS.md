@@ -41,6 +41,18 @@ src/<feature>/
 ### Sécurité
 - Chaque route protégée par un guard de rôle explicite (`@Roles('ADMIN', ...)` + `RolesGuard`). Voir `docs/permissions.md`.
 - Aucune vérification de permission uniquement côté UI.
+- Route rare et sensible (gestion des comptes, et demain prix/validations) : ajouter
+  `@UseGuards(FreshAccessGuard)` — l'accès est relu EN BASE, pas seulement dans le token.
+- Identifiants (email/téléphone) normalisés via `common/identifiers.ts` ; tout champ texte a un
+  `@MaxLength` ; sur un PATCH, `@IsOptionalNotNull()` (jamais `@IsOptional()` qui laisse passer `null`).
+- Tri de liste : `parseSort(query.sort, CHAMPS_AUTORISÉS, défaut)` — liste blanche obligatoire.
+
+### Audit & configuration
+- Toute action sensible écrit son `AuditLog` via `writeAudit(tx, actor, entry)` **dans la
+  transaction de la mutation** ; jamais de secret dans le journal.
+- Configuration validée au démarrage (`common/env.ts`) ; une limite se lit avec `intFromEnv()`.
+- `configureApp()` (`common/app-setup.ts`) est partagé par `main.ts` ET les tests e2e
+  (`test/helpers/e2e-app.ts`) : les tests éprouvent la configuration de production.
 
 ### Sync
 - Endpoint de sync idempotent (dédup sur `client_mutation_id`), validation qui peut rejeter (voir `docs/context.md`). Toute mutation offline passe par ce chemin.
@@ -59,19 +71,44 @@ src/<feature>/
 ### Structure d'une feature (identique pour toutes)
 ```
 lib/features/<feature>/
-├── data/         ← repository, DTO (Freezed), source distante (Dio) + locale (Drift)
-├── domain/       ← modèles métier, use cases si nécessaire
+├── data/         ← client d'API de la feature (Dio via `dioClientProvider`) + son provider,
+│                   modèles Freezed (miroirs des DTO), source locale Drift si besoin
+├── domain/       ← modèles métier, use cases — UNIQUEMENT si nécessaire (pas de dossier vide)
 ├── application/  ← providers Riverpod (state), controllers
 └── presentation/
-    ├── desktop/  ← écrans desktop
-    └── mobile/   ← écrans mobile
+    ├── <écran>.dart  ← point d'entrée de l'écran + widgets communs desktop/mobile
+    ├── desktop/      ← mises en page propres au desktop (tableau dense…)
+    └── mobile/       ← mises en page propres au mobile (lignes tactiles…)
 ```
+- **`lib/data/` = infrastructure PARTAGÉE uniquement** : client Dio unique, base Drift, file de
+  mutations, moteur de sync, stockage des tokens, réglages locaux (`LocalSettingsStore`), modèles
+  transverses (`PageMeta`, sync). Ce qui n'appartient qu'à une feature vit dans sa feature.
+  (Clarifie `CLAUDE.md` § Structure : `data/` y désigne cette infrastructure commune.)
 - **Logique métier partagée** dans `lib/core/` — 100 % commune desktop/mobile.
-- **State** : Riverpod (`AsyncNotifier`/`Notifier`). Pas de logique dans les widgets.
+- **State** : Riverpod (`AsyncNotifier`/`Notifier`). Pas de logique dans les widgets. Les données
+  propres à un écran sont `autoDispose` et dépendent de `currentUserIdProvider` : rien de la session
+  précédente ne reste en mémoire sur un poste partagé.
 - **Modèles** : Freezed + json_serializable, alignés sur les DTO du backend.
-- **HTTP** : un seul client Dio configuré (base URL, intercepteur JWT + refresh, gestion 401). Pas d'appel HTTP hors repository.
-- **Local/offline** : Drift ; toute écriture offline crée une entrée dans la file de mutations. Lecture **cache-first** puis rafraîchissement.
+- **HTTP** : un seul client Dio configuré (base URL, intercepteur JWT + refresh, gestion 401,
+  signal de joignabilité). Pas d'appel HTTP hors client d'API ; erreurs traduites par `guardApi()`.
+- **Local/offline** : Drift ; toute écriture offline crée une entrée dans la file de mutations,
+  **avec son auteur** (`authorUserId`) — une mutation ne part qu'avec la session de son auteur.
+  Lecture **cache-first** puis rafraîchissement.
 - **États d'écran** : chaque écran gère `Loading / Empty / Error / Success / Offline / SyncPending`.
+
+### UI (design system AMPÈRE — `docs/design-system.md`)
+- Couleurs **uniquement** via `AmpereColors.of(context)` ; typo/géométrie via `AmpereType` /
+  `AmpereGeometry` ; aucune couleur en dur hors `ui/theme/ampere_colors.dart`.
+- Points de rupture : `ui/breakpoints.dart` (mobile < 768 ≤ tablette < 1180 ≤ desktop).
+- Menus : `ui/navigation.dart` est la SOURCE UNIQUE des destinations ; chaque condition est le
+  miroir du guard serveur (rôle ET permission).
+- Un écran hébergé dans une coquille n'a **pas d'`AppBar`** (la coquille porte le titre).
+- Composants : `ui/widgets/screen_state.dart` (états, badges, alertes) et
+  `ui/widgets/ampere_controls.dart` (bouton Danger, zone cliquable à focus visible, dialogue de
+  confirmation destructive, panneau latéral). Saisie longue : panneau latéral (desktop) ou plein
+  écran (mobile), jamais une feuille modale basse.
+- Tests d'écran : remplacer les flux Drift (`pendingMutationsCountProvider`…) par des valeurs
+  fixes — les flux réels ne se résolvent pas dans le temps simulé de `testWidgets`.
 
 ## Génération de fichiers (une seule lib par besoin)
 

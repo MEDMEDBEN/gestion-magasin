@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/error/error_codes.dart';
 import '../../../core/providers.dart';
-import '../../../data/models/auth_models.dart';
+import '../data/auth_api.dart';
+import '../data/auth_models.dart';
 
 /// État d'authentification de l'application.
 sealed class AuthState {
@@ -31,7 +33,7 @@ class AuthSignedIn extends AuthState {
 }
 
 /// Pilote la session : connexion, restauration au démarrage, changement de mot
-/// de passe imposé, déconnexion. Aucune logique de ce genre dans les widgets.
+/// de passe, déconnexion. Aucune logique de ce genre dans les widgets.
 class AuthController extends AsyncNotifier<AuthState> {
   @override
   Future<AuthState> build() async => _restoreSession();
@@ -94,42 +96,71 @@ class AuthController extends AsyncNotifier<AuthState> {
     });
   }
 
-  /// Le serveur révoque toutes les sessions et renvoie des tokens neufs :
-  /// on les stocke, sinon l'utilisateur serait déconnecté juste après avoir
-  /// changé son mot de passe.
+  /// Change le mot de passe. Lève `ApiException` en cas de refus : l'écran
+  /// gère SON état (envoi en cours, erreur) — l'état global de session ne passe
+  /// jamais en chargement, sinon toute la coquille serait démontée pendant
+  /// l'appel et l'utilisateur perdrait sa navigation (revue C9).
+  ///
+  /// Le serveur révoque toutes les sessions et renvoie des tokens neufs : on
+  /// les stocke, sinon l'utilisateur serait déconnecté juste après.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
   }) async {
-    state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() async {
-      final session = await ref.read(authApiProvider).changePassword(
-            currentPassword: currentPassword,
-            newPassword: newPassword,
-          );
-      await ref.read(tokenStoreProvider).saveTokens(
-            accessToken: session.accessToken,
-            refreshToken: session.refreshToken,
-          );
-      return AuthSignedIn(session.user);
-    });
+    final deviceId = await ref.read(deviceIdProvider.future);
+    final session = await ref.read(authApiProvider).changePassword(
+          currentPassword: currentPassword,
+          newPassword: newPassword,
+          deviceId: deviceId,
+        );
+    await ref.read(tokenStoreProvider).saveTokens(
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+        );
+    state = AsyncValue.data(AuthSignedIn(session.user));
   }
 
-  /// `allDevices` ferme TOUTES les sessions du compte (perte, vol, départ).
-  Future<void> logout({bool allDevices = false}) async {
+  /// Déconnexion de CET appareil. Au mieux : hors-ligne, la session serveur ne
+  /// peut pas être fermée tout de suite, mais la session locale l'est — et le
+  /// refresh token, jamais réutilisé, expirera.
+  Future<void> logout() async {
     final tokenStore = ref.read(tokenStoreProvider);
     final refreshToken = await tokenStore.readRefreshToken();
-    try {
-      await ref.read(authApiProvider).logout(
-            refreshToken: refreshToken,
-            allDevices: allDevices,
-          );
-    } on ApiException {
-      // Hors-ligne : on ne peut pas révoquer côté serveur, mais on nettoie
-      // localement — le token expirera de lui-même.
+    if (refreshToken != null) {
+      try {
+        await ref.read(authApiProvider).logout(refreshToken: refreshToken);
+      } on ApiException {
+        // Voir ci-dessus : l'échec serveur n'empêche pas la déconnexion locale.
+      }
     }
     await tokenStore.clear();
     state = const AsyncValue.data(AuthSignedOut());
+  }
+
+  /// Ferme TOUTES les sessions du compte (perte, vol, départ).
+  ///
+  /// Contrairement à `logout`, un échec n'est JAMAIS avalé : l'utilisateur qui
+  /// croit son téléphone volé déconnecté alors que la requête a échoué laisserait
+  /// une session valide 90 jours au voleur (audit I3). La session locale est
+  /// alors conservée et l'`ApiException` remonte à l'écran.
+  Future<int> logoutAllDevices() async {
+    final tokenStore = ref.read(tokenStoreProvider);
+    final refreshToken = await tokenStore.readRefreshToken();
+    if (refreshToken == null) {
+      throw const ApiException(
+        statusCode: 401,
+        message: 'Session introuvable sur cet appareil',
+        code: ErrorCodes.refreshTokenInvalid,
+      );
+    }
+    final revoked = await ref
+        .read(authApiProvider)
+        .logout(refreshToken: refreshToken, allDevices: true);
+    await tokenStore.clear();
+    state = const AsyncValue.data(
+      AuthSignedOut(message: 'Toutes vos sessions ont été fermées.'),
+    );
+    return revoked;
   }
 
   /// Appelé par l'intercepteur Dio quand le refresh a définitivement échoué.

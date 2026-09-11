@@ -130,4 +130,25 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
      l'ordre (ex. paiement appliqué avant la vente qu'il solde). Un **rejet métier**, lui, n'arrête
      rien : c'est un verdict, pas une panne.
 
+- **2026-09-11** — Correctifs des audits de la feature P0 n°1 (Ratybox, session Claude). Décisions :
+  1. **Logout = route PUBLIQUE, le refresh token sert de preuve.** Raison : avec un access token
+     expiré, l'intercepteur rafraîchissait d'abord et le logout révoquait l'ANCIEN token, laissant le
+     neuf vivant 90 jours. `allDevices` révoque toutes les sessions du titulaire du token.
+  2. **Une reconnexion depuis le même `deviceId` remplace la session précédente de cet appareil.**
+     Raison : sans cela, chaque réinstallation laissait une session orpheline valable 90 jours.
+  3. **`trust proxy` = nombre de sauts (`TRUST_PROXY_HOPS`, 1 en prod derrière Traefik)**, jamais
+     `true`. Raison : sinon tout Internet partage le même compteur anti-brute-force et l'audit trace
+     l'IP du proxy ; `true` rendrait `X-Forwarded-For` falsifiable.
+  4. **Accès relu en base sur les routes sensibles (`FreshAccessGuard`)** plutôt que des access
+     tokens plus courts. Raison : garder le JWT sans état partout ailleurs (pas de requête DB par
+     appel) tout en fermant la fenêtre de 15 min là où elle permettait une prise de contrôle.
+  5. **File de mutations liée à son auteur (Drift v2, `authorUserId`).** Raison : le serveur attribue
+     une mutation au porteur du token qui l'envoie ; sur le poste partagé, les opérations d'un compte
+     partaient avec la session du suivant (rejets définitifs, ou droits de l'admin prêtés à un
+     vendeur). Les mutations d'un autre compte restent en quarantaine sur l'appareil, signalées.
+  6. **Configuration refusée au démarrage** si la clé JWT vaut l'exemple ou fait < 32 octets, ou si
+     une limite n'est pas un entier. Raison : échouer bruyamment plutôt que tourner sans protection.
+  7. **Points de rupture UI 768 / 1180** (AMPÈRE §9), rail d'icônes sur tablette ; **thème persisté
+     par utilisateur** (et non par appareil). Raison : conformité au design system validé.
+
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->

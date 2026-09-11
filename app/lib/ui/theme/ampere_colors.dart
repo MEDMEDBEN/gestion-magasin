@@ -34,6 +34,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     required this.neutral,
     required this.neutralBg,
     required this.vizAlt,
+    required this.scrim,
   });
 
   final Color bg;
@@ -61,6 +62,10 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   final Color neutral;
   final Color neutralBg;
   final Color vizAlt;
+
+  /// Voile posé derrière une couche flottante (dialogue, panneau, feuille) —
+  /// « scène » de §6 (desktop, rgba(3,7,14,.62)) et §7 (mobile, rgba(4,7,11,.66)).
+  final Color scrim;
 
   static AmpereColors of(BuildContext context) =>
       Theme.of(context).extension<AmpereColors>()!;
@@ -92,6 +97,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     neutral: Color(0xFF93A5B8),
     neutralBg: Color(0xFF1E2A38),
     vizAlt: Color(0xFF8B7CF6),
+    scrim: Color(0xA804070B),
   );
 
   /// §2.4 — mobile clair.
@@ -121,6 +127,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     neutral: Color(0xFF55677D),
     neutralBg: Color(0xFFEDF2F8),
     vizAlt: Color(0xFF6D5BD0),
+    scrim: Color(0xA804070B),
   );
 
   /// §2.1 — desktop sombre (défaut).
@@ -150,6 +157,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     neutral: Color(0xFF93A2BD),
     neutralBg: Color(0xFF16202F),
     vizAlt: Color(0xFF8B7CF6),
+    scrim: Color(0x9E03070E),
   );
 
   /// §2.2 — desktop clair (accents assombris pour tenir le contraste ;
@@ -180,6 +188,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     neutral: Color(0xFF5A6B85),
     neutralBg: Color(0xFFF7F9FD),
     vizAlt: Color(0xFF6D5BD0),
+    scrim: Color(0x9E03070E),
   );
 
   @override

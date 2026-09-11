@@ -59,3 +59,14 @@ class ApiException implements Exception {
   @override
   String toString() => 'ApiException($statusCode, $code): $message';
 }
+
+/// Exécute un appel réseau et traduit toute erreur Dio en `ApiException`
+/// porteuse du code métier stable. Utilisé par TOUS les clients d'API : un
+/// widget ne voit jamais une `DioException`.
+Future<T> guardApi<T>(Future<T> Function() call) async {
+  try {
+    return await call();
+  } on DioException catch (error) {
+    throw ApiException.fromDio(error);
+  }
+}

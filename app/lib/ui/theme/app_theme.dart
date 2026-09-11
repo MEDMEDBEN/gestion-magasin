@@ -106,7 +106,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(fieldRadius),
           ),
-        ),
+        ).copyWith(side: focusSide(colors)),
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -116,9 +116,16 @@ class AppTheme {
           minimumSize: Size(0, fieldHeight),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
-          side: BorderSide(color: colors.line, width: AmpereGeometry.borderWidth),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(fieldRadius),
+          ),
+        ).copyWith(
+          side: focusSide(
+            colors,
+            idle: BorderSide(
+              color: colors.line,
+              width: AmpereGeometry.borderWidth,
+            ),
           ),
         ),
       ),
@@ -128,7 +135,11 @@ class AppTheme {
           foregroundColor: colors.accentHi,
           minimumSize: const Size(0, AmpereGeometry.touchMin),
           textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
-        ),
+        ).copyWith(side: focusSide(colors)),
+      ),
+
+      iconButtonTheme: IconButtonThemeData(
+        style: ButtonStyle(side: focusSide(colors)),
       ),
 
       appBarTheme: AppBarTheme(
@@ -209,6 +220,23 @@ class AppTheme {
       ),
     );
   }
+
+  /// Focus clavier TOUJOURS visible (§6, §12.10) : contour 2 px `accent`,
+  /// tracé à l'EXTÉRIEUR du bouton (équivalent de `outline-offset`) pour rester
+  /// visible sur un bouton déjà rempli d'accent. `idle` = bordure hors focus.
+  static WidgetStateProperty<BorderSide?> focusSide(
+    AmpereColors colors, {
+    BorderSide? idle,
+  }) =>
+      WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.focused)
+            ? BorderSide(
+                color: colors.accent,
+                width: 2,
+                strokeAlign: BorderSide.strokeAlignOutside,
+              )
+            : idle,
+      );
 
   static OutlineInputBorder _fieldBorder(
     double radius,

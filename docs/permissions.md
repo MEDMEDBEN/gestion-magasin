@@ -27,6 +27,13 @@
 Le plafond `Customer.creditLimit` est un **entier en centimes**, `@default(0)` dans le schéma Prisma :
 un client neuf ne peut donc pas acheter à crédit tant que l'admin n'a rien fixé.
 
+**Permissions non attribuables « à la carte »** (`ADMIN_ONLY_PERMISSIONS`, 2026-09-11) : les trois
+règles fermes ci-dessus (`price.manage`, `sale.discount`, `purchase.confirm`) et l'administration
+(`user.manage`, `settings.manage`, `audit.read`) ne peuvent être accordées qu'à un compte portant le
+rôle ADMIN. Vérifié sur l'état FINAL d'un compte (retirer le rôle ADMIN à un compte qui garde l'une
+d'elles est refusé, `PERMISSION_NOT_GRANTABLE`). Traduction technique des règles validées — pas une
+règle nouvelle ; à confirmer par MEDMEDBEN à la relecture.
+
 ## Produits / Catégories / Emplacements
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
@@ -114,3 +121,13 @@ Cette matrice est appliquée par deux guards globaux, dans cet ordre :
 **Garde-fou** : une route authentifiée **sans `@Roles(...)` explicite est refusée** (`FORBIDDEN_ROLE`).
 Oublier le décorateur ferme la route au lieu de l'ouvrir — conformément à la règle 1 de `CLAUDE.md`.
 Les permissions atomiques (`@RequirePermissions(...)`) sont exigées **en plus** du rôle, toutes.
+
+**Gestion des comptes — garde-fous (2026-09-11, suite aux audits de la feature P0 #1)** :
+- `FreshAccessGuard` sur `/users` : l'accès (actif + rôle + permission) est relu **en base** à
+  chaque appel ; un admin désactivé ou rétrogradé perd la main tout de suite, sans attendre
+  l'expiration de son access token (15 min).
+- Un admin ne modifie **ni ses propres rôles/permissions, ni sa propre activation**
+  (`SELF_MODIFICATION_FORBIDDEN`) : ces changements passent par un autre administrateur.
+- Le système garde toujours **au moins un admin actif** (`LAST_ACTIVE_ADMIN`), contrôle fait sous
+  verrou dans la transaction (deux admins qui se retirent mutuellement : il en reste un).
+- L'UI dérive ses menus des mêmes règles (`app/lib/ui/navigation.dart`), sans jamais s'y substituer.

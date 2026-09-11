@@ -25,4 +25,19 @@ class AppConfig {
 
   /// L'access token dure 15 min côté serveur.
   static const Duration requestTimeout = Duration(seconds: 30);
+
+  /// Refuse de démarrer une build RELEASE pointée sur une URL non chiffrée :
+  /// mots de passe et refresh tokens (90 j) passeraient en clair sur le réseau
+  /// — et Windows, contrairement à Android/iOS, ne bloque pas le HTTP en clair.
+  /// En debug, `http://localhost` reste permis pour le développement.
+  static void assertSecureTransport({
+    required bool isRelease,
+    String url = apiBaseUrl,
+  }) {
+    if (isRelease && Uri.parse(url).scheme != 'https') {
+      throw StateError(
+        'API_BASE_URL doit être en https:// dans une build release (reçu : $url)',
+      );
+    }
+  }
 }

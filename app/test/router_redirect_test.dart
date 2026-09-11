@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/router/app_router.dart';
-import 'package:gestion_magasin/data/models/auth_models.dart';
+import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 
 AuthUser _user({bool mustChangePassword = false, List<String>? roles}) {
