@@ -5,29 +5,119 @@
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
 ## Phase actuelle
-`Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~85 % faite.
+`Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~90 % : code complet
+et corrigé après 2 tours d'audit, **pas encore close** (voir « Ce qu'il reste à faire »).
 
-## Relais en cours — 2026-09-11 · **Ratybox** (session Claude Opus 5)
+## Dernier relais — 2026-09-11 · **Ratybox** (session Claude Opus 5) · arrêtée à la demande
 
-> Section tenue à jour au fil de la session. Reprise : lire d'abord ce bloc.
+### ✅ FAIT ET PROUVÉ (tout est committé et poussé sur `develop`)
+- **Outillage aligné** : Flutter **3.44.8** / Dart 3.12.2 (révision `058e0af2c2`, celle de
+  MEDMEDBEN). Node 22 : `export PATH="/opt/homebrew/opt/node@22/bin:$PATH"` sur le Mac.
+- **1er tour d'audits** : `security-reviewer` **NON CONFORME** (1 critique, 4 importants,
+  11 mineurs) et `reviewer` **PAS OK** (3 bloquants, 17 à corriger, 17 suggestions) →
+  **tout corrigé, un test par correctif** :
+  - backend `d7c6c95` : compte désactivé refusé partout (C1), `trust proxy` (I1), accès relu en
+    base sur `/users` (`FreshAccessGuard`, I4), dernier admin sous verrou (M1), identifiants
+    normalisés et bornés (M2), permissions ADMIN non attribuables à la carte (M3),
+    change-password atomique et audité (M4), quota change-password (M5), logout public (M6),
+    config validée au démarrage (M8), filtre P2002→409 / 429→`RATE_LIMITED`, dédoublonnage.
+  - app `ae8c16e` : file de mutations liée à son auteur (Drift v2, I2), « tout déconnecter » qui
+    ne ment plus (I3), HTTPS imposé en release (M7), Android `allowBackup=false` + INTERNET (M9),
+    rôles cumulés préservés (M10/B2), permissions à la carte dans le formulaire (B3), structure
+    CONVENTIONS (C11), Danger/un seul primaire/focus/zoom texte/panneau latéral (C12-C16),
+    thème par utilisateur, points de rupture 768/1180 avec rail, pagination « Afficher plus ».
+- **Vérification visuelle** `360a488` : 11 écrans rendus avec les vraies polices (desktop,
+  tablette, mobile, sombre/clair) → 2 défauts trouvés et corrigés (boutons pas en Archivo —
+  Segoe UI sous Windows ; bande d'ombre du panneau). Outil :
+  `cd app && flutter test test/tools/screen_captures_test.dart --dart-define=CAPTURE_OUT=<dossier>`.
+  Backend réel démarré et testé au `curl` (health, 401/400 codés, logout public, refus de
+  démarrer avec la clé JWT d'exemple).
+- **2e tour (contre-audits)** — `security-reviewer` : **NON CONFORME** (1 important N1 + 9 mineurs) ;
+  `reviewer` : **PAS OK** (1 bloquant N1-revue + 3 à corriger). Déjà corrigé (commit `c3333c7`,
+  **sans tests dédiés encore**) : N1-sécu (token lié à sa session `sid` + `FreshAccessGuard`
+  exige session vivante et refuse `mustChangePassword` en base — couvre aussi N2-revue), N2
+  (UUID canonique, `CanonicalUuidPipe`), N3 (logout allDevices exige une session valide), N4
+  (change-password en compare-and-swap), N5 (`$executeRaw` paramétré), N10 (quota de connexion
+  par IP+identifiant, `TRUST_PROXY_HOPS` ≤ 2).
+- Docs mises à jour : `CONVENTIONS.md` (structure Flutter clarifiée, règles UI/audit/sécurité —
+  **à valider par MEDMEDBEN**), `docs/permissions.md`, `docs/context.md` (journal 2026-09-11),
+  `docs/DEPLOYMENT.md`, `docs/plan.md` (checklist P0 #1).
 
-- **Outillage aligné** : Flutter **3.44.8** / Dart 3.12.2 (même révision que MEDMEDBEN,
-  `058e0af2c2`). Machine macOS : `flutter build windows` y est **impossible** (« only supported
-  on Windows hosts ») — le point 1 ci-dessous reste à faire sur le poste Windows, sans contournement.
-- **Audits lancés** : `security-reviewer` → **NON CONFORME** (1 critique, 4 importants, 11 mineurs) ;
-  `reviewer` → **PAS OK** (3 bloquants, 17 à corriger, 17 suggestions). Tout est corrigé, un test
-  par correctif.
-- ✅ **Backend corrigé** (commit `d7c6c95`) : 55 tests unitaires + **76 e2e** verts. Détail dans
-  le message de commit (C1, I1, I4, M1-M8, C1-C7 revue…).
-- ✅ **App corrigée** (commit `ae8c16e`) : 140 tests, `flutter analyze` vierge. I2, I3, M6, M7,
-  M9, M10, B2, B3, C9-C16 + suggestions. Structure CONVENTIONS appliquée (et CONVENTIONS.md
-  clarifié), décisions consignées dans `docs/context.md` (journal 2026-09-11).
-- ✅ **Vérification visuelle** (commit `360a488`) : 11 écrans rendus avec les vraies polices —
-  a révélé 2 défauts corrigés (boutons pas en Archivo → Segoe UI sous Windows ; bande d'ombre
-  noire du panneau). Outil réutilisable : `flutter test test/tools/screen_captures_test.dart
-  --dart-define=CAPTURE_OUT=<dossier>`. Backend réel démarré : `/api/health`, 401/400 codés,
-  logout public, refus de démarrer avec la clé JWT d'exemple — vérifiés au `curl`.
-- ⏳ **Contre-audits `security-reviewer` + `reviewer` en cours** sur ces correctifs.
+### Preuves réelles (dernière exécution, 2026-09-11)
+```
+backend $ npx tsc --noEmit -p tsconfig.json   → aucune erreur
+backend $ npm test                            → Test Suites: 8 passed · Tests: 55 passed
+backend $ npm run test:e2e                    → Test Suites: 4 passed · Tests: 76 passed
+app     $ flutter analyze                     → No issues found!
+app     $ flutter test                        → +142 ~11 (11 ignorés = outil de captures)
+app     $ flutter build windows --release     → "build windows" only supported on Windows hosts
+```
+
+### ⚠️ Pièges pour MEDMEDBEN après `git pull`
+- Le backend **refuse de démarrer** si `JWT_ACCESS_SECRET` vaut la valeur d'exemple ou fait moins
+  de 32 octets → régénérer : `openssl rand -base64 48` dans `backend/.env`.
+- `TRUST_PROXY_HOPS` : 0 en dev (défaut), 1 en prod ; valeur > 2 refusée au démarrage.
+- Les anciens access tokens (sans `sid`) sont refusés sur `/users` (401) : l'app se rafraîchit
+  toute seule ; en test manuel, se reconnecter.
+- Drift passe en **schéma v2** (colonne `authorUserId`) : migration automatique au lancement.
+- `backend/generated/` (dossier mort, gitignoré) : toujours à supprimer à la main sur le poste Windows.
+
+### ⛔ CE QU'IL RESTE À FAIRE POUR CLORE LA P0 #1 (reprise ICI, dans cet ordre)
+1. **Tests e2e dédiés aux correctifs du commit `c3333c7`** (`backend/test/auth.e2e-spec.ts`,
+   `users-audit.e2e-spec.ts`, `http-hardening.e2e-spec.ts`) :
+   - N1 : après reset / revoke-sessions / change-password / logout allDevices / rotation, l'ANCIEN
+     access token d'un admin reçoit **401 `ACCESS_TOKEN_INVALID`** sur `GET` et `POST /users` ;
+     compte en `mustChangePassword` (reset) → 403 `PASSWORD_CHANGE_REQUIRED` sur `/users`.
+   - N2 : `PATCH /users/<SON-ID-EN-MAJUSCULES>` + `roles` → 403 `SELF_MODIFICATION_FORBIDDEN`.
+   - N3 : logout allDevices avec token révoqué → 401 `REFRESH_TOKEN_REVOKED` + audit
+     `REFRESH_TOKEN_REUSE_DETECTED` ; inconnu → 401 `REFRESH_TOKEN_INVALID` ; expiré → 401.
+   - N4 : reset commité pendant un change-password → 409, le mot de passe temporaire reste.
+     (Intercepter `$transaction` comme `failAuditInNextTransaction` pour faire le reset juste avant.)
+   - N10 : 3 échecs sur le compte A depuis une IP → 4ᵉ bloqué pour A, mais le compte B passe
+     depuis la même IP ; `TRUST_PROXY_HOPS=3` refusé (`env.spec.ts`).
+2. **Contre-audit sécurité, restes (mineurs)** :
+   - N6a corriger le commentaire de `app/lib/data/local/app_database.dart:22-27` (l'auteur est une
+     étiquette locale, pas une preuve) ; N6b avant de brancher la sync : `_inFlight` par auteur
+     dans `sync_engine.dart` + envoyer `authorUserId` dans le lot, le serveur répond
+     `NON_TRAITEE` s'il diffère du porteur du token.
+   - N7 app : `logoutAllDevices` traite `revoked < 1` comme un échec (`auth_controller.dart`).
+   - N8 app : `logout`/`logoutAllDevices` attendent le refresh en cours ; `_performRefresh`
+     (`dio_client.dart`) n'enregistre les tokens neufs que si le stockage contient encore le token
+     utilisé, sinon ferme côté serveur la session reçue.
+   - N9 Android : `android:dataExtractionRules` (exclure tout en `cloud-backup` ET
+     `device-transfer`) + le vérifier dans `app/test/android_manifest_test.dart`.
+3. **Contre-revue, bloquant N1 (à TRANCHER avec MEDMEDBEN)** — les permissions « à la carte »
+   n'ont d'effet que si une route autorise AUSSI le rôle du compte (les guards exigent rôle ET
+   permission). Analyse des 49 routes : seules **2** combinaisons ont un effet aujourd'hui —
+   VENDEUR + `supplier.read` (⚠️ contredit la matrice : « vendeur aucun accès fournisseurs ») et
+   MAGASINIER + `transfer.request`. Options : (a) déclarer par rôle dans `permissions.ts` la
+   liste des permissions réellement attribuables (servie au catalogue, appliquée par
+   `assertGrantable` en 422 et par `grantableFor` côté app) ; (b) retirer la section
+   « Permissions supplémentaires » et cumuler par les rôles (déjà possible). Le test
+   `app/test/user_form_test.dart` (« stock.loss » à un vendeur) devra être aligné.
+4. **Contre-revue, à corriger** : N3-revue — réécrire `app/test/auth_api_test.dart` avec le VRAI
+   `DioClient` (+ `MemoryTokenStore`) et vérifier qu'un 401 sur logout ne déclenche aucun refresh.
+   Partiels : S3 (Swagger : 422 `PERMISSION_NOT_GRANTABLE`, 403 `SELF_MODIFICATION_FORBIDDEN`),
+   S9 (`sync_api.dart` → `guardApi()`), S14 (`login_screen.dart` : `autocorrect:false`,
+   `enableSuggestions:false`), S16 (réserve des 15 min dans les textes du profil).
+   Suggestions s1-s12 de la contre-revue (non bloquantes) : voir le rapport résumé ci-dessous.
+5. Relancer **une dernière fois** `security-reviewer` et `reviewer` → cocher dans `docs/plan.md`.
+6. **Poste Windows** : `flutter build windows --release` (prérequis : composant VS
+   `Microsoft.VisualStudio.Component.VC.ATL` + espace sur `C:`) — le noter ici sans contournement.
+7. **Relecture humaine** des écrans (captures via l'outil ci-dessus) → cocher dans `docs/plan.md`.
+
+Suggestions non bloquantes de la contre-revue (à traiter quand on repasse sur ces fichiers) :
+course recherche/`loadMore` (`users_controller.dart`) ; rayons/marges desktop dans
+`user_form.dart` et `profile_screen.dart` ; liste mobile en lignes `lineSoft` plutôt qu'en cartes ;
+dialogue avant déconnexion à assumer comme exception I2 ; calcul des changements du formulaire à
+déplacer dans `application/` avec tests unitaires ; toast d'édition dupliqué ;
+`catch` limité à `ApiException` dans `profile_screen.dart` / `user_actions.dart` ; typer
+`PERMISSION_DESCRIPTIONS` ; base de test e2e dédiée (le helper désactive les vrais admins de la
+base de dev le temps d'un test) ; constantes pour les `operation` d'audit ; panneau latéral qui se
+ferme au clic extérieur (perte de saisie).
+
+### ▶️ ENSUITE
+Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 
 ### 📋 Plan de la P0 #2 — Produits + catégories + emplacements + codes-barres (préparé, non commencé)
 Contrat existant (routes 501) : `products.controller.ts`, `locations.controller.ts`. Ajustements prévus :
@@ -58,7 +148,7 @@ Contrat existant (routes 501) : `products.controller.ts`, `locations.controller.
 3. **Tests** : unitaires (EAN-13, curseur), e2e (CRUD, matrice des 3 rôles, génération unique +
    collision, règles catégories/emplacements, delta), app (dépôt local, écrans, formulaires).
 
-## Relais précédent
+## Relais précédent (MEDMEDBEN, 2026-09-10) — conservé pour l'historique
 - Date : 2026-09-10 · Qui : **MEDMEDBEN** · Session interrompue (budget de tokens)
 
 ### ✅ FAIT ET PROUVÉ
@@ -239,7 +329,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Feature | Statut | Backend | Frontend | Tests | Sécurité |
 |---|---|---|---|---|---|
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
-| **Auth + utilisateurs (P0 #1)** | 🟡 **~85 %** — reste build+audits | 🟢 Complet **+ AuditLog** | 🟢 Login · MDP · Profil · Gestion users | 🟢 43 e2e + 86 app | 🔴 **Audit à lancer** |
+| **Auth + utilisateurs (P0 #1)** | 🟡 **~90 %** — restes de contre-audit | 🟢 Complet, durci (2 tours d'audit) | 🟢 Login · MDP · Profil · Gestion users (desktop + mobile) | 🟢 55 unit + 76 e2e · 142 app | 🟡 2ᵉ tour : N1 corrigé, tests dédiés + mineurs à faire |
 | Produits + catégories + emplacements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
@@ -260,3 +350,11 @@ Légende : 🔴 non commencé · 🟡 en cours · 🟢 terminé et prouvé
 - Confirmer les canaux de notification temps réel (WebSocket) au moment de la feature Notifications (P1).
 - **Quand réserve-t-on du stock** (`reservedQuantity`) et quand la réservation expire-t-elle ?
   À trancher au démarrage de la feature Ventes.
+- **Permissions « à la carte »** (2026-09-11, bloquant de la contre-revue P0 #1) : liste des
+  permissions réellement attribuables par rôle, ou cumul par les rôles seulement ? Voir « Ce qu'il
+  reste à faire », point 3. MEDMEDBEN + Ratybox.
+- **Séparation des tâches** : `stock.adjust.validate`, `inventory.validate` et `sale.cancel` ne sont
+  pas dans `ADMIN_ONLY_PERMISSIONS` — un magasinier pourrait se voir accorder la validation de ses
+  propres ajustements. À confirmer (contre-audit sécurité, point 4).
+- **`CONVENTIONS.md` réécrit le 2026-09-11** (structure Flutter : `data/` dans la feature,
+  `presentation/{desktop,mobile}`, `lib/data` = infrastructure partagée) : à valider par MEDMEDBEN.
