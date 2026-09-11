@@ -131,6 +131,23 @@ Traçabilité / système
 
 **Règle stricte** : ne pas commencer une feature de la phase N+1 tant que toutes les features de la phase N ne sont pas terminées ET testées (voir critère de "tâche terminée" dans `CLAUDE.md`).
 
+## Checklists des features
+
+### Feature P0 n°1 : Authentification + utilisateurs + rôles/permissions
+- [x] Schéma DB validé (si tables nouvelles/modifiées) _(tables Phase 0 ; aucune migration serveur ; Drift local v2 : `authorUserId` sur la file de mutations)_
+- [x] Matrice de permissions CRUD par rôle définie _(docs/permissions.md, validée 2026-09-09 ; + permissions non attribuables à la carte, 2026-09-11)_
+- [x] Endpoints API implémentés (backend) _(auth : login/refresh/change-password/logout public/me ; users : CRUD, reset, revoke, catalogue de permissions)_
+- [x] Validation des entrées (class-validator) en place _(normalisation email/téléphone, MaxLength partout, null refusé en PATCH, rôles non vides)_
+- [x] Tests unitaires backend passent (preuve : output réel) _(55 — 2026-09-11)_
+- [x] Tests d'intégration backend passent _(76 e2e dont http-hardening — 2026-09-11)_
+- [x] UI desktop implémentée _(tableau dense, panneau latéral, rail tablette)_
+- [x] UI mobile implémentée _(lignes tactiles, formulaire plein écran)_
+- [x] Sync offline gérée si applicable — file de mutations + gestion des rejets _(aucune opération de compte hors-ligne ; file liée à son auteur, quarantaine des mutations d'un autre compte)_
+- [ ] Revue par subagent `reviewer` _(1re revue « PAS OK » → tout corrigé ; contre-revue en cours)_
+- [ ] Audit par subagent `security-reviewer` _(1er audit « NON CONFORME » → tout corrigé ; contre-audit en cours)_
+- [ ] Tests manuels effectués par un humain (capture ou description) _(captures des 11 écrans produites le 2026-09-11 — outil `app/test/tools/screen_captures_test.dart` ; relecture humaine + essai sur le poste Windows à faire)_
+- [ ] `flutter build windows --release` _(impossible sur macOS — à faire sur le poste Windows : composant ATL + espace disque)_
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

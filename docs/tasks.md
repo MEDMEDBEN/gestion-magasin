@@ -19,11 +19,15 @@
   par correctif.
 - ✅ **Backend corrigé** (commit `d7c6c95`) : 55 tests unitaires + **76 e2e** verts. Détail dans
   le message de commit (C1, I1, I4, M1-M8, C1-C7 revue…).
-- ⏳ **App en cours** : I2 (file de mutations liée à son auteur), I3 (déconnexion de tous les
-  appareils qui échouait en silence), M7 (HTTPS en release), M9 (Android `allowBackup`),
-  M10/B2/B3 (rôles cumulés + permissions à la carte dans le formulaire), C9-C16 (état local du
-  changement de mot de passe, double AppBar, structure CONVENTIONS, style danger, focus, zoom
-  texte, formulaire hors feuille basse), suggestions 8-16.
+- ✅ **App corrigée** (commit `ae8c16e`) : 140 tests, `flutter analyze` vierge. I2, I3, M6, M7,
+  M9, M10, B2, B3, C9-C16 + suggestions. Structure CONVENTIONS appliquée (et CONVENTIONS.md
+  clarifié), décisions consignées dans `docs/context.md` (journal 2026-09-11).
+- ✅ **Vérification visuelle** (commit `360a488`) : 11 écrans rendus avec les vraies polices —
+  a révélé 2 défauts corrigés (boutons pas en Archivo → Segoe UI sous Windows ; bande d'ombre
+  noire du panneau). Outil réutilisable : `flutter test test/tools/screen_captures_test.dart
+  --dart-define=CAPTURE_OUT=<dossier>`. Backend réel démarré : `/api/health`, 401/400 codés,
+  logout public, refus de démarrer avec la clé JWT d'exemple — vérifiés au `curl`.
+- ⏳ **Contre-audits `security-reviewer` + `reviewer` en cours** sur ces correctifs.
 
 ## Relais précédent
 - Date : 2026-09-10 · Qui : **MEDMEDBEN** · Session interrompue (budget de tokens)
