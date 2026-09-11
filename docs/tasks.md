@@ -7,7 +7,25 @@
 ## Phase actuelle
 `Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~85 % faite.
 
-## Dernier relais
+## Relais en cours — 2026-09-11 · **Ratybox** (session Claude Opus 5)
+
+> Section tenue à jour au fil de la session. Reprise : lire d'abord ce bloc.
+
+- **Outillage aligné** : Flutter **3.44.8** / Dart 3.12.2 (même révision que MEDMEDBEN,
+  `058e0af2c2`). Machine macOS : `flutter build windows` y est **impossible** (« only supported
+  on Windows hosts ») — le point 1 ci-dessous reste à faire sur le poste Windows, sans contournement.
+- **Audits lancés** : `security-reviewer` → **NON CONFORME** (1 critique, 4 importants, 11 mineurs) ;
+  `reviewer` → **PAS OK** (3 bloquants, 17 à corriger, 17 suggestions). Tout est corrigé, un test
+  par correctif.
+- ✅ **Backend corrigé** (commit `d7c6c95`) : 55 tests unitaires + **76 e2e** verts. Détail dans
+  le message de commit (C1, I1, I4, M1-M8, C1-C7 revue…).
+- ⏳ **App en cours** : I2 (file de mutations liée à son auteur), I3 (déconnexion de tous les
+  appareils qui échouait en silence), M7 (HTTPS en release), M9 (Android `allowBackup`),
+  M10/B2/B3 (rôles cumulés + permissions à la carte dans le formulaire), C9-C16 (état local du
+  changement de mot de passe, double AppBar, structure CONVENTIONS, style danger, focus, zoom
+  texte, formulaire hors feuille basse), suggestions 8-16.
+
+## Relais précédent
 - Date : 2026-09-10 · Qui : **MEDMEDBEN** · Session interrompue (budget de tokens)
 
 ### ✅ FAIT ET PROUVÉ
