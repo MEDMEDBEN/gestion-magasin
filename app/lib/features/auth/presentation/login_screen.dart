@@ -89,6 +89,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     controller: _identifier,
                     autofocus: true,
                     enabled: !isLoading,
+                    // Un identifiant ne se corrige pas : l'autocorrection
+                    // changerait « amine@magasin.dz » (contre-revue S14).
+                    autocorrect: false,
+                    enableSuggestions: false,
                     style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: const InputDecoration(
                       prefixIcon: Icon(LucideIcons.user, size: 17),
@@ -105,6 +109,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     controller: _password,
                     enabled: !isLoading,
                     obscureText: _obscure,
+                    // Rien ne doit mémoriser ni suggérer un mot de passe.
+                    autocorrect: false,
+                    enableSuggestions: false,
                     style: AmpereType.input.copyWith(color: colors.ink),
                     decoration: InputDecoration(
                       prefixIcon: const Icon(LucideIcons.lock, size: 17),

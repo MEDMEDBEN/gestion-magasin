@@ -39,8 +39,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final confirmed = await showAmpereConfirmDialog(
       context,
       title: 'Déconnecter tous les appareils ?',
+      // Réserve honnête (contre-revue S16) : un appareil déjà connecté garde un
+      // accès limité jusqu'à l'expiration de son access token (15 min) ; seules
+      // les actions sensibles lui sont refusées immédiatement.
       body: 'Toutes vos sessions seront fermées, y compris celle-ci. '
-          'Vous devrez vous reconnecter.',
+          'Vous devrez vous reconnecter. Un appareil déjà ouvert peut garder '
+          'un accès limité jusqu’à 15 minutes.',
       confirmLabel: 'Tout déconnecter',
     );
     if (!confirmed) return;

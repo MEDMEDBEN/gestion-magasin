@@ -19,6 +19,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { ActorContext } from '../audit/audit-writer';
 import {
@@ -67,6 +68,10 @@ export class UsersController {
   })
   @ApiCreatedResponse({ type: UserDto })
   @ApiConflictResponse({ type: ErrorResponseDto })
+  @ApiUnprocessableEntityResponse({
+    type: ErrorResponseDto,
+    description: '`PERMISSION_NOT_GRANTABLE` — permission non attribuable à la carte',
+  })
   create(
     @Body() dto: CreateUserDto,
     @CurrentUser() actor: AuthenticatedUser,
@@ -109,6 +114,16 @@ export class UsersController {
   })
   @ApiOkResponse({ type: UserDto })
   @ApiConflictResponse({ type: ErrorResponseDto, description: '`LAST_ACTIVE_ADMIN`' })
+  @ApiForbiddenResponse({
+    type: ErrorResponseDto,
+    description:
+      '`SELF_MODIFICATION_FORBIDDEN` — un admin ne modifie ni ses rôles/permissions ' +
+      'ni sa propre activation',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: ErrorResponseDto,
+    description: '`PERMISSION_NOT_GRANTABLE` — permission non attribuable à la carte',
+  })
   update(
     @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateUserDto,

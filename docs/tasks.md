@@ -100,12 +100,17 @@ app     $ flutter build windows --release     → "build windows" only supported
    `assertGrantable` en 422 et par `grantableFor` côté app) ; (b) retirer la section
    « Permissions supplémentaires » et cumuler par les rôles (déjà possible). Le test
    `app/test/user_form_test.dart` (« stock.loss » à un vendeur) devra être aligné.
-4. **Contre-revue, à corriger** : N3-revue — réécrire `app/test/auth_api_test.dart` avec le VRAI
-   `DioClient` (+ `MemoryTokenStore`) et vérifier qu'un 401 sur logout ne déclenche aucun refresh.
-   Partiels : S3 (Swagger : 422 `PERMISSION_NOT_GRANTABLE`, 403 `SELF_MODIFICATION_FORBIDDEN`),
-   S9 (`sync_api.dart` → `guardApi()`), S14 (`login_screen.dart` : `autocorrect:false`,
-   `enableSuggestions:false`), S16 (réserve des 15 min dans les textes du profil).
-   Suggestions s1-s12 de la contre-revue (non bloquantes) : voir le rapport résumé ci-dessous.
+4. ✅ **FAIT (2026-09-13, MEDMEDBEN)** — contre-revue « à corriger » :
+   - N3-revue : `app/test/auth_api_test.dart` réécrit avec le VRAI `DioClient` + `MemoryTokenStore` ;
+     nouveau test : un 401 sur logout ne déclenche aucun refresh ni fin de session.
+   - S3 : Swagger documente 422 `PERMISSION_NOT_GRANTABLE` (POST/PATCH) et 403
+     `SELF_MODIFICATION_FORBIDDEN` (PATCH) sur `users.controller.ts`.
+   - S9 : `sync_api.dart` passe par `guardApi()`.
+   - S14 : `login_screen.dart` — `autocorrect:false`, `enableSuggestions:false` sur les 2 champs.
+   - S16 : dialogue « déconnecter tous les appareils » — réserve des 15 min écrite en clair.
+   - Suggestions non bloquantes s1-s12 : **non traitées** (listées plus bas, à reprendre en
+     repassant sur ces fichiers).
+   Preuve : app analyze propre · **147** tests · backend 55 unitaires · **88** e2e · tsc OK.
 5. Relancer **une dernière fois** `security-reviewer` et `reviewer` → cocher dans `docs/plan.md`.
 6. **Poste Windows** : `flutter build windows --release` (prérequis : composant VS
    `Microsoft.VisualStudio.Component.VC.ATL` + espace sur `C:`) — le noter ici sans contournement.
