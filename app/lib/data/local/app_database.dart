@@ -19,11 +19,14 @@ enum LocalMutationStatus { enAttente, confirmee, rejetee }
 class PendingMutations extends Table {
   TextColumn get clientMutationId => text()();
 
-  /// Compte qui a saisi l'opération (schéma v2 — audit I2). Le serveur attribue
-  /// une mutation au porteur du token qui l'envoie : sur un poste partagé, sans
-  /// cette colonne, les pertes laissées en attente par le magasinier partiraient
-  /// avec le token du vendeur suivant (rejetées), ou une ligne forgée par un
-  /// vendeur serait exécutée avec les droits de l'admin connecté après lui.
+  /// Compte qui a saisi l'opération (schéma v2 — audit I2).
+  ///
+  /// C'est une ÉTIQUETTE LOCALE de tri, PAS une preuve d'auteur : quiconque accède
+  /// au fichier SQLite peut la réécrire (contre-audit N6a). Elle sert à n'envoyer,
+  /// sur un poste partagé, que les lignes du compte connecté — le serveur, lui,
+  /// attribue toujours une mutation au porteur du token et revérifie ses droits.
+  /// Avant de brancher réellement la sync, voir N6b dans `docs/tasks.md` : le lot
+  /// devra porter `authorUserId` et le serveur le comparer au token.
   /// `null` = ligne antérieure à la v2 : auteur inconnu, jamais envoyée.
   TextColumn get authorUserId => text().nullable()();
 

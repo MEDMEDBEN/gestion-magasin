@@ -125,6 +125,8 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// refresh token, jamais réutilisé, expirera.
   Future<void> logout() async {
     final tokenStore = ref.read(tokenStoreProvider);
+    // Lire le refresh token APRÈS une éventuelle rotation en cours (N8).
+    await ref.read(dioClientProvider).awaitPendingRefresh();
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken != null) {
       try {
@@ -145,6 +147,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// alors conservée et l'`ApiException` remonte à l'écran.
   Future<int> logoutAllDevices() async {
     final tokenStore = ref.read(tokenStoreProvider);
+    await ref.read(dioClientProvider).awaitPendingRefresh();
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken == null) {
       throw const ApiException(
@@ -156,6 +159,16 @@ class AuthController extends AsyncNotifier<AuthState> {
     final revoked = await ref
         .read(authApiProvider)
         .logout(refreshToken: refreshToken, allDevices: true);
+    // Zéro session fermée = rien n'a été coupé côté serveur (session déjà
+    // remplacée, par exemple). Annoncer « tout est déconnecté » serait un
+    // mensonge dangereux en cas de vol : on garde la session et on le dit (N7).
+    if (revoked < 1) {
+      throw const ApiException(
+        statusCode: 409,
+        message: 'Aucune session n’a pu être fermée. Réessayez.',
+        code: ErrorCodes.refreshTokenInvalid,
+      );
+    }
     await tokenStore.clear();
     state = const AsyncValue.data(
       AuthSignedOut(message: 'Toutes vos sessions ont été fermées.'),

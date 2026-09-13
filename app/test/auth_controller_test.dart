@@ -41,6 +41,17 @@ void main() {
       expect(tokens.refresh, 'refresh-1');
     });
 
+    test('ZÉRO session fermée côté serveur = échec, pas un succès (N7)', () async {
+      api.allDevicesRevoked = 0;
+
+      await expectLater(controller().logoutAllDevices(), throwsA(isA<ApiException>()));
+
+      // Annoncer « tout est déconnecté » alors que rien ne l'a été serait un
+      // mensonge dangereux en cas de vol.
+      expect(container.read(authControllerProvider).value, isA<AuthSignedIn>());
+      expect(tokens.refresh, 'refresh-1');
+    });
+
     test('un succès ferme la session locale et le dit', () async {
       final revoked = await controller().logoutAllDevices();
 

@@ -12,6 +12,21 @@ void main() {
     expect(manifest, contains('android:fullBackupContent="false"'));
   });
 
+  test('Android 12+ : ni sauvegarde cloud ni transfert d’appareil (N9)', () {
+    expect(manifest, contains('android:dataExtractionRules="@xml/data_extraction_rules"'));
+    final rules =
+        File('android/app/src/main/res/xml/data_extraction_rules.xml').readAsStringSync();
+    for (final section in ['cloud-backup', 'device-transfer']) {
+      final start = rules.indexOf('<$section>');
+      final end = rules.indexOf('</$section>');
+      final body = start < 0 || end < start ? null : rules.substring(start, end);
+      expect(body, isNotNull, reason: 'section <$section> absente');
+      for (final domain in ['root', 'file', 'database', 'sharedpref', 'external']) {
+        expect(body, contains('domain="$domain" path="."'), reason: '$section / $domain');
+      }
+    }
+  });
+
   test('la build release peut joindre l’API', () {
     expect(manifest, contains('android.permission.INTERNET'));
   });

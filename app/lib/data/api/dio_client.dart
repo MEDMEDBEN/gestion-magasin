@@ -149,6 +149,16 @@ class DioClient {
     });
   }
 
+  /// Attend la fin d'un refresh en cours, s'il y en a un (contre-audit N8).
+  ///
+  /// Une déconnexion lancée PENDANT une rotation lirait l'ancien refresh token :
+  /// le serveur fermerait une session déjà remplacée, et la session neuve —
+  /// enregistrée juste après — resterait vivante 90 jours.
+  Future<void> awaitPendingRefresh() async {
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) await inFlight;
+  }
+
   Future<bool> _performRefresh() async {
     final refreshToken = await _tokenStore.readRefreshToken();
     if (refreshToken == null) {
@@ -164,10 +174,28 @@ class DioClient {
       );
 
       final data = response.data!;
+      final newRefresh = data['refreshToken'] as String;
+
+      // Session fermée localement PENDANT la rotation (déconnexion, autre compte
+      // connecté) : enregistrer ces tokens ressusciterait une session que
+      // l'utilisateur vient de quitter. On la ferme côté serveur, et on s'arrête.
+      if (await _tokenStore.readRefreshToken() != refreshToken) {
+        try {
+          await dio.post<void>(
+            '/auth/logout',
+            data: {'refreshToken': newRefresh},
+            options: Options(extra: {'skipAuth': true}),
+          );
+        } on DioException {
+          // Au pire, ce token jamais stocké expirera de lui-même.
+        }
+        return false;
+      }
+
       // Rotation : l'ancien refresh est mort côté serveur, on DOIT stocker le neuf.
       await _tokenStore.saveTokens(
         accessToken: data['accessToken'] as String,
-        refreshToken: data['refreshToken'] as String,
+        refreshToken: newRefresh,
       );
       _lastTransientFailure = null;
       return true;

@@ -183,11 +183,14 @@ class FakeAuthApi implements AuthApi {
   final List<bool> logoutCalls = [];
   AuthUser user = authUser();
 
+  /// Sessions que le serveur déclare fermées sur « tous appareils ».
+  int allDevicesRevoked = 3;
+
   @override
   Future<int> logout({required String refreshToken, bool allDevices = false}) async {
     logoutCalls.add(allDevices);
     if (logoutFailure != null) throw logoutFailure!;
-    return allDevices ? 3 : 1;
+    return allDevices ? allDevicesRevoked : 1;
   }
 
   @override

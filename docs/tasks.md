@@ -75,17 +75,22 @@ app     $ flutter build windows --release     → "build windows" only supported
    > conteneurs : lancer le nôtre sur 5433 avec un override local non commité
    > (`ports: !override ["127.0.0.1:5433:5432"]`) et exporter
    > `DATABASE_URL=postgresql://dev:dev@localhost:5433/gestion_magasin_dev?schema=public`.
-2. **Contre-audit sécurité, restes (mineurs)** :
-   - N6a corriger le commentaire de `app/lib/data/local/app_database.dart:22-27` (l'auteur est une
-     étiquette locale, pas une preuve) ; N6b avant de brancher la sync : `_inFlight` par auteur
-     dans `sync_engine.dart` + envoyer `authorUserId` dans le lot, le serveur répond
-     `NON_TRAITEE` s'il diffère du porteur du token.
-   - N7 app : `logoutAllDevices` traite `revoked < 1` comme un échec (`auth_controller.dart`).
-   - N8 app : `logout`/`logoutAllDevices` attendent le refresh en cours ; `_performRefresh`
-     (`dio_client.dart`) n'enregistre les tokens neufs que si le stockage contient encore le token
-     utilisé, sinon ferme côté serveur la session reçue.
-   - N9 Android : `android:dataExtractionRules` (exclure tout en `cloud-backup` ET
-     `device-transfer`) + le vérifier dans `app/test/android_manifest_test.dart`.
+2. ✅ **FAIT (2026-09-13, MEDMEDBEN)** — restes mineurs du contre-audit sécurité, chacun testé
+   ET contre-éprouvé (correctif retiré → test en échec) :
+   - N6a : commentaire corrigé (`app_database.dart`) — `authorUserId` est une étiquette locale,
+     pas une preuve d'auteur.
+   - N7 : `logoutAllDevices` traite `revoked < 1` comme un échec, session locale conservée
+     (`auth_controller_test.dart`).
+   - N8 : `DioClient.awaitPendingRefresh()` attendu par `logout`/`logoutAllDevices` ; `_performRefresh`
+     n'enregistre les tokens neufs que si le stockage contient encore le token utilisé, sinon
+     ferme la session neuve côté serveur (`dio_client_test.dart`, 2 tests).
+   - N9 : `android:dataExtractionRules` → `res/xml/data_extraction_rules.xml` (tout exclu en
+     `cloud-backup` ET `device-transfer`), vérifié dans `android_manifest_test.dart`.
+   - ⏳ **N6b reste un PRÉREQUIS, pas encore dû** : à faire AVANT de brancher réellement la sync
+     dans l'app (`_inFlight` par auteur dans `sync_engine.dart` + `authorUserId` dans le lot, le
+     serveur répond `NON_TRAITEE` s'il diffère du porteur du token). La sync n'est pas encore
+     déclenchée par un écran.
+   Preuve : `flutter analyze` → No issues found! · `flutter test` → **+146 ~11** All tests passed.
 3. **Contre-revue, bloquant N1 (à TRANCHER avec MEDMEDBEN)** — les permissions « à la carte »
    n'ont d'effet que si une route autorise AUSSI le rôle du compte (les guards exigent rôle ET
    permission). Analyse des 49 routes : seules **2** combinaisons ont un effet aujourd'hui —

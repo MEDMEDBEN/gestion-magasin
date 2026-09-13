@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -71,6 +73,33 @@ class _ThrowingRefreshAdapter implements HttpClientAdapter {
         requestOptions: options,
       );
     }
+    return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Comme `_ScriptedAdapter`, mais la réponse à `/auth/refresh` n'arrive que
+/// quand le test ouvre la barrière : permet d'agir PENDANT une rotation.
+class _GatedRefreshAdapter implements HttpClientAdapter {
+  final gate = Completer<void>();
+  final refreshStarted = Completer<void>();
+  final List<RequestOptions> requests = [];
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<List<int>>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    requests.add(options);
+    if (options.path == '/auth/refresh') {
+      refreshStarted.complete();
+      await gate.future;
+      return _json({'accessToken': 'access-neuf', 'refreshToken': 'refresh-neuf'}, 200);
+    }
+    if (options.path == '/auth/logout') return _json({'revoked': 1}, 200);
     return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
   }
 
@@ -160,6 +189,59 @@ void main() {
     client.dio.httpClientAdapter = adapter;
     return client;
   }
+
+  group('déconnexion PENDANT une rotation (contre-audit N8)', () {
+    test('awaitPendingRefresh attend la fin de la rotation en cours', () async {
+      final adapter = _GatedRefreshAdapter();
+      final client = DioClient(
+        tokenStore: tokenStore,
+        onSessionExpired: () async => sessionExpiredCalls++,
+        baseUrl: 'http://test.local/api',
+      );
+      client.dio.httpClientAdapter = adapter;
+
+      unawaited(client.dio.get<void>('/products').catchError((_) => Response<void>(
+            requestOptions: RequestOptions(),
+          )));
+      await adapter.refreshStarted.future;
+
+      var waited = false;
+      final waiting = client.awaitPendingRefresh().then((_) => waited = true);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(waited, isFalse, reason: 'ne doit pas rendre la main pendant la rotation');
+
+      adapter.gate.complete();
+      await waiting;
+      // La déconnexion lira donc le token NEUF, pas celui qui vient de mourir.
+      expect(await tokenStore.readRefreshToken(), 'refresh-neuf');
+    });
+
+    test('session quittée pendant la rotation : tokens neufs NON stockés, session neuve fermée', () async {
+      final adapter = _GatedRefreshAdapter();
+      final client = DioClient(
+        tokenStore: tokenStore,
+        onSessionExpired: () async => sessionExpiredCalls++,
+        baseUrl: 'http://test.local/api',
+      );
+      client.dio.httpClientAdapter = adapter;
+
+      final pending = client.dio.get<void>('/products').catchError((_) => Response<void>(
+            requestOptions: RequestOptions(),
+          ));
+      await adapter.refreshStarted.future;
+
+      // L'utilisateur se déconnecte localement pendant que la rotation voyage.
+      storage.values.clear();
+      adapter.gate.complete();
+      await pending;
+
+      // Ressusciter une session que l'utilisateur vient de quitter : interdit.
+      expect(await tokenStore.readRefreshToken(), isNull);
+      final logout = adapter.requests.where((r) => r.path == '/auth/logout').toList();
+      expect(logout, hasLength(1));
+      expect((logout.single.data as Map)['refreshToken'], 'refresh-neuf');
+    });
+  });
 
   test('joint l’access token aux requêtes protégées', () async {
     final adapter = _ScriptedAdapter((_) => _json({'ok': true}, 200));
