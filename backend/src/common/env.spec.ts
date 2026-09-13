@@ -33,6 +33,9 @@ describe('validateEnv — configuration refusée au démarrage', () => {
   it('refuse un nombre de sauts de proxy négatif ou décimal', () => {
     expect(() => validateEnv({ ...valid, TRUST_PROXY_HOPS: '-1' })).toThrow(/TRUST_PROXY_HOPS/);
     expect(() => validateEnv({ ...valid, TRUST_PROXY_HOPS: '1.5' })).toThrow(/TRUST_PROXY_HOPS/);
+    // Au-delà de 2 sauts, un client pourrait forger son IP via X-Forwarded-For
+    // et contourner le quota de connexion (contre-audit N10).
+    expect(() => validateEnv({ ...valid, TRUST_PROXY_HOPS: '3' })).toThrow(/TRUST_PROXY_HOPS/);
   });
 });
 

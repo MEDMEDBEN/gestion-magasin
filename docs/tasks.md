@@ -8,7 +8,9 @@
 `Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~90 % : code complet
 et corrigé après 2 tours d'audit, **pas encore close** (voir « Ce qu'il reste à faire »).
 
-## Dernier relais — 2026-09-11 · **Ratybox** (session Claude Opus 5) · arrêtée à la demande
+## Dernier relais — 2026-09-13 · **MEDMEDBEN** reprend (point 1 soldé, suite en cours)
+
+## Relais précédent — 2026-09-11 · **Ratybox** (session Claude Opus 5) · arrêtée à la demande
 
 ### ✅ FAIT ET PROUVÉ (tout est committé et poussé sur `develop`)
 - **Outillage aligné** : Flutter **3.44.8** / Dart 3.12.2 (révision `058e0af2c2`, celle de
@@ -63,18 +65,16 @@ app     $ flutter build windows --release     → "build windows" only supported
 - `backend/generated/` (dossier mort, gitignoré) : toujours à supprimer à la main sur le poste Windows.
 
 ### ⛔ CE QU'IL RESTE À FAIRE POUR CLORE LA P0 #1 (reprise ICI, dans cet ordre)
-1. **Tests e2e dédiés aux correctifs du commit `c3333c7`** (`backend/test/auth.e2e-spec.ts`,
-   `users-audit.e2e-spec.ts`, `http-hardening.e2e-spec.ts`) :
-   - N1 : après reset / revoke-sessions / change-password / logout allDevices / rotation, l'ANCIEN
-     access token d'un admin reçoit **401 `ACCESS_TOKEN_INVALID`** sur `GET` et `POST /users` ;
-     compte en `mustChangePassword` (reset) → 403 `PASSWORD_CHANGE_REQUIRED` sur `/users`.
-   - N2 : `PATCH /users/<SON-ID-EN-MAJUSCULES>` + `roles` → 403 `SELF_MODIFICATION_FORBIDDEN`.
-   - N3 : logout allDevices avec token révoqué → 401 `REFRESH_TOKEN_REVOKED` + audit
-     `REFRESH_TOKEN_REUSE_DETECTED` ; inconnu → 401 `REFRESH_TOKEN_INVALID` ; expiré → 401.
-   - N4 : reset commité pendant un change-password → 409, le mot de passe temporaire reste.
-     (Intercepter `$transaction` comme `failAuditInNextTransaction` pour faire le reset juste avant.)
-   - N10 : 3 échecs sur le compte A depuis une IP → 4ᵉ bloqué pour A, mais le compte B passe
-     depuis la même IP ; `TRUST_PROXY_HOPS=3` refusé (`env.spec.ts`).
+1. ✅ **FAIT (2026-09-13, MEDMEDBEN)** — tests e2e dédiés aux correctifs `c3333c7` :
+   `backend/test/session-hardening.e2e-spec.ts` (12 tests : N1 ×6, N2, N3 ×3, N4, N10) +
+   `TRUST_PROXY_HOPS=3` refusé dans `src/common/env.spec.ts`. **Contre-épreuve** : le correctif
+   N4 retiré, son test échoue → le test protège réellement. Preuve :
+   `npm test` → 55 passed · `npm run test:e2e` → 5 suites, **88 passed** · `tsc` OK.
+   > ⚠️ Piège machine Windows : le port 5432 peut être pris par un AUTRE projet
+   > (`infinit-school-postgres-1`) → « Authentication failed for `dev` ». Ne pas couper ses
+   > conteneurs : lancer le nôtre sur 5433 avec un override local non commité
+   > (`ports: !override ["127.0.0.1:5433:5432"]`) et exporter
+   > `DATABASE_URL=postgresql://dev:dev@localhost:5433/gestion_magasin_dev?schema=public`.
 2. **Contre-audit sécurité, restes (mineurs)** :
    - N6a corriger le commentaire de `app/lib/data/local/app_database.dart:22-27` (l'auteur est une
      étiquette locale, pas une preuve) ; N6b avant de brancher la sync : `_inFlight` par auteur
