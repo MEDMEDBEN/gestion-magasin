@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { Location, Prisma } from '../generated/prisma/client';
@@ -42,7 +43,10 @@ export class LocationsService {
     return rows.map(LocationsService.toDto);
   }
 
-  async create(dto: CreateLocationDto): Promise<LocationDto> {
+  async create(
+    dto: CreateLocationDto,
+    actor: ActorContext,
+  ): Promise<LocationDto> {
     if (dto.type && dto.type !== LocationTypeDto.EMPLACEMENT) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
@@ -89,11 +93,24 @@ export class LocationsService {
           position: dto.position ?? null,
         },
       });
-      return LocationsService.toDto(location);
+      const created = LocationsService.toDto(location);
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'Location',
+        entityId: created.id,
+        newValue: LocationsService.auditSnapshot(created),
+      });
+      return created;
     });
   }
 
-  async update(id: string, dto: UpdateLocationDto): Promise<LocationDto> {
+  /// Seule écriture du catalogue ouverte à un autre rôle qu'ADMIN (MAGASINIER) :
+  /// qui a recodé ou désactivé un emplacement doit rester traçable.
+  async update(
+    id: string,
+    dto: UpdateLocationDto,
+    actor: ActorContext,
+  ): Promise<LocationDto> {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.location.findUnique({ where: { id } });
       if (!before) {
@@ -125,8 +142,28 @@ export class LocationsService {
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         },
       });
-      return LocationsService.toDto(location);
+      const after = LocationsService.toDto(location);
+      const oldValue = LocationsService.auditSnapshot(
+        LocationsService.toDto(before),
+      );
+      const newValue = LocationsService.auditSnapshot(after);
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'Location',
+          entityId: id,
+          oldValue,
+          newValue,
+        });
+      }
+      return after;
     });
+  }
+
+  private static auditSnapshot(location: LocationDto): Prisma.InputJsonObject {
+    const snapshot: Partial<LocationDto> = { ...location };
+    delete snapshot.updatedAt;
+    return snapshot as Prisma.InputJsonObject;
   }
 
   /// `A-02-04-03` : les niveaux renseignés, dans l'ordre, jusqu'au premier absent.

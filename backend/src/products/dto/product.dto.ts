@@ -6,7 +6,6 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   Min,
   MinLength,
@@ -15,7 +14,7 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsOptionalNotNull } from '../../common/validation';
+import { IsCanonicalUuid, IsOptionalNotNull } from '../../common/validation';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 export enum ProductUnitDto {
@@ -46,7 +45,7 @@ export class CreateProductDto {
     description:
       'UUID généré par le client (contrat de sync). Absent → généré serveur.',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   id?: string;
 
@@ -63,7 +62,7 @@ export class CreateProductDto {
   })
   @IsString()
   @IsOptional()
-  @MaxLength(80)
+  @MaxLength(64)
   barcode?: string;
 
   @ApiProperty({ example: 'Câble 3G2.5 souple' })
@@ -91,13 +90,16 @@ export class CreateProductDto {
   @IsEnum(ProductUnitDto)
   unit!: ProductUnitDto;
 
-  @ApiPropertyOptional() @IsUUID() @IsOptional() categoryId?: string | null;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() taxRateId?: string | null;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() mainSupplierId?: string | null;
+  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() categoryId?:
+    string | null;
+  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() taxRateId?:
+    string | null;
+  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() mainSupplierId?:
+    string | null;
   @ApiPropertyOptional({
     description: 'Emplacement physique au dépôt (type EMPLACEMENT)',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   storageLocationId?: string | null;
 
@@ -107,11 +109,13 @@ export class CreateProductDto {
   })
   @IsString()
   @IsOptional()
+  @MaxLength(20)
   minThreshold?: string;
 
   @ApiPropertyOptional({ example: '5.000' })
   @IsString()
   @IsOptional()
+  @MaxLength(20)
   safetyStock?: string;
 
   @ApiPropertyOptional({
@@ -138,7 +142,7 @@ export class UpdateProductDto {
   @ApiPropertyOptional({ description: 'Correction d’un code mal saisi.' })
   @IsOptionalNotNull()
   @IsString()
-  @MaxLength(80)
+  @MaxLength(64)
   barcode?: string;
 
   @ApiPropertyOptional()
@@ -168,21 +172,33 @@ export class UpdateProductDto {
   @IsEnum(ProductUnitDto)
   unit?: ProductUnitDto;
 
-  @ApiPropertyOptional({ nullable: true }) @IsUUID() @IsOptional() categoryId?:
-    string | null;
-  @ApiPropertyOptional({ nullable: true }) @IsUUID() @IsOptional() taxRateId?:
-    string | null;
   @ApiPropertyOptional({ nullable: true })
-  @IsUUID()
+  @IsCanonicalUuid()
+  @IsOptional()
+  categoryId?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsCanonicalUuid()
+  @IsOptional()
+  taxRateId?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsCanonicalUuid()
   @IsOptional()
   mainSupplierId?: string | null;
   @ApiPropertyOptional({ nullable: true })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   storageLocationId?: string | null;
 
-  @ApiPropertyOptional() @IsOptionalNotNull() @IsString() minThreshold?: string;
-  @ApiPropertyOptional() @IsOptionalNotNull() @IsString() safetyStock?: string;
+  @ApiPropertyOptional()
+  @IsOptionalNotNull()
+  @IsString()
+  @MaxLength(20)
+  minThreshold?: string;
+  @ApiPropertyOptional()
+  @IsOptionalNotNull()
+  @IsString()
+  @MaxLength(20)
+  safetyStock?: string;
   @ApiPropertyOptional()
   @IsOptionalNotNull()
   @IsBoolean()
@@ -200,7 +216,7 @@ export class ProductListQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     description: 'Filtre catégorie (sous-catégories incluses)',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   categoryId?: string;
 
@@ -248,7 +264,7 @@ export class CreateCategoryDto {
   @ApiPropertyOptional({
     description: 'UUID généré par le client. Absent → généré serveur.',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   id?: string;
 
@@ -262,7 +278,7 @@ export class CreateCategoryDto {
   @ApiPropertyOptional({
     description: 'Catégorie racine parente (2 niveaux maximum)',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   parentId?: string | null;
 
@@ -287,7 +303,7 @@ export class UpdateCategoryDto {
     nullable: true,
     description: '`null` = devient racine',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   parentId?: string | null;
 
@@ -312,7 +328,7 @@ export class CategoryDto {
 
 export class SetProductPriceDto {
   @ApiProperty({ description: 'Tarif concerné (DETAIL, GROS…)' })
-  @IsUUID()
+  @IsCanonicalUuid()
   priceTierId!: string;
 
   @ApiProperty({

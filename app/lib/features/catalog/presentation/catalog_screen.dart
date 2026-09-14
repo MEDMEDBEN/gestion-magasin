@@ -358,11 +358,14 @@ class _CategoryFilter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = categories.where((c) => c.id == selectedId).firstOrNull;
-    return PopupMenuButton<String?>(
+    // Flutter traite un choix `null` comme une fermeture du menu : « Toutes »
+    // passe par une valeur sentinelle, convertie en « aucun filtre ».
+    const all = '';
+    return PopupMenuButton<String>(
       tooltip: 'Filtrer par catégorie',
-      onSelected: onSelected,
+      onSelected: (id) => onSelected(id == all ? null : id),
       itemBuilder: (_) => [
-        const PopupMenuItem(value: null, child: Text('Toutes les catégories')),
+        const PopupMenuItem(value: all, child: Text('Toutes les catégories')),
         for (final root in categories.where((c) => c.parentId == null)) ...[
           PopupMenuItem(value: root.id, child: Text(root.name)),
           for (final child in categories.where((c) => c.parentId == root.id))

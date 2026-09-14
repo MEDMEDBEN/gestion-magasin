@@ -67,6 +67,7 @@ class CatalogRepository {
           search: [p.name, p.sku, p.brand, p.barcode],
           parentId: p.categoryId,
           isActive: p.isActive,
+          updatedAt: p.updatedAt,
           json: p.toJson(),
         ),
       for (final c in categories)
@@ -77,6 +78,7 @@ class CatalogRepository {
           search: [c.name],
           parentId: c.parentId,
           isActive: c.isActive,
+          updatedAt: c.updatedAt,
           json: c.toJson(),
         ),
       for (final l in locations)
@@ -87,6 +89,7 @@ class CatalogRepository {
           search: [l.code, l.name],
           parentId: l.parentId,
           isActive: l.isActive,
+          updatedAt: l.updatedAt,
           json: l.toJson(),
         ),
       for (final t in taxRates)
@@ -96,12 +99,25 @@ class CatalogRepository {
           label: t.name,
           search: [t.code, t.name],
           isActive: t.isActive,
+          updatedAt: t.updatedAt,
           json: t.toJson(),
         ),
     ];
-    return _db.batch(
-      (batch) => batch.insertAllOnConflictUpdate(_db.catalogEntries, rows),
-    );
+    return _db.batch((batch) {
+      for (final row in rows) {
+        batch.insert(
+          _db.catalogEntries,
+          row,
+          onConflict: DoUpdate.withExcluded(
+            (old, excluded) => row,
+            // Jamais de retour en arrière : une version plus ancienne est ignorée.
+            where: ($CatalogEntriesTable old, $CatalogEntriesTable excluded) =>
+                old.updatedAt.isNull() |
+                old.updatedAt.isSmallerOrEqual(excluded.updatedAt),
+          ),
+        );
+      }
+    });
   }
 
   /// Produits filtrés, triés par nom.
@@ -115,7 +131,7 @@ class CatalogRepository {
     final query = _db.select(_db.catalogEntries)
       ..where((t) => t.kind.equals(CatalogKind.product))
       ..orderBy([(t) => OrderingTerm.asc(t.label)]);
-    final term = search.trim().toLowerCase();
+    final term = foldForSearch(search.trim());
     if (term.isNotEmpty) {
       query.where(
         (t) => t.searchText.like('%${_escapeLike(term)}%', escapeChar: r'\'),
@@ -159,15 +175,17 @@ class CatalogRepository {
     required List<String?> search,
     String? parentId,
     required bool isActive,
+    required DateTime updatedAt,
     required Map<String, dynamic> json,
   }) {
     return CatalogEntriesCompanion.insert(
       kind: kind,
       id: id,
       label: label.toLowerCase(),
-      searchText: search.whereType<String>().join(' ').toLowerCase(),
+      searchText: foldForSearch(search.whereType<String>().join(' ')),
       parentId: Value(parentId),
       isActive: isActive,
+      updatedAt: Value(updatedAt),
       json: jsonEncode(json),
     );
   }
@@ -177,6 +195,19 @@ class CatalogRepository {
 
   static String _escapeLike(String term) =>
       term.replaceAllMapped(RegExp(r'[\\%_]'), (m) => '\\${m[0]}');
+}
+
+/// Minuscules sans accents : « cable » trouve « Câble » au comptoir.
+String foldForSearch(String text) {
+  const from = 'àâäáãåçéèêëíìîïñóòôöõúùûüýÿœæ';
+  const to = 'aaaaaaceeeeiiiinooooouuuuyyoa';
+  final lower = text.toLowerCase();
+  final buffer = StringBuffer();
+  for (final char in lower.split('')) {
+    final index = from.indexOf(char);
+    buffer.write(index < 0 ? char : to[index]);
+  }
+  return buffer.toString();
 }
 
 final catalogRepositoryProvider = Provider<CatalogRepository>(

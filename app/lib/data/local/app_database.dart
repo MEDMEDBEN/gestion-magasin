@@ -87,6 +87,10 @@ class CatalogEntries extends Table {
   BoolColumn get isActive => boolean()();
   TextColumn get json => text()();
 
+  /// Version serveur de la ligne (schéma v4) : une page de delta partie AVANT
+  /// une modification n'écrase pas la version plus récente déjà enregistrée.
+  DateTimeColumn get updatedAt => dateTime().nullable()();
+
   @override
   Set<Column> get primaryKey => {kind, id};
 }
@@ -99,7 +103,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -110,6 +114,8 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 3) {
         await m.createTable(catalogEntries);
+      } else if (from < 4) {
+        await m.addColumn(catalogEntries, catalogEntries.updatedAt);
       }
     },
   );

@@ -207,8 +207,31 @@ Preuve : `flutter analyze` → No issues found! · `flutter test` → **+159 ~17
 Contre-épreuve : échappement LIKE retiré → test en échec.
 Captures (6 nouvelles, 12 à 17) relues par l'agent : 3 défauts corrigés (flèches des listes déroulantes
 en carré — icône Lucide ; aide du code-barres tronquée ; code d'emplacement trop petit).
-**Reprise ICI** : résultats des audits `reviewer` + `security-reviewer` (lancés 2026-09-14) → corriger
-→ relecture humaine des captures 12-17 par MEDMEDBEN → cocher `docs/plan.md` → P0 #3.
+**Audits (2026-09-14)** — `security-reviewer` : **NON CONFORME** (0 critique, 2 importants, 5 mineurs) ;
+`reviewer` : **PAS OK, aucun bloquant** (3 à corriger + suggestions). Corrigé, testé, contre-éprouvé :
+- I1 (sécu) : UUID en MAJUSCULES dans un corps → une catégorie devenait son propre parent. Décorateur
+  `IsCanonicalUuid()` (`common/validation.ts`) sur tous les UUID des DTO catalogue (e2e + contre-épreuve).
+- M1 : curseur forgé (id de tirets, date hors plage PostgreSQL) → 500 ; désormais 400 (`isUUID`, date bornée).
+- M2 : catégories et emplacements audités (CREATE/UPDATE, avant/après) ; PATCH sans changement → pas d'audit.
+- M3 + revue n°2 : verrou pris AVANT toute lecture dans les écritures de catégories (déplacements croisés →
+  jamais 3 niveaux) ; verrou d'écriture produits (référence unique sans la casse, `ponytail:` noté).
+- revue n°1 (app) : « Toutes les catégories » ne retirait jamais le filtre (Flutter traite `null` comme une
+  annulation) → valeur sentinelle + test d'écran.
+- revue n°3 : `@MaxLength(20)` sur les seuils ; `barcode` borné à 64.
+- suggestions appliquées : garde de version locale (Drift **v4**, colonne `updatedAt` : une page de delta en
+  retard n'écrase plus une fiche plus récente) ; recherche locale sans accents.
+Preuve : backend `tsc` OK · **60** unitaires · **122** e2e (33 catalogue) ; app analyze propre · **+163 ~17**.
+
+⏳ **EN ATTENTE DE DÉCISION MEDMEDBEN — I2 (sécu, important)** : `lastPurchasePriceHt` (coût d'achat = base
+de la marge) est envoyé à TOUS les rôles (liste, fiche, delta) et stocké sur le poste. Aucun code ne
+l'alimente encore (feature Réceptions). À trancher : qui voit le coût ? Puis filtrer DTO + delta selon le
+rôle, et purger/re-télécharger le catalogue local quand le compte change (`CatalogEntries` et
+`catalog.cursor` sont partagés par poste). M4 (`mainSupplierId` visible du vendeur, négligeable) suit la
+même décision. M5 : ajouter `FreshAccessGuard` sur `POST /products/:id/prices` quand la route sortira du 501.
+Notes pour plus tard : refuser un changement d'unité si des mouvements de stock existent (feature Stock) ;
+la descente devra transporter `ProductPrice` (feature Ventes).
+
+**Reprise ICI** : décision I2 → correctif → relecture humaine des captures 12-17 → cocher `docs/plan.md` → P0 #3.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

@@ -114,6 +114,32 @@ void main() {
     },
   );
 
+  testWidgets(
+    'filtre catégorie : on choisit une catégorie, puis « Toutes » le retire',
+    (tester) async {
+      useScreenSize(tester, const Size(400, 800));
+      await tester.pumpWidget(
+        wrap(_vendeur(), products: [product()], categories: [category()]),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Filtrer par catégorie'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Câbles').last);
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(Chip, 'Câbles'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Filtrer par catégorie'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Toutes les catégories').last);
+      await tester.pumpAndSettle();
+      expect(
+        find.widgetWithText(Chip, 'Toutes les catégories'),
+        findsOneWidget,
+      );
+    },
+  );
+
   testWidgets('le MAGASINIER gère les emplacements, pas les catégories', (
     tester,
   ) async {

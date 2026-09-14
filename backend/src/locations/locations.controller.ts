@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Param, Patch, Post } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -7,7 +7,14 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { RequirePermissions, RoleCode, Roles } from '../common/auth.decorators';
+import { ActorContext } from '../audit/audit-writer';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+  RequirePermissions,
+  RoleCode,
+  Roles,
+} from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PERMISSIONS } from '../common/permissions';
@@ -17,6 +24,11 @@ import {
   UpdateLocationDto,
 } from './dto/location.dto';
 import { LocationsService } from './locations.service';
+
+const actorOf = (user: AuthenticatedUser, ip?: string): ActorContext => ({
+  userId: user.id,
+  ipAddress: ip,
+});
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -48,8 +60,12 @@ export class LocationsController {
     type: ErrorResponseDto,
     description: 'Code déjà utilisé',
   })
-  create(@Body() dto: CreateLocationDto): Promise<LocationDto> {
-    return this.locationsService.create(dto);
+  create(
+    @Body() dto: CreateLocationDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<LocationDto> {
+    return this.locationsService.create(dto, actorOf(user, ip));
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
@@ -60,7 +76,9 @@ export class LocationsController {
   update(
     @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateLocationDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<LocationDto> {
-    return this.locationsService.update(id, dto);
+    return this.locationsService.update(id, dto, actorOf(user, ip));
   }
 }

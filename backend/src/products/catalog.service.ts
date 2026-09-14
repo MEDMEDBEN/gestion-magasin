@@ -1,6 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { isUUID } from 'class-validator';
 import { Category, Prisma, TaxRate } from '../generated/prisma/client';
 import { LocationsService } from '../locations/locations.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,8 +18,9 @@ import { ProductsService } from './products.service';
 
 type Db = Prisma.TransactionClient;
 
-/// Sérialise les créations/renommages de catégories : le nom est unique par
-/// parent SANS la casse, ce qu'aucune contrainte DB simple n'exprime.
+/// Sérialise TOUTES les écritures de catégories : le nom unique par parent sans
+/// la casse et la profondeur de 2 niveaux ne s'expriment pas en contrainte DB, et
+/// deux déplacements croisés passeraient chacun leur contrôle.
 const CATEGORY_NAMES_LOCK = 7302;
 
 /// Une ligne n'est servie par le delta qu'une fois plus vieille que ce délai.
@@ -66,8 +69,12 @@ export class CatalogService {
     return rows.map(CatalogService.categoryToDto);
   }
 
-  async createCategory(dto: CreateCategoryDto): Promise<CategoryDto> {
+  async createCategory(
+    dto: CreateCategoryDto,
+    actor: ActorContext,
+  ): Promise<CategoryDto> {
     return this.prisma.$transaction(async (tx) => {
+      await CatalogService.lockCategories(tx);
       const parentId = dto.parentId ?? null;
       if (parentId) await CatalogService.assertRootParent(tx, parentId);
       await CatalogService.assertNameFree(tx, dto.name, parentId);
@@ -79,15 +86,24 @@ export class CatalogService {
           description: dto.description ?? null,
         },
       });
-      return CatalogService.categoryToDto(category);
+      const created = CatalogService.categoryToDto(category);
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'Category',
+        entityId: created.id,
+        newValue: CatalogService.categoryAudit(created),
+      });
+      return created;
     });
   }
 
   async updateCategory(
     id: string,
     dto: UpdateCategoryDto,
+    actor: ActorContext,
   ): Promise<CategoryDto> {
     return this.prisma.$transaction(async (tx) => {
+      await CatalogService.lockCategories(tx);
       const before = await tx.category.findUnique({
         where: { id },
         include: { _count: { select: { children: true } } },
@@ -129,8 +145,31 @@ export class CatalogService {
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
         },
       });
-      return CatalogService.categoryToDto(category);
+      const after = CatalogService.categoryToDto(category);
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'Category',
+        entityId: id,
+        oldValue: CatalogService.categoryAudit(
+          CatalogService.categoryToDto(before),
+        ),
+        newValue: CatalogService.categoryAudit(after),
+      });
+      return after;
     });
+  }
+
+  private static categoryAudit(category: CategoryDto): Prisma.InputJsonObject {
+    return {
+      name: category.name,
+      parentId: category.parentId,
+      description: category.description,
+      isActive: category.isActive,
+    };
+  }
+
+  private static async lockCategories(tx: Db) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CATEGORY_NAMES_LOCK}::int, 0)`;
   }
 
   async priceTiers(): Promise<PriceTierDto[]> {
@@ -236,13 +275,23 @@ export class CatalogService {
         Array.isArray(value) &&
         value.length === 2 &&
         typeof value[0] === 'string' &&
-        !Number.isNaN(Date.parse(value[0])) &&
+        CatalogService.isPlausibleDate(value[0]) &&
         typeof value[1] === 'string' &&
-        /^[0-9a-f-]{36}$/i.test(value[1]);
+        isUUID(value[1]);
       if (!valid) throw invalid;
       cursor[key] = value as Cursor;
     }
     return cursor;
+  }
+
+  /// Une date hors de la plage PostgreSQL ferait échouer la requête en 500.
+  private static isPlausibleDate(raw: string): boolean {
+    const time = Date.parse(raw);
+    return (
+      !Number.isNaN(time) &&
+      time >= Date.UTC(2000, 0, 1) &&
+      time <= Date.now() + 86_400_000
+    );
   }
 
   private static async assertRootParent(tx: Db, parentId: string) {
@@ -263,7 +312,6 @@ export class CatalogService {
     parentId: string | null,
     exceptId?: string,
   ) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CATEGORY_NAMES_LOCK}::int, 0)`;
     const taken = await tx.category.findFirst({
       where: {
         name: { equals: name, mode: 'insensitive' },

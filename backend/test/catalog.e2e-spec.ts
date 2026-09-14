@@ -88,7 +88,10 @@ describe('Catalogue (e2e)', () => {
   afterAll(async () => {
     await prisma.auditLog.deleteMany({
       where: {
-        OR: [{ entityId: { in: productIds } }, { userId: { in: userIds } }],
+        OR: [
+          { entityId: { in: [...productIds, ...categoryIds, ...locationIds] } },
+          { userId: { in: userIds } },
+        ],
       },
     });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
@@ -242,6 +245,35 @@ describe('Catalogue (e2e)', () => {
       expect(update.newValue).toMatchObject({ barcode, brand: null });
     });
 
+    it('PATCH sans changement : aucune entrée d’audit', async () => {
+      const product = await createProduct();
+      await as(tokens.admin)
+        .patch(`/api/products/${product.id}`)
+        .send({ name: product.name })
+        .expect(200);
+      const updates = await prisma.auditLog.count({
+        where: {
+          entityType: 'Product',
+          entityId: product.id,
+          action: 'UPDATE',
+        },
+      });
+      expect(updates).toBe(0);
+    });
+
+    it('seuil de 10 000 caractères → 400 sans renvoyer la chaîne', async () => {
+      const response = await as(tokens.admin)
+        .post('/api/products')
+        .send({
+          sku: uid('SKU'),
+          name: 'Seuil géant',
+          unit: 'PIECE',
+          minThreshold: '9'.repeat(10_000),
+        })
+        .expect(400);
+      expect(JSON.stringify(response.body).length).toBeLessThan(2_000);
+    });
+
     it('PATCH : `name: null` → 400', async () => {
       const product = await createProduct();
       await as(tokens.admin)
@@ -365,6 +397,59 @@ describe('Catalogue (e2e)', () => {
   });
 
   describe('catégories', () => {
+    it('UUID en MAJUSCULES : une catégorie ne devient pas son propre parent', async () => {
+      const root = await as(tokens.admin)
+        .post('/api/categories')
+        .send({ name: uid('Soi') })
+        .expect(201);
+      categoryIds.push(root.body.id);
+      await as(tokens.admin)
+        .patch(`/api/categories/${root.body.id}`)
+        .send({ parentId: String(root.body.id).toUpperCase() })
+        .expect(422);
+      const stored = await prisma.category.findUnique({
+        where: { id: root.body.id },
+      });
+      expect(stored?.parentId).toBeNull();
+    });
+
+    it('deux déplacements croisés simultanés : jamais trois niveaux', async () => {
+      const [a, b] = await Promise.all(
+        ['CroiseA', 'CroiseB'].map((label) =>
+          as(tokens.admin)
+            .post('/api/categories')
+            .send({ name: uid(label) }),
+        ),
+      );
+      categoryIds.push(a.body.id, b.body.id);
+      const results = await Promise.all([
+        as(tokens.admin)
+          .patch(`/api/categories/${a.body.id}`)
+          .send({ parentId: b.body.id }),
+        as(tokens.admin)
+          .patch(`/api/categories/${b.body.id}`)
+          .send({ parentId: a.body.id }),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 422]);
+    });
+
+    it('création et modification de catégorie tracées', async () => {
+      const created = await as(tokens.admin)
+        .post('/api/categories')
+        .send({ name: uid('Tracee') })
+        .expect(201);
+      categoryIds.push(created.body.id);
+      await as(tokens.admin)
+        .patch(`/api/categories/${created.body.id}`)
+        .send({ isActive: false })
+        .expect(200);
+      const audit = await prisma.auditLog.findMany({
+        where: { entityType: 'Category', entityId: created.body.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(audit.map((a) => a.action)).toEqual(['CREATE', 'UPDATE']);
+    });
+
     it('deux niveaux maximum, nom unique par parent sans la casse', async () => {
       const name = uid('Cables');
       const root = await as(tokens.admin)
@@ -418,6 +503,29 @@ describe('Catalogue (e2e)', () => {
   });
 
   describe('emplacements (spec §5)', () => {
+    it('le MAGASINIER qui recode un emplacement est tracé', async () => {
+      const created = await as(tokens.magasinier)
+        .post('/api/locations')
+        .send({ code: uid('TR').toUpperCase() })
+        .expect(201);
+      locationIds.push(created.body.id);
+      const code = uid('RECODE').toUpperCase();
+      await as(tokens.magasinier)
+        .patch(`/api/locations/${created.body.id}`)
+        .send({ code })
+        .expect(200);
+      const [update] = await prisma.auditLog.findMany({
+        where: {
+          entityType: 'Location',
+          entityId: created.body.id,
+          action: 'UPDATE',
+        },
+      });
+      expect(update.oldValue).toMatchObject({ code: created.body.code });
+      expect(update.newValue).toMatchObject({ code });
+      expect(update.userId).toBe(userIds[2]);
+    });
+
     it('code et nom dérivés de la structure, rattachés au dépôt', async () => {
       const zone = `Z${String(suffix).slice(-6)}`;
       const created = await as(tokens.admin)
@@ -550,6 +658,19 @@ describe('Catalogue (e2e)', () => {
       await as(tokens.vendeur)
         .get(`/api/catalog/changes?cursor=${forged}`)
         .expect(400);
+
+      // Id de 36 tirets, date hors plage PostgreSQL : 400, jamais une 500.
+      for (const bad of [
+        ['2026-01-01T00:00:00.000Z', '-'.repeat(36)],
+        ['-271821-04-20T00:00:00Z', '0191e0a0-0000-7000-8000-000000000000'],
+      ]) {
+        const cursor = Buffer.from(JSON.stringify({ products: bad })).toString(
+          'base64url',
+        );
+        await as(tokens.vendeur)
+          .get(`/api/catalog/changes?cursor=${cursor}`)
+          .expect(400);
+      }
     });
   });
 });

@@ -171,8 +171,12 @@ export class CategoriesController {
     summary: 'Crée une catégorie ou sous-catégorie (admin uniquement)',
   })
   @ApiCreatedResponse({ type: CategoryDto })
-  create(@Body() dto: CreateCategoryDto): Promise<CategoryDto> {
-    return this.catalogService.createCategory(dto);
+  create(
+    @Body() dto: CreateCategoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<CategoryDto> {
+    return this.catalogService.createCategory(dto, actorOf(user, ip));
   }
 
   @Roles(RoleCode.ADMIN)
@@ -185,8 +189,10 @@ export class CategoriesController {
   update(
     @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateCategoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<CategoryDto> {
-    return this.catalogService.updateCategory(id, dto);
+    return this.catalogService.updateCategory(id, dto, actorOf(user, ip));
   }
 }
 

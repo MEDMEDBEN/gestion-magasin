@@ -111,6 +111,45 @@ void main() {
   );
 
   test(
+    'une version PLUS ANCIENNE (page de delta en retard) n’écrase pas la récente',
+    () async {
+      final repo = CatalogRepository(db, settings, _PagedApi(const []));
+      await repo.saveAll(
+        products: [
+          product(
+            id: 'p1',
+            name: 'Enregistré par l’admin',
+          ).copyWith(updatedAt: DateTime.utc(2026, 9, 14, 12)),
+        ],
+      );
+      await repo.saveAll(
+        products: [
+          product(
+            id: 'p1',
+            name: 'Page partie avant',
+          ).copyWith(updatedAt: DateTime.utc(2026, 9, 14, 11)),
+        ],
+      );
+      expect(
+        (await repo.watchProducts().first).single.name,
+        'Enregistré par l’admin',
+      );
+    },
+  );
+
+  test('recherche sans accents : « cable » trouve « Câble »', () async {
+    final repo = CatalogRepository(db, settings, _PagedApi(const []));
+    await repo.saveAll(
+      products: [product(id: 'p1', name: 'Câble électrique')],
+    );
+    expect(
+      await repo.watchProducts(search: 'cable electrique').first,
+      hasLength(1),
+    );
+    expect(await repo.watchProducts(search: 'CÂBLE').first, hasLength(1));
+  });
+
+  test(
     'recherche nom/référence/marque/code, filtre catégorie, inactifs masqués',
     () async {
       final repo = CatalogRepository(db, settings, _PagedApi(const []));
@@ -156,6 +195,53 @@ void main() {
       expect(await ids(categories: {'cat'}), ['p1']);
       // « % » est cherché tel quel, pas comme joker SQL.
       expect(await ids(search: '%'), isEmpty);
+    },
+  );
+
+  test(
+    'une base v3 migre en v4 : colonne de version ajoutée, lignes gardées',
+    () async {
+      final executor = NativeDatabase.memory(
+        setup: (raw) {
+          raw.execute('''
+          CREATE TABLE pending_mutations (
+            client_mutation_id TEXT NOT NULL PRIMARY KEY, author_user_id TEXT NULL,
+            device_id TEXT NOT NULL, operation_type TEXT NOT NULL, payload TEXT NOT NULL,
+            device_timestamp INTEGER NOT NULL, status INTEGER NOT NULL DEFAULT 0,
+            rejection_code TEXT NULL, rejection_reason TEXT NULL, entity_id TEXT NULL,
+            attempt_count INTEGER NOT NULL DEFAULT 0, last_attempt_at INTEGER NULL,
+            created_at INTEGER NOT NULL
+          )''');
+          raw.execute(
+            'CREATE TABLE local_settings (key TEXT NOT NULL PRIMARY KEY, value TEXT NOT NULL)',
+          );
+          raw.execute('''
+          CREATE TABLE catalog_entries (
+            kind TEXT NOT NULL, id TEXT NOT NULL, label TEXT NOT NULL,
+            search_text TEXT NOT NULL, parent_id TEXT NULL,
+            is_active INTEGER NOT NULL CHECK (is_active IN (0, 1)), json TEXT NOT NULL,
+            PRIMARY KEY (kind, id)
+          )''');
+          raw.execute(
+            "INSERT INTO catalog_entries VALUES ('product', 'p1', 'ancien', 'ancien', NULL, 1, "
+            "'{\"id\":\"p1\"}')",
+          );
+          raw.execute('PRAGMA user_version = 3');
+        },
+      );
+      final migrated = AppDatabase(executor);
+      addTearDown(migrated.close);
+      final repo = CatalogRepository(
+        migrated,
+        LocalSettingsStore(migrated),
+        _PagedApi(const []),
+      );
+
+      // Ligne v3 sans version : la première version reçue la remplace.
+      await repo.saveAll(
+        products: [product(id: 'p1', name: 'Nouveau')],
+      );
+      expect((await repo.watchProducts().first).single.name, 'Nouveau');
     },
   );
 

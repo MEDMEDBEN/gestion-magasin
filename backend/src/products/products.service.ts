@@ -28,6 +28,12 @@ const SORTABLE_FIELDS = [
   'updatedAt',
 ] as const;
 
+/// Sérialise les écritures de produits : la référence est unique SANS la casse,
+/// ce que la contrainte `sku @unique` (sensible à la casse) n'assure pas.
+/// ponytail: un seul verrou pour tout le catalogue (écritures admin, rares) ;
+/// passer à un index unique `lower(sku)` si le débit d'écriture augmente.
+const PRODUCT_WRITE_LOCK = 7303;
+
 /// Tentatives de génération avant d'abandonner : un code interne ne peut être
 /// déjà pris que par un code fabricant saisi à la main avec le préfixe 20.
 const INTERNAL_BARCODE_ATTEMPTS = 5;
@@ -97,7 +103,7 @@ export class ProductsService {
     return ProductsService.toDto(product);
   }
 
-  /// Chemin du scanner : le code est normalisé comme à la saisie.
+  /// Chemin du scanner : recherche exacte du code lu (espaces retirés).
   async findByBarcode(raw: string): Promise<ProductDto> {
     const product = await this.prisma.product.findUnique({
       where: { barcode: raw.trim() },
@@ -111,6 +117,7 @@ export class ProductsService {
     actor: ActorContext,
   ): Promise<ProductDto> {
     return this.prisma.$transaction(async (tx) => {
+      await ProductsService.lockWrites(tx);
       await this.assertReferences(tx, dto);
       await ProductsService.assertSkuFree(tx, dto.sku);
 
@@ -176,6 +183,7 @@ export class ProductsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      await ProductsService.lockWrites(tx);
       const before = await tx.product.findUnique({ where: { id } });
       if (!before) throw ProductsService.notFound();
       // Seuls les rattachements MODIFIÉS sont contrôlés : un formulaire renvoyé tel
@@ -235,15 +243,26 @@ export class ProductsService {
 
       const product = await tx.product.update({ where: { id }, data });
       const after = ProductsService.toDto(product);
-      await writeAudit(tx, actor, {
-        action: 'UPDATE',
-        entityType: 'Product',
-        entityId: id,
-        oldValue: ProductsService.auditSnapshot(ProductsService.toDto(before)),
-        newValue: ProductsService.auditSnapshot(after),
-      });
+      const oldValue = ProductsService.auditSnapshot(
+        ProductsService.toDto(before),
+      );
+      const newValue = ProductsService.auditSnapshot(after);
+      // Un formulaire renvoyé sans changement n'encombre pas le journal.
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'Product',
+          entityId: id,
+          oldValue,
+          newValue,
+        });
+      }
       return after;
     });
+  }
+
+  private static async lockWrites(tx: Db) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${PRODUCT_WRITE_LOCK}::int, 0)`;
   }
 
   /// Code interne EAN-13 : `nextval` ne rend jamais deux fois la même valeur, même
