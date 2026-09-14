@@ -5,8 +5,9 @@
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
 ## Phase actuelle
-`Phase 0` **TERMINÉE**. En cours : **FEATURE P0 #1 — Auth + utilisateurs**, ~90 % : code complet
-et corrigé après 2 tours d'audit, **pas encore close** (voir « Ce qu'il reste à faire »).
+`Phase 0` **TERMINÉE**. **FEATURE P0 #1 — Auth + utilisateurs : CLOSE le 2026-09-14** (écrans validés par
+MEDMEDBEN ; seul le build Windows reste bloqué par un prérequis MACHINE, voir point 6).
+En cours : **FEATURE P0 #2 — Produits + catégories + emplacements + codes-barres**.
 
 ## Dernier relais — 2026-09-13 · **MEDMEDBEN** reprend (point 1 soldé, suite en cours)
 
@@ -143,9 +144,10 @@ app     $ flutter build windows --release     → "build windows" only supported
    > errno 112), sans rapport avec le code. Seuls les caches temporaires `%TEMP%lutter_tools.*`
    > (506 Mo, régénérables) ont été supprimés ; il reste ~430 Mo. **Libérer de l'espace est urgent**
    > (Docker/PostgreSQL, compilation, build Windows) — action MEDMEDBEN.
-6. **Poste Windows** (vérifié 2026-09-14 : composant ATL ABSENT, 1,99 Go libre) : `flutter build windows --release` (prérequis : composant VS
+6. ⏳ **Poste Windows — prérequis machine, non contourné** (re-vérifié 2026-09-14 : `atlstr.h` ABSENT, 2,3 Go libres) : `flutter build windows --release` (prérequis : composant VS
    `Microsoft.VisualStudio.Component.VC.ATL` + espace sur `C:`) — le noter ici sans contournement.
-7. **Relecture humaine** des écrans — **À FAIRE PAR MEDMEDBEN**. Captures régénérées le 2026-09-14
+7. ✅ **FAIT (2026-09-14)** — écrans **validés par MEDMEDBEN** (« ça me va » ; une version améliorée de
+   l'UI sera fournie plus tard, à appliquer en apparence seulement). Captures régénérées le 2026-09-14
    sur le poste Windows (11 écrans, `flutter test test/tools/screen_captures_test.dart
    --dart-define=CAPTURE_OUT=<dossier>`), relues par l'agent : conformes AMPÈRE, rôles cumulés,
    plus de section permissions. Un espace résiduel du formulaire mobile a été corrigé (`df214e4`).
@@ -374,8 +376,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Feature | Statut | Backend | Frontend | Tests | Sécurité |
 |---|---|---|---|---|---|
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
-| **Auth + utilisateurs (P0 #1)** | 🟡 **~90 %** — restes de contre-audit | 🟢 Complet, durci (2 tours d'audit) | 🟢 Login · MDP · Profil · Gestion users (desktop + mobile) | 🟢 55 unit + 76 e2e · 142 app | 🟡 2ᵉ tour : N1 corrigé, tests dédiés + mineurs à faire |
-| Produits + catégories + emplacements | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
+| Produits + catégories + emplacements | 🟡 **En cours** (MEDMEDBEN) | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

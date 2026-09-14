@@ -145,8 +145,8 @@ Traçabilité / système
 - [x] Sync offline gérée si applicable — file de mutations + gestion des rejets _(aucune opération de compte hors-ligne ; file liée à son auteur, quarantaine des mutations d'un autre compte)_
 - [x] Revue par subagent `reviewer` _(revue finale 2026-09-14 : aucun bloquant, 5 points corrigés — voir docs/tasks.md)_
 - [x] Audit par subagent `security-reviewer` _(audit final 2026-09-14 : **CONFORME** ; 3 mineurs corrigés, testés et contre-éprouvés)_
-- [ ] Tests manuels effectués par un humain (capture ou description) _(captures des 11 écrans produites le 2026-09-11 — outil `app/test/tools/screen_captures_test.dart` ; relecture humaine + essai sur le poste Windows à faire)_
-- [ ] `flutter build windows --release` _(poste Windows vérifié le 2026-09-13 : composant ATL ABSENT, 1,99 Go libre — installer `Microsoft.VisualStudio.Component.VC.ATL` après libération d'espace)_
+- [x] Tests manuels effectués par un humain (capture ou description) _(11 captures relues et **validées par MEDMEDBEN le 2026-09-14** ; une version améliorée de l'UI sera fournie plus tard)_
+- [ ] `flutter build windows --release` _(poste Windows re-vérifié le 2026-09-14 : `atlstr.h` toujours ABSENT, 2,3 Go libres — installer `Microsoft.VisualStudio.Component.VC.ATL` après libération d'espace)_
 
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
