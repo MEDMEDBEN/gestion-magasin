@@ -243,6 +243,29 @@ void main() {
     });
   });
 
+  test('pendant une fermeture de session, un 401 ne déclenche AUCUNE rotation (mineur 2)', () async {
+    var refreshCalls = 0;
+    final adapter = _ScriptedAdapter((options) {
+      if (options.path == '/auth/refresh') {
+        refreshCalls++;
+        return _json({'accessToken': 'a', 'refreshToken': 'r'}, 200);
+      }
+      return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
+    });
+    final client = buildClient(adapter);
+
+    client.beginSessionClose();
+    await expectLater(
+      client.dio.get<Map<String, dynamic>>('/products'),
+      throwsA(isA<DioException>()),
+    );
+    client.endSessionClose();
+
+    expect(refreshCalls, 0);
+    // Rien n'est effacé ni remplacé : la fermeture en cours s'en charge.
+    expect(await tokenStore.readRefreshToken(), 'refresh-valide');
+  });
+
   test('joint l’access token aux requêtes protégées', () async {
     final adapter = _ScriptedAdapter((_) => _json({'ok': true}, 200));
     final client = buildClient(adapter);

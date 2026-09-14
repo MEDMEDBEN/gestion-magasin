@@ -125,10 +125,10 @@ Oublier le décorateur ferme la route au lieu de l'ouvrir — conformément à l
 Les permissions atomiques (`@RequirePermissions(...)`) sont exigées **en plus** du rôle, toutes.
 
 **Gestion des comptes — garde-fous (2026-09-11, suite aux audits de la feature P0 #1)** :
-- `FreshAccessGuard` sur `/users` : l'accès (actif + rôle + permission) est relu **en base** à
+- `FreshAccessGuard` sur `/users` : l'accès (actif + rôles) est relu **en base** à
   chaque appel ; un admin désactivé ou rétrogradé perd la main tout de suite, sans attendre
   l'expiration de son access token (15 min).
-- Un admin ne modifie **ni ses propres rôles/permissions, ni sa propre activation**
+- Un admin ne modifie **ni ses propres rôles, ni sa propre activation**
   (`SELF_MODIFICATION_FORBIDDEN`) : ces changements passent par un autre administrateur.
 - Le système garde toujours **au moins un admin actif** (`LAST_ACTIVE_ADMIN`), contrôle fait sous
   verrou dans la transaction (deux admins qui se retirent mutuellement : il en reste un).

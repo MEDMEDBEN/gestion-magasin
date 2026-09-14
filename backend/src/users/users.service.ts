@@ -7,12 +7,6 @@ import { BusinessException } from '../common/business.exception';
 import { PaginationQueryDto, parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import {
-  PERMISSION_DESCRIPTIONS,
-  PERMISSIONS,
-  ROLE_LABELS,
-  ROLE_PERMISSIONS,
-} from '../common/permissions';
-import {
   resolvePermissions,
   USER_ACCESS_INCLUDE,
   UserWithAccess,
@@ -21,7 +15,6 @@ import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateUserDto,
-  PermissionCatalogDto,
   ResetPasswordDto,
   RevokedSessionsDto,
   UpdateUserDto,
@@ -76,21 +69,6 @@ export class UsersService {
       mustChangePassword: user.mustChangePassword,
       roles: user.roles,
       permissions: user.permissions,
-    };
-  }
-
-  /// Catalogue des rôles et permissions, lu dans `permissions.ts` (source unique).
-  permissionCatalog(): PermissionCatalogDto {
-    return {
-      roles: Object.values(RoleCode).map((code) => ({
-        code,
-        name: ROLE_LABELS[code],
-        permissions: [...ROLE_PERMISSIONS[code]],
-      })),
-      permissions: Object.values(PERMISSIONS).map((code) => ({
-        code,
-        description: PERMISSION_DESCRIPTIONS[code],
-      })),
     };
   }
 

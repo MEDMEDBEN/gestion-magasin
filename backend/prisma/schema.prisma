@@ -201,6 +201,14 @@ enum AuditAction {
   ADJUST
 }
 
+/// Motif de fermeture d'une session (voir `RefreshToken.revokedReason`).
+enum RefreshTokenRevokedReason {
+  ROTATION
+  LOGOUT
+  SUPERSEDED
+  REVOKED
+}
+
 /// Résultat du traitement serveur d'une mutation hors-ligne (contrat de sync, docs/context.md §4).
 enum SyncMutationStatus {
   CONFIRMEE
@@ -287,6 +295,11 @@ model RefreshToken {
   deviceName String?
   expiresAt  DateTime
   revokedAt  DateTime?
+  /// Pourquoi la session a été fermée. Seul `ROTATION` (token remplacé par un
+  /// refresh) fait d'un rejeu un signal de VOL : les autres fermetures (logout,
+  /// reset, révocation, reconnexion) rendent un simple 401, sans cascade —
+  /// sinon un vieux token volé permettrait de déconnecter la victime indéfiniment.
+  revokedReason RefreshTokenRevokedReason?
   lastUsedAt DateTime?
   createdAt  DateTime  @default(now())
 

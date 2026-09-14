@@ -106,16 +106,44 @@ app     $ flutter build windows --release     → "build windows" only supported
 4. ✅ **FAIT (2026-09-13, MEDMEDBEN)** — contre-revue « à corriger » :
    - N3-revue : `app/test/auth_api_test.dart` réécrit avec le VRAI `DioClient` + `MemoryTokenStore` ;
      nouveau test : un 401 sur logout ne déclenche aucun refresh ni fin de session.
-   - S3 : Swagger documente 422 `PERMISSION_NOT_GRANTABLE` (POST/PATCH) et 403
-     `SELF_MODIFICATION_FORBIDDEN` (PATCH) sur `users.controller.ts`.
+   - S3 : Swagger documente le 403 `SELF_MODIFICATION_FORBIDDEN` (PATCH) sur
+     `users.controller.ts` (le 422 `PERMISSION_NOT_GRANTABLE` a disparu avec le point 3).
    - S9 : `sync_api.dart` passe par `guardApi()`.
    - S14 : `login_screen.dart` — `autocorrect:false`, `enableSuggestions:false` sur les 2 champs.
    - S16 : dialogue « déconnecter tous les appareils » — réserve des 15 min écrite en clair.
    - Suggestions non bloquantes s1-s12 : **non traitées** (listées plus bas, à reprendre en
      repassant sur ces fichiers).
-   Preuve : app analyze propre · **147** tests · backend 55 unitaires · **88** e2e · tsc OK.
-5. Relancer **une dernière fois** `security-reviewer` et `reviewer` → cocher dans `docs/plan.md`.
-6. **Poste Windows** : `flutter build windows --release` (prérequis : composant VS
+   Preuve : app analyze propre · **146** tests · backend 55 unitaires · **88** e2e · tsc OK.
+5. ✅ **FAIT (2026-09-14, MEDMEDBEN)** — audits finaux relancés, puis TOUT corrigé :
+   - `security-reviewer` : **CONFORME** (7 points vérifiés) + 3 mineurs, corrigés, chacun testé ET
+     contre-éprouvé (correctif retiré → test en échec) :
+     - mineur 1 : course refresh / révocation — la session neuve pouvait survivre à une révocation
+       concurrente. Verrou consultatif PAR COMPTE (`lockUserSessions`) pris par la rotation et par
+       `revokeAllForUser` (e2e « révocation lancée PENDANT une rotation »).
+     - mineur 3 : un vieux token révoqué permettait de déconnecter la victime indéfiniment.
+       Migration ADDITIVE `refresh_token_revoked_reason` (`RefreshToken.revokedReason`) : seul un
+       token remplacé par ROTATION et non expiré déclenche la cascade « vol » ; logout, reset,
+       révocation, reconnexion ou expiration → simple 401 (2 e2e).
+     - mineur 2 (app) : `DioClient.beginSessionClose()/endSessionClose()` — aucune rotation ne
+       démarre pendant une déconnexion (`dio_client_test.dart`).
+   - `reviewer` : **PAS OK, aucun bloquant**, 5 points, tous corrigés :
+     1. catalogue de permissions devenu mort → route, service, DTO et tests supprimés ;
+     2. import `IsIn` inutilisé, lignes vides, test « permission inconnue » redondant supprimé,
+        libellés Swagger « rôles/permissions » → « rôles » ;
+     3. docs contradictoires réalignées : `spec-fonctionnelle.md` §2, `CLAUDE.md` (rôles), `plan.md`,
+        `permissions.md`, `tasks.md` — conformément à la décision de MEDMEDBEN (cumul par rôles) ;
+     4. N7 : l'exception n'invente plus le code `REFRESH_TOKEN_INVALID` (message « Session expirée »
+        contradictoire) — test sur `userMessage` et `requiresRelogin` ;
+     5. preuve e2e sur une vraie route : permission directe résiduelle → `GET /api/suppliers` 403.
+   - suggestion appliquée : `awaitPendingRefresh` ne propage plus l'échec d'une rotation.
+   Preuve backend : tsc OK · lint propre sur les fichiers touchés · **55** unitaires · **89** e2e.
+   Preuve app : `flutter analyze` → No issues found! · `flutter test` → **+147 ~11** All tests passed.
+   > ⚠️ **DISQUE `C:` SATURÉ (2026-09-14)** : le poste Windows est tombé à **0 Mo libre** pendant la
+   > session — les tests Flutter échouaient au chargement (« Espace insuffisant sur le disque »,
+   > errno 112), sans rapport avec le code. Seuls les caches temporaires `%TEMP%lutter_tools.*`
+   > (506 Mo, régénérables) ont été supprimés ; il reste ~430 Mo. **Libérer de l'espace est urgent**
+   > (Docker/PostgreSQL, compilation, build Windows) — action MEDMEDBEN.
+6. **Poste Windows** (vérifié 2026-09-14 : composant ATL ABSENT, 1,99 Go libre) : `flutter build windows --release` (prérequis : composant VS
    `Microsoft.VisualStudio.Component.VC.ATL` + espace sur `C:`) — le noter ici sans contournement.
 7. **Relecture humaine** des écrans (captures via l'outil ci-dessus) → cocher dans `docs/plan.md`.
 

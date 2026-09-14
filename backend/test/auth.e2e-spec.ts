@@ -538,24 +538,6 @@ describe('Auth (e2e)', () => {
     expect(res.body.code).toBe('VALIDATION_FAILED');
   });
 
-  it('refuse un code de permission inconnu (400, pas 500)', async () => {
-    const admin = await login(adminEmail, TEMP_PASSWORD);
-
-    const res = await request(server)
-      .post('/api/users')
-      .set('Authorization', `Bearer ${admin.body.accessToken}`)
-      .send({
-        email: `e2e-badperm-${suffix}@test.local`,
-        fullName: 'Permission Inconnue',
-        temporaryPassword: TEMP_PASSWORD,
-        roles: [RoleCode.VENDEUR],
-        extraPermissions: ['permission.qui.nexiste.pas'],
-      });
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('VALIDATION_FAILED');
-  });
-
   it('un VENDEUR n’a aucun accès aux fournisseurs (matrice validée)', async () => {
     const session = await login(vendeurEmail, TEMP_PASSWORD);
 

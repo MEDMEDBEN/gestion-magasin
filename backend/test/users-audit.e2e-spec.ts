@@ -372,10 +372,10 @@ describe('Gestion des comptes (e2e)', () => {
       expect(update.body.code).toBe('VALIDATION_FAILED');
     });
 
-    it('une permission directe résiduelle en base n’accorde plus RIEN', async () => {
+    it('une permission directe résiduelle en base n’accorde plus RIEN, même sur une vraie route', async () => {
       // Lignes écrites avant la décision : elles restent en base (pas de migration
       // destructive) mais ne doivent plus ouvrir d'accès.
-      const vendeur = await createUser('residu');
+      const vendeur = await sessionFor('residu', [RoleCode.VENDEUR]);
       await prisma.user.update({
         where: { id: vendeur.id },
         data: { permissions: { connect: [{ code: 'price.manage' }, { code: 'supplier.read' }] } },
@@ -383,9 +383,15 @@ describe('Gestion des comptes (e2e)', () => {
 
       const res = await as(adminToken).get(`/api/users/${vendeur.id}`).expect(200);
       expect(res.body.permissions).not.toContain('price.manage');
-      // La matrice validée : le vendeur n'a aucun accès fournisseurs.
       expect(res.body.permissions).not.toContain('supplier.read');
       expect(res.body.extraPermissions).toBeUndefined();
+
+      // Preuve sur une route réellement protégée, avec un token émis APRÈS l'ajout :
+      // la matrice validée ferme les fournisseurs au vendeur.
+      const fresh = await login(vendeur.email, PASSWORD);
+      const suppliers = await as(fresh.body.accessToken).get('/api/suppliers');
+      expect(suppliers.status).toBe(403);
+      expect(suppliers.body.code).toBe('FORBIDDEN_PERMISSION');
     });
   });
 
@@ -404,7 +410,6 @@ describe('Gestion des comptes (e2e)', () => {
         expect(create.status).toBe(403);
         const update = await as(token).patch(`/api/users/${vendeur.id}`).send({ roles: [RoleCode.ADMIN] });
         expect(update.status).toBe(403);
-        expect((await as(token).get('/api/users/permission-catalog')).status).toBe(403);
       }
     });
   });
@@ -469,18 +474,6 @@ describe('Gestion des comptes (e2e)', () => {
       const refused = await as(adminToken).get(`/api/users?sort=passwordHash:asc`);
       expect(refused.status).toBe(400);
       expect(refused.body.code).toBe('VALIDATION_FAILED');
-    });
-
-    it('le catalogue des permissions reflète la matrice validée', async () => {
-      const res = await as(adminToken).get('/api/users/permission-catalog').expect(200);
-
-      expect(res.body.roles.map((r: { code: string }) => r.code)).toEqual(['ADMIN', 'VENDEUR', 'MAGASINIER']);
-      expect(res.body.permissions[0]).not.toHaveProperty('adminOnly');
-      const admin = res.body.roles.find((r: { code: string }) => r.code === 'ADMIN');
-      expect(admin.permissions).toEqual(expect.arrayContaining(['sale.discount', 'price.manage']));
-      const vendeur = res.body.roles.find((r: { code: string }) => r.code === 'VENDEUR');
-      expect(vendeur.permissions).not.toContain('supplier.read');
-      expect(vendeur.permissions).not.toContain('sale.discount');
     });
 
     it('l’audit reste réservé à l’ADMIN', async () => {

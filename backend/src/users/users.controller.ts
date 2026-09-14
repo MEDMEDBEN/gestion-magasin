@@ -35,7 +35,6 @@ import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateUserDto,
-  PermissionCatalogDto,
   ResetPasswordDto,
   RevokedSessionsDto,
   UpdateUserDto,
@@ -82,17 +81,6 @@ export class UsersController {
     return this.usersService.findAll(query);
   }
 
-  /// Déclarée AVANT `:id` : sinon Express la prendrait pour un identifiant.
-  @Get('permission-catalog')
-  @ApiOperation({
-    summary: 'Rôles et permissions attribuables',
-    description: 'Lu dans la matrice validée (docs/permissions.md) — source unique.',
-  })
-  @ApiOkResponse({ type: PermissionCatalogDto })
-  permissionCatalog(): PermissionCatalogDto {
-    return this.usersService.permissionCatalog();
-  }
-
   @Get(':id')
   @ApiOperation({ summary: 'Détail d’un utilisateur' })
   @ApiOkResponse({ type: UserDto })
@@ -102,17 +90,17 @@ export class UsersController {
 
   @Patch(':id')
   @ApiOperation({
-    summary: 'Modifie un utilisateur (rôles, permissions, activation)',
+    summary: 'Modifie un utilisateur (identité, rôles, activation)',
     description:
       'Désactiver un compte révoque immédiatement toutes ses sessions. Un admin ne ' +
-      'modifie ni ses propres rôles/permissions ni sa propre activation.',
+      'modifie ni ses propres rôles ni sa propre activation.',
   })
   @ApiOkResponse({ type: UserDto })
   @ApiConflictResponse({ type: ErrorResponseDto, description: '`LAST_ACTIVE_ADMIN`' })
   @ApiForbiddenResponse({
     type: ErrorResponseDto,
     description:
-      '`SELF_MODIFICATION_FORBIDDEN` — un admin ne modifie ni ses rôles/permissions ' +
+      '`SELF_MODIFICATION_FORBIDDEN` — un admin ne modifie ni ses rôles ' +
       'ni sa propre activation',
   })
   update(

@@ -33,7 +33,7 @@ Créer les ventes ; rechercher/scanner les produits ; consulter le stock ; gére
 ### Magasinier / Saisie dépôt
 Gérer le stock dépôt ; rechercher/scanner ; gérer les emplacements ; réceptionner les achats (y compris réceptions partielles) ; préparer les demandes magasin ; effectuer les transferts ; faire les inventaires et comptages planifiés ; signaler les problèmes.
 
-**Un membre peut cumuler des fonctions si l'admin lui accorde les permissions.** Les permissions sont contrôlées **côté UI ET côté backend** (le backend fait autorité).
+**Un membre peut cumuler des fonctions : l'admin lui attribue plusieurs rôles** (décision 2026-09-13 — pas de permission accordée individuellement, voir `docs/permissions.md`). Les permissions sont contrôlées **côté UI ET côté backend** (le backend fait autorité).
 
 ---
 

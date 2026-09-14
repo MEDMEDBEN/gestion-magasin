@@ -33,6 +33,9 @@ interface DeviceInfo {
 
 type Db = Prisma.TransactionClient;
 
+/// Espace de noms des verrous consultatifs sur les sessions d'un compte.
+const USER_SESSIONS_LOCK_NAMESPACE = 7301;
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -170,7 +173,7 @@ export class AuthService {
       if (dto.deviceId) {
         await tx.refreshToken.updateMany({
           where: { userId: user.id, deviceId: dto.deviceId, revokedAt: null },
-          data: { revokedAt: new Date() },
+          data: { revokedAt: new Date(), revokedReason: 'SUPERSEDED' },
         });
       }
       const issued = await this.issueTokens(tx, user, dto);
@@ -199,8 +202,7 @@ export class AuthService {
       );
     }
     if (stored.revokedAt) {
-      // Un token déjà révoqué qui resurgit = vol probable → on coupe toutes les sessions.
-      return this.handleReuse(stored.userId, ipAddress);
+      return this.rejectRevoked(stored, ipAddress);
     }
     if (stored.expiresAt.getTime() <= Date.now()) {
       throw new BusinessException(
@@ -220,12 +222,16 @@ export class AuthService {
     }
 
     const tokens = await this.prisma.$transaction(async (tx) => {
+      // Sérialisée avec toute révocation du même compte : sans ce verrou, une
+      // session neuve insérée (non encore validée) échapperait à une révocation
+      // concurrente, et le voleur la garderait 90 jours (audit final, mineur 1).
+      await AuthService.lockUserSessions(tx, stored.userId);
       // Révocation ATOMIQUE : `revokedAt: null` dans le WHERE fait de cet update le
       // point de sérialisation. Deux refresh concurrents avec le même token → un seul
       // gagne (count === 1), l'autre voit count === 0 et est traité comme un rejeu.
       const claimed = await tx.refreshToken.updateMany({
         where: { id: stored.id, revokedAt: null },
-        data: { revokedAt: new Date(), lastUsedAt: new Date() },
+        data: { revokedAt: new Date(), revokedReason: 'ROTATION', lastUsedAt: new Date() },
       });
       if (claimed.count === 0) return null;
       return this.issueTokens(tx, user, stored);
@@ -274,14 +280,14 @@ export class AuthService {
   async logout(dto: LogoutDto, ipAddress?: string): Promise<LogoutResponseDto> {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: AuthService.hashRefreshToken(dto.refreshToken) },
-      select: { id: true, userId: true, revokedAt: true, expiresAt: true },
+      select: { id: true, userId: true, revokedAt: true, revokedReason: true, expiresAt: true },
     });
 
     if (!dto.allDevices) {
       if (!stored) return { revoked: 0 };
       const result = await this.prisma.refreshToken.updateMany({
         where: { id: stored.id, revokedAt: null },
-        data: { revokedAt: new Date() },
+        data: { revokedAt: new Date(), revokedReason: 'LOGOUT' },
       });
       return { revoked: result.count };
     }
@@ -294,7 +300,7 @@ export class AuthService {
       );
     }
     if (stored.revokedAt) {
-      return this.handleReuse(stored.userId, ipAddress);
+      return this.rejectRevoked(stored, ipAddress);
     }
     if (stored.expiresAt.getTime() <= Date.now()) {
       throw new BusinessException(
@@ -329,11 +335,39 @@ export class AuthService {
   /// l'appelant : une révocation qui fait partie d'une mutation plus large
   /// (désactivation, reset) doit réussir ou échouer AVEC elle.
   async revokeAllForUser(userId: string, db: Db = this.prisma): Promise<number> {
+    await AuthService.lockUserSessions(db, userId);
     const result = await db.refreshToken.updateMany({
       where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: { revokedAt: new Date(), revokedReason: 'REVOKED' },
     });
     return result.count;
+  }
+
+  /// Verrou transactionnel PAR COMPTE sur ses sessions : sérialise rotation et
+  /// révocation. Clé à deux entiers (espace distinct des verrous à clé unique du
+  /// projet). Hors transaction il est relâché aussitôt : sans effet, sans danger.
+  private static async lockUserSessions(db: Db, userId: string): Promise<void> {
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(${USER_SESSIONS_LOCK_NAMESPACE}::int, hashtext(${userId}))`;
+  }
+
+  /// Token révoqué présenté à nouveau. Seul un token REMPLACÉ PAR ROTATION et
+  /// encore dans sa durée de vie trahit un vol (le légitime détenteur a déjà la
+  /// suite) : là, toutes les sessions tombent. Un token fermé autrement (logout,
+  /// reset, révocation, reconnexion) ou expiré rend un simple 401 — sinon un vieux
+  /// token volé permettrait de déconnecter la victime indéfiniment (audit final,
+  /// mineur 3). Un token antérieur au motif (`null`) est traité sans cascade.
+  private rejectRevoked(
+    stored: { userId: string; revokedReason: string | null; expiresAt: Date },
+    ipAddress?: string,
+  ): Promise<never> {
+    const theftSignal =
+      stored.revokedReason === 'ROTATION' && stored.expiresAt.getTime() > Date.now();
+    if (theftSignal) return this.handleReuse(stored.userId, ipAddress);
+    throw new BusinessException(
+      ErrorCode.REFRESH_TOKEN_REVOKED,
+      'Session fermée, reconnexion nécessaire',
+      HttpStatus.UNAUTHORIZED,
+    );
   }
 
   /// Change le mot de passe, lève `mustChangePassword`, ferme toutes les sessions

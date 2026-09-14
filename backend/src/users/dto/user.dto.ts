@@ -7,7 +7,6 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
-  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -74,7 +73,6 @@ export class CreateUserDto {
   @ArrayUnique()
   @IsEnum(RoleCode, { each: true })
   roles!: RoleCode[];
-
 }
 
 /// Modification partielle. Chaque champ est facultatif mais JAMAIS `null` :
@@ -114,7 +112,6 @@ export class UpdateUserDto {
   @ArrayUnique()
   @IsEnum(RoleCode, { each: true })
   roles?: RoleCode[];
-
 }
 
 export class ResetPasswordDto {
@@ -154,23 +151,4 @@ export class UserListDto {
 export class RevokedSessionsDto {
   @ApiProperty({ example: 2, description: 'Nombre de sessions fermées' })
   revoked!: number;
-}
-
-export class PermissionInfoDto {
-  @ApiProperty({ example: 'stock.loss' }) code!: string;
-  @ApiProperty() description!: string;
-}
-
-export class RoleInfoDto {
-  @ApiProperty({ enum: RoleCode }) code!: RoleCode;
-  @ApiProperty({ example: 'Magasinier' }) name!: string;
-  @ApiProperty({ type: [String], description: 'Permissions incluses par le rôle' })
-  permissions!: string[];
-}
-
-/// Catalogue servi à l'écran de gestion des comptes : l'app n'a pas à recopier
-/// la matrice de `docs/permissions.md` (une seule source : `permissions.ts`).
-export class PermissionCatalogDto {
-  @ApiProperty({ type: [RoleInfoDto] }) roles!: RoleInfoDto[];
-  @ApiProperty({ type: [PermissionInfoDto] }) permissions!: PermissionInfoDto[];
 }

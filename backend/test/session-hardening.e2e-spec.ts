@@ -221,6 +221,85 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
     });
   });
 
+  describe('audit final — rejeu d’un token révoqué et course refresh/révocation', () => {
+    it('mineur 3 : un token fermé par LOGOUT rejoué ne coupe PAS les autres sessions', async () => {
+      const a = await newAdmin('m3-logout');
+      const other = await login(a.email);
+      await request(ctx.server).post('/api/auth/logout').send({ refreshToken: a.refresh }).expect(200);
+
+      const replay = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+      expect(replay.status).toBe(401);
+      expect(replay.body.code).toBe('REFRESH_TOKEN_REVOKED');
+      // Sinon un vieux token volé déconnecterait la victime indéfiniment.
+      expect((await listUsers(other.body.accessToken)).status).toBe(200);
+      const logoutAll = await request(ctx.server)
+        .post('/api/auth/logout')
+        .send({ refreshToken: a.refresh, allDevices: true });
+      expect(logoutAll.status).toBe(401);
+      expect((await listUsers(other.body.accessToken)).status).toBe(200);
+    });
+
+    it('mineur 3 : un token remplacé par rotation mais EXPIRÉ ne déclenche aucune cascade', async () => {
+      const a = await newAdmin('m3-expired');
+      const rotated = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh }).expect(200);
+      const { createHash } = await import('node:crypto');
+      await ctx.prisma.refreshToken.update({
+        where: { tokenHash: createHash('sha256').update(a.refresh).digest('hex') },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+
+      const replay = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+      expect(replay.status).toBe(401);
+      expect((await listUsers(rotated.body.accessToken)).status).toBe(200);
+    });
+
+    it('mineur 1 : une révocation lancée PENDANT une rotation ferme aussi la session neuve', async () => {
+      const a = await newAdmin('m1-race');
+      const { AuthService } = await import('../src/auth/auth.service');
+      const auth = ctx.app.get(AuthService);
+
+      let revoking: Promise<unknown> | undefined;
+      const original = ctx.prisma.$transaction.bind(ctx.prisma) as (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
+      const spy = jest.spyOn(ctx.prisma, '$transaction').mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
+        original((tx) =>
+          fn(
+            new Proxy(tx as object, {
+              get(target, property, receiver) {
+                const value = Reflect.get(target, property, receiver);
+                if (property !== 'refreshToken') return value;
+                return new Proxy(value as object, {
+                  get(inner, key, innerReceiver) {
+                    const method = Reflect.get(inner, key, innerReceiver);
+                    if (key !== 'create') return method;
+                    return async (...args: unknown[]) => {
+                      // L'admin révoque au moment exact où la session neuve s'écrit.
+                      revoking = ctx.prisma.$transaction((other) => auth.revokeAllForUser(a.id, other));
+                      await new Promise((resolve) => setTimeout(resolve, 300));
+                      return (method as (...x: unknown[]) => unknown).apply(inner, args);
+                    };
+                  },
+                });
+              },
+            }),
+          ),
+        )) as never);
+
+      let rotated: request.Response;
+      try {
+        rotated = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+      } finally {
+        spy.mockRestore();
+      }
+      await revoking;
+
+      expect(rotated.status).toBe(200);
+      // Sans sérialisation, cette session neuve survivrait 90 jours à la révocation.
+      const again = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: rotated.body.refreshToken });
+      expect(again.status).toBe(401);
+      expect((await listUsers(rotated.body.accessToken)).status).toBe(401);
+    });
+  });
+
   describe('N4 — le changement de mot de passe ne peut pas écraser un reset concurrent', () => {
     it('reset commité pendant le hachage : 409, le mot de passe temporaire reste valide', async () => {
       const a = await newAdmin('n4');

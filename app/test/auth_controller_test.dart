@@ -44,7 +44,14 @@ void main() {
     test('ZÉRO session fermée côté serveur = échec, pas un succès (N7)', () async {
       api.allDevicesRevoked = 0;
 
-      await expectLater(controller().logoutAllDevices(), throwsA(isA<ApiException>()));
+      final error = await controller().logoutAllDevices().then<ApiException?>(
+            (_) => null,
+            onError: (Object e) => e as ApiException,
+          );
+      expect(error, isNotNull);
+      // Le message affiché dit la vérité, et la session n'est pas à refaire.
+      expect(error!.userMessage, contains('Aucune session'));
+      expect(error.requiresRelogin, isFalse);
 
       // Annoncer « tout est déconnecté » alors que rien ne l'a été serait un
       // mensonge dangereux en cas de vol.

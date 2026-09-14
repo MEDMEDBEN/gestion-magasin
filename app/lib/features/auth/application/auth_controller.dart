@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
 import '../../../core/providers.dart';
+import '../../../data/api/dio_client.dart';
 import '../data/auth_api.dart';
 import '../data/auth_models.dart';
 
@@ -125,17 +126,24 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// refresh token, jamais réutilisé, expirera.
   Future<void> logout() async {
     final tokenStore = ref.read(tokenStoreProvider);
-    // Lire le refresh token APRÈS une éventuelle rotation en cours (N8).
-    await ref.read(dioClientProvider).awaitPendingRefresh();
-    final refreshToken = await tokenStore.readRefreshToken();
-    if (refreshToken != null) {
-      try {
-        await ref.read(authApiProvider).logout(refreshToken: refreshToken);
-      } on ApiException {
-        // Voir ci-dessus : l'échec serveur n'empêche pas la déconnexion locale.
+    final client = ref.read(dioClientProvider);
+    // Aucune rotation ne démarre pendant la fermeture, et on lit le refresh
+    // token APRÈS celle qui serait déjà en vol (N8 + audit final, mineur 2).
+    client.beginSessionClose();
+    try {
+      await client.awaitPendingRefresh();
+      final refreshToken = await tokenStore.readRefreshToken();
+      if (refreshToken != null) {
+        try {
+          await ref.read(authApiProvider).logout(refreshToken: refreshToken);
+        } on ApiException {
+          // Voir ci-dessus : l'échec serveur n'empêche pas la déconnexion locale.
+        }
       }
+      await tokenStore.clear();
+    } finally {
+      client.endSessionClose();
     }
-    await tokenStore.clear();
     state = const AsyncValue.data(AuthSignedOut());
   }
 
@@ -146,8 +154,18 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// une session valide 90 jours au voleur (audit I3). La session locale est
   /// alors conservée et l'`ApiException` remonte à l'écran.
   Future<int> logoutAllDevices() async {
+    final client = ref.read(dioClientProvider);
+    client.beginSessionClose();
+    try {
+      return await _logoutAllDevices(client);
+    } finally {
+      client.endSessionClose();
+    }
+  }
+
+  Future<int> _logoutAllDevices(DioClient client) async {
     final tokenStore = ref.read(tokenStoreProvider);
-    await ref.read(dioClientProvider).awaitPendingRefresh();
+    await client.awaitPendingRefresh();
     final refreshToken = await tokenStore.readRefreshToken();
     if (refreshToken == null) {
       throw const ApiException(
@@ -163,10 +181,12 @@ class AuthController extends AsyncNotifier<AuthState> {
     // remplacée, par exemple). Annoncer « tout est déconnecté » serait un
     // mensonge dangereux en cas de vol : on garde la session et on le dit (N7).
     if (revoked < 1) {
+      // Pas de code serveur inventé : `refreshTokenInvalid` serait traduit en
+      // « Session expirée, reconnectez-vous » et marquerait la session comme à
+      // refaire, alors qu'elle est justement CONSERVÉE (revue finale, point 4).
       throw const ApiException(
         statusCode: 409,
         message: 'Aucune session n’a pu être fermée. Réessayez.',
-        code: ErrorCodes.refreshTokenInvalid,
       );
     }
     await tokenStore.clear();

@@ -139,6 +139,7 @@ class DioClient {
   /// Renouvelle les tokens. Un seul appel réel, même si dix requêtes échouent
   /// simultanément — les autres attendent le même résultat.
   Future<bool> _refreshTokens() async {
+    if (_closingSessions > 0) return false;
     final lastFailure = _lastTransientFailure;
     if (lastFailure != null &&
         DateTime.now().difference(lastFailure) < _refreshCooldown) {
@@ -156,7 +157,25 @@ class DioClient {
   /// enregistrée juste après — resterait vivante 90 jours.
   Future<void> awaitPendingRefresh() async {
     final inFlight = _refreshInFlight;
-    if (inFlight != null) await inFlight;
+    if (inFlight == null) return;
+    try {
+      await inFlight;
+    } catch (_) {
+      // Une rotation ratée (réponse illisible…) ne doit pas faire échouer la
+      // déconnexion qui l'attend : on voulait seulement qu'elle soit finie.
+    }
+  }
+
+  /// Fermetures de session en cours (déconnexion, « tout déconnecter »).
+  int _closingSessions = 0;
+
+  /// Pendant une fermeture, AUCUNE rotation ne démarre (audit final, mineur 2) :
+  /// un refresh lancé entre la lecture du token et son effacement serait soit
+  /// vu comme un vol par le serveur (toutes les sessions tombent, faux « vol »
+  /// à l'audit), soit laisserait une session neuve jamais stockée.
+  void beginSessionClose() => _closingSessions++;
+  void endSessionClose() {
+    if (_closingSessions > 0) _closingSessions--;
   }
 
   Future<bool> _performRefresh() async {

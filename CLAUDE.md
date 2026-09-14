@@ -22,7 +22,7 @@ Logiciel de gestion centralisé pour un magasin de matériel électrique + dép�
 - **Vendeur / Caissier** : ventes, recherche/scan produit, clients, paiements, ventes à crédit (selon permission), demandes au dépôt, notifications. Ne peut pas modifier librement le stock.
 - **Magasinier** : stock dépôt, emplacements, réceptions (y compris partielles), préparation des demandes, transferts, inventaires, comptages planifiés, signalement de problèmes.
 
-Un membre peut **cumuler** des permissions si l'admin les lui accorde. La matrice CRUD détaillée par entité est à produire en Phase 0 (voir `docs/plan.md`).
+Un membre peut **cumuler** des fonctions : l'admin lui attribue **plusieurs rôles** (décision MEDMEDBEN du 2026-09-13 — pas de permission accordée individuellement). La matrice CRUD détaillée par entité est à produire en Phase 0 (voir `docs/plan.md`).
 
 ## Stack technique
 - **Frontend (desktop + mobile, un seul code)** : Flutter, Riverpod (state), go_router (navigation), Dio (HTTP), Freezed (modèles), Drift (SQLite local / offline)
