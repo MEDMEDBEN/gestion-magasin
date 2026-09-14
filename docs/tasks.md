@@ -145,7 +145,11 @@ app     $ flutter build windows --release     → "build windows" only supported
    > (Docker/PostgreSQL, compilation, build Windows) — action MEDMEDBEN.
 6. **Poste Windows** (vérifié 2026-09-14 : composant ATL ABSENT, 1,99 Go libre) : `flutter build windows --release` (prérequis : composant VS
    `Microsoft.VisualStudio.Component.VC.ATL` + espace sur `C:`) — le noter ici sans contournement.
-7. **Relecture humaine** des écrans (captures via l'outil ci-dessus) → cocher dans `docs/plan.md`.
+7. **Relecture humaine** des écrans — **À FAIRE PAR MEDMEDBEN**. Captures régénérées le 2026-09-14
+   sur le poste Windows (11 écrans, `flutter test test/tools/screen_captures_test.dart
+   --dart-define=CAPTURE_OUT=<dossier>`), relues par l'agent : conformes AMPÈRE, rôles cumulés,
+   plus de section permissions. Un espace résiduel du formulaire mobile a été corrigé (`df214e4`).
+   Ancien texte :  (captures via l'outil ci-dessus) → cocher dans `docs/plan.md`.
 
 Suggestions non bloquantes de la contre-revue (à traiter quand on repasse sur ces fichiers) :
 course recherche/`loadMore` (`users_controller.dart`) ; rayons/marges desktop dans
