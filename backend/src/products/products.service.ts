@@ -19,6 +19,7 @@ import {
 } from './dto/product.dto';
 
 type Db = Prisma.TransactionClient;
+type Viewer = Pick<AuthenticatedUser, 'permissions'>;
 
 const SORTABLE_FIELDS = [
   'name',
@@ -64,7 +65,26 @@ export class ProductsService {
     };
   }
 
-  async findAll(query: ProductListQueryDto): Promise<ProductListDto> {
+  /// Ce qu'un compte voit d'un produit (docs/permissions.md) : le coût d'achat
+  /// exige `cost.read`, le fournisseur principal `supplier.read` — sinon `null`.
+  /// Appliqué à TOUTE réponse produit, delta compris.
+  static forViewer(product: ProductDto, viewer: Viewer): ProductDto {
+    const can = (permission: string) => viewer.permissions.includes(permission);
+    return {
+      ...product,
+      lastPurchasePriceHt: can(PERMISSIONS.COST_READ)
+        ? product.lastPurchasePriceHt
+        : null,
+      mainSupplierId: can(PERMISSIONS.SUPPLIER_READ)
+        ? product.mainSupplierId
+        : null,
+    };
+  }
+
+  async findAll(
+    query: ProductListQueryDto,
+    viewer: Viewer,
+  ): Promise<ProductListDto> {
     const where: Prisma.ProductWhereInput = {};
     if (!query.includeInactive) where.isActive = true;
     if (query.categoryId) {
@@ -92,24 +112,26 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
     return {
-      data: rows.map(ProductsService.toDto),
+      data: rows.map((row) =>
+        ProductsService.forViewer(ProductsService.toDto(row), viewer),
+      ),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
 
-  async findOne(id: string): Promise<ProductDto> {
+  async findOne(id: string, viewer: Viewer): Promise<ProductDto> {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw ProductsService.notFound();
-    return ProductsService.toDto(product);
+    return ProductsService.forViewer(ProductsService.toDto(product), viewer);
   }
 
   /// Chemin du scanner : recherche exacte du code lu (espaces retirés).
-  async findByBarcode(raw: string): Promise<ProductDto> {
+  async findByBarcode(raw: string, viewer: Viewer): Promise<ProductDto> {
     const product = await this.prisma.product.findUnique({
       where: { barcode: raw.trim() },
     });
     if (!product) throw ProductsService.notFound();
-    return ProductsService.toDto(product);
+    return ProductsService.forViewer(ProductsService.toDto(product), viewer);
   }
 
   async create(

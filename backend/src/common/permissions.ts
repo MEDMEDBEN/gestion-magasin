@@ -11,6 +11,9 @@ export const PERMISSIONS = {
   /// Prix & tarifs : ADMIN uniquement (décision figée).
   PRICE_MANAGE: 'price.manage',
   PRICE_READ: 'price.read',
+  /// Coût d'achat (dernier prix réceptionné, base de la marge) : ADMIN et
+  /// MAGASINIER — jamais le vendeur (décision MEDMEDBEN 2026-09-14).
+  COST_READ: 'cost.read',
   LOCATION_MANAGE: 'location.manage',
 
   // Stock
@@ -96,6 +99,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
   [RoleCode.MAGASINIER]: [
     P.PRODUCT_READ,
     P.PRICE_READ,
+    P.COST_READ,
     P.LOCATION_MANAGE,
     P.STOCK_READ_STORE,
     P.STOCK_READ_WAREHOUSE,
@@ -124,10 +128,12 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [P.PRODUCT_DISABLE]: 'Désactiver un produit',
   [P.PRICE_MANAGE]: 'Modifier les prix et les tarifs (admin uniquement)',
   [P.PRICE_READ]: 'Voir les prix et les tarifs',
+  [P.COST_READ]: 'Voir le coût d’achat et la marge',
   [P.LOCATION_MANAGE]: 'Gérer les emplacements du dépôt',
   [P.STOCK_READ_STORE]: 'Consulter le stock magasin',
   [P.STOCK_READ_WAREHOUSE]: 'Consulter le stock dépôt',
-  [P.STOCK_ADJUST]: "Créer un ajustement d'inventaire (soumis à validation admin)",
+  [P.STOCK_ADJUST]:
+    "Créer un ajustement d'inventaire (soumis à validation admin)",
   [P.STOCK_ADJUST_VALIDATE]: "Valider un ajustement d'inventaire",
   [P.STOCK_LOSS]: 'Déclarer une perte ou une casse',
   [P.SALE_CREATE]: 'Créer une vente',
@@ -144,7 +150,8 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [P.SUPPLIER_WRITE]: 'Créer et modifier un fournisseur',
   [P.SUPPLIER_PAYMENT_CREATE]: 'Enregistrer un paiement fournisseur',
   [P.PURCHASE_CREATE]: 'Créer et modifier une commande fournisseur',
-  [P.PURCHASE_CONFIRM]: 'Confirmer ou annuler une commande fournisseur (admin seul)',
+  [P.PURCHASE_CONFIRM]:
+    'Confirmer ou annuler une commande fournisseur (admin seul)',
   [P.RECEPTION_CREATE]: 'Réceptionner une commande, y compris partiellement',
   [P.TRANSFER_REQUEST]: 'Créer une demande de transfert vers le magasin',
   [P.TRANSFER_PREPARE]: 'Accepter, préparer et expédier un transfert',

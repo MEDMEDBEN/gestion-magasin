@@ -70,8 +70,11 @@ export class ProductsController {
       'Recherche `q` sur nom, référence, marque et code-barres. Actifs seulement par défaut.',
   })
   @ApiOkResponse({ type: ProductListDto })
-  findAll(@Query() query: ProductListQueryDto): Promise<ProductListDto> {
-    return this.productsService.findAll(query);
+  findAll(
+    @Query() query: ProductListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProductListDto> {
+    return this.productsService.findAll(query, user);
   }
 
   @Roles(...ALL_ROLES)
@@ -79,8 +82,11 @@ export class ProductsController {
   @Get('barcode/:barcode')
   @ApiOperation({ summary: 'Recherche par code-barres (scan, douchette)' })
   @ApiOkResponse({ type: ProductDto })
-  findByBarcode(@Param('barcode') barcode: string): Promise<ProductDto> {
-    return this.productsService.findByBarcode(barcode);
+  findByBarcode(
+    @Param('barcode') barcode: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProductDto> {
+    return this.productsService.findByBarcode(barcode, user);
   }
 
   @Roles(...ALL_ROLES)
@@ -88,8 +94,11 @@ export class ProductsController {
   @Get(':id')
   @ApiOperation({ summary: 'Détail d’un produit' })
   @ApiOkResponse({ type: ProductDto })
-  findOne(@Param('id', CanonicalUuidPipe) id: string): Promise<ProductDto> {
-    return this.productsService.findOne(id);
+  findOne(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProductDto> {
+    return this.productsService.findOne(id, user);
   }
 
   @Roles(RoleCode.ADMIN)
@@ -237,7 +246,10 @@ export class CatalogController {
       'Inactifs compris. Rappeler tant que `hasMore` est vrai.',
   })
   @ApiOkResponse({ type: CatalogChangesDto })
-  changes(@Query() query: CatalogChangesQueryDto): Promise<CatalogChangesDto> {
-    return this.catalogService.changes(query);
+  changes(
+    @Query() query: CatalogChangesQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CatalogChangesDto> {
+    return this.catalogService.changes(query, user);
   }
 }

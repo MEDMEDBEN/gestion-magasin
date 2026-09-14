@@ -387,6 +387,72 @@ describe('Catalogue (e2e)', () => {
         .expect(200);
     });
 
+    it('coût d’achat et fournisseur : ADMIN et MAGASINIER les voient, JAMAIS le VENDEUR', async () => {
+      const supplier = await prisma.supplier.create({
+        data: { name: uid('Fournisseur') },
+      });
+      const created = await createProduct({ mainSupplierId: supplier.id });
+      await prisma.product.update({
+        where: { id: created.id },
+        data: {
+          lastPurchasePriceHt: 145_000,
+          updatedAt: new Date(Date.now() - CATALOG_SETTLE_MS - 1000),
+        },
+      });
+      try {
+        const view = async (token: string) => {
+          const one = await as(token)
+            .get(`/api/products/${created.id}`)
+            .expect(200);
+          const barcode = await as(token)
+            .get(`/api/products/barcode/${created.barcode}`)
+            .expect(200);
+          const list = await as(token)
+            .get(`/api/products?q=${created.sku}`)
+            .expect(200);
+          let delta: { id: string }[] = [];
+          let cursor: string | undefined;
+          for (let guard = 0; guard < 1000; guard++) {
+            const page = await as(token)
+              .get(
+                `/api/catalog/changes?limit=500${cursor ? `&cursor=${cursor}` : ''}`,
+              )
+              .expect(200);
+            delta = delta.concat(page.body.products);
+            cursor = page.body.cursor;
+            if (!page.body.hasMore) break;
+          }
+          return [
+            one.body,
+            barcode.body,
+            list.body.data[0],
+            delta.find((p) => p.id === created.id),
+          ];
+        };
+
+        for (const product of await view(tokens.vendeur)) {
+          expect(product).toMatchObject({
+            lastPurchasePriceHt: null,
+            mainSupplierId: null,
+          });
+        }
+        for (const token of [tokens.admin, tokens.magasinier]) {
+          for (const product of await view(token)) {
+            expect(product).toMatchObject({
+              lastPurchasePriceHt: 145_000,
+              mainSupplierId: supplier.id,
+            });
+          }
+        }
+      } finally {
+        await prisma.product.update({
+          where: { id: created.id },
+          data: { mainSupplierId: null },
+        });
+        await prisma.supplier.delete({ where: { id: supplier.id } });
+      }
+    });
+
     it('le prix reste 501 (feature Ventes / tarifs)', async () => {
       const product = await createProduct();
       await as(tokens.admin)

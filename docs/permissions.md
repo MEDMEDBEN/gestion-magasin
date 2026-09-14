@@ -44,6 +44,7 @@ aucune migration destructive sans confirmation).
 | Désactiver produit | ✅ | ❌ | ❌ |
 | Modifier prix / tarifs | ✅ | ❌ | ❌ |
 | Voir les prix / tarifs | ✅ | ✅ (lecture directe) | 👁️ |
+| Voir le coût d'achat (marge) | ✅ | ❌ | 👁️ (`cost.read`) |
 | Gérer emplacements dépôt | ✅ | ❌ | ✅ |
 
 ## Stock / Mouvements
@@ -104,6 +105,13 @@ aucune migration destructive sans confirmation).
 | Gérer utilisateurs / rôles / permissions | ✅ | ❌ | ❌ |
 | Modifier les paramètres système | ✅ | ❌ | ❌ |
 | Consulter l'audit / traçabilité | ✅ | ❌ | ❌ |
+
+## Décision du 2026-09-14 (MEDMEDBEN) — coût d'achat
+- Le **coût d'achat** (`Product.lastPurchasePriceHt`, dernier prix réceptionné = base de la marge) est
+  visible par l'**ADMIN et le MAGASINIER** (permission `cost.read`), **jamais par le vendeur**. Le serveur
+  renvoie `null` à qui n'a pas `cost.read`, sur toute réponse produit (liste, fiche, code-barres, delta).
+- Même traitement pour `mainSupplierId` sans `supplier.read` (le vendeur n'a aucun accès fournisseurs).
+- L'app n'enregistre **jamais** ces deux champs dans sa base locale (partagée par les comptes d'un poste).
 
 ## Décisions figées (2026-09-09)
 - **Prix & tarifs : gérés par l'admin uniquement.** Le vendeur ne fixe aucun prix et n'applique **aucune remise libre** — il voit et applique les tarifs définis par l'admin.

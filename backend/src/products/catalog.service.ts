@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
+import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { isUUID } from 'class-validator';
@@ -196,7 +197,10 @@ export class CatalogService {
   /// Descente delta du catalogue (docs/context.md : catalogue complet en local,
   /// delta only). Un curseur `(updatedAt, id)` PAR TYPE : robuste aux mises à jour
   /// de masse au même instant. Inactifs compris — le client doit les masquer.
-  async changes(query: CatalogChangesQueryDto): Promise<CatalogChangesDto> {
+  async changes(
+    query: CatalogChangesQueryDto,
+    viewer: Pick<AuthenticatedUser, 'permissions'>,
+  ): Promise<CatalogChangesDto> {
     const cursor = CatalogService.decodeCursor(query.cursor);
     const settledBefore = new Date(Date.now() - CATALOG_SETTLE_MS);
     const take = query.limit + 1;
@@ -237,7 +241,9 @@ export class CatalogService {
     };
 
     return {
-      products: page(products, 'products').map(ProductsService.toDto),
+      products: page(products, 'products').map((row) =>
+        ProductsService.forViewer(ProductsService.toDto(row), viewer),
+      ),
       categories: page(categories, 'categories').map(
         CatalogService.categoryToDto,
       ),

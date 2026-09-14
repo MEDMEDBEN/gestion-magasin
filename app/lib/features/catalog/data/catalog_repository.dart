@@ -68,7 +68,13 @@ class CatalogRepository {
           parentId: p.categoryId,
           isActive: p.isActive,
           updatedAt: p.updatedAt,
-          json: p.toJson(),
+          // Jamais sur le disque : la base locale est partagée par les comptes
+          // du poste et non chiffrée, le coût d'achat est réservé à ADMIN et
+          // MAGASINIER (docs/permissions.md). Un écran qui en aura besoin le
+          // lira en ligne.
+          json: p
+              .copyWith(lastPurchasePriceHt: null, mainSupplierId: null)
+              .toJson(),
         ),
       for (final c in categories)
         _row(

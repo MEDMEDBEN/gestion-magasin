@@ -240,14 +240,15 @@ export class ProductDto {
   @ApiProperty({ enum: ProductUnitDto }) unit!: ProductUnitDto;
   @ApiProperty({ nullable: true }) categoryId!: string | null;
   @ApiProperty({ nullable: true }) taxRateId!: string | null;
-  @ApiProperty({ nullable: true }) mainSupplierId!: string | null;
+  @ApiProperty({ nullable: true, description: '`null` sans `supplier.read`' })
+  mainSupplierId!: string | null;
   @ApiProperty({ nullable: true }) storageLocationId!: string | null;
   @ApiProperty({ example: '10.000' }) minThreshold!: string;
   @ApiProperty({ example: '5.000' }) safetyStock!: string;
   @ApiProperty({
     nullable: true,
     description:
-      'Dernier prix d’achat réceptionné, en centimes (base de la marge).',
+      'Dernier prix d’achat réceptionné, en centimes (base de la marge). `null` sans `cost.read` (vendeur).',
   })
   lastPurchasePriceHt!: number | null;
   @ApiProperty() allowBackorder!: boolean;
