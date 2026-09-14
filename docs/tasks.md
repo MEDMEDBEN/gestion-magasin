@@ -231,8 +231,11 @@ Preuve : backend **60** unitaires · **123** e2e ; app analyze propre · **+164 
 Notes pour plus tard : refuser un changement d'unité si des mouvements de stock existent (feature Stock) ;
 la descente devra transporter `ProductPrice` (feature Ventes).
 
-**Reprise ICI** : résultat de la contre-vérification `security-reviewer` (lancée 2026-09-14) → relecture humaine
-des captures 12-17 par MEDMEDBEN → cocher `docs/plan.md` → P0 #3 (Stock).
+**Contre-audit `security-reviewer` (2026-09-14) : CONFORME** — I1, I2, M1-M4 fermés. 2 mineurs corrigés : les
+réponses de création/modification produit passent aussi par `forViewer` ; `npm run seed` ajouté à chaque
+déploiement (`docs/DEPLOYMENT.md`). M5 reste à faire avec la feature Ventes (FreshAccessGuard sur les prix).
+**Reprise ICI** : relecture humaine des captures 12-17 par MEDMEDBEN → cocher la dernière case de
+`docs/plan.md` (P0 n°2) → **P0 #3 (Stock : quantités, mouvements traçables, projection atomique)**.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
@@ -448,7 +451,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 |---|---|---|---|---|---|
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
 | **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
-| Produits + catégories + emplacements | 🟡 **~85 %** — audits + relecture humaine | 🟡 Contrat figé (501) | — | — | — |
+| Produits + catégories + emplacements | 🟡 **~95 %** — relecture humaine des écrans | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

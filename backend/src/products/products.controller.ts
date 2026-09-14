@@ -114,12 +114,15 @@ export class ProductsController {
     type: ErrorResponseDto,
     description: '`BARCODE_ALREADY_USED` ou référence déjà prise (`CONFLICT`)',
   })
-  create(
+  async create(
     @Body() dto: CreateProductDto,
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<ProductDto> {
-    return this.productsService.create(dto, actorOf(user, ip));
+    return ProductsService.forViewer(
+      await this.productsService.create(dto, actorOf(user, ip)),
+      user,
+    );
   }
 
   @Roles(RoleCode.ADMIN)
@@ -130,13 +133,16 @@ export class ProductsController {
     description: 'Changer `isActive` exige en plus `product.disable`.',
   })
   @ApiOkResponse({ type: ProductDto })
-  update(
+  async update(
     @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateProductDto,
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<ProductDto> {
-    return this.productsService.update(id, dto, user, actorOf(user, ip));
+    return ProductsService.forViewer(
+      await this.productsService.update(id, dto, user, actorOf(user, ip)),
+      user,
+    );
   }
 
   @Roles(RoleCode.ADMIN)

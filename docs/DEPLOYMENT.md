@@ -54,7 +54,10 @@ PostgreSQL et Redis ne sont **jamais accessibles depuis l'extérieur** — uniqu
    que le nombre réel de proxys.
 5. `cd infra && docker compose up -d --build`
 6. Vérifier que `https://api.tondomaine.com` répond (Traefik doit avoir généré le certificat automatiquement en quelques secondes)
-7. Lancer les migrations Prisma une fois : `docker compose exec backend npx prisma migrate deploy`
+7. Lancer les migrations Prisma à chaque déploiement : `docker compose exec backend npx prisma migrate deploy`
+   puis **le seed à chaque déploiement** : `docker compose exec backend npm run seed` — il est idempotent et fait
+   autorité sur les permissions des rôles (ex. `cost.read` ajoutée le 2026-09-14 : sans re-seed, le magasinier
+   ne voit pas le coût d'achat).
 
 ## Gestion des sessions / authentification
 

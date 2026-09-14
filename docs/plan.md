@@ -159,8 +159,8 @@ Traçabilité / système
 - [x] UI mobile implémentée _(lignes tactiles, formulaire plein écran)_
 - [x] Sync offline gérée si applicable _(lecture cache-first + delta ; écritures d'administration en ligne uniquement)_
 - [x] Revue par subagent `reviewer` _(2026-09-14 : aucun bloquant, 3 points corrigés + suggestions)_
-- [ ] Audit par subagent `security-reviewer` _(2026-09-14 : NON CONFORME — I1, M1-M3 corrigés ; I2 coût d'achat en attente de décision)_
-- [ ] Tests manuels effectués par un humain _(captures 12 à 17 à relire par MEDMEDBEN)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-14 : NON CONFORME → tout corrigé → contre-audit **CONFORME**)_
+- [ ] Tests manuels effectués par un humain _(captures 12 à 17 à relire par MEDMEDBEN — `flutter test test/tools/screen_captures_test.dart --dart-define=CAPTURE_OUT=<dossier>`)_
 
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
