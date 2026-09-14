@@ -21,7 +21,6 @@ ManagedUser managedUser({
   bool isActive = true,
   bool mustChangePassword = false,
   List<String> roles = const ['VENDEUR'],
-  List<String> extraPermissions = const [],
   DateTime? lastLoginAt,
 }) {
   return ManagedUser(
@@ -32,7 +31,6 @@ ManagedUser managedUser({
     isActive: isActive,
     mustChangePassword: mustChangePassword,
     roles: roles,
-    extraPermissions: extraPermissions,
     permissions: const ['sale.create'],
     lastLoginAt: lastLoginAt,
     createdAt: DateTime.utc(2026, 9, 1),
@@ -55,46 +53,9 @@ AuthUser authUser({
   );
 }
 
-/// Extrait de la matrice serveur, suffisant pour les écrans.
-const testPermissionCatalog = PermissionCatalog(
-  roles: [
-    RoleInfo(
-      code: 'ADMIN',
-      name: 'Administrateur',
-      permissions: [
-        'product.read',
-        'sale.create',
-        'stock.loss',
-        'supplier.read',
-        'sale.discount',
-        'user.manage',
-      ],
-    ),
-    RoleInfo(
-      code: 'VENDEUR',
-      name: 'Vendeur / Caissier',
-      permissions: ['product.read', 'sale.create'],
-    ),
-    RoleInfo(
-      code: 'MAGASINIER',
-      name: 'Magasinier',
-      permissions: ['product.read', 'stock.loss', 'supplier.read'],
-    ),
-  ],
-  permissions: [
-    PermissionInfo(code: 'product.read', description: 'Consulter les produits', adminOnly: false),
-    PermissionInfo(code: 'sale.create', description: 'Créer une vente', adminOnly: false),
-    PermissionInfo(code: 'stock.loss', description: 'Déclarer une perte ou une casse', adminOnly: false),
-    PermissionInfo(code: 'supplier.read', description: 'Consulter les fournisseurs', adminOnly: false),
-    PermissionInfo(code: 'sale.discount', description: 'Appliquer une remise', adminOnly: true),
-    PermissionInfo(code: 'user.manage', description: 'Gérer les utilisateurs', adminOnly: true),
-  ],
-);
-
 class CreateCall {
-  CreateCall(this.roles, this.extraPermissions, this.email, this.phone);
+  CreateCall(this.roles, this.email, this.phone);
   final List<String> roles;
-  final List<String> extraPermissions;
   final String? email;
   final String? phone;
 }
@@ -128,25 +89,20 @@ class FakeUsersApi implements UsersApi {
   }
 
   @override
-  Future<PermissionCatalog> permissionCatalog() async => testPermissionCatalog;
-
-  @override
   Future<ManagedUser> create({
     String? email,
     String? phone,
     required String fullName,
     required String temporaryPassword,
     required List<String> roles,
-    List<String> extraPermissions = const [],
   }) async {
-    creates.add(CreateCall(roles, extraPermissions, email, phone));
+    creates.add(CreateCall(roles, email, phone));
     final created = managedUser(
       id: 'new-${creates.length}',
       fullName: fullName,
       email: email,
       phone: phone,
       roles: roles,
-      extraPermissions: extraPermissions,
       mustChangePassword: true,
     );
     users = [...users, created];
@@ -162,7 +118,6 @@ class FakeUsersApi implements UsersApi {
       fullName: changes.fullName ?? current.fullName,
       isActive: changes.isActive ?? current.isActive,
       roles: changes.roles ?? current.roles,
-      extraPermissions: changes.extraPermissions ?? current.extraPermissions,
     );
     users = [for (final u in users) u.id == id ? updated : u];
     return updated;

@@ -25,12 +25,6 @@ class UserRoleBadges extends StatelessWidget {
             label: AppRoleCode.fromCode(code)?.label ?? code,
             tone: StatusTone.info,
           ),
-        if (user.extraPermissions.isNotEmpty)
-          AmpereBadge(
-            label: '+${user.extraPermissions.length} permission'
-                '${user.extraPermissions.length > 1 ? 's' : ''}',
-            tone: StatusTone.neutral,
-          ),
       ],
     );
   }

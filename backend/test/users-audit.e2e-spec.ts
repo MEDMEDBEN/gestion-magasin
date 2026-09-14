@@ -45,11 +45,7 @@ describe('Gestion des comptes (e2e)', () => {
   const uniqueEmail = (label: string) => `e2e-audit-${label}-${suffix}-${++counter}@test.local`;
 
   /// Crée un compte via l'API et mémorise son id pour le nettoyage.
-  const createUser = async (
-    label: string,
-    role: RoleCode = RoleCode.VENDEUR,
-    extraPermissions?: string[],
-  ) => {
+  const createUser = async (label: string, role: RoleCode = RoleCode.VENDEUR) => {
     const response = await as(adminToken)
       .post('/api/users')
       .send({
@@ -57,7 +53,6 @@ describe('Gestion des comptes (e2e)', () => {
         fullName: `Compte ${label}`,
         temporaryPassword: PASSWORD,
         roles: [role],
-        ...(extraPermissions ? { extraPermissions } : {}),
       })
       .expect(201);
     createdIds.push(response.body.id);
@@ -129,7 +124,6 @@ describe('Gestion des comptes (e2e)', () => {
       expect(entries[0].newValue).toMatchObject({
         email: created.email,
         roles: ['VENDEUR'],
-        extraPermissions: [],
         isActive: true,
       });
     });
@@ -163,21 +157,22 @@ describe('Gestion des comptes (e2e)', () => {
       expect(update!.newValue).toMatchObject({ roles: ['MAGASINIER'] });
     });
 
-    it('une permission accordée à la carte est tracée À PART et effective au login', async () => {
-      const created = await createUser('perm');
+    it('cumuler des fonctions passe par les RÔLES : tracé et effectif au login', async () => {
+      const created = await createUser('cumul');
 
       const res = await as(adminToken)
         .patch(`/api/users/${created.id}`)
-        .send({ extraPermissions: ['stock.loss'] })
+        .send({ roles: [RoleCode.VENDEUR, RoleCode.MAGASINIER] })
         .expect(200);
-      expect(res.body.extraPermissions).toEqual(['stock.loss']);
-      expect(res.body.permissions).toContain('stock.loss');
+      // Les permissions effectives sont l'union des deux rôles.
+      expect(res.body.permissions).toEqual(expect.arrayContaining(['sale.create', 'stock.loss']));
 
       const update = (await auditFor(created.id)).find((e) => e.action === 'UPDATE');
-      expect(update!.oldValue).toMatchObject({ extraPermissions: [] });
-      expect(update!.newValue).toMatchObject({ extraPermissions: ['stock.loss'] });
+      expect(update!.oldValue).toMatchObject({ roles: ['VENDEUR'] });
+      expect((update!.newValue as { roles: string[] }).roles).toEqual(
+        expect.arrayContaining(['VENDEUR', 'MAGASINIER']),
+      );
 
-      // Le compte neuf doit changer son mot de passe, mais /auth/me reste lisible.
       const session = await login(created.email, PASSWORD);
       expect(session.body.user.permissions).toContain('stock.loss');
     });
@@ -318,7 +313,6 @@ describe('Gestion des comptes (e2e)', () => {
       for (const change of [
         { roles: [RoleCode.ADMIN, RoleCode.MAGASINIER] },
         { isActive: false },
-        { extraPermissions: [] },
       ]) {
         const res = await as(self.token).patch(`/api/users/${self.id}`).send(change);
         expect(res.status).toBe(403);
@@ -354,9 +348,11 @@ describe('Gestion des comptes (e2e)', () => {
     });
   });
 
-  describe('permissions réservées à l’ADMIN (règles fermes)', () => {
-    it('ne s’accordent pas à la carte à un vendeur, ni à la création ni ensuite', async () => {
-      const refused = await as(adminToken)
+  describe('aucune permission « à la carte » (décision 2026-09-13)', () => {
+    it('le champ n’existe plus : refusé à la création comme à la modification', async () => {
+      // Sans ce refus, un admin pourrait croire avoir accordé `sale.discount` à un
+      // vendeur — règle ferme : la remise reste réservée à l'ADMIN.
+      const created = await as(adminToken)
         .post('/api/users')
         .send({
           email: uniqueEmail('remise'),
@@ -365,26 +361,31 @@ describe('Gestion des comptes (e2e)', () => {
           roles: [RoleCode.VENDEUR],
           extraPermissions: ['sale.discount'],
         });
-      expect(refused.status).toBe(422);
-      expect(refused.body.code).toBe('PERMISSION_NOT_GRANTABLE');
+      expect(created.status).toBe(400);
+      expect(created.body.code).toBe('VALIDATION_FAILED');
 
       const vendeur = await createUser('prix');
       const update = await as(adminToken)
         .patch(`/api/users/${vendeur.id}`)
         .send({ extraPermissions: ['price.manage'] });
-      expect(update.status).toBe(422);
-      expect(update.body.code).toBe('PERMISSION_NOT_GRANTABLE');
+      expect(update.status).toBe(400);
+      expect(update.body.code).toBe('VALIDATION_FAILED');
     });
 
-    it('retirer le rôle ADMIN à un compte qui garderait une permission réservée est refusé', async () => {
-      const admin = await createUser('admin-audit-read', RoleCode.ADMIN, ['audit.read']);
+    it('une permission directe résiduelle en base n’accorde plus RIEN', async () => {
+      // Lignes écrites avant la décision : elles restent en base (pas de migration
+      // destructive) mais ne doivent plus ouvrir d'accès.
+      const vendeur = await createUser('residu');
+      await prisma.user.update({
+        where: { id: vendeur.id },
+        data: { permissions: { connect: [{ code: 'price.manage' }, { code: 'supplier.read' }] } },
+      });
 
-      const res = await as(adminToken)
-        .patch(`/api/users/${admin.id}`)
-        .send({ roles: [RoleCode.MAGASINIER] });
-
-      expect(res.status).toBe(422);
-      expect(res.body.code).toBe('PERMISSION_NOT_GRANTABLE');
+      const res = await as(adminToken).get(`/api/users/${vendeur.id}`).expect(200);
+      expect(res.body.permissions).not.toContain('price.manage');
+      // La matrice validée : le vendeur n'a aucun accès fournisseurs.
+      expect(res.body.permissions).not.toContain('supplier.read');
+      expect(res.body.extraPermissions).toBeUndefined();
     });
   });
 
@@ -474,14 +475,12 @@ describe('Gestion des comptes (e2e)', () => {
       const res = await as(adminToken).get('/api/users/permission-catalog').expect(200);
 
       expect(res.body.roles.map((r: { code: string }) => r.code)).toEqual(['ADMIN', 'VENDEUR', 'MAGASINIER']);
-      const byCode = Object.fromEntries(
-        res.body.permissions.map((p: { code: string; adminOnly: boolean }) => [p.code, p.adminOnly]),
-      );
-      expect(byCode['sale.discount']).toBe(true);
-      expect(byCode['price.manage']).toBe(true);
-      expect(byCode['stock.loss']).toBe(false);
+      expect(res.body.permissions[0]).not.toHaveProperty('adminOnly');
+      const admin = res.body.roles.find((r: { code: string }) => r.code === 'ADMIN');
+      expect(admin.permissions).toEqual(expect.arrayContaining(['sale.discount', 'price.manage']));
       const vendeur = res.body.roles.find((r: { code: string }) => r.code === 'VENDEUR');
       expect(vendeur.permissions).not.toContain('supplier.read');
+      expect(vendeur.permissions).not.toContain('sale.discount');
     });
 
     it('l’audit reste réservé à l’ADMIN', async () => {

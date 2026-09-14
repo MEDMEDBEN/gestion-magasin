@@ -108,7 +108,6 @@ class UsersController extends AsyncNotifier<UsersListState> {
     required String fullName,
     required String temporaryPassword,
     required List<String> roles,
-    List<String> extraPermissions = const [],
   }) async {
     final created = await ref.read(usersApiProvider).create(
           email: email,
@@ -116,7 +115,6 @@ class UsersController extends AsyncNotifier<UsersListState> {
           fullName: fullName,
           temporaryPassword: temporaryPassword,
           roles: roles,
-          extraPermissions: extraPermissions,
         );
     await refresh();
     return created;
@@ -149,7 +147,3 @@ final usersControllerProvider =
       UsersController.new,
     );
 
-/// Rôles et permissions attribuables, lus sur le serveur (matrice validée).
-final permissionCatalogProvider = FutureProvider.autoDispose<PermissionCatalog>(
-  (ref) => ref.watch(usersApiProvider).permissionCatalog(),
-);

@@ -91,15 +91,18 @@ app     $ flutter build windows --release     → "build windows" only supported
      serveur répond `NON_TRAITEE` s'il diffère du porteur du token). La sync n'est pas encore
      déclenchée par un écran.
    Preuve : `flutter analyze` → No issues found! · `flutter test` → **+146 ~11** All tests passed.
-3. **Contre-revue, bloquant N1 (à TRANCHER avec MEDMEDBEN)** — les permissions « à la carte »
-   n'ont d'effet que si une route autorise AUSSI le rôle du compte (les guards exigent rôle ET
-   permission). Analyse des 49 routes : seules **2** combinaisons ont un effet aujourd'hui —
-   VENDEUR + `supplier.read` (⚠️ contredit la matrice : « vendeur aucun accès fournisseurs ») et
-   MAGASINIER + `transfer.request`. Options : (a) déclarer par rôle dans `permissions.ts` la
-   liste des permissions réellement attribuables (servie au catalogue, appliquée par
-   `assertGrantable` en 422 et par `grantableFor` côté app) ; (b) retirer la section
-   « Permissions supplémentaires » et cumuler par les rôles (déjà possible). Le test
-   `app/test/user_form_test.dart` (« stock.loss » à un vendeur) devra être aligné.
+3. ✅ **TRANCHÉ ET FAIT (2026-09-13, MEDMEDBEN)** — bloquant N1 de la contre-revue : **cumul par
+   RÔLES, suppression des permissions « à la carte »** (option b). Voir `docs/permissions.md` et le
+   journal de `docs/context.md`.
+   - backend : `extraPermissions` retiré des DTO (désormais refusé en 400), `assertGrantable`,
+     `ADMIN_ONLY_PERMISSIONS` et `PERMISSION_NOT_GRANTABLE` supprimés ; `resolvePermissions` ne lit
+     plus que les rôles ; `adminOnly` retiré du catalogue.
+   - app : section « Permissions supplémentaires », `grantableFor`, `PermissionCatalog` et badge
+     « +N permissions » supprimés ; le formulaire cumule en cochant plusieurs rôles.
+   - tests : e2e « le champ n'existe plus → 400 », « une permission directe résiduelle en base
+     n'accorde plus RIEN » (dont `supplier.read` au vendeur), « cumuler = union des rôles, tracé » ;
+     widget « cocher 2 rôles envoie les 2 rôles ».
+   Preuve : backend 55 unitaires · **88 e2e** · tsc OK ; app analyze propre · **146** tests.
 4. ✅ **FAIT (2026-09-13, MEDMEDBEN)** — contre-revue « à corriger » :
    - N3-revue : `app/test/auth_api_test.dart` réécrit avec le VRAI `DioClient` + `MemoryTokenStore` ;
      nouveau test : un 401 sur logout ne déclenche aucun refresh ni fin de session.

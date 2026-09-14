@@ -23,12 +23,7 @@ import {
   normalizePhone,
   PHONE_PATTERN,
 } from '../../common/identifiers';
-import { PERMISSIONS } from '../../common/permissions';
 import { IsOptionalNotNull } from '../../common/validation';
-
-/// Codes de permission acceptés — refuse un code inconnu par un 400 métier
-/// plutôt que par une 500 Prisma au moment du `connect`.
-const PERMISSION_CODES = Object.values(PERMISSIONS);
 
 const FULL_NAME_MAX_LENGTH = 100;
 const PHONE_MESSAGE =
@@ -80,18 +75,6 @@ export class CreateUserDto {
   @IsEnum(RoleCode, { each: true })
   roles!: RoleCode[];
 
-  @ApiPropertyOptional({
-    type: [String],
-    enum: PERMISSION_CODES,
-    description:
-      'Permissions accordées EN PLUS de celles des rôles (cumul). Les permissions ' +
-      'réservées à l’ADMIN ne peuvent pas être accordées à un autre rôle.',
-  })
-  @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @IsIn(PERMISSION_CODES, { each: true })
-  extraPermissions?: string[];
 }
 
 /// Modification partielle. Chaque champ est facultatif mais JAMAIS `null` :
@@ -132,16 +115,6 @@ export class UpdateUserDto {
   @IsEnum(RoleCode, { each: true })
   roles?: RoleCode[];
 
-  @ApiPropertyOptional({
-    type: [String],
-    enum: PERMISSION_CODES,
-    description: 'Remplace les permissions accordées à la carte (`[]` = aucune).',
-  })
-  @IsOptionalNotNull()
-  @IsArray()
-  @ArrayUnique()
-  @IsIn(PERMISSION_CODES, { each: true })
-  extraPermissions?: string[];
 }
 
 export class ResetPasswordDto {
@@ -166,12 +139,7 @@ export class UserDto {
   @ApiProperty({ type: [String] }) roles!: string[];
   @ApiProperty({
     type: [String],
-    description: 'Permissions accordées à la carte, EN PLUS des rôles.',
-  })
-  extraPermissions!: string[];
-  @ApiProperty({
-    type: [String],
-    description: 'Permissions EFFECTIVES (rôles + accordées à la carte).',
+    description: 'Permissions EFFECTIVES, déduites des rôles (cumul par rôles).',
   })
   permissions!: string[];
   @ApiProperty({ nullable: true }) lastLoginAt!: Date | null;
@@ -191,10 +159,6 @@ export class RevokedSessionsDto {
 export class PermissionInfoDto {
   @ApiProperty({ example: 'stock.loss' }) code!: string;
   @ApiProperty() description!: string;
-  @ApiProperty({
-    description: 'Réservée à l’ADMIN : non attribuable à la carte à un autre rôle.',
-  })
-  adminOnly!: boolean;
 }
 
 export class RoleInfoDto {

@@ -7,7 +7,6 @@ import { BusinessException } from '../common/business.exception';
 import { PaginationQueryDto, parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import {
-  ADMIN_ONLY_PERMISSIONS,
   PERMISSION_DESCRIPTIONS,
   PERMISSIONS,
   ROLE_LABELS,
@@ -56,7 +55,6 @@ export class UsersService {
       isActive: user.isActive,
       mustChangePassword: user.mustChangePassword,
       roles: user.roles.map((r) => r.code),
-      extraPermissions: user.permissions.map((p) => p.code).sort(),
       permissions: resolvePermissions(user),
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
@@ -67,8 +65,8 @@ export class UsersService {
   ///
   /// Ne contient JAMAIS `passwordHash` ni un mot de passe en clair : le journal
   /// est consultable par l'admin et ne doit pas devenir une fuite de secrets.
-  /// Les permissions accordées à la carte sont tracées À PART : c'est ce que la
-  /// spec §24 appelle « changement de permission ».
+  /// Un changement de rôle modifie les permissions effectives : les deux sont
+  /// tracés (spec §24 « changement de permission »).
   private static auditSnapshot(user: UserDto): Prisma.InputJsonValue {
     return {
       email: user.email,
@@ -77,7 +75,6 @@ export class UsersService {
       isActive: user.isActive,
       mustChangePassword: user.mustChangePassword,
       roles: user.roles,
-      extraPermissions: user.extraPermissions,
       permissions: user.permissions,
     };
   }
@@ -93,7 +90,6 @@ export class UsersService {
       permissions: Object.values(PERMISSIONS).map((code) => ({
         code,
         description: PERMISSION_DESCRIPTIONS[code],
-        adminOnly: ADMIN_ONLY_PERMISSIONS.includes(code),
       })),
     };
   }
@@ -107,7 +103,6 @@ export class UsersService {
         'Fournir au moins un email ou un téléphone',
       );
     }
-    UsersService.assertGrantable(dto.roles, dto.extraPermissions ?? []);
     await this.assertIdentifiersFree(this.prisma, dto.email, dto.phone);
 
     const passwordHash = await hashPassword(dto.temporaryPassword);
@@ -121,9 +116,6 @@ export class UsersService {
           passwordHash,
           mustChangePassword: true,
           roles: { connect: dto.roles.map((code) => ({ code })) },
-          permissions: dto.extraPermissions?.length
-            ? { connect: dto.extraPermissions.map((code) => ({ code })) }
-            : undefined,
         },
         include: USER_ACCESS_INCLUDE,
       });
@@ -195,9 +187,7 @@ export class UsersService {
     // aussi la voie de l'admin qu'on vient de rétrograder et qui tenterait de se
     // rétablir avant l'expiration de son token (audit I4).
     const touchesAccess =
-      dto.roles !== undefined ||
-      dto.extraPermissions !== undefined ||
-      dto.isActive !== undefined;
+      dto.roles !== undefined || dto.isActive !== undefined;
     // Comparaison sur la forme canonique (minuscules) : PostgreSQL retrouve la
     // même ligne quelle que soit la casse de l'UUID (contre-audit N2).
     if (actor.userId?.toLowerCase() === id.toLowerCase() && touchesAccess) {
@@ -218,8 +208,6 @@ export class UsersService {
       await this.assertIdentifiersFree(tx, dto.email, dto.phone, id);
 
       const finalRoles = dto.roles ?? (before.roles as RoleCode[]);
-      const finalExtra = dto.extraPermissions ?? before.extraPermissions;
-      UsersService.assertGrantable(finalRoles, finalExtra);
 
       // Filet de sécurité : ne jamais laisser le système sans aucun admin actif,
       // sinon plus personne ne peut administrer (seule sortie = intervention en base).
@@ -252,9 +240,6 @@ export class UsersService {
           phone: dto.phone,
           isActive: dto.isActive,
           roles: dto.roles ? { set: dto.roles.map((code) => ({ code })) } : undefined,
-          permissions: dto.extraPermissions
-            ? { set: dto.extraPermissions.map((code) => ({ code })) }
-            : undefined,
         },
         include: USER_ACCESS_INCLUDE,
       });
@@ -328,27 +313,6 @@ export class UsersService {
       });
       return { revoked };
     });
-  }
-
-  /// Règles fermes de `docs/permissions.md` : une permission réservée à l'ADMIN
-  /// n'est jamais accordée à la carte à un compte qui n'est pas administrateur.
-  /// Vérifié sur l'état FINAL (rôles + permissions après la mutation) : retirer
-  /// le rôle ADMIN à un compte qui garde `price.manage` est refusé aussi.
-  private static assertGrantable(
-    roles: readonly string[],
-    extraPermissions: readonly string[],
-  ): void {
-    if (roles.includes(RoleCode.ADMIN)) return;
-    const forbidden = extraPermissions.filter((code) =>
-      (ADMIN_ONLY_PERMISSIONS as readonly string[]).includes(code),
-    );
-    if (forbidden.length > 0) {
-      throw new BusinessException(
-        ErrorCode.PERMISSION_NOT_GRANTABLE,
-        `Réservé à l'administrateur, non attribuable à ce compte : ${forbidden.join(', ')}`,
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
   }
 
   /// Unicité des identifiants de connexion. L'email est comparé sans casse (les

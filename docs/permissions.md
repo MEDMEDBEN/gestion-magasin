@@ -1,6 +1,6 @@
 # Matrice de permissions CRUD — **VALIDÉE le 2026-09-09**
 
-> 3 rôles : **Admin**, **Vendeur/Caissier**, **Magasinier**. Un membre peut cumuler des permissions.
+> 3 rôles : **Admin**, **Vendeur/Caissier**, **Magasinier**. Un membre peut cumuler des fonctions **en recevant plusieurs rôles**.
 > Cette matrice est **validée et fait foi**. Les guards backend la reflètent exactement — toute
 > évolution passe d'abord par ce fichier, puis par `backend/src/common/permissions.ts`.
 > Légende : ✅ autorisé · ❌ interdit · 👁️ lecture seule · ⚠️ soumis à validation admin.
@@ -27,12 +27,14 @@
 Le plafond `Customer.creditLimit` est un **entier en centimes**, `@default(0)` dans le schéma Prisma :
 un client neuf ne peut donc pas acheter à crédit tant que l'admin n'a rien fixé.
 
-**Permissions non attribuables « à la carte »** (`ADMIN_ONLY_PERMISSIONS`, 2026-09-11) : les trois
-règles fermes ci-dessus (`price.manage`, `sale.discount`, `purchase.confirm`) et l'administration
-(`user.manage`, `settings.manage`, `audit.read`) ne peuvent être accordées qu'à un compte portant le
-rôle ADMIN. Vérifié sur l'état FINAL d'un compte (retirer le rôle ADMIN à un compte qui garde l'une
-d'elles est refusé, `PERMISSION_NOT_GRANTABLE`). Traduction technique des règles validées — pas une
-règle nouvelle ; à confirmer par MEDMEDBEN à la relecture.
+**Cumul = par RÔLES, jamais par permission « à la carte »** (décision de MEDMEDBEN, 2026-09-13).
+Un membre qui cumule des fonctions reçoit **plusieurs rôles** ; ses permissions effectives sont
+l'union de celles de ses rôles. Il n'existe plus de permission accordée individuellement.
+Raison : les guards exigent RÔLE **et** permission, donc une permission à la carte n'avait d'effet
+que sur 2 cas — dont VENDEUR + `supplier.read`, qui contredisait la présente matrice (« vendeur :
+aucun accès fournisseurs »). Conséquence technique : le champ `extraPermissions` n'existe plus
+(refusé en 400) et la table `_UserPermissions` n'est plus ni lue ni écrite (conservée en base,
+aucune migration destructive sans confirmation).
 
 ## Produits / Catégories / Emplacements
 | Action | Admin | Vendeur/Caissier | Magasinier |

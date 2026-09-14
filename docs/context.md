@@ -151,4 +151,10 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
   7. **Points de rupture UI 768 / 1180** (AMPÈRE §9), rail d'icônes sur tablette ; **thème persisté
      par utilisateur** (et non par appareil). Raison : conformité au design system validé.
 
+- **2026-09-13** — **Cumul par rôles, plus de permission « à la carte »** (MEDMEDBEN). Un membre qui
+  cumule des fonctions reçoit plusieurs rôles. Raison : les guards exigent rôle ET permission, donc une
+  permission à la carte n'avait d'effet que sur 2 cas, dont un (VENDEUR + `supplier.read`) contredisait
+  la matrice validée. Plus simple, aucune case morte à l'écran. `_UserPermissions` conservée en base
+  (plus lue ni écrite) — suppression = migration destructive à confirmer explicitement.
+
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->

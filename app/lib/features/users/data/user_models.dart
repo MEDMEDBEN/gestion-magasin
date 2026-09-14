@@ -6,8 +6,8 @@ part 'user_models.freezed.dart';
 part 'user_models.g.dart';
 
 /// Miroir de `UserDto` (backend).
-/// - `extraPermissions` : accordées À LA CARTE, en plus des rôles ;
-/// - `permissions` : EFFECTIVES (rôles + à la carte), fusionnées par le serveur.
+/// `permissions` : EFFECTIVES, déduites des rôles par le serveur. Un membre qui
+/// cumule des fonctions reçoit plusieurs rôles (décision 2026-09-13).
 @freezed
 abstract class ManagedUser with _$ManagedUser {
   const ManagedUser._();
@@ -20,7 +20,6 @@ abstract class ManagedUser with _$ManagedUser {
     required bool isActive,
     required bool mustChangePassword,
     required List<String> roles,
-    @Default(<String>[]) List<String> extraPermissions,
     required List<String> permissions,
     DateTime? lastLoginAt,
     required DateTime createdAt,
@@ -80,69 +79,6 @@ abstract class UserPage with _$UserPage {
       _$UserPageFromJson(json);
 }
 
-/// Miroir de `PermissionInfoDto`.
-@freezed
-abstract class PermissionInfo with _$PermissionInfo {
-  const factory PermissionInfo({
-    required String code,
-    required String description,
-
-    /// Réservée à l'ADMIN : jamais attribuable à la carte à un autre rôle.
-    required bool adminOnly,
-  }) = _PermissionInfo;
-
-  factory PermissionInfo.fromJson(Map<String, dynamic> json) =>
-      _$PermissionInfoFromJson(json);
-}
-
-/// Miroir de `RoleInfoDto`.
-@freezed
-abstract class RoleInfo with _$RoleInfo {
-  const factory RoleInfo({
-    required String code,
-    required String name,
-    required List<String> permissions,
-  }) = _RoleInfo;
-
-  factory RoleInfo.fromJson(Map<String, dynamic> json) =>
-      _$RoleInfoFromJson(json);
-}
-
-/// Catalogue servi par `GET /users/permission-catalog` : l'app ne recopie PAS
-/// la matrice de `docs/permissions.md`, elle la lit (source unique serveur).
-@freezed
-abstract class PermissionCatalog with _$PermissionCatalog {
-  const PermissionCatalog._();
-
-  const factory PermissionCatalog({
-    required List<RoleInfo> roles,
-    required List<PermissionInfo> permissions,
-  }) = _PermissionCatalog;
-
-  factory PermissionCatalog.fromJson(Map<String, dynamic> json) =>
-      _$PermissionCatalogFromJson(json);
-
-  /// Permissions déjà incluses par les rôles donnés.
-  Set<String> includedBy(Iterable<String> roleCodes) => {
-        for (final role in roles)
-          if (roleCodes.contains(role.code)) ...role.permissions,
-      };
-
-  /// Permissions attribuables À LA CARTE à un compte portant ces rôles :
-  /// ni déjà incluses par un rôle, ni réservées à l'ADMIN (règles fermes) si le
-  /// compte n'est pas administrateur. Le serveur applique la même règle.
-  List<PermissionInfo> grantableFor(Iterable<String> roleCodes) {
-    final included = includedBy(roleCodes);
-    final isAdmin = roleCodes.contains(AppRole.admin.code);
-    return [
-      for (final permission in permissions)
-        if (!included.contains(permission.code) &&
-            (isAdmin || !permission.adminOnly))
-          permission,
-    ];
-  }
-}
-
 /// Modification partielle d'un compte : seuls les champs RENSEIGNÉS partent au
 /// serveur. Ne jamais renvoyer un champ inchangé : sur un compte à rôles
 /// cumulés, un formulaire qui renverrait « son » rôle principal effacerait les
@@ -154,7 +90,6 @@ class UserChanges {
     this.phone,
     this.isActive,
     this.roles,
-    this.extraPermissions,
   });
 
   final String? fullName;
@@ -162,15 +97,13 @@ class UserChanges {
   final String? phone;
   final bool? isActive;
   final List<String>? roles;
-  final List<String>? extraPermissions;
 
   bool get isEmpty =>
       fullName == null &&
       email == null &&
       phone == null &&
       isActive == null &&
-      roles == null &&
-      extraPermissions == null;
+      roles == null;
 
   Map<String, dynamic> toJson() => {
         'fullName': ?fullName,
@@ -178,6 +111,5 @@ class UserChanges {
         'phone': ?phone,
         'isActive': ?isActive,
         'roles': ?roles,
-        'extraPermissions': ?extraPermissions,
       };
 }

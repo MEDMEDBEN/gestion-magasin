@@ -21,7 +21,6 @@ class ErrorCodes {
   // Gestion des comptes
   static const String selfModificationForbidden = 'SELF_MODIFICATION_FORBIDDEN';
   static const String lastActiveAdmin = 'LAST_ACTIVE_ADMIN';
-  static const String permissionNotGrantable = 'PERMISSION_NOT_GRANTABLE';
 
   // Générique
   static const String validationFailed = 'VALIDATION_FAILED';
@@ -81,8 +80,6 @@ class ErrorCodes {
           'Vos rôles et votre activation sont modifiés par un autre administrateur',
         lastActiveAdmin =>
           'Impossible : ce compte est le dernier administrateur actif',
-        permissionNotGrantable =>
-          'Cette permission est réservée à l’administrateur',
         rateLimited => 'Trop de tentatives. Patientez quelques minutes.',
         stockNegative ||
         stockInsufficient =>

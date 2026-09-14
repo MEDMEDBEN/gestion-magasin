@@ -3,23 +3,26 @@ import type { UserGetPayload } from '../generated/prisma/models';
 import { BusinessException } from './business.exception';
 import { ErrorCode } from './error-codes';
 
-/// Relations chargées pour connaître l'accès d'un compte (rôles + permissions).
+/// Relations chargées pour connaître l'accès d'un compte.
 /// Une seule définition, partagée par l'auth, la gestion des comptes et les guards.
+///
+/// L'accès découle UNIQUEMENT des rôles (décision 2026-09-13, docs/permissions.md) :
+/// un membre qui cumule des fonctions reçoit plusieurs rôles. La relation directe
+/// `User.permissions` (table `_UserPermissions`) n'est plus ni lue ni écrite ; elle
+/// reste en base faute de migration destructive validée.
 export const USER_ACCESS_INCLUDE = {
   roles: { include: { permissions: { select: { code: true } } } },
-  permissions: { select: { code: true } },
 } as const;
 
 /// Utilisateur tel que chargé avec `USER_ACCESS_INCLUDE`.
 export type UserWithAccess = UserGetPayload<{ include: typeof USER_ACCESS_INCLUDE }>;
 
-/// Permissions EFFECTIVES : celles des rôles + celles accordées à la carte.
+/// Permissions EFFECTIVES : l'union des permissions de tous les rôles du compte.
 export function resolvePermissions(user: UserWithAccess): string[] {
   const fromRoles = user.roles.flatMap((role) =>
     role.permissions.map((permission) => permission.code),
   );
-  const direct = user.permissions.map((permission) => permission.code);
-  return [...new Set([...fromRoles, ...direct])].sort();
+  return [...new Set(fromRoles)].sort();
 }
 
 /// Exigences d'une route (`@Roles` + `@RequirePermissions`).

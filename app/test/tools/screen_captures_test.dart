@@ -43,8 +43,8 @@ class _SignedOut extends AuthController {
 final _users = [
   managedUser(id: 'me', fullName: 'Radhi Badache', email: 'admin@magasin.dz', roles: const ['ADMIN'], lastLoginAt: DateTime(2026, 9, 11, 9, 2)),
   managedUser(id: 'u2', fullName: 'Amine Benali', email: 'amine@magasin.dz', roles: const ['VENDEUR'], lastLoginAt: DateTime(2026, 9, 10, 17, 45)),
-  managedUser(id: 'u3', fullName: 'Karim Saidi', email: null, phone: '+213555123456', roles: const ['MAGASINIER', 'VENDEUR'], extraPermissions: const [], lastLoginAt: DateTime(2026, 9, 11, 7, 58)),
-  managedUser(id: 'u4', fullName: 'Nadia Kaci', email: 'nadia@magasin.dz', roles: const ['VENDEUR'], extraPermissions: const ['stock.loss'], mustChangePassword: true),
+  managedUser(id: 'u3', fullName: 'Karim Saidi', email: null, phone: '+213555123456', roles: const ['MAGASINIER', 'VENDEUR'], lastLoginAt: DateTime(2026, 9, 11, 7, 58)),
+  managedUser(id: 'u4', fullName: 'Nadia Kaci', email: 'nadia@magasin.dz', roles: const ['VENDEUR'], mustChangePassword: true),
   managedUser(id: 'u5', fullName: 'Yacine Ouali', email: 'yacine@magasin.dz', roles: const ['MAGASINIER'], isActive: false, lastLoginAt: DateTime(2026, 8, 28, 16, 10)),
 ];
 

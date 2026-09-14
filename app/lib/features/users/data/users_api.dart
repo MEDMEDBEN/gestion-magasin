@@ -30,16 +30,6 @@ class UsersApi {
     });
   }
 
-  /// Rôles et permissions attribuables, lus dans la matrice serveur.
-  Future<PermissionCatalog> permissionCatalog() {
-    return guardApi(() async {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/users/permission-catalog',
-      );
-      return PermissionCatalog.fromJson(response.data!);
-    });
-  }
-
   /// Le mot de passe fourni est TEMPORAIRE : le serveur force
   /// `mustChangePassword` (règle 14).
   Future<ManagedUser> create({
@@ -48,7 +38,6 @@ class UsersApi {
     required String fullName,
     required String temporaryPassword,
     required List<String> roles,
-    List<String> extraPermissions = const [],
   }) {
     return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -59,7 +48,6 @@ class UsersApi {
           'fullName': fullName,
           'temporaryPassword': temporaryPassword,
           'roles': roles,
-          if (extraPermissions.isNotEmpty) 'extraPermissions': extraPermissions,
         },
       );
       return ManagedUser.fromJson(response.data!);

@@ -73,7 +73,6 @@ class _UserFormState extends ConsumerState<UserForm> {
   final _password = TextEditingController();
 
   late Set<String> _roles;
-  late Set<String> _extras;
   bool _saving = false;
   String? _error;
   String? _rolesError;
@@ -90,7 +89,6 @@ class _UserFormState extends ConsumerState<UserForm> {
     // TOUS les rôles du compte — un membre peut en cumuler plusieurs.
     _roles = {...?existing?.roles};
     if (existing == null) _roles.add(AppRole.vendeur.code);
-    _extras = {...?existing?.extraPermissions};
   }
 
   @override
@@ -109,19 +107,7 @@ class _UserFormState extends ConsumerState<UserForm> {
     });
   }
 
-  void _toggleExtra(String code, bool selected) {
-    setState(() => selected ? _extras.add(code) : _extras.remove(code));
-  }
-
-  /// Permissions à la carte à envoyer : seulement celles réellement
-  /// attribuables aux rôles FINAUX (le serveur refuserait les autres).
-  List<String> _grantableExtras(PermissionCatalog? catalog, Set<String> source) {
-    if (catalog == null) return source.toList()..sort();
-    final grantable = catalog.grantableFor(_roles).map((p) => p.code).toSet();
-    return source.where(grantable.contains).toList()..sort();
-  }
-
-  Future<void> _submit(PermissionCatalog? catalog) async {
+  Future<void> _submit() async {
     final fieldsValid = _formKey.currentState!.validate();
     if (_roles.isEmpty) {
       setState(() => _rolesError = 'Au moins un rôle est obligatoire');
@@ -143,7 +129,6 @@ class _UserFormState extends ConsumerState<UserForm> {
     });
 
     final controller = ref.read(usersControllerProvider.notifier);
-    final extras = _grantableExtras(catalog, _extras);
     try {
       final ManagedUser saved;
       final existing = widget.existing;
@@ -154,14 +139,9 @@ class _UserFormState extends ConsumerState<UserForm> {
           phone: phone.isEmpty ? null : phone,
           temporaryPassword: _password.text,
           roles: _ordered(_roles),
-          extraPermissions: extras,
         );
       } else {
         final rolesChanged = !setEquals(_roles, existing.roles.toSet());
-        final extrasChanged = !setEquals(
-          extras.toSet(),
-          _grantableExtras(catalog, existing.extraPermissions.toSet()).toSet(),
-        );
         final changes = UserChanges(
           fullName: fullName != existing.fullName ? fullName : null,
           email: email.isNotEmpty && email != existing.email ? email : null,
@@ -169,8 +149,6 @@ class _UserFormState extends ConsumerState<UserForm> {
           // Jamais renvoyés s'ils n'ont pas bougé : sur un compte à rôles
           // cumulés, ce serait un changement de rôle que personne n'a voulu.
           roles: !widget.isSelf && rolesChanged ? _ordered(_roles) : null,
-          extraPermissions:
-              !widget.isSelf && (rolesChanged || extrasChanged) ? extras : null,
         );
         saved = changes.isEmpty
             ? existing
@@ -211,7 +189,6 @@ class _UserFormState extends ConsumerState<UserForm> {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final catalogAsync = ref.watch(permissionCatalogProvider);
     final locked = widget.isSelf || _saving;
 
     return Form(
@@ -328,27 +305,6 @@ class _UserFormState extends ConsumerState<UserForm> {
                   ),
                 const SizedBox(height: 14),
 
-                const AmpereFieldLabel('Permissions supplémentaires'),
-                catalogAsync.when(
-                  loading: () => const SizedBox(
-                    height: 120,
-                    child: AmpereSkeletonList(rows: 2, rowHeight: 44),
-                  ),
-                  error: (error, _) => AmpereInlineAlert(
-                    message: 'Catalogue des permissions indisponible.',
-                    action: TextButton(
-                      onPressed: () => ref.invalidate(permissionCatalogProvider),
-                      child: const Text('Réessayer'),
-                    ),
-                  ),
-                  data: (catalog) => _ExtraPermissions(
-                    catalog: catalog,
-                    roles: _roles,
-                    selected: _extras,
-                    onChanged: locked ? null : _toggleExtra,
-                  ),
-                ),
-
                 if (!_isEdit) ...[
                   const SizedBox(height: 20),
                   const AmpereFieldLabel('Mot de passe temporaire'),
@@ -387,7 +343,7 @@ class _UserFormState extends ConsumerState<UserForm> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 FilledButton(
-                  onPressed: _saving ? null : () => _submit(catalogAsync.value),
+                  onPressed: _saving ? null : _submit,
                   child: _saving
                       ? SizedBox(
                           height: 20,
@@ -413,62 +369,7 @@ class _UserFormState extends ConsumerState<UserForm> {
   }
 }
 
-/// Permissions attribuables à la carte, d'après le catalogue SERVEUR : ni
-/// celles déjà données par un rôle, ni (hors ADMIN) celles que les règles
-/// fermes réservent à l'administrateur.
-class _ExtraPermissions extends StatelessWidget {
-  const _ExtraPermissions({
-    required this.catalog,
-    required this.roles,
-    required this.selected,
-    required this.onChanged,
-  });
-
-  final PermissionCatalog catalog;
-  final Set<String> roles;
-  final Set<String> selected;
-  final void Function(String code, bool selected)? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    final grantable = catalog.grantableFor(roles);
-
-    if (roles.contains(AppRole.admin.code) || grantable.isEmpty) {
-      return Text(
-        roles.contains(AppRole.admin.code)
-            ? 'L’administrateur dispose déjà de toutes les permissions.'
-            : 'Aucune permission supplémentaire à accorder à ces rôles.',
-        style: AmpereType.meta.copyWith(color: colors.ink3),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            'En plus de celles des rôles cochés.',
-            style: AmpereType.meta.copyWith(color: colors.ink3),
-          ),
-        ),
-        for (final permission in grantable)
-          _CheckOption(
-            title: permission.description,
-            subtitle: permission.code,
-            monoSubtitle: true,
-            selected: selected.contains(permission.code),
-            onChanged: onChanged == null
-                ? null
-                : (value) => onChanged!(permission.code, value),
-          ),
-      ],
-    );
-  }
-}
-
-/// Option à cocher (rôle, permission) : libellé + précision, cible ≥ 48 (§7),
+/// Option à cocher (rôle) : libellé + précision, cible ≥ 48 (§7),
 /// focus clavier visible (§12.10).
 class _CheckOption extends StatelessWidget {
   const _CheckOption({
@@ -476,13 +377,11 @@ class _CheckOption extends StatelessWidget {
     required this.subtitle,
     required this.selected,
     required this.onChanged,
-    this.monoSubtitle = false,
   });
 
   final String title;
   final String subtitle;
   final bool selected;
-  final bool monoSubtitle;
   final ValueChanged<bool>? onChanged;
 
   @override
@@ -533,8 +432,7 @@ class _CheckOption extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           subtitle,
-                          style: (monoSubtitle ? AmpereType.mono : AmpereType.meta)
-                              .copyWith(color: colors.ink3),
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
                         ),
                       ],
                     ),

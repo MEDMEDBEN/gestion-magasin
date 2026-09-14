@@ -119,38 +119,23 @@ void main() {
     expect(api.updates, isEmpty);
   });
 
-  testWidgets('permissions à la carte : ni celles du rôle, ni celles réservées à l’ADMIN', (
+  testWidgets('cumuler des fonctions = cocher plusieurs RÔLES ; aucune permission à la carte', (
     tester,
   ) async {
     final api = await _open(tester);
 
-    // Vendeur par défaut : « Créer une vente » est déjà dans son rôle,
-    // « Appliquer une remise » est réservée à l'admin (règle ferme).
-    expect(find.text('Déclarer une perte ou une casse'), findsOneWidget);
-    expect(find.text('Créer une vente'), findsNothing);
-    expect(find.text('Appliquer une remise'), findsNothing);
+    // Décision 2026-09-13 : plus de section « Permissions supplémentaires ».
+    expect(find.text('PERMISSIONS SUPPLÉMENTAIRES'), findsNothing);
 
     await tester.enterText(find.byType(TextFormField).at(0), 'Nadia Kaci');
     await tester.enterText(find.byType(TextFormField).at(1), 'nadia@magasin.dz');
     await tester.enterText(find.byType(TextFormField).at(3), 'MotDePasse1!');
-    final perte = find.text('Déclarer une perte ou une casse');
-    await tester.ensureVisible(perte);
-    await tester.tap(perte);
+    final magasinier = find.text('Magasinier');
+    await tester.ensureVisible(magasinier);
+    await tester.tap(magasinier);
     await _save(tester, 'Créer le compte');
 
-    expect(api.creates.single.roles, ['VENDEUR']);
-    expect(api.creates.single.extraPermissions, ['stock.loss']);
-  });
-
-  testWidgets('cocher ADMIN : les permissions à la carte deviennent sans objet', (tester) async {
-    await _open(tester);
-
-    final admin = find.text('Administrateur');
-    await tester.ensureVisible(admin);
-    await tester.tap(admin);
-    await tester.pumpAndSettle();
-
-    expect(find.text('L’administrateur dispose déjà de toutes les permissions.'), findsOneWidget);
+    expect(api.creates.single.roles.toSet(), {'VENDEUR', 'MAGASINIER'});
   });
 
   testWidgets('SON propre compte : rôles verrouillés, expliqués, jamais envoyés', (tester) async {

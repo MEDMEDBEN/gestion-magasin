@@ -23,9 +23,6 @@ export enum ErrorCode {
   SELF_MODIFICATION_FORBIDDEN = 'SELF_MODIFICATION_FORBIDDEN',
   /// L'opération laisserait le système sans aucun administrateur actif.
   LAST_ACTIVE_ADMIN = 'LAST_ACTIVE_ADMIN',
-  /// Permission réservée à l'ADMIN (docs/permissions.md § Règles fermes),
-  /// non attribuable « à la carte » à un compte non administrateur.
-  PERMISSION_NOT_GRANTABLE = 'PERMISSION_NOT_GRANTABLE',
 
   // Générique
   VALIDATION_FAILED = 'VALIDATION_FAILED',
