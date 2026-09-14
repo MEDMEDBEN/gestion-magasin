@@ -1,0 +1,231 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/data/local/local_settings_store.dart';
+import 'package:gestion_magasin/features/auth/data/auth_models.dart';
+import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
+import 'package:gestion_magasin/features/catalog/presentation/catalog_screen.dart';
+import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/ui/theme/app_theme.dart';
+
+import 'support/catalog_fakes.dart';
+import 'support/fakes.dart';
+
+/// Mise à jour du catalogue neutralisée : les écrans lisent des valeurs fixes.
+class _IdleSync extends CatalogSyncController {
+  @override
+  Future<void> build() async {}
+}
+
+/// Écritures branchées sur le faux client, sans base locale (les flux Drift ne
+/// se résolvent pas dans le temps simulé de `testWidgets`).
+class _ApiOnlyActions extends CatalogActions {
+  _ApiOnlyActions(this.api, CatalogRepository unused) : super(api, unused);
+
+  final RecordingCatalogApi api;
+
+  @override
+  Future<Product> saveProduct(String? id, Map<String, Object?> fields) =>
+      id == null ? api.createProduct(fields) : api.updateProduct(id, fields);
+}
+
+const _allProductPermissions = [
+  'product.read',
+  'product.write',
+  'product.disable',
+  'location.manage',
+];
+
+AuthUser _admin() =>
+    authUser(roles: const ['ADMIN'], permissions: _allProductPermissions);
+AuthUser _vendeur() => authUser(
+  id: 'v',
+  roles: const ['VENDEUR'],
+  permissions: const ['product.read', 'price.read'],
+);
+AuthUser _magasinier() => authUser(
+  id: 'm',
+  roles: const ['MAGASINIER'],
+  permissions: const ['product.read', 'location.manage'],
+);
+
+void main() {
+  late AppDatabase db;
+  late RecordingCatalogApi api;
+
+  setUp(() {
+    db = AppDatabase.forTesting();
+    api = RecordingCatalogApi();
+  });
+  tearDown(() => db.close());
+
+  Widget wrap(
+    AuthUser user, {
+    List<Product> products = const [],
+    List<ProductCategory> categories = const [],
+    bool desktop = false,
+  }) {
+    final repo = CatalogRepository(db, LocalSettingsStore(db), api);
+    return ProviderScope(
+      overrides: [
+        catalogSyncProvider.overrideWith(_IdleSync.new),
+        productsProvider.overrideWith((ref) => Stream.value(products)),
+        categoriesProvider.overrideWith((ref) => Stream.value(categories)),
+        locationsProvider.overrideWith((ref) => Stream.value(const [])),
+        taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
+        catalogActionsProvider.overrideWithValue(_ApiOnlyActions(api, repo)),
+      ],
+      child: MaterialApp(
+        theme: desktop
+            ? AppTheme.desktop(dark: true)
+            : AppTheme.mobile(dark: true),
+        home: Scaffold(body: CatalogScreen(user: user)),
+      ),
+    );
+  }
+
+  testWidgets(
+    'le VENDEUR consulte : ni création, ni catégories, ni emplacements',
+    (tester) async {
+      useScreenSize(tester, const Size(400, 800));
+      await tester.pumpWidget(
+        wrap(
+          _vendeur(),
+          products: [product(name: 'Câble 3G2.5', categoryId: 'cat')],
+          categories: [category()],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Câble 3G2.5'), findsOneWidget);
+      expect(find.text('Câbles'), findsWidgets);
+      expect(find.text('Nouveau'), findsNothing);
+      expect(find.text('Catégories'), findsNothing);
+      expect(find.text('Emplacements'), findsNothing);
+
+      // La fiche s'ouvre en lecture seule : aucune action d'enregistrement.
+      await tester.tap(find.text('Câble 3G2.5'));
+      await tester.pumpAndSettle();
+      expect(find.text('Fiche produit'), findsOneWidget);
+      expect(find.text('Enregistrer'), findsNothing);
+    },
+  );
+
+  testWidgets('le MAGASINIER gère les emplacements, pas les catégories', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 800));
+    await tester.pumpWidget(wrap(_magasinier()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Emplacements'), findsOneWidget);
+    expect(find.text('Catégories'), findsNothing);
+    expect(find.text('Nouveau'), findsNothing);
+  });
+
+  testWidgets(
+    'ADMIN : créer un produit n’envoie que les champs saisis (code-barres généré serveur)',
+    (tester) async {
+      useScreenSize(tester, const Size(400, 2200));
+      await tester.pumpWidget(wrap(_admin()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aucun produit'), findsOneWidget);
+      await tester.tap(find.text('Nouveau'));
+      await tester.pumpAndSettle();
+
+      final fields = find.byType(TextFormField);
+      await tester.enterText(fields.at(0), 'Disjoncteur 16A');
+      await tester.enterText(fields.at(1), 'DIS-16A');
+      await tester.enterText(fields.at(4), '12,5');
+      await tester.ensureVisible(find.text('Créer le produit'));
+      await tester.tap(find.text('Créer le produit'));
+      await tester.pumpAndSettle();
+
+      final (id, sent) = api.productCalls.single;
+      expect(id, isNull);
+      expect(sent['name'], 'Disjoncteur 16A');
+      expect(sent['sku'], 'DIS-16A');
+      expect(sent['unit'], 'PIECE');
+      // Quantité en chaîne décimale, jamais un double (règle 10).
+      expect(sent['minThreshold'], '12.500');
+      expect(sent.containsKey('barcode'), isFalse);
+      expect(sent.containsKey('isActive'), isFalse);
+    },
+  );
+
+  testWidgets('ADMIN : un seuil invalide est refusé AVANT l’envoi', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(wrap(_admin()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Disjoncteur');
+    await tester.enterText(fields.at(1), 'DIS');
+    await tester.enterText(fields.at(4), '-3');
+    await tester.ensureVisible(find.text('Créer le produit'));
+    await tester.tap(find.text('Créer le produit'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nombre positif, ex. 12,5'), findsOneWidget);
+    expect(api.productCalls, isEmpty);
+  });
+
+  testWidgets('ADMIN desktop : modifier n’envoie QUE le champ changé', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 900));
+    await tester.pumpWidget(
+      wrap(
+        _admin(),
+        products: [product(id: 'p1', name: 'Ancien nom')],
+        desktop: true,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tableau dense sur desktop.
+    expect(find.text('RÉFÉRENCE'), findsOneWidget);
+    await tester.tap(find.text('Ancien nom'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextFormField).first, 'Nouveau nom');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+
+    expect(api.productCalls.single.$1, 'p1');
+    expect(api.productCalls.single.$2, {'name': 'Nouveau nom'});
+  });
+
+  test('menu : le catalogue est proposé à tout compte qui a product.read', () {
+    for (final user in [_admin(), _vendeur(), _magasinier()]) {
+      expect(destinationsFor(user).map((d) => d.label), contains('Catalogue'));
+    }
+    expect(
+      destinationsFor(authUser(permissions: const [])).map((d) => d.label),
+      isNot(contains('Catalogue')),
+    );
+    // 4 onglets au plus pour l'admin (AMPÈRE §7).
+    final admin = authUser(
+      permissions: const [..._allProductPermissions, 'user.manage'],
+    );
+    expect(destinationsFor(admin), hasLength(4));
+  });
+
+  test('changedFields ne garde que ce qui a bougé, `null` compris', () {
+    expect(
+      changedFields(
+        {'name': 'A', 'brand': 'Legrand', 'unit': 'PIECE'},
+        {'name': 'A', 'brand': null, 'unit': 'METRE'},
+      ),
+      {'brand': null, 'unit': 'METRE'},
+    );
+  });
+}

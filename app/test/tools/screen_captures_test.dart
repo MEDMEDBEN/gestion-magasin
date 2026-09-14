@@ -12,11 +12,14 @@ import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/auth/presentation/change_password_screen.dart';
 import 'package:gestion_magasin/features/auth/presentation/login_screen.dart';
+import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/breakpoints.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
+import '../support/catalog_fakes.dart';
 import '../support/fakes.dart';
 
 /// OUTIL (opt-in) de vérification visuelle : rend les vrais écrans avec les
@@ -48,6 +51,36 @@ final _users = [
   managedUser(id: 'u5', fullName: 'Yacine Ouali', email: 'yacine@magasin.dz', roles: const ['MAGASINIER'], isActive: false, lastLoginAt: DateTime(2026, 8, 28, 16, 10)),
 ];
 
+class _IdleSync extends CatalogSyncController {
+  @override
+  Future<void> build() async {}
+}
+
+const _adminPermissions = ['user.manage', 'product.read', 'product.write', 'product.disable', 'location.manage'];
+
+final _categories = [
+  category(id: 'cab', name: 'Câbles'),
+  category(id: 'cab-s', name: 'Câbles souples', parentId: 'cab'),
+  category(id: 'prot', name: 'Protection'),
+  category(id: 'ecl', name: 'Éclairage'),
+];
+
+final _products = [
+  product(id: 'p1', name: 'Câble souple H07RN-F 3G2,5', sku: 'CAB-3G25', barcode: '3245060123458', brand: 'Nexans', categoryId: 'cab-s', unit: ProductUnit.metre, minThreshold: '100'),
+  product(id: 'p2', name: 'Disjoncteur DX³ 16A courbe C', sku: 'DIS-16C', barcode: '3245064074152', brand: 'Legrand', categoryId: 'prot', minThreshold: '10'),
+  product(id: 'p3', name: 'Interrupteur différentiel 40A 30mA', sku: 'ID-40-30', barcode: '2000000000015', brand: 'Schneider', categoryId: 'prot', minThreshold: '4'),
+  product(id: 'p4', name: 'Réglette LED 36W 120 cm', sku: 'LED-R36', barcode: '2000000000022', categoryId: 'ecl', minThreshold: '12.5'),
+  product(id: 'p5', name: 'Gaine ICTA Ø20 (couronne 100 m)', sku: 'GAI-20', barcode: '2000000000039', unit: ProductUnit.rouleau, minThreshold: '3'),
+];
+
+StorageLocation _bin(String id, String code, String name) => StorageLocation(id: id, code: code, name: name, type: 'EMPLACEMENT', parentId: 'depot', isActive: true, updatedAt: DateTime.utc(2026, 9, 14));
+
+final _locations = [
+  _bin('l1', 'A-01-01-01', 'Zone A · Rayon 01 · Étagère 01 · Position 01'),
+  _bin('l2', 'A-01-02-03', 'Zone A · Rayon 01 · Étagère 02 · Position 03'),
+  _bin('l3', 'B-04-01-02', 'Zone B · Rayon 04 · Étagère 01 · Position 02'),
+];
+
 Future<void> _loadFonts() async {
   final archivo = FontLoader('Archivo')..addFont(rootBundle.load('fonts/Archivo-Variable.ttf'));
   final lucide = FontLoader('packages/lucide_icons_flutter/Lucide')
@@ -62,6 +95,7 @@ Future<void> _capture(
   required Widget home,
   bool dark = true,
   AuthController Function()? auth,
+  AuthUser? user,
   int foreignPending = 0,
   Future<void> Function(WidgetTester)? interact,
 }) async {
@@ -74,7 +108,12 @@ Future<void> _capture(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        authControllerProvider.overrideWith(auth ?? () => _SignedIn(authUser(id: 'me', fullName: 'Radhi Badache'))),
+        authControllerProvider.overrideWith(auth ?? () => _SignedIn(user ?? authUser(id: 'me', fullName: 'Radhi Badache', permissions: _adminPermissions))),
+        catalogSyncProvider.overrideWith(_IdleSync.new),
+        productsProvider.overrideWith((ref) => Stream.value(_products)),
+        categoriesProvider.overrideWith((ref) => Stream.value(_categories)),
+        locationsProvider.overrideWith((ref) => Stream.value(_locations)),
+        taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
         appDatabaseProvider.overrideWithValue(db),
         usersApiProvider.overrideWithValue(FakeUsersApi(users: _users)),
         currentUserIdProvider.overrideWithValue('me'),
@@ -150,4 +189,35 @@ void main() {
       }));
   testWidgets('11 profil mobile', skip: skip, (t) => _capture(t, name: '11_profil_mobile', size: const Size(390, 844), home: const AdaptiveShell(), foreignPending: 2,
       interact: (t) async => t.tap(find.text('Mon profil'))));
+
+  testWidgets('12 catalogue desktop sombre', skip: skip, (t) => _capture(t, name: '12_catalogue_desktop_sombre', size: const Size(1440, 900), home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Catalogue'))));
+  testWidgets('13 fiche produit panneau desktop', skip: skip, (t) => _capture(t, name: '13_produit_panneau_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Disjoncteur DX³ 16A courbe C'));
+      }));
+  testWidgets('14 catalogue mobile clair vendeur', skip: skip, (t) => _capture(t, name: '14_catalogue_mobile_clair_vendeur', size: const Size(390, 844), home: const AdaptiveShell(), dark: false,
+      user: authUser(id: 'v', fullName: 'Amine Benali', roles: const ['VENDEUR'], permissions: const ['product.read', 'price.read']),
+      interact: (t) async => t.tap(find.text('Catalogue'))));
+  testWidgets('15 categories desktop', skip: skip, (t) => _capture(t, name: '15_categories_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Catégories'));
+      }));
+  testWidgets('16 emplacements mobile magasinier', skip: skip, (t) => _capture(t, name: '16_emplacements_mobile_magasinier', size: const Size(390, 844), home: const AdaptiveShell(),
+      user: authUser(id: 'm', fullName: 'Karim Saidi', roles: const ['MAGASINIER'], permissions: const ['product.read', 'location.manage']),
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Emplacements'));
+      }));
+  testWidgets('17 nouveau produit mobile', skip: skip, (t) => _capture(t, name: '17_nouveau_produit_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Nouveau'));
+      }));
 }

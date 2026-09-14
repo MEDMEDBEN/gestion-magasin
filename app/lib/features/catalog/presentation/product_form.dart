@@ -1,0 +1,423 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/error/api_exception.dart';
+import '../../../core/quantity.dart';
+import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/screen_state.dart';
+import '../application/catalog_controller.dart';
+import '../data/catalog_models.dart';
+
+/// Création, modification ou consultation d'un produit.
+///
+/// `canEdit` : ADMIN + `product.write` (miroir du guard serveur) ; sinon la
+/// fiche est en lecture seule. `canDisable` : `product.disable` en plus.
+class ProductForm extends ConsumerStatefulWidget {
+  const ProductForm({
+    super.key,
+    this.existing,
+    required this.canEdit,
+    required this.canDisable,
+  });
+
+  final Product? existing;
+  final bool canEdit;
+  final bool canDisable;
+
+  @override
+  ConsumerState<ProductForm> createState() => _ProductFormState();
+}
+
+class _ProductFormState extends ConsumerState<ProductForm> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _sku;
+  late final TextEditingController _name;
+  late final TextEditingController _barcode;
+  late final TextEditingController _brand;
+  late final TextEditingController _description;
+  late final TextEditingController _minThreshold;
+  late final TextEditingController _safetyStock;
+  late ProductUnit _unit;
+  String? _categoryId;
+  String? _taxRateId;
+  String? _storageLocationId;
+  late bool _allowBackorder;
+  late bool _isActive;
+  bool _saving = false;
+  String? _error;
+
+  bool get _isEdit => widget.existing != null;
+  bool get _locked => !widget.canEdit || _saving;
+
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.existing;
+    _sku = TextEditingController(text: p?.sku ?? '');
+    _name = TextEditingController(text: p?.name ?? '');
+    _barcode = TextEditingController(text: p?.barcode ?? '');
+    _brand = TextEditingController(text: p?.brand ?? '');
+    _description = TextEditingController(text: p?.description ?? '');
+    _minThreshold = TextEditingController(
+      text: p == null ? '' : formatQuantity(p.minThreshold),
+    );
+    _safetyStock = TextEditingController(
+      text: p == null ? '' : formatQuantity(p.safetyStock),
+    );
+    _unit = p?.unit ?? ProductUnit.piece;
+    _categoryId = p?.categoryId;
+    _taxRateId = p?.taxRateId;
+    _storageLocationId = p?.storageLocationId;
+    _allowBackorder = p?.allowBackorder ?? false;
+    _isActive = p?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    for (final c in [
+      _sku,
+      _name,
+      _barcode,
+      _brand,
+      _description,
+      _minThreshold,
+      _safetyStock,
+    ]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  static String? _text(TextEditingController c) {
+    final value = c.text.trim();
+    return value.isEmpty ? null : value;
+  }
+
+  static String _quantity(TextEditingController c) =>
+      quantityToJson(parseQuantity(c.text) ?? Quantity.zero);
+
+  /// Champs envoyables, au format du serveur.
+  Map<String, Object?> _values() => {
+    'sku': _sku.text.trim(),
+    'name': _name.text.trim(),
+    'barcode': _text(_barcode),
+    'brand': _text(_brand),
+    'description': _text(_description),
+    'unit': _unit.code,
+    'categoryId': _categoryId,
+    'taxRateId': _taxRateId,
+    'storageLocationId': _storageLocationId,
+    'minThreshold': _quantity(_minThreshold),
+    'safetyStock': _quantity(_safetyStock),
+    'allowBackorder': _allowBackorder,
+    if (_isEdit && widget.canDisable) 'isActive': _isActive,
+  };
+
+  static Map<String, Object?> _valuesOf(Product p) => {
+    'sku': p.sku,
+    'name': p.name,
+    'barcode': p.barcode,
+    'brand': p.brand,
+    'description': p.description,
+    'unit': p.unit.code,
+    'categoryId': p.categoryId,
+    'taxRateId': p.taxRateId,
+    'storageLocationId': p.storageLocationId,
+    'minThreshold': quantityToJson(p.minThreshold),
+    'safetyStock': quantityToJson(p.safetyStock),
+    'allowBackorder': p.allowBackorder,
+    'isActive': p.isActive,
+  };
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final existing = widget.existing;
+    final values = _values();
+    final Map<String, Object?> payload;
+    if (existing == null) {
+      // Création : un champ vide n'est pas envoyé — sans code-barres, le
+      // serveur en génère un unique (règle 15).
+      payload = {
+        for (final e in values.entries)
+          if (e.value != null) e.key: e.value,
+      };
+    } else {
+      // Un code-barres ne se retire pas : vidé, il reste inchangé.
+      if (values['barcode'] == null) values['barcode'] = existing.barcode;
+      payload = changedFields(_valuesOf(existing), values);
+      if (payload.isEmpty) {
+        Navigator.of(context).pop(existing);
+        return;
+      }
+    }
+
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref
+          .read(catalogActionsProvider)
+          .saveProduct(existing?.id, payload);
+      if (mounted) Navigator.of(context).pop(saved);
+    } on ApiException catch (error) {
+      _fail(error.userMessage);
+    }
+  }
+
+  void _fail(String message) {
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _error = message;
+    });
+  }
+
+  String? _validateQuantity(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return null;
+    final quantity = parseQuantity(raw);
+    if (quantity == null || quantity < Quantity.zero) {
+      return 'Nombre positif, ex. 12,5';
+    }
+    if (quantity.scale > quantityScale) return '3 décimales au maximum';
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final categories = ref.watch(categoriesProvider).value ?? const [];
+    final taxRates = ref.watch(taxRatesProvider).value ?? const [];
+    final bins = [
+      for (final l in ref.watch(locationsProvider).value ?? const [])
+        if (l.isBin) l,
+    ];
+    final roots = [
+      for (final c in categories)
+        if (c.parentId == null) c,
+    ];
+
+    InputDecoration deco(IconData icon, {String? helper}) => InputDecoration(
+      prefixIcon: Icon(icon, size: 17),
+      helperText: helper,
+      helperMaxLines: 2,
+      counterText: '',
+    );
+    final inputStyle = AmpereType.input.copyWith(color: colors.ink);
+
+    return FormPanelFrame(
+      formKey: _formKey,
+      title: !widget.canEdit
+          ? 'Fiche produit'
+          : _isEdit
+          ? 'Modifier le produit'
+          : 'Nouveau produit',
+      submitLabel: _isEdit ? 'Enregistrer' : 'Créer le produit',
+      onSubmit: widget.canEdit ? _submit : null,
+      saving: _saving,
+      error: _error,
+      children: [
+        const AmpereFieldLabel('Désignation'),
+        TextFormField(
+          controller: _name,
+          enabled: !_locked,
+          autofocus: widget.canEdit && !_isEdit,
+          maxLength: 150,
+          style: inputStyle,
+          decoration: deco(LucideIcons.package),
+          validator: (v) => (v == null || v.trim().length < 2)
+              ? 'Au moins 2 caractères'
+              : null,
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Référence'),
+        TextFormField(
+          controller: _sku,
+          enabled: !_locked,
+          maxLength: 50,
+          autocorrect: false,
+          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
+          decoration: deco(LucideIcons.hash),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Référence obligatoire' : null,
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Code-barres'),
+        TextFormField(
+          controller: _barcode,
+          enabled: !_locked,
+          maxLength: 64,
+          autocorrect: false,
+          enableSuggestions: false,
+          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
+          decoration: deco(
+            LucideIcons.scanBarcode,
+            helper: _isEdit
+                ? 'Corrigez un code mal saisi, ou scannez le bon'
+                : 'Scannez le code fabricant — vide : un code interne est généré',
+          ),
+          validator: (v) => (v != null && RegExp(r'\s').hasMatch(v.trim()))
+              ? 'Sans espace'
+              : null,
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Marque'),
+        TextFormField(
+          controller: _brand,
+          enabled: !_locked,
+          maxLength: 80,
+          style: inputStyle,
+          decoration: deco(LucideIcons.tag),
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Unité de vente'),
+        DropdownButtonFormField<ProductUnit>(
+          icon: const Icon(LucideIcons.chevronDown, size: 17),
+          initialValue: _unit,
+          decoration: deco(LucideIcons.ruler),
+          items: [
+            for (final unit in ProductUnit.values)
+              DropdownMenuItem(value: unit, child: Text(unit.label)),
+          ],
+          onChanged: _locked ? null : (v) => setState(() => _unit = v!),
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Catégorie'),
+        DropdownButtonFormField<String?>(
+          icon: const Icon(LucideIcons.chevronDown, size: 17),
+          initialValue: _categoryId,
+          isExpanded: true,
+          decoration: deco(LucideIcons.folderTree),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('Aucune')),
+            for (final root in roots) ...[
+              if (root.isActive || root.id == _categoryId)
+                DropdownMenuItem(value: root.id, child: Text(root.name)),
+              for (final child in categories)
+                if (child.parentId == root.id &&
+                    (child.isActive || child.id == _categoryId))
+                  DropdownMenuItem(
+                    value: child.id,
+                    child: Text('    ${child.name}'),
+                  ),
+            ],
+          ],
+          onChanged: _locked ? null : (v) => setState(() => _categoryId = v),
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('TVA'),
+        DropdownButtonFormField<String?>(
+          icon: const Icon(LucideIcons.chevronDown, size: 17),
+          initialValue: _taxRateId,
+          decoration: deco(LucideIcons.percent),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('Non précisée')),
+            for (final t in taxRates)
+              if (t.isActive || t.id == _taxRateId)
+                DropdownMenuItem(value: t.id, child: Text(t.name)),
+          ],
+          onChanged: _locked ? null : (v) => setState(() => _taxRateId = v),
+        ),
+        formFieldGap,
+        const AmpereFieldLabel('Emplacement au dépôt'),
+        DropdownButtonFormField<String?>(
+          icon: const Icon(LucideIcons.chevronDown, size: 17),
+          initialValue: _storageLocationId,
+          isExpanded: true,
+          decoration: deco(LucideIcons.mapPin),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('Non rangé')),
+            for (final bin in bins)
+              if (bin.isActive || bin.id == _storageLocationId)
+                DropdownMenuItem(
+                  value: bin.id,
+                  child: Text('${bin.code} — ${bin.name}'),
+                ),
+          ],
+          onChanged: _locked
+              ? null
+              : (v) => setState(() => _storageLocationId = v),
+        ),
+        formFieldGap,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const AmpereFieldLabel('Seuil minimum'),
+                  TextFormField(
+                    controller: _minThreshold,
+                    enabled: !_locked,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: inputStyle,
+                    decoration: InputDecoration(suffixText: _unit.short),
+                    validator: _validateQuantity,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const AmpereFieldLabel('Stock de sécurité'),
+                  TextFormField(
+                    controller: _safetyStock,
+                    enabled: !_locked,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    style: inputStyle,
+                    decoration: InputDecoration(suffixText: _unit.short),
+                    validator: _validateQuantity,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        formFieldGap,
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _allowBackorder,
+          onChanged: _locked
+              ? null
+              : (v) => setState(() => _allowBackorder = v),
+          title: const Text('Vente sans stock autorisée'),
+          subtitle: const Text(
+            'Par défaut, une vente qui rendrait le stock négatif est refusée',
+          ),
+        ),
+        if (_isEdit && widget.canDisable)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _isActive,
+            onChanged: _saving ? null : (v) => setState(() => _isActive = v),
+            title: const Text('Produit actif'),
+            subtitle: const Text(
+              'Désactivé : il n’est plus proposé, son historique est conservé',
+            ),
+          ),
+        formFieldGap,
+        const AmpereFieldLabel('Description'),
+        TextFormField(
+          controller: _description,
+          enabled: !_locked,
+          maxLength: 1000,
+          minLines: 2,
+          maxLines: 5,
+          style: inputStyle,
+        ),
+      ],
+    );
+  }
+}

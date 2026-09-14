@@ -1,0 +1,72 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/error/api_exception.dart';
+import '../../../core/providers.dart';
+import 'catalog_models.dart';
+
+/// Accès réseau au catalogue. Aucune logique métier ici.
+///
+/// Lecture : tous les rôles (`product.read`). Écriture : produits et catégories
+/// ADMIN (`product.write`), emplacements ADMIN + MAGASINIER (`location.manage`)
+/// — l'UI masque, le serveur refuse.
+class CatalogApi {
+  CatalogApi(this._dio);
+
+  final Dio _dio;
+
+  Future<CatalogChanges> changes({String? cursor, int limit = 500}) {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/catalog/changes',
+        queryParameters: {'limit': limit, 'cursor': ?cursor},
+      );
+      return CatalogChanges.fromJson(response.data!);
+    });
+  }
+
+  /// `fields` : UNIQUEMENT les champs saisis ; sans `barcode`, le serveur
+  /// génère un code interne unique (règle 15).
+  Future<Product> createProduct(Map<String, Object?> fields) =>
+      _send('POST', '/products', fields, Product.fromJson);
+
+  /// N'envoie que les champs modifiés — `null` retire un rattachement.
+  Future<Product> updateProduct(String id, Map<String, Object?> changes) =>
+      _send('PATCH', '/products/$id', changes, Product.fromJson);
+
+  Future<ProductCategory> createCategory(Map<String, Object?> fields) =>
+      _send('POST', '/categories', fields, ProductCategory.fromJson);
+
+  Future<ProductCategory> updateCategory(
+    String id,
+    Map<String, Object?> changes,
+  ) => _send('PATCH', '/categories/$id', changes, ProductCategory.fromJson);
+
+  Future<StorageLocation> createLocation(Map<String, Object?> fields) =>
+      _send('POST', '/locations', fields, StorageLocation.fromJson);
+
+  Future<StorageLocation> updateLocation(
+    String id,
+    Map<String, Object?> changes,
+  ) => _send('PATCH', '/locations/$id', changes, StorageLocation.fromJson);
+
+  Future<T> _send<T>(
+    String method,
+    String path,
+    Map<String, Object?> data,
+    T Function(Map<String, dynamic>) decode,
+  ) {
+    return guardApi(() async {
+      final response = await _dio.request<Map<String, dynamic>>(
+        path,
+        data: data,
+        options: Options(method: method),
+      );
+      return decode(response.data!);
+    });
+  }
+}
+
+final catalogApiProvider = Provider<CatalogApi>(
+  (ref) => CatalogApi(ref.watch(dioClientProvider).dio),
+);
