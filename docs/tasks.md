@@ -163,6 +163,32 @@ déplacer dans `application/` avec tests unitaires ; toast d'édition dupliqué 
 base de dev le temps d'un test) ; constantes pour les `operation` d'audit ; panneau latéral qui se
 ferme au clic extérieur (perte de saisie).
 
+### 🚧 P0 #2 EN COURS — 2026-09-14 · **MEDMEDBEN** (backend écrit, e2e NON EXÉCUTÉS)
+Fait (committé) :
+- `backend/src/common/barcode/barcode.ts` : clé GS1, EAN-13 interne `20`+séquence+clé, contrôle de clé
+  des GTIN saisis (8/12/13/14), codes alphanumériques acceptés (64 max). **5 tests unitaires verts.**
+- Migration ADDITIVE écrite à la main, **pas encore appliquée** :
+  `prisma/migrations/20260914120000_product_internal_barcode_seq` (CREATE SEQUENCE).
+- Produits (`products.service.ts`) : liste `{data, meta}` (q nom/SKU/marque/code, `categoryId` avec
+  sous-catégories, `includeInactive`, tri whitelisté), détail, recherche par code-barres, création
+  (id client, code généré si absent, SKU unique sans la casse, rattachements contrôlés → 422),
+  PATCH (sku/barcode corrigeables, `null` retire un rattachement, `isActive` exige `product.disable`),
+  audit CREATE/UPDATE dans la transaction. `setPrice` reste 501.
+- Catégories (`catalog.service.ts`) : liste plate, création, **PATCH** ; 2 niveaux ; nom unique par
+  parent sans la casse sous verrou consultatif.
+- Emplacements (`locations/` sorti du module contrat) : liste, création EMPLACEMENT seulement (rattaché
+  au dépôt, code `A-02-04-03` et nom dérivés), **PATCH** (EMPLACEMENT seulement).
+- `GET /pricing/tiers`, `GET /pricing/tax-rates`.
+- `GET /catalog/changes?cursor=&limit=` : curseur opaque `(updatedAt,id)` par type, inactifs compris,
+  `hasMore`, lignes servies après 5 s de stabilisation (`CATALOG_SETTLE_MS`, limite notée `ponytail:`).
+- `backend/test/catalog.e2e-spec.ts` : ~30 tests (génération concurrente, code squatté, clé fausse,
+  matrice 3 rôles, catégories concurrentes, emplacements, atomicité audit, delta paginé au même instant).
+Preuve : `tsc` OK · lint propre sur les fichiers touchés · `npm test` → **9 suites, 60 passed**.
+⛔ **BLOQUÉ** : le moteur Docker ne répond plus (`docker info` expire) → ni migration ni e2e.
+**Reprise ICI** : relancer Docker Desktop (⚠️ il héberge aussi `infinit-school-*`) → postgres sur 5433
+(voir piège point 1) → `npx prisma migrate deploy && npx prisma generate` → `npm run test:e2e`
+→ corriger → commit. Ensuite : app `features/catalog/` (plan ci-dessous, point 2).
+
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 
