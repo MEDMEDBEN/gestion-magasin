@@ -106,6 +106,12 @@ aucune migration destructive sans confirmation).
 | Modifier les paramètres système | ✅ | ❌ | ❌ |
 | Consulter l'audit / traçabilité | ✅ | ❌ | ❌ |
 
+## Décision du 2026-09-14 (MEDMEDBEN) — perte / casse du magasinier
+- Le « ⚠️ » de la matrice est appliqué à la lettre : une perte déclarée par le **MAGASINIER** crée une
+  `StockLossDeclaration` **EN_ATTENTE** ; le stock ne bouge qu'à la **validation de l'ADMIN**
+  (`stock.adjust.validate`). Refusée : aucun mouvement, la déclaration reste en historique.
+- L'ADMIN qui déclare applique directement. Même règle hors-ligne (handler de sync `MANUAL`).
+
 ## Décision du 2026-09-14 (MEDMEDBEN) — coût d'achat
 - Le **coût d'achat** (`Product.lastPurchasePriceHt`, dernier prix réceptionné = base de la marge) est
   visible par l'**ADMIN et le MAGASINIER** (permission `cost.read`), **jamais par le vendeur**. Le serveur

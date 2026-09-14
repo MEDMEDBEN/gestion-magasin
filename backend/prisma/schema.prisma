@@ -209,6 +209,15 @@ enum RefreshTokenRevokedReason {
   REVOKED
 }
 
+/// Déclaration de perte / casse (P0 n°3). Celle du MAGASINIER attend la validation
+/// de l'admin avant de toucher le stock (docs/permissions.md « ⚠️ », décision
+/// MEDMEDBEN 2026-09-14).
+enum StockLossStatus {
+  EN_ATTENTE
+  VALIDEE
+  REFUSEE
+}
+
 /// Résultat du traitement serveur d'une mutation hors-ligne (contrat de sync, docs/context.md §4).
 enum SyncMutationStatus {
   CONFIRMEE
@@ -245,6 +254,8 @@ model User {
   cashSessions        CashSession[]
   cashMovements       CashMovement[]
   stockMovements      StockMovement[]
+  stockLossesDeclared StockLossDeclaration[] @relation("StockLossDeclaredBy")
+  stockLossesDecided  StockLossDeclaration[] @relation("StockLossDecidedBy")
   receptions          Reception[]
   purchaseOrdersCreated   PurchaseOrder[] @relation("PurchaseOrderCreatedBy")
   purchaseOrdersConfirmed PurchaseOrder[] @relation("PurchaseOrderConfirmedBy")
@@ -351,6 +362,7 @@ model Location {
   stocks              Stock[]
   storedProducts      Product[]       @relation("ProductStorageLocation")
   stockMovements      StockMovement[] @relation("StockMovementLocation")
+  stockLosses         StockLossDeclaration[]
   movementsFrom       StockMovement[] @relation("StockMovementSource")
   movementsTo         StockMovement[] @relation("StockMovementDestination")
   sales               Sale[]
@@ -398,6 +410,7 @@ model Product {
   prices         ProductPrice[]
   stocks         Stock[]
   stockMovements StockMovement[]
+  stockLosses    StockLossDeclaration[]
   saleLines      SaleLine[]
   quoteLines     QuoteLine[]
   purchaseLines  PurchaseLine[]
@@ -528,6 +541,34 @@ model StockMovement {
 // ───────────────────────────────────────────────────────────
 // CLIENTS / VENTES
 // ───────────────────────────────────────────────────────────
+
+/// Perte / casse déclarée. Le stock ne bouge qu'à `VALIDEE`, par un mouvement
+/// `PERTE_CASSE` (operationType MANUAL, operationId = id de la déclaration).
+/// Une déclaration refusée reste en historique (règle 7 : jamais supprimée).
+model StockLossDeclaration {
+  id            String          @id @default(uuid(7)) @db.Uuid
+  productId     String          @db.Uuid
+  locationId    String          @db.Uuid
+  /// Quantité perdue, POSITIVE — le mouvement appliqué est son opposé.
+  quantity      Decimal         @db.Decimal(14, 3)
+  comment       String?
+  status        StockLossStatus @default(EN_ATTENTE)
+  declaredById  String          @db.Uuid
+  decidedById   String?         @db.Uuid
+  decidedAt     DateTime?
+  decisionNote  String?
+  movementId    String?         @unique @db.Uuid
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  product    Product  @relation(fields: [productId], references: [id])
+  location   Location @relation(fields: [locationId], references: [id])
+  declaredBy User     @relation("StockLossDeclaredBy", fields: [declaredById], references: [id])
+  decidedBy  User?    @relation("StockLossDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([status, createdAt])
+  @@index([productId])
+}
 
 model Customer {
   id          String   @id @default(uuid(7)) @db.Uuid

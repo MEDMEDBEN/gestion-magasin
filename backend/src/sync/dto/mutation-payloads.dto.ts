@@ -4,9 +4,9 @@ import {
   IsNumberString,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
 } from 'class-validator';
+import { IsCanonicalUuid } from '../../common/validation';
 
 /// Mouvements de stock déclarables hors-ligne aujourd'hui. Les autres types
 /// (`VENTE`, `RECEPTION`, `TRANSFERT_*`, `AJUSTEMENT_INVENTAIRE`) arriveront avec
@@ -22,19 +22,21 @@ export class StockLossPayloadDto {
     description:
       'UUID du mouvement, généré par l’appareil (contrat de sync §1). Absent → généré serveur.',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   id?: string;
 
-  @ApiProperty() @IsUUID() productId!: string;
+  @ApiProperty() @IsCanonicalUuid() productId!: string;
 
-  @ApiProperty() @IsUUID() locationId!: string;
+  @ApiProperty() @IsCanonicalUuid() locationId!: string;
 
   @ApiProperty({
     example: '3.000',
-    description: 'Quantité perdue, POSITIVE. Le serveur applique le delta négatif.',
+    description:
+      'Quantité perdue, POSITIVE. Le serveur applique le delta négatif.',
   })
   @IsNumberString()
+  @MaxLength(20)
   quantity!: string;
 
   @ApiProperty({ enum: SyncStockMovementTypeDto })

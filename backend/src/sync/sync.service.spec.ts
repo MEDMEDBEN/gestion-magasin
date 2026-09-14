@@ -58,7 +58,10 @@ describe('SyncService', () => {
       auditLog: { create: jest.fn() },
     };
     prisma = {
-      syncMutation: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      syncMutation: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+      },
       $transaction: jest.fn(async (run: (c: unknown) => unknown) => run(tx)),
     };
 
@@ -66,7 +69,10 @@ describe('SyncService', () => {
   });
 
   it('applique une mutation valide et trace l’audit dans la même transaction', async () => {
-    const result = await service.processBatch({ mutations: [mutation()] }, magasinier);
+    const result = await service.processBatch(
+      { mutations: [mutation()] },
+      magasinier,
+    );
 
     expect(result.results[0]).toMatchObject({
       status: SyncResultStatusDto.CONFIRMEE,
@@ -93,7 +99,10 @@ describe('SyncService', () => {
       rejectionReason: null,
     });
 
-    const result = await service.processBatch({ mutations: [mutation()] }, magasinier);
+    const result = await service.processBatch(
+      { mutations: [mutation()] },
+      magasinier,
+    );
 
     expect(result.results[0]).toMatchObject({
       status: SyncResultStatusDto.CONFIRMEE,
@@ -125,7 +134,10 @@ describe('SyncService', () => {
   });
 
   it('rejette une mutation dont l’utilisateur n’a pas la permission — comme en ligne', async () => {
-    const sansPermission: AuthenticatedUser = { ...magasinier, permissions: [] };
+    const sansPermission: AuthenticatedUser = {
+      ...magasinier,
+      permissions: [],
+    };
 
     const [result] = (
       await service.processBatch({ mutations: [mutation()] }, sansPermission)
@@ -152,7 +164,10 @@ describe('SyncService', () => {
     };
 
     const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, vendeurAvecPermission)
+      await service.processBatch(
+        { mutations: [mutation()] },
+        vendeurAvecPermission,
+      )
     ).results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);

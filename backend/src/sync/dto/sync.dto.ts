@@ -54,7 +54,10 @@ export class SyncMutationDto {
   @IsUUID()
   clientMutationId!: string;
 
-  @ApiProperty({ description: 'Appareil émetteur (traçabilité).', example: 'poste-caisse-01' })
+  @ApiProperty({
+    description: 'Appareil émetteur (traçabilité).',
+    example: 'poste-caisse-01',
+  })
   @IsString()
   @Length(1, 100)
   deviceId!: string;
@@ -110,12 +113,14 @@ export class SyncMutationResultDto {
 
   @ApiPropertyOptional({
     enum: ErrorCode,
-    description: 'Code métier stable — le client s’y réfère, jamais au texte du message.',
+    description:
+      'Code métier stable — le client s’y réfère, jamais au texte du message.',
   })
   code?: ErrorCode;
 
   @ApiPropertyOptional({
-    description: 'Motif lisible, à afficher tel quel à l’utilisateur en cas de rejet.',
+    description:
+      'Motif lisible, à afficher tel quel à l’utilisateur en cas de rejet.',
   })
   reason?: string;
 
@@ -135,7 +140,9 @@ export class SyncMutationResultDto {
 }
 
 export class SyncBatchResultDto {
-  @ApiProperty({ description: 'Horloge serveur — référence pour le prochain delta sync.' })
+  @ApiProperty({
+    description: 'Horloge serveur — référence pour le prochain delta sync.',
+  })
   serverTime!: Date;
 
   @ApiProperty({

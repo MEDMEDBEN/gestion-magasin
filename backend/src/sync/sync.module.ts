@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { StockModule } from '../stock/stock.module';
 import { StockLossHandler } from './handlers/stock-loss.handler';
 import { SyncController } from './sync.controller';
-import { SYNC_MUTATION_HANDLERS, SyncMutationHandler } from './sync-mutation.handler';
+import {
+  SYNC_MUTATION_HANDLERS,
+  SyncMutationHandler,
+} from './sync-mutation.handler';
 import { SyncService } from './sync.service';
 
 /// Socle de synchronisation offline (Phase 0, étape 3).

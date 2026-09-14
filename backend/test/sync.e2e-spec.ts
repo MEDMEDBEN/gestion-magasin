@@ -17,6 +17,9 @@ describe('Sync (e2e)', () => {
 
   const suffix = Date.now();
   const PASSWORD = 'MotDePasseTest1!';
+  /// ADMIN : ses pertes s'appliquent tout de suite — c'est lui qui exerce le moteur.
+  const adminEmail = `e2e-sync-admin-${suffix}@test.local`;
+  /// MAGASINIER : sa perte hors-ligne reste EN ATTENTE de validation (décision 2026-09-14).
   const magasinierEmail = `e2e-sync-magasinier-${suffix}@test.local`;
   const vendeurEmail = `e2e-sync-vendeur-${suffix}@test.local`;
   /// Vendeur à qui l'admin a accordé `stock.loss` « à la carte » : a la permission,
@@ -24,6 +27,7 @@ describe('Sync (e2e)', () => {
   const vendeurPlusEmail = `e2e-sync-vendeur-plus-${suffix}@test.local`;
   const DEVICE = 'e2e-mobile-magasinier';
 
+  let adminToken: string;
   let magasinierToken: string;
   let vendeurToken: string;
   let vendeurPlusToken: string;
@@ -77,6 +81,7 @@ describe('Sync (e2e)', () => {
 
     const passwordHash = await hashPassword(PASSWORD);
     for (const [email, role] of [
+      [adminEmail, RoleCode.ADMIN],
       [magasinierEmail, RoleCode.MAGASINIER],
       [vendeurEmail, RoleCode.VENDEUR],
     ] as const) {
@@ -107,6 +112,7 @@ describe('Sync (e2e)', () => {
         .send({ identifier: email, password: PASSWORD });
       return res.body.accessToken;
     };
+    adminToken = await login(adminEmail);
     magasinierToken = await login(magasinierEmail);
     vendeurToken = await login(vendeurEmail);
     vendeurPlusToken = await login(vendeurPlusEmail);
@@ -151,14 +157,25 @@ describe('Sync (e2e)', () => {
       overReservedProductId,
     ];
     const users = await prisma.user.findMany({
-      where: { email: { in: [magasinierEmail, vendeurEmail, vendeurPlusEmail] } },
+      where: {
+        email: {
+          in: [adminEmail, magasinierEmail, vendeurEmail, vendeurPlusEmail],
+        },
+      },
       select: { id: true },
     });
     const userIds = users.map((user) => user.id);
 
-    await prisma.stockMovement.deleteMany({ where: { productId: { in: productIds } } });
+    await prisma.stockMovement.deleteMany({
+      where: { productId: { in: productIds } },
+    });
+    await prisma.stockLossDeclaration.deleteMany({
+      where: { productId: { in: productIds } },
+    });
     await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.syncMutation.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.syncMutation.deleteMany({
+      where: { userId: { in: userIds } },
+    });
     await prisma.stock.deleteMany({ where: { productId: { in: productIds } } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
     await prisma.location.delete({ where: { id: locationId } });
@@ -174,7 +191,7 @@ describe('Sync (e2e)', () => {
   });
 
   it('applique une perte saisie hors-ligne : mouvement + projection', async () => {
-    const res = await sync(magasinierToken, [lossMutation()]);
+    const res = await sync(adminToken, [lossMutation()]);
 
     expect(res.status).toBe(200);
     expect(res.body.results[0]).toMatchObject({
@@ -183,8 +200,9 @@ describe('Sync (e2e)', () => {
       serverState: { quantityAfter: '7.000', availableAfter: '7.000' },
     });
 
-    const movement = await prisma.stockMovement.findUnique({
-      where: { id: res.body.results[0].entityId },
+    // L'entité est la DÉCLARATION ; le mouvement la référence (operationId).
+    const movement = await prisma.stockMovement.findFirst({
+      where: { operationId: res.body.results[0].entityId },
     });
     expect(movement?.quantity.toFixed(3)).toBe('-3.000');
     expect(movement?.type).toBe('PERTE_CASSE');
@@ -192,20 +210,44 @@ describe('Sync (e2e)', () => {
 
     // Contrat §4.4 : l'audit est écrit dans la même transaction que le mouvement.
     const audit = await prisma.auditLog.findFirst({
-      where: { entityId: movement!.id, entityType: 'StockMovement' },
+      where: {
+        entityId: res.body.results[0].entityId,
+        entityType: 'StockLossDeclaration',
+      },
     });
-    expect(audit?.action).toBe('ADJUST');
+    expect(audit?.action).toBe('CREATE');
+  });
+
+  it('la perte hors-ligne du MAGASINIER reste EN ATTENTE : le stock ne bouge pas', async () => {
+    const stockBefore = await stockOf(productId);
+    const movementsBefore = await movementCount(productId);
+
+    const res = await sync(magasinierToken, [
+      lossMutation({ payload: { quantity: '1.000' } }),
+    ]);
+
+    expect(res.body.results[0]).toMatchObject({
+      status: 'CONFIRMEE',
+      serverState: { status: 'EN_ATTENTE' },
+    });
+    const declaration = await prisma.stockLossDeclaration.findUnique({
+      where: { id: res.body.results[0].entityId },
+    });
+    expect(declaration?.status).toBe('EN_ATTENTE');
+    expect(declaration?.movementId).toBeNull();
+    expect(await stockOf(productId)).toBe(stockBefore);
+    expect(await movementCount(productId)).toBe(movementsBefore);
   });
 
   it('ne réapplique JAMAIS une mutation renvoyée (idempotence)', async () => {
     const mutation = lossMutation({ payload: { quantity: '2.000' } });
 
-    const first = await sync(magasinierToken, [mutation]);
+    const first = await sync(adminToken, [mutation]);
     const stockAfterFirst = await stockOf(productId);
     const movementsAfterFirst = await movementCount(productId);
 
     // Reconnexion instable : le client renvoie exactement la même mutation.
-    const second = await sync(magasinierToken, [mutation]);
+    const second = await sync(adminToken, [mutation]);
 
     expect(first.body.results[0].status).toBe('CONFIRMEE');
     expect(second.body.results[0]).toMatchObject({
@@ -224,8 +266,8 @@ describe('Sync (e2e)', () => {
     const movementsBefore = await movementCount(productId);
 
     const [first, second] = await Promise.all([
-      sync(magasinierToken, [mutation]),
-      sync(magasinierToken, [mutation]),
+      sync(adminToken, [mutation]),
+      sync(adminToken, [mutation]),
     ]);
 
     const statuses = [first.body.results[0], second.body.results[0]];
@@ -240,7 +282,7 @@ describe('Sync (e2e)', () => {
     const stockBefore = await stockOf(productId);
     const movementsBefore = await movementCount(productId);
 
-    const res = await sync(magasinierToken, [
+    const res = await sync(adminToken, [
       lossMutation({ payload: { quantity: '999.000' } }),
     ]);
 
@@ -258,8 +300,8 @@ describe('Sync (e2e)', () => {
   it('mémorise le rejet : le renvoi donne le même verdict, sans retraitement', async () => {
     const mutation = lossMutation({ payload: { quantity: '999.000' } });
 
-    const first = await sync(magasinierToken, [mutation]);
-    const second = await sync(magasinierToken, [mutation]);
+    const first = await sync(adminToken, [mutation]);
+    const second = await sync(adminToken, [mutation]);
 
     expect(first.body.results[0].alreadyProcessed).toBe(false);
     expect(second.body.results[0]).toMatchObject({
@@ -270,8 +312,10 @@ describe('Sync (e2e)', () => {
   });
 
   it('autorise le négatif sur un produit en backorder', async () => {
-    const res = await sync(magasinierToken, [
-      lossMutation({ payload: { productId: backorderProductId, quantity: '2.000' } }),
+    const res = await sync(adminToken, [
+      lossMutation({
+        payload: { productId: backorderProductId, quantity: '2.000' },
+      }),
     ]);
 
     expect(res.body.results[0].status).toBe('CONFIRMEE');
@@ -292,7 +336,7 @@ describe('Sync (e2e)', () => {
   });
 
   it('rejette un payload non conforme au contrat', async () => {
-    const res = await sync(magasinierToken, [
+    const res = await sync(adminToken, [
       lossMutation({ payload: { quantity: 'beaucoup' } }),
     ]);
 
@@ -311,7 +355,7 @@ describe('Sync (e2e)', () => {
       deviceTimestamp: new Date('2026-09-09T08:00:00.000Z').toISOString(),
     };
 
-    const res = await sync(magasinierToken, [mutation]);
+    const res = await sync(adminToken, [mutation]);
 
     expect(res.body.results[0]).toMatchObject({
       status: 'NON_TRAITEE',
@@ -337,9 +381,12 @@ describe('Sync (e2e)', () => {
       payload: { productId: orderedProductId, quantity: '2.000' },
     });
 
-    const res = await sync(magasinierToken, [newer, older]);
+    const res = await sync(adminToken, [newer, older]);
     const byId = Object.fromEntries(
-      res.body.results.map((r: { clientMutationId: string }) => [r.clientMutationId, r]),
+      res.body.results.map((r: { clientMutationId: string }) => [
+        r.clientMutationId,
+        r,
+      ]),
     );
 
     expect(byId[older.clientMutationId].status).toBe('CONFIRMEE');
@@ -364,10 +411,12 @@ describe('Sync (e2e)', () => {
     expect(await movementCount(productId)).toBe(movementsBefore);
   });
 
-  it('rejette DÉFINITIVEMENT un id de mouvement déjà pris, sans geler la file', async () => {
+  it('rejette DÉFINITIVEMENT un id de déclaration déjà pris, sans geler la file', async () => {
     const movementId = randomUUID();
-    const premiere = lossMutation({ payload: { id: movementId, quantity: '1.000' } });
-    expect((await sync(magasinierToken, [premiere])).body.results[0].status).toBe(
+    const premiere = lossMutation({
+      payload: { id: movementId, quantity: '1.000' },
+    });
+    expect((await sync(adminToken, [premiere])).body.results[0].status).toBe(
       'CONFIRMEE',
     );
 
@@ -381,7 +430,7 @@ describe('Sync (e2e)', () => {
       payload: { quantity: '1.000' },
     });
 
-    const res = await sync(magasinierToken, [doublon, suivante]);
+    const res = await sync(adminToken, [doublon, suivante]);
 
     expect(res.body.results[0]).toMatchObject({
       status: 'REJETEE',
@@ -393,7 +442,7 @@ describe('Sync (e2e)', () => {
 
   it('ne renvoie pas à un autre compte le résultat mémorisé d’un collègue', async () => {
     const mutation = lossMutation({ payload: { quantity: '1.000' } });
-    expect((await sync(magasinierToken, [mutation])).body.results[0].status).toBe(
+    expect((await sync(adminToken, [mutation])).body.results[0].status).toBe(
       'CONFIRMEE',
     );
 

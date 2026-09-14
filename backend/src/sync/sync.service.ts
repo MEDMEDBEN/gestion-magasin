@@ -417,7 +417,10 @@ export class SyncService {
     return candidates.some((value) => String(value ?? '').includes(column));
   }
 
-  private static codeOf(error: BusinessException, fallback: ErrorCode): ErrorCode {
+  private static codeOf(
+    error: BusinessException,
+    fallback: ErrorCode,
+  ): ErrorCode {
     const body = error.getResponse();
     const code =
       typeof body === 'object' && body !== null

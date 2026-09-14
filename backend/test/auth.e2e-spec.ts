@@ -518,7 +518,7 @@ describe('Auth (e2e)', () => {
     const session = await login(adminEmail, TEMP_PASSWORD);
 
     const res = await request(server)
-      .get('/api/stock')
+      .get('/api/sales')
       .set('Authorization', `Bearer ${session.body.accessToken}`);
 
     expect(res.status).toBe(501);

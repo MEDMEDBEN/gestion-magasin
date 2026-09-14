@@ -45,7 +45,10 @@ export interface SyncMutationHandler<TPayload extends object = object> {
   validate(payload: unknown): Promise<TPayload>;
 
   /// Applique la mutation. Lever une `BusinessException` = REJET (rien n'est appliqué).
-  apply(payload: TPayload, context: SyncMutationContext): Promise<SyncApplyResult>;
+  apply(
+    payload: TPayload,
+    context: SyncMutationContext,
+  ): Promise<SyncApplyResult>;
 }
 
 /// Jeton d'injection multi-fournisseurs : le module de sync assemble la liste.

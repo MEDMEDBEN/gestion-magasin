@@ -1,12 +1,9 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { BusinessException } from '../../common/business.exception';
-import { ErrorCode } from '../../common/error-codes';
+import { Injectable } from '@nestjs/common';
 import { RoleCode } from '../../common/auth.decorators';
 import { PERMISSIONS, PermissionCode } from '../../common/permissions';
-import { parseQuantity } from '../../common/quantity';
 import { validatePayload } from '../../common/validate-payload';
 import { AuditAction, OperationType } from '../../generated/prisma/enums';
-import { StockLedgerService } from '../../stock/stock-ledger.service';
+import { StockService } from '../../stock/stock.service';
 import { StockLossPayloadDto } from '../dto/mutation-payloads.dto';
 import {
   SyncApplyResult,
@@ -14,19 +11,24 @@ import {
   SyncMutationHandler,
 } from '../sync-mutation.handler';
 
-/// Perte / casse constatée au dépôt, saisie hors-ligne. Première opération branchée sur
-/// le contrat de sync : elle en exerce toutes les règles — permission serveur, validation
-/// du payload, anti-stock-négatif, mouvement + projection atomiques, audit, idempotence.
+/// Perte / casse saisie hors-ligne. Même règle qu'en ligne (`POST /stock/losses`),
+/// par le MÊME code (`StockService.declareLossInTx`) : l'ADMIN applique tout de
+/// suite, le MAGASINIER crée une déclaration EN ATTENTE de validation.
 @Injectable()
 export class StockLossHandler implements SyncMutationHandler<StockLossPayloadDto> {
   readonly operationType = OperationType.MANUAL;
   /// Strictement ce qu'exige `POST /api/stock/losses` en ligne.
-  readonly requiredRoles: readonly RoleCode[] = [RoleCode.ADMIN, RoleCode.MAGASINIER];
-  readonly requiredPermissions: readonly PermissionCode[] = [PERMISSIONS.STOCK_LOSS];
-  readonly auditEntityType = 'StockMovement';
-  readonly auditAction = AuditAction.ADJUST;
+  readonly requiredRoles: readonly RoleCode[] = [
+    RoleCode.ADMIN,
+    RoleCode.MAGASINIER,
+  ];
+  readonly requiredPermissions: readonly PermissionCode[] = [
+    PERMISSIONS.STOCK_LOSS,
+  ];
+  readonly auditEntityType = 'StockLossDeclaration';
+  readonly auditAction = AuditAction.CREATE;
 
-  constructor(private readonly ledger: StockLedgerService) {}
+  constructor(private readonly stock: StockService) {}
 
   validate(payload: unknown): Promise<StockLossPayloadDto> {
     return validatePayload(StockLossPayloadDto, payload);
@@ -36,36 +38,35 @@ export class StockLossHandler implements SyncMutationHandler<StockLossPayloadDto
     payload: StockLossPayloadDto,
     context: SyncMutationContext,
   ): Promise<SyncApplyResult> {
-    const quantity = parseQuantity(payload.quantity);
-    if (quantity.lessThanOrEqualTo(0)) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'La quantité perdue doit être strictement positive',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-
-    const applied = await this.ledger.applyMovement(context.tx, {
-      movementId: payload.id,
-      productId: payload.productId,
-      locationId: payload.locationId,
-      // Une perte est une SORTIE : le delta appliqué est négatif.
-      quantity: quantity.negated(),
-      type: payload.type,
-      operationType: this.operationType,
-      operationId: payload.id ?? null,
-      userId: context.user.id,
-      comment: payload.comment ?? null,
-    });
-
-    return {
-      entityId: applied.movementId,
-      serverState: {
+    const loss = await this.stock.declareLossInTx(
+      context.tx,
+      {
+        id: payload.id,
         productId: payload.productId,
         locationId: payload.locationId,
-        quantityAfter: applied.quantityAfter,
-        availableAfter: applied.availableAfter,
+        quantity: payload.quantity,
+        comment: payload.comment ?? null,
       },
+      context.user,
+    );
+    const serverState: Record<string, string> = {
+      productId: loss.productId,
+      locationId: loss.locationId,
+      status: loss.status,
     };
+    if (loss.movementId) {
+      const stock = await context.tx.stock.findUniqueOrThrow({
+        where: {
+          productId_locationId: {
+            productId: loss.productId,
+            locationId: loss.locationId,
+          },
+        },
+      });
+      const view = StockService.stockToDto(stock);
+      serverState.quantityAfter = view.quantity;
+      serverState.availableAfter = view.availableQuantity;
+    }
+    return { entityId: loss.id, serverState };
   }
 }

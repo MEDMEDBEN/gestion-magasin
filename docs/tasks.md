@@ -237,6 +237,22 @@ déploiement (`docs/DEPLOYMENT.md`). M5 reste à faire avec la feature Ventes (F
 **Reprise ICI** : relecture humaine des captures 12-17 par MEDMEDBEN → cocher la dernière case de
 `docs/plan.md` (P0 n°2) → **P0 #3 (Stock : quantités, mouvements traçables, projection atomique)**.
 
+### 🚧 P0 #3 STOCK EN COURS — 2026-09-14 · **MEDMEDBEN** (backend fait et prouvé, app à faire)
+> MEDMEDBEN a dit « continue » après la P0 #2 : la relecture humaine des captures 12-17 reste NON cochée.
+- **Décision MEDMEDBEN** : perte du MAGASINIER = EN ATTENTE jusqu'à validation ADMIN (voir `docs/permissions.md`).
+- Migration ADDITIVE `stock_loss_declaration` : table `StockLossDeclaration` + enum `StockLossStatus`.
+- `src/stock/stock.service.ts` + `stock.controller.ts` (sorti du module contrat) :
+  `GET /stock` (paginé, filtres produit/emplacement, stock hors magasin soumis à `stock.read.warehouse`),
+  `GET /stock/movements` (journal paginé, filtres type/période), `GET|POST /stock/losses`,
+  `POST /stock/losses/:id/validate|reject` (ADMIN, verrou `FOR UPDATE` : deux validations → une seule perte).
+  Toute écriture passe par `StockLedgerService` ; audit CREATE/ADJUST/VALIDATE/CANCEL dans la transaction.
+- Handler de sync `MANUAL` réécrit sur `StockService.declareLossInTx` (même règle en ligne / hors-ligne) ;
+  `test/sync.e2e-spec.ts` exerce le moteur avec un ADMIN + nouveau test « magasinier hors-ligne = EN ATTENTE ».
+- `test/stock.e2e-spec.ts` : 13 tests. Contre-épreuves : règle d'attente retirée → échec ; verrou retiré → échec.
+Preuve : `tsc` OK · lint propre · **60** unitaires · **137** e2e.
+**Reprise ICI** : app `features/stock/` (stock par produit et emplacement, journal, pertes : déclaration
+magasinier, file de validation admin), onglet mobile « Plus » au-delà de 4 destinations, tests, audits.
+
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 
