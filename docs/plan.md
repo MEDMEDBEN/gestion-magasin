@@ -148,6 +148,20 @@ Traçabilité / système
 - [x] Tests manuels effectués par un humain (capture ou description) _(11 captures relues et **validées par MEDMEDBEN le 2026-09-14** ; une version améliorée de l'UI sera fournie plus tard)_
 - [ ] `flutter build windows --release` _(poste Windows re-vérifié le 2026-09-14 : `atlstr.h` toujours ABSENT, 2,3 Go libres — installer `Microsoft.VisualStudio.Component.VC.ATL` après libération d'espace)_
 
+### Feature P0 n°2 : Produits + catégories + emplacements + codes-barres
+- [x] Schéma DB validé _(aucune table nouvelle ; migration ADDITIVE : séquence `product_internal_barcode_seq` ; Drift local v3 `CatalogEntries`)_
+- [x] Matrice de permissions CRUD par rôle définie _(docs/permissions.md § Produits — inchangée)_
+- [x] Endpoints API implémentés _(produits, catégories + PATCH, emplacements + PATCH, tarifs/TVA en lecture, `GET /catalog/changes` ; prix par tarif = 501, feature Ventes)_
+- [x] Validation des entrées (class-validator) en place _(MaxLength, IsOptionalNotNull, quantités décimales, GTIN à clé contrôlée)_
+- [x] Tests unitaires backend passent _(60 — 2026-09-14)_
+- [x] Tests d'intégration backend passent _(116 e2e dont 27 catalogue — 2026-09-14)_
+- [x] UI desktop implémentée _(tableau dense, panneau latéral)_
+- [x] UI mobile implémentée _(lignes tactiles, formulaire plein écran)_
+- [x] Sync offline gérée si applicable _(lecture cache-first + delta ; écritures d'administration en ligne uniquement)_
+- [ ] Revue par subagent `reviewer` _(lancée 2026-09-14)_
+- [ ] Audit par subagent `security-reviewer` _(lancé 2026-09-14)_
+- [ ] Tests manuels effectués par un humain _(captures 12 à 17 à relire par MEDMEDBEN)_
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

@@ -163,7 +163,7 @@ déplacer dans `application/` avec tests unitaires ; toast d'édition dupliqué 
 base de dev le temps d'un test) ; constantes pour les `operation` d'audit ; panneau latéral qui se
 ferme au clic extérieur (perte de saisie).
 
-### 🚧 P0 #2 EN COURS — 2026-09-14 · **MEDMEDBEN** — BACKEND TERMINÉ ET PROUVÉ, app à faire
+### 🚧 P0 #2 EN COURS — 2026-09-14 · **MEDMEDBEN** — backend + app faits et prouvés, audits en cours
 Fait (committé) :
 - `backend/src/common/barcode/barcode.ts` : clé GS1, EAN-13 interne `20`+séquence+clé, contrôle de clé
   des GTIN saisis (8/12/13/14), codes alphanumériques acceptés (64 max). **5 tests unitaires verts.**
@@ -192,8 +192,23 @@ Preuve : `tsc` OK · lint propre sur les fichiers touchés · `npm test` → **9
 > volumes perdus — dont `infinit-school-*`). Base de dev repartie de zéro sur **5432** (`migrate deploy` +
 > `npm run seed`). Si Docker Desktop refuse de démarrer (« running com.docker.build: exit status 1 ») :
 > tuer le `com.docker.build.exe` orphelin, puis relancer Docker Desktop.
-**Reprise ICI** : app `features/catalog/` (plan ci-dessous, point 2), puis tests app, `reviewer`,
-`security-reviewer`, relecture humaine des écrans.
+**App — FAITE (commit `391d545`)** :
+- Drift **schéma v3** : table unique `CatalogEntries` (ressource JSON + colonnes de tri/recherche),
+  migration v2→v3 testée.
+- `features/catalog/` : `data/` (modèles freezed, `CatalogApi`, `CatalogRepository` : `pull()` paginé,
+  chaque page écrite AVEC son curseur dans une transaction), `application/` (sync cache-first, filtres,
+  flux Drift, `CatalogActions` en ligne, `changedFields`), `presentation/` : `CatalogScreen` à sections
+  Produits / Catégories (ADMIN) / Emplacements (ADMIN+MAGASINIER) — une seule destination « Catalogue »,
+  l'admin garde 4 onglets ; tableau desktop, lignes mobiles ; `ProductForm` (lecture seule sans
+  `product.write`), `CategoryForm`, `LocationForm`.
+- `ui/widgets/form_panel.dart` : cadre de formulaire partagé (panneau latéral / plein écran).
+- Saisie code-barres = champ texte (douchette USB) ; scan caméra = P1 n°13.
+Preuve : `flutter analyze` → No issues found! · `flutter test` → **+159 ~17** All tests passed.
+Contre-épreuve : échappement LIKE retiré → test en échec.
+Captures (6 nouvelles, 12 à 17) relues par l'agent : 3 défauts corrigés (flèches des listes déroulantes
+en carré — icône Lucide ; aide du code-barres tronquée ; code d'emplacement trop petit).
+**Reprise ICI** : résultats des audits `reviewer` + `security-reviewer` (lancés 2026-09-14) → corriger
+→ relecture humaine des captures 12-17 par MEDMEDBEN → cocher `docs/plan.md` → P0 #3.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
@@ -409,7 +424,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 |---|---|---|---|---|---|
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
 | **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
-| Produits + catégories + emplacements | 🟡 **En cours** (MEDMEDBEN) | 🟡 Contrat figé (501) | — | — | — |
+| Produits + catégories + emplacements | 🟡 **~85 %** — audits + relecture humaine | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
