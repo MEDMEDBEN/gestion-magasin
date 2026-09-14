@@ -163,11 +163,11 @@ déplacer dans `application/` avec tests unitaires ; toast d'édition dupliqué 
 base de dev le temps d'un test) ; constantes pour les `operation` d'audit ; panneau latéral qui se
 ferme au clic extérieur (perte de saisie).
 
-### 🚧 P0 #2 EN COURS — 2026-09-14 · **MEDMEDBEN** (backend écrit, e2e NON EXÉCUTÉS)
+### 🚧 P0 #2 EN COURS — 2026-09-14 · **MEDMEDBEN** — BACKEND TERMINÉ ET PROUVÉ, app à faire
 Fait (committé) :
 - `backend/src/common/barcode/barcode.ts` : clé GS1, EAN-13 interne `20`+séquence+clé, contrôle de clé
   des GTIN saisis (8/12/13/14), codes alphanumériques acceptés (64 max). **5 tests unitaires verts.**
-- Migration ADDITIVE écrite à la main, **pas encore appliquée** :
+- Migration ADDITIVE appliquée (`migrate deploy`) :
   `prisma/migrations/20260914120000_product_internal_barcode_seq` (CREATE SEQUENCE).
 - Produits (`products.service.ts`) : liste `{data, meta}` (q nom/SKU/marque/code, `categoryId` avec
   sous-catégories, `includeInactive`, tri whitelisté), détail, recherche par code-barres, création
@@ -181,13 +181,19 @@ Fait (committé) :
 - `GET /pricing/tiers`, `GET /pricing/tax-rates`.
 - `GET /catalog/changes?cursor=&limit=` : curseur opaque `(updatedAt,id)` par type, inactifs compris,
   `hasMore`, lignes servies après 5 s de stabilisation (`CATALOG_SETTLE_MS`, limite notée `ponytail:`).
-- `backend/test/catalog.e2e-spec.ts` : ~30 tests (génération concurrente, code squatté, clé fausse,
+- `backend/test/catalog.e2e-spec.ts` : **27 tests** (génération concurrente, code squatté, clé fausse,
   matrice 3 rôles, catégories concurrentes, emplacements, atomicité audit, delta paginé au même instant).
-Preuve : `tsc` OK · lint propre sur les fichiers touchés · `npm test` → **9 suites, 60 passed**.
-⛔ **BLOQUÉ** : le moteur Docker ne répond plus (`docker info` expire) → ni migration ni e2e.
-**Reprise ICI** : relancer Docker Desktop (⚠️ il héberge aussi `infinit-school-*`) → postgres sur 5433
-(voir piège point 1) → `npx prisma migrate deploy && npx prisma generate` → `npm run test:e2e`
-→ corriger → commit. Ensuite : app `features/catalog/` (plan ci-dessous, point 2).
+Preuve : `tsc` OK · lint propre sur les fichiers touchés · `npm test` → **9 suites, 60 passed** ·
+`npm run test:e2e` → **6 suites, 116 passed**. Contre-épreuve : saut du code interne squatté retiré → test en échec.
+- Test instable corrigé (`users-audit` « deux admins qui se retirent MUTUELLEMENT ») : le perdant peut
+  recevoir **401** (sa session vient d'être révoquée par la désactivation, lue en parallèle du compte) —
+  refus correct, le test acceptait seulement 403/409.
+> ⚠️ **Docker réinitialisé le 2026-09-14** : le disque de données Docker a été recréé (images, conteneurs,
+> volumes perdus — dont `infinit-school-*`). Base de dev repartie de zéro sur **5432** (`migrate deploy` +
+> `npm run seed`). Si Docker Desktop refuse de démarrer (« running com.docker.build: exit status 1 ») :
+> tuer le `com.docker.build.exe` orphelin, puis relancer Docker Desktop.
+**Reprise ICI** : app `features/catalog/` (plan ci-dessous, point 2), puis tests app, `reviewer`,
+`security-reviewer`, relecture humaine des écrans.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

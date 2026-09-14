@@ -296,8 +296,10 @@ describe('Gestion des comptes (e2e)', () => {
           const statuses = results.map((r) => r.status);
           expect(statuses.filter((s) => s === 200)).toHaveLength(1);
           // Le perdant est arrêté soit par le verrou (409), soit par le guard qui
-          // relit son accès en base (403) s'il arrive après le commit du gagnant.
-          expect(statuses.find((s) => s !== 200)).toBeOneOf([403, 409]);
+          // relit son accès en base (403) s'il arrive après le commit du gagnant —
+          // ou 401 : une désactivation révoque ses sessions, et le guard lit compte et
+          // session en parallèle, la session pouvant être lue juste après ce commit.
+          expect(statuses.find((s) => s !== 200)).toBeOneOf([401, 403, 409]);
           expect(
             await prisma.user.count({
               where: { id: { in: [a.id, b.id] }, isActive: true, roles: { some: { code: RoleCode.ADMIN } } },
