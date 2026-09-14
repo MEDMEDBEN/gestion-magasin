@@ -303,7 +303,6 @@ class _UserFormState extends ConsumerState<UserForm> {
                       style: AmpereType.metaDesktop.copyWith(color: colors.error),
                     ),
                   ),
-                const SizedBox(height: 14),
 
                 if (!_isEdit) ...[
                   const SizedBox(height: 20),
