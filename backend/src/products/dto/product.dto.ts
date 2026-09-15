@@ -1,6 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -9,6 +11,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 import {
   PaginationMetaDto,
@@ -39,6 +42,20 @@ export const SKU_MAX_LENGTH = 50;
 export const NAME_MAX_LENGTH = 150;
 export const TEXT_MAX_LENGTH = 1000;
 export const BRAND_MAX_LENGTH = 80;
+
+export class InitialStockDto {
+  @ApiProperty({ description: 'MAGASIN ou DEPOT' })
+  @IsCanonicalUuid()
+  locationId!: string;
+
+  @ApiProperty({
+    example: '120.000',
+    description: 'Quantité décimale positive',
+  })
+  @IsString()
+  @MaxLength(20)
+  quantity!: string;
+}
 
 export class CreateProductDto {
   @ApiPropertyOptional({
@@ -126,6 +143,19 @@ export class CreateProductDto {
   @IsBoolean()
   @IsOptional()
   allowBackorder?: boolean;
+
+  @ApiPropertyOptional({
+    type: () => [InitialStockDto],
+    description:
+      'Stock présent à la création (magasin et/ou dépôt). Enregistré comme mouvement ' +
+      '« stock initial » dans la même transaction — jamais une quantité écrite directement.',
+  })
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ValidateNested({ each: true })
+  @Type(() => InitialStockDto)
+  @IsOptional()
+  initialStock?: InitialStockDto[];
 }
 
 /// Modification partielle. Les champs obligatoires ne sont jamais `null` ; les

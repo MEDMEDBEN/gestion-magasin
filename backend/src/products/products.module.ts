@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { StockModule } from '../stock/stock.module';
 import { CatalogService } from './catalog.service';
 import {
   CatalogController,
@@ -9,6 +10,7 @@ import {
 import { ProductsService } from './products.service';
 
 @Module({
+  imports: [StockModule],
   controllers: [
     ProductsController,
     CategoriesController,

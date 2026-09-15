@@ -5,6 +5,8 @@ import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
 import '../../../../ui/widgets/ampere_controls.dart';
 import '../../../../ui/widgets/screen_state.dart';
+import '../../../stock/application/stock_controller.dart';
+import '../../../stock/presentation/stock_status.dart';
 import '../../data/catalog_models.dart';
 
 /// Tableau desktop dense (AMPÈRE §6) : référence et code-barres en mono,
@@ -16,11 +18,15 @@ class ProductsTable extends StatelessWidget {
     required this.products,
     required this.categoryNames,
     required this.onTap,
+    this.stock,
   });
 
   final List<Product> products;
   final Map<String, String> categoryNames;
   final void Function(Product product) onTap;
+
+  /// Stock par produit — `null` si non chargé ou non autorisé.
+  final Map<String, ProductStock>? stock;
 
   static const double _minWidth = 900;
 
@@ -56,6 +62,7 @@ class ProductsTable extends StatelessWidget {
                         itemBuilder: (context, i) => _ProductRow(
                           product: products[i],
                           category: categoryNames[products[i].categoryId],
+                          stock: stock,
                           onTap: () => onTap(products[i]),
                         ),
                       ),
@@ -77,7 +84,7 @@ class _Columns {
   static const category = 3;
   static const barcode = 3;
   static const threshold = 2;
-  static const status = 2;
+  static const status = 3;
 }
 
 class _HeaderRow extends StatelessWidget {
@@ -107,7 +114,7 @@ class _HeaderRow extends StatelessWidget {
           cell('Code-barres', _Columns.barcode),
           cell('Seuil min.', _Columns.threshold, end: true),
           const SizedBox(width: 16),
-          cell('Statut', _Columns.status),
+          cell('Stock', _Columns.status),
         ],
       ),
     );
@@ -119,11 +126,13 @@ class _ProductRow extends StatelessWidget {
     required this.product,
     required this.category,
     required this.onTap,
+    required this.stock,
   });
 
   final Product product;
   final String? category;
   final VoidCallback onTap;
+  final Map<String, ProductStock>? stock;
 
   @override
   Widget build(BuildContext context) {
@@ -194,11 +203,16 @@ class _ProductRow extends StatelessWidget {
               flex: _Columns.status,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: product.isActive
-                    ? const AmpereBadge(label: 'Actif', tone: StatusTone.ok)
-                    : const AmpereBadge(
+                child: !product.isActive
+                    ? const AmpereBadge(
                         label: 'Inactif',
                         tone: StatusTone.neutral,
+                      )
+                    : stock == null
+                    ? const Text('—')
+                    : StockStatusBadge(
+                        product: product,
+                        stock: stock![product.id],
                       ),
               ),
             ),

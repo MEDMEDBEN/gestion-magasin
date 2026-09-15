@@ -32,10 +32,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    await ref.read(authControllerProvider.notifier).login(
-          identifier: _identifier.text.trim(),
-          password: _password.text,
-        );
+    await ref
+        .read(authControllerProvider.notifier)
+        .login(identifier: _identifier.text.trim(), password: _password.text);
   }
 
   @override
@@ -49,7 +48,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       AuthSignedOut(:final message) => message,
       _ => null,
     };
-    final errorText = auth.hasError ? _messageFor(auth.error!) : signedOutMessage;
+    final errorText = auth.hasError
+        ? _messageFor(auth.error!)
+        : signedOutMessage;
 
     return Scaffold(
       body: Center(
@@ -64,12 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // `zap` est le SEUL éclair du système (AMPÈRE §5).
-                  Align(
-                    child: AmpereIconChip(
-                      icon: LucideIcons.zap,
-                      size: 56,
-                    ),
-                  ),
+                  Align(child: AmpereIconChip(icon: LucideIcons.zap, size: 56)),
                   const SizedBox(height: 18),
                   Text(
                     'Gestion magasin',
@@ -98,7 +94,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       prefixIcon: Icon(LucideIcons.user, size: 17),
                     ),
                     textInputAction: TextInputAction.next,
-                    validator: (value) => (value == null || value.trim().isEmpty)
+                    validator: (value) =>
+                        (value == null || value.trim().isEmpty)
                         ? 'Saisissez votre identifiant'
                         : null,
                   ),
@@ -171,7 +168,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// On n'affiche jamais un message technique brut (§8 : dire ce qui s'est
   /// passé, pas le code).
   String _messageFor(Object error) => switch (error) {
-        ApiException(:final userMessage) => userMessage,
-        _ => 'Connexion impossible',
-      };
+    ApiException(:final userMessage) => userMessage,
+    _ => 'Connexion impossible',
+  };
 }

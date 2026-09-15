@@ -276,6 +276,20 @@ Preuve : backend `tsc` OK · **62** unitaires · **141** e2e ; app analyze propr
 **Reprise ICI** : relecture humaine des captures 12-20 par MEDMEDBEN (non faite) → cocher `docs/plan.md` →
 P0 #4 (Ventes : tarifs, TVA/ticket/facture, caisse, dettes clients). Rappel : réservation de stock à trancher.
 
+### 🧩 Retours MEDMEDBEN sur la fiche produit (2026-09-15) — en cours
+Demandé : fournisseur sur la fiche, photo du produit, quantité à la saisie, état du stock (en stock / peu / fini).
+- **Fournisseur** : DÉJÀ PRÉVU — feature **P0 #5**. `Product.mainSupplierId` existe côté serveur ; à la P0 #5,
+  ajouter le choix du fournisseur dans `ProductForm` (liste des fournisseurs, masquée sans `supplier.read`).
+- ✅ **Quantité à la saisie** : `CreateProductDto.initialStock` (magasin et/ou dépôt, 2 max) → un mouvement
+  `AJUSTEMENT_INVENTAIRE` par lieu (operationType PRODUCT) via `StockLedgerService`, dans la transaction de la
+  création, tracé dans l'audit. Refus : lieu ≠ MAGASIN/DEPOT, négatif, lieu répété (atomique : rien créé).
+  App : champs « Stock au magasin / au dépôt » à la création seulement.
+- ✅ **État du stock** : `stock/presentation/stock_status.dart` — Rupture (≤ 0), Stock faible (≤ seuil
+  minimum), En stock — colonne « Stock » du catalogue (desktop + mobile), fiche produit, écran Stock.
+  Lu en ligne ; sans droit ou hors ligne, rien n'est affirmé.
+- ⏳ **Photo du produit** : à faire (MinIO, upload serveur, sélecteur d'image dans l'app).
+Preuve : backend **62** unitaires · **143** e2e (stock initial ×2) ; app analyze propre · **+171 ~20**.
+
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 

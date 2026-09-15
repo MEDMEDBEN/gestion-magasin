@@ -87,5 +87,6 @@ class UsersApi {
   }
 }
 
-final usersApiProvider =
-    Provider<UsersApi>((ref) => UsersApi(ref.watch(dioClientProvider).dio));
+final usersApiProvider = Provider<UsersApi>(
+  (ref) => UsersApi(ref.watch(dioClientProvider).dio),
+);

@@ -5,16 +5,25 @@ import 'package:gestion_magasin/core/config/app_config.dart';
 void main() {
   test('release pointée sur http:// : refus de démarrer', () {
     expect(
-      () => AppConfig.assertSecureTransport(isRelease: true, url: 'http://api.magasin.dz/api'),
+      () => AppConfig.assertSecureTransport(
+        isRelease: true,
+        url: 'http://api.magasin.dz/api',
+      ),
       throwsStateError,
     );
   });
 
   test('release en https:// : accepté', () {
-    AppConfig.assertSecureTransport(isRelease: true, url: 'https://api.magasin.dz/api');
+    AppConfig.assertSecureTransport(
+      isRelease: true,
+      url: 'https://api.magasin.dz/api',
+    );
   });
 
   test('debug sur http://localhost : permis pour le développement', () {
-    AppConfig.assertSecureTransport(isRelease: false, url: 'http://localhost:3000/api');
+    AppConfig.assertSecureTransport(
+      isRelease: false,
+      url: 'http://localhost:3000/api',
+    );
   });
 }

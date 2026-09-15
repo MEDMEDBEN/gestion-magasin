@@ -10,6 +10,7 @@ import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/catalog_controller.dart';
+import '../../stock/application/stock_controller.dart';
 import '../data/catalog_models.dart';
 import 'catalog_lists.dart';
 import 'category_form.dart';
@@ -23,6 +24,7 @@ class CatalogRights {
   CatalogRights(AuthUser user)
     : canWriteProducts = user.hasRole('ADMIN') && user.can('product.write'),
       canDisableProducts = user.hasRole('ADMIN') && user.can('product.disable'),
+      canReadStock = user.can('stock.read.store'),
       canManageLocations =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('location.manage');
@@ -30,6 +32,7 @@ class CatalogRights {
   final bool canWriteProducts;
   final bool canDisableProducts;
   final bool canManageLocations;
+  final bool canReadStock;
 }
 
 enum _Section { products, categories, locations }
@@ -78,6 +81,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         existing: product,
         canEdit: rights.canWriteProducts,
         canDisable: rights.canDisableProducts,
+        canReadStock: rights.canReadStock,
       ),
     );
     if (saved == null || saved == product) return;
@@ -175,6 +179,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               margin: margin,
               isDesktop: isDesktop,
               canCreate: rights.canWriteProducts,
+              canReadStock: rights.canReadStock,
               syncing: sync.isLoading,
               onOpen: (p) => _openProduct(rights, p),
             ),
@@ -210,6 +215,7 @@ class _ProductsSection extends ConsumerWidget {
     required this.margin,
     required this.isDesktop,
     required this.canCreate,
+    required this.canReadStock,
     required this.syncing,
     required this.onOpen,
   });
@@ -218,6 +224,9 @@ class _ProductsSection extends ConsumerWidget {
   final double margin;
   final bool isDesktop;
   final bool canCreate;
+
+  /// Le stock est lu en ligne ; sans ce droit (ou hors ligne), aucun état affiché.
+  final bool canReadStock;
   final bool syncing;
   final void Function(Product? product) onOpen;
 
@@ -229,6 +238,7 @@ class _ProductsSection extends ConsumerWidget {
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final notifier = ref.read(productFilterProvider.notifier);
     final categoryNames = {for (final c in categories) c.id: c.name};
+    final stock = canReadStock ? ref.watch(stockByProductProvider).value : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -327,11 +337,13 @@ class _ProductsSection extends ConsumerWidget {
                   ? ProductsTable(
                       products: items,
                       categoryNames: categoryNames,
+                      stock: stock,
                       onTap: onOpen,
                     )
                   : ProductsList(
                       products: items,
                       categoryNames: categoryNames,
+                      stock: stock,
                       onTap: onOpen,
                       onRefresh: () =>
                           ref.read(catalogSyncProvider.notifier).refresh(),

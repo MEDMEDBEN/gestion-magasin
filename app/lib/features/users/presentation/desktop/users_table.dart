@@ -38,8 +38,9 @@ class UsersTable extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final width =
-            constraints.maxWidth < _minWidth ? _minWidth : constraints.maxWidth;
+        final width = constraints.maxWidth < _minWidth
+            ? _minWidth
+            : constraints.maxWidth;
         return SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
             AmpereGeometry.screenMarginDesktop,
@@ -100,15 +101,17 @@ class _HeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = AmpereType.label.copyWith(color: AmpereColors.of(context).ink3);
+    final style = AmpereType.label.copyWith(
+      color: AmpereColors.of(context).ink3,
+    );
     Widget cell(String text, int flex, {bool end = false}) => Expanded(
-          flex: flex,
-          child: Text(
-            text.toUpperCase(),
-            textAlign: end ? TextAlign.end : TextAlign.start,
-            style: style,
-          ),
-        );
+      flex: flex,
+      child: Text(
+        text.toUpperCase(),
+        textAlign: end ? TextAlign.end : TextAlign.start,
+        style: style,
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -174,7 +177,10 @@ class _UserTableRow extends StatelessWidget {
                 ],
               ),
             ),
-            Expanded(flex: _Columns.roles, child: UserRoleBadges(user: user)),
+            Expanded(
+              flex: _Columns.roles,
+              child: UserRoleBadges(user: user),
+            ),
             Expanded(
               flex: _Columns.status,
               child: UserStatusBadges(user: user, showActive: true),

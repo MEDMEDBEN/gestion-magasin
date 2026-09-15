@@ -48,19 +48,22 @@ void main() {
     expect(first, isNot(second));
   });
 
-  test('le lot est ordonné par timestamp APPAREIL, pas par insertion', () async {
-    final late_ = await enqueueAt(DateTime.utc(2026, 9, 9, 12));
-    final early = await enqueueAt(DateTime.utc(2026, 9, 9, 8));
-    final middle = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
+  test(
+    'le lot est ordonné par timestamp APPAREIL, pas par insertion',
+    () async {
+      final late_ = await enqueueAt(DateTime.utc(2026, 9, 9, 12));
+      final early = await enqueueAt(DateTime.utc(2026, 9, 9, 8));
+      final middle = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
 
-    final batch = await queue.nextBatch(authorUserId: author);
+      final batch = await queue.nextBatch(authorUserId: author);
 
-    expect(
-      batch.map((m) => m.clientMutationId).toList(),
-      [early, middle, late_],
-      reason: "l'ordre métier dépend du timestamp appareil",
-    );
-  });
+      expect(
+        batch.map((m) => m.clientMutationId).toList(),
+        [early, middle, late_],
+        reason: "l'ordre métier dépend du timestamp appareil",
+      );
+    },
+  );
 
   test('le lot est plafonné à la limite demandée', () async {
     for (var i = 0; i < 5; i++) {
@@ -160,17 +163,22 @@ void main() {
   test('toInputs produit exactement le corps attendu par POST /sync', () async {
     await enqueueAt(DateTime.utc(2026, 9, 9, 10), type: 'MANUAL');
 
-    final inputs = await queue.toInputs(await queue.nextBatch(authorUserId: author));
+    final inputs = await queue.toInputs(
+      await queue.nextBatch(authorUserId: author),
+    );
 
     expect(inputs, hasLength(1));
     final json = inputs.first.toJson();
-    expect(json.keys, containsAll([
-      'clientMutationId',
-      'deviceId',
-      'operationType',
-      'payload',
-      'deviceTimestamp',
-    ]));
+    expect(
+      json.keys,
+      containsAll([
+        'clientMutationId',
+        'deviceId',
+        'operationType',
+        'payload',
+        'deviceTimestamp',
+      ]),
+    );
     expect(json['operationType'], 'MANUAL');
     expect(json['payload'], {'quantity': '2.000'});
     // Le serveur exige de l'ISO 8601 en UTC.
@@ -204,11 +212,15 @@ void main() {
       );
 
       expect(
-        (await queue.nextBatch(authorUserId: author)).map((m) => m.clientMutationId),
+        (await queue.nextBatch(
+          authorUserId: author,
+        )).map((m) => m.clientMutationId),
         [mine],
       );
       expect(
-        (await queue.nextBatch(authorUserId: 'compte-b')).map((m) => m.clientMutationId),
+        (await queue.nextBatch(
+          authorUserId: 'compte-b',
+        )).map((m) => m.clientMutationId),
         [theirs],
       );
       expect(await queue.pendingCount(authorUserId: author), 1);
@@ -219,7 +231,10 @@ void main() {
       await enqueueAt(DateTime.utc(2026, 9, 9, 11), authorUserId: 'compte-b');
       await enqueueAt(DateTime.utc(2026, 9, 9, 12), authorUserId: 'compte-b');
 
-      expect(await queue.watchForeignPendingCount(authorUserId: author).first, 2);
+      expect(
+        await queue.watchForeignPendingCount(authorUserId: author).first,
+        2,
+      );
       expect(await queue.watchPendingCount(authorUserId: author).first, 1);
     });
 

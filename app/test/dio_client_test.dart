@@ -19,8 +19,7 @@ class _InMemorySecureStorage implements FlutterSecureStorage {
     WebOptions? webOptions,
     AppleOptions? mOptions,
     WindowsOptions? wOptions,
-  }) async =>
-      values[key];
+  }) async => values[key];
 
   @override
   Future<void> write({
@@ -55,8 +54,8 @@ class _InMemorySecureStorage implements FlutterSecureStorage {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError(
-        'Méthode non utilisée par les tests : ${invocation.memberName}',
-      );
+    'Méthode non utilisée par les tests : ${invocation.memberName}',
+  );
 }
 
 /// Simule une absence TOTALE de réponse sur le refresh (coupure réseau).
@@ -97,7 +96,10 @@ class _GatedRefreshAdapter implements HttpClientAdapter {
     if (options.path == '/auth/refresh') {
       refreshStarted.complete();
       await gate.future;
-      return _json({'accessToken': 'access-neuf', 'refreshToken': 'refresh-neuf'}, 200);
+      return _json({
+        'accessToken': 'access-neuf',
+        'refreshToken': 'refresh-neuf',
+      }, 200);
     }
     if (options.path == '/auth/logout') return _json({'revoked': 1}, 200);
     return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
@@ -200,15 +202,23 @@ void main() {
       );
       client.dio.httpClientAdapter = adapter;
 
-      unawaited(client.dio.get<void>('/products').catchError((_) => Response<void>(
-            requestOptions: RequestOptions(),
-          )));
+      unawaited(
+        client.dio
+            .get<void>('/products')
+            .catchError(
+              (_) => Response<void>(requestOptions: RequestOptions()),
+            ),
+      );
       await adapter.refreshStarted.future;
 
       var waited = false;
       final waiting = client.awaitPendingRefresh().then((_) => waited = true);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(waited, isFalse, reason: 'ne doit pas rendre la main pendant la rotation');
+      expect(
+        waited,
+        isFalse,
+        reason: 'ne doit pas rendre la main pendant la rotation',
+      );
 
       adapter.gate.complete();
       await waiting;
@@ -216,55 +226,65 @@ void main() {
       expect(await tokenStore.readRefreshToken(), 'refresh-neuf');
     });
 
-    test('session quittée pendant la rotation : tokens neufs NON stockés, session neuve fermée', () async {
-      final adapter = _GatedRefreshAdapter();
-      final client = DioClient(
-        tokenStore: tokenStore,
-        onSessionExpired: () async => sessionExpiredCalls++,
-        baseUrl: 'http://test.local/api',
-      );
-      client.dio.httpClientAdapter = adapter;
+    test(
+      'session quittée pendant la rotation : tokens neufs NON stockés, session neuve fermée',
+      () async {
+        final adapter = _GatedRefreshAdapter();
+        final client = DioClient(
+          tokenStore: tokenStore,
+          onSessionExpired: () async => sessionExpiredCalls++,
+          baseUrl: 'http://test.local/api',
+        );
+        client.dio.httpClientAdapter = adapter;
 
-      final pending = client.dio.get<void>('/products').catchError((_) => Response<void>(
-            requestOptions: RequestOptions(),
-          ));
-      await adapter.refreshStarted.future;
+        final pending = client.dio
+            .get<void>('/products')
+            .catchError(
+              (_) => Response<void>(requestOptions: RequestOptions()),
+            );
+        await adapter.refreshStarted.future;
 
-      // L'utilisateur se déconnecte localement pendant que la rotation voyage.
-      storage.values.clear();
-      adapter.gate.complete();
-      await pending;
+        // L'utilisateur se déconnecte localement pendant que la rotation voyage.
+        storage.values.clear();
+        adapter.gate.complete();
+        await pending;
 
-      // Ressusciter une session que l'utilisateur vient de quitter : interdit.
-      expect(await tokenStore.readRefreshToken(), isNull);
-      final logout = adapter.requests.where((r) => r.path == '/auth/logout').toList();
-      expect(logout, hasLength(1));
-      expect((logout.single.data as Map)['refreshToken'], 'refresh-neuf');
-    });
-  });
-
-  test('pendant une fermeture de session, un 401 ne déclenche AUCUNE rotation (mineur 2)', () async {
-    var refreshCalls = 0;
-    final adapter = _ScriptedAdapter((options) {
-      if (options.path == '/auth/refresh') {
-        refreshCalls++;
-        return _json({'accessToken': 'a', 'refreshToken': 'r'}, 200);
-      }
-      return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
-    });
-    final client = buildClient(adapter);
-
-    client.beginSessionClose();
-    await expectLater(
-      client.dio.get<Map<String, dynamic>>('/products'),
-      throwsA(isA<DioException>()),
+        // Ressusciter une session que l'utilisateur vient de quitter : interdit.
+        expect(await tokenStore.readRefreshToken(), isNull);
+        final logout = adapter.requests
+            .where((r) => r.path == '/auth/logout')
+            .toList();
+        expect(logout, hasLength(1));
+        expect((logout.single.data as Map)['refreshToken'], 'refresh-neuf');
+      },
     );
-    client.endSessionClose();
-
-    expect(refreshCalls, 0);
-    // Rien n'est effacé ni remplacé : la fermeture en cours s'en charge.
-    expect(await tokenStore.readRefreshToken(), 'refresh-valide');
   });
+
+  test(
+    'pendant une fermeture de session, un 401 ne déclenche AUCUNE rotation (mineur 2)',
+    () async {
+      var refreshCalls = 0;
+      final adapter = _ScriptedAdapter((options) {
+        if (options.path == '/auth/refresh') {
+          refreshCalls++;
+          return _json({'accessToken': 'a', 'refreshToken': 'r'}, 200);
+        }
+        return _json({'code': 'ACCESS_TOKEN_INVALID'}, 401);
+      });
+      final client = buildClient(adapter);
+
+      client.beginSessionClose();
+      await expectLater(
+        client.dio.get<Map<String, dynamic>>('/products'),
+        throwsA(isA<DioException>()),
+      );
+      client.endSessionClose();
+
+      expect(refreshCalls, 0);
+      // Rien n'est effacé ni remplacé : la fermeture en cours s'en charge.
+      expect(await tokenStore.readRefreshToken(), 'refresh-valide');
+    },
+  );
 
   test('joint l’access token aux requêtes protégées', () async {
     final adapter = _ScriptedAdapter((_) => _json({'ok': true}, 200));
@@ -445,9 +465,11 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await client.dio
           .get<Map<String, dynamic>>('/products')
-          .catchError((Object _) => Response<Map<String, dynamic>>(
-                requestOptions: RequestOptions(),
-              ));
+          .catchError(
+            (Object _) => Response<Map<String, dynamic>>(
+              requestOptions: RequestOptions(),
+            ),
+          );
     }
 
     // `/auth/refresh` est throttlé côté serveur : le marteler brûlerait le quota.
@@ -489,26 +511,37 @@ void main() {
       return client;
     }
 
-    test('une réponse, même en erreur, prouve que le serveur est joignable', () async {
-      final reports = <bool>[];
-      final client = reporting(
-        _ScriptedAdapter((_) => _json({'code': 'NOT_FOUND'}, 404)),
-        reports,
-      );
+    test(
+      'une réponse, même en erreur, prouve que le serveur est joignable',
+      () async {
+        final reports = <bool>[];
+        final client = reporting(
+          _ScriptedAdapter((_) => _json({'code': 'NOT_FOUND'}, 404)),
+          reports,
+        );
 
-      await expectLater(client.dio.get<void>('/inconnu'), throwsA(isA<DioException>()));
-      await client.dio.get<void>('/ok').catchError((_) => Response<void>(
-            requestOptions: RequestOptions(),
-          ));
+        await expectLater(
+          client.dio.get<void>('/inconnu'),
+          throwsA(isA<DioException>()),
+        );
+        await client.dio
+            .get<void>('/ok')
+            .catchError(
+              (_) => Response<void>(requestOptions: RequestOptions()),
+            );
 
-      expect(reports, everyElement(isTrue));
-    });
+        expect(reports, everyElement(isTrue));
+      },
+    );
 
     test('aucune réponse signale un serveur injoignable', () async {
       final reports = <bool>[];
       final client = reporting(_OfflineAdapter(), reports);
 
-      await expectLater(client.dio.get<void>('/products'), throwsA(isA<DioException>()));
+      await expectLater(
+        client.dio.get<void>('/products'),
+        throwsA(isA<DioException>()),
+      );
 
       expect(reports, [false]);
     });

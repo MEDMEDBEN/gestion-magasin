@@ -5,6 +5,8 @@ import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
 import '../../../../ui/widgets/ampere_controls.dart';
 import '../../../../ui/widgets/screen_state.dart';
+import '../../../stock/application/stock_controller.dart';
+import '../../../stock/presentation/stock_status.dart';
 import '../../data/catalog_models.dart';
 
 /// Liste mobile (AMPÈRE §7, §9 : aucun tableau sur mobile) — lignes tactiles
@@ -17,8 +19,11 @@ class ProductsList extends StatelessWidget {
     required this.categoryNames,
     required this.onTap,
     required this.onRefresh,
+    this.stock,
   });
 
+  /// Stock par produit — `null` si non chargé ou non autorisé.
+  final Map<String, ProductStock>? stock;
   final List<Product> products;
   final Map<String, String> categoryNames;
   final void Function(Product product) onTap;
@@ -40,6 +45,7 @@ class ProductsList extends StatelessWidget {
         itemBuilder: (context, i) => _ProductRow(
           product: products[i],
           category: categoryNames[products[i].categoryId],
+          stock: stock,
           onTap: () => onTap(products[i]),
         ),
       ),
@@ -52,11 +58,13 @@ class _ProductRow extends StatelessWidget {
     required this.product,
     required this.category,
     required this.onTap,
+    required this.stock,
   });
 
   final Product product;
   final String? category;
   final VoidCallback onTap;
+  final Map<String, ProductStock>? stock;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +108,9 @@ class _ProductRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AmpereType.mono.copyWith(color: colors.ink3),
                   ),
-                  if (category != null || !product.isActive) ...[
+                  if (category != null ||
+                      !product.isActive ||
+                      stock != null) ...[
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
@@ -115,6 +125,11 @@ class _ProductRow extends StatelessWidget {
                           const AmpereBadge(
                             label: 'Inactif',
                             tone: StatusTone.warn,
+                          )
+                        else if (stock != null)
+                          StockStatusBadge(
+                            product: product,
+                            stock: stock![product.id],
                           ),
                       ],
                     ),

@@ -42,14 +42,15 @@ const _emailPattern = r'^[^@\s]+@[^@\s]+\.[^@\s]+$';
 
 /// Mêmes règles que le serveur (`common/identifiers.ts`) : ponctuation de
 /// saisie retirée, puis 6 à 15 chiffres, `+` international accepté.
-String normalizePhone(String value) => value.replaceAll(RegExp(r'[\s.\-()]'), '');
+String normalizePhone(String value) =>
+    value.replaceAll(RegExp(r'[\s.\-()]'), '');
 final _phonePattern = RegExp(r'^\+?[0-9]{6,15}$');
 
 /// Rôles dans l'ordre d'affichage du système, quel que soit l'ordre de clic.
 List<String> _ordered(Set<String> roles) => [
-      for (final role in AppRole.values)
-        if (roles.contains(role.code)) role.code,
-    ];
+  for (final role in AppRole.values)
+    if (roles.contains(role.code)) role.code,
+];
 
 /// Création ou édition d'un compte (ADMIN uniquement — le serveur le vérifie).
 class UserForm extends ConsumerStatefulWidget {
@@ -176,7 +177,9 @@ class _UserFormState extends ConsumerState<UserForm> {
     if (raw.isEmpty) {
       // Un identifiant de connexion existant ne se retire pas (le serveur
       // refuse `null`) : on le dit AVANT l'envoi.
-      return previous != null ? 'Un identifiant de connexion ne peut pas être retiré' : null;
+      return previous != null
+          ? 'Un identifiant de connexion ne peut pas être retiré'
+          : null;
     }
     if (isEmail) {
       return RegExp(_emailPattern).hasMatch(raw) ? null : 'Email invalide';
@@ -274,7 +277,8 @@ class _UserFormState extends ConsumerState<UserForm> {
                     child: AmpereInlineAlert(
                       tone: StatusTone.info,
                       icon: LucideIcons.shield,
-                      message: 'Vos rôles et permissions sont modifiés par un '
+                      message:
+                          'Vos rôles et permissions sont modifiés par un '
                           'autre administrateur.',
                     ),
                   )
@@ -300,7 +304,9 @@ class _UserFormState extends ConsumerState<UserForm> {
                     padding: const EdgeInsets.only(top: 2, bottom: 6),
                     child: Text(
                       _rolesError!,
-                      style: AmpereType.metaDesktop.copyWith(color: colors.error),
+                      style: AmpereType.metaDesktop.copyWith(
+                        color: colors.error,
+                      ),
                     ),
                   ),
 
@@ -317,7 +323,8 @@ class _UserFormState extends ConsumerState<UserForm> {
                     decoration: const InputDecoration(
                       prefixIcon: Icon(LucideIcons.keyRound, size: 17),
                       counterText: '',
-                      helperText: 'À communiquer au membre — il devra le '
+                      helperText:
+                          'À communiquer au membre — il devra le '
                           'changer à sa première connexion',
                     ),
                     validator: (v) => (v == null || v.length < 8)
@@ -396,50 +403,51 @@ class _CheckOption extends StatelessWidget {
         // Pas d'opacité sur du texte porteur d'information (§1.5) : un compte
         // verrouillé l'est expliqué par un bandeau, pas par un texte pâli.
         child: AmpereTappable(
-            onTap: enabled ? () => onChanged!(!selected) : null,
-            borderRadius: AmpereGeometry.fieldRadiusMobile,
-            color: selected ? colors.accentBg : colors.surface2,
-            child: Container(
-              constraints: const BoxConstraints(
-                minHeight: AmpereGeometry.touchDefault,
+          onTap: enabled ? () => onChanged!(!selected) : null,
+          borderRadius: AmpereGeometry.fieldRadiusMobile,
+          color: selected ? colors.accentBg : colors.surface2,
+          child: Container(
+            constraints: const BoxConstraints(
+              minHeight: AmpereGeometry.touchDefault,
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected ? colors.accent : colors.line,
+                width: AmpereGeometry.borderWidth,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: selected ? colors.accent : colors.line,
-                  width: AmpereGeometry.borderWidth,
-                ),
-                borderRadius:
-                    BorderRadius.circular(AmpereGeometry.fieldRadiusMobile),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    selected ? LucideIcons.squareCheck : LucideIcons.square,
-                    size: 19,
-                    color: selected ? colors.accent : colors.ink3,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AmpereType.rowTitle.copyWith(color: colors.ink),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: AmpereType.meta.copyWith(color: colors.ink3),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              borderRadius: BorderRadius.circular(
+                AmpereGeometry.fieldRadiusMobile,
               ),
             ),
+            child: Row(
+              children: [
+                Icon(
+                  selected ? LucideIcons.squareCheck : LucideIcons.square,
+                  size: 19,
+                  color: selected ? colors.accent : colors.ink3,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
       ),
     );
   }

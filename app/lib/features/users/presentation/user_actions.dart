@@ -71,7 +71,11 @@ class UserActionsMenu extends ConsumerWidget {
     );
   }
 
-  Future<void> _run(BuildContext context, WidgetRef ref, _UserAction action) async {
+  Future<void> _run(
+    BuildContext context,
+    WidgetRef ref,
+    _UserAction action,
+  ) async {
     final controller = ref.read(usersControllerProvider.notifier);
     try {
       switch (action) {
@@ -92,7 +96,8 @@ class UserActionsMenu extends ConsumerWidget {
             final ok = await showAmpereConfirmDialog(
               context,
               title: 'Désactiver ${user.fullName} ?',
-              body: 'Le compte ne pourra plus se connecter ni renouveler sa '
+              body:
+                  'Le compte ne pourra plus se connecter ni renouveler sa '
                   'session. Un accès déjà ouvert s’arrête au plus tard '
                   'sous 15 minutes.',
               confirmLabel: 'Désactiver',
@@ -123,7 +128,8 @@ class UserActionsMenu extends ConsumerWidget {
           final ok = await showAmpereConfirmDialog(
             context,
             title: 'Révoquer les sessions ?',
-            body: '${user.fullName} devra se reconnecter sur tous ses '
+            body:
+                '${user.fullName} devra se reconnecter sur tous ses '
                 'appareils — au plus tard sous 15 minutes pour un accès '
                 'déjà ouvert.',
             confirmLabel: 'Révoquer',
@@ -134,7 +140,7 @@ class UserActionsMenu extends ConsumerWidget {
             count == 0
                 ? 'Aucune session active à révoquer.'
                 : '$count session${count > 1 ? 's' : ''} révoquée'
-                    '${count > 1 ? 's' : ''}.',
+                      '${count > 1 ? 's' : ''}.',
           );
       }
     } on ApiException catch (error) {
@@ -204,8 +210,9 @@ class _TemporaryPasswordDialogState extends State<_TemporaryPasswordDialog> {
                   counterText: '',
                 ),
                 onFieldSubmitted: (_) => _confirm(),
-                validator: (v) =>
-                    (v == null || v.length < 8) ? 'Au moins 8 caractères' : null,
+                validator: (v) => (v == null || v.length < 8)
+                    ? 'Au moins 8 caractères'
+                    : null,
               ),
             ],
           ),

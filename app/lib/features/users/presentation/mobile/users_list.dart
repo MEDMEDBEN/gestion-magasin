@@ -88,7 +88,10 @@ class _UserRow extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: AmpereGeometry.listRowMin),
         padding: const EdgeInsets.fromLTRB(14, 12, 6, 12),
         decoration: BoxDecoration(
-          border: Border.all(color: colors.line, width: AmpereGeometry.borderWidth),
+          border: Border.all(
+            color: colors.line,
+            width: AmpereGeometry.borderWidth,
+          ),
           borderRadius: BorderRadius.circular(AmpereGeometry.cardRadiusMobile),
         ),
         child: Row(

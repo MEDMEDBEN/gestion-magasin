@@ -37,36 +37,35 @@ enum AppRole { admin, vendeur, magasinier }
 
 extension AppRoleCode on AppRole {
   String get code => switch (this) {
-        AppRole.admin => 'ADMIN',
-        AppRole.vendeur => 'VENDEUR',
-        AppRole.magasinier => 'MAGASINIER',
-      };
+    AppRole.admin => 'ADMIN',
+    AppRole.vendeur => 'VENDEUR',
+    AppRole.magasinier => 'MAGASINIER',
+  };
 
   String get label => switch (this) {
-        AppRole.admin => 'Administrateur',
-        AppRole.vendeur => 'Vendeur / Caissier',
-        AppRole.magasinier => 'Magasinier',
-      };
+    AppRole.admin => 'Administrateur',
+    AppRole.vendeur => 'Vendeur / Caissier',
+    AppRole.magasinier => 'Magasinier',
+  };
 
   /// Ce que le rôle fait, en une ligne — évite à l'admin de deviner.
   String get description => switch (this) {
-        AppRole.admin => 'Accès complet, validation et paramètres',
-        AppRole.vendeur => 'Ventes, clients, caisse, demandes au dépôt',
-        AppRole.magasinier => 'Stock dépôt, réceptions, transferts, inventaires',
-      };
+    AppRole.admin => 'Accès complet, validation et paramètres',
+    AppRole.vendeur => 'Ventes, clients, caisse, demandes au dépôt',
+    AppRole.magasinier => 'Stock dépôt, réceptions, transferts, inventaires',
+  };
 
   static AppRole? fromCode(String code) => switch (code) {
-        'ADMIN' => AppRole.admin,
-        'VENDEUR' => AppRole.vendeur,
-        'MAGASINIER' => AppRole.magasinier,
-        _ => null,
-      };
+    'ADMIN' => AppRole.admin,
+    'VENDEUR' => AppRole.vendeur,
+    'MAGASINIER' => AppRole.magasinier,
+    _ => null,
+  };
 }
 
 /// Libellé lisible d'une liste de codes de rôles.
-String formatRoles(List<String> codes) => codes
-    .map((c) => AppRoleCode.fromCode(c)?.label ?? c)
-    .join(' · ');
+String formatRoles(List<String> codes) =>
+    codes.map((c) => AppRoleCode.fromCode(c)?.label ?? c).join(' · ');
 
 @freezed
 abstract class UserPage with _$UserPage {
@@ -106,10 +105,10 @@ class UserChanges {
       roles == null;
 
   Map<String, dynamic> toJson() => {
-        'fullName': ?fullName,
-        'email': ?email,
-        'phone': ?phone,
-        'isActive': ?isActive,
-        'roles': ?roles,
-      };
+    'fullName': ?fullName,
+    'email': ?email,
+    'phone': ?phone,
+    'isActive': ?isActive,
+    'roles': ?roles,
+  };
 }

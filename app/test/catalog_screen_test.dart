@@ -74,7 +74,19 @@ void main() {
         catalogSyncProvider.overrideWith(_IdleSync.new),
         productsProvider.overrideWith((ref) => Stream.value(products)),
         categoriesProvider.overrideWith((ref) => Stream.value(categories)),
-        locationsProvider.overrideWith((ref) => Stream.value(const [])),
+        locationsProvider.overrideWith(
+          (ref) => Stream.value([
+            for (final (id, type) in [('mag', 'MAGASIN'), ('dep', 'DEPOT')])
+              StorageLocation(
+                id: id,
+                code: type,
+                name: type,
+                type: type,
+                isActive: true,
+                updatedAt: DateTime.utc(2026, 9, 14),
+              ),
+          ]),
+        ),
         taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
         catalogActionsProvider.overrideWithValue(_ApiOnlyActions(api, repo)),
       ],
@@ -166,7 +178,10 @@ void main() {
       final fields = find.byType(TextFormField);
       await tester.enterText(fields.at(0), 'Disjoncteur 16A');
       await tester.enterText(fields.at(1), 'DIS-16A');
-      await tester.enterText(fields.at(4), '12,5');
+      // Champs : désignation, référence, code-barres, marque, stock magasin,
+      // stock dépôt, seuil minimum…
+      await tester.enterText(fields.at(4), '120');
+      await tester.enterText(fields.at(6), '12,5');
       await tester.ensureVisible(find.text('Créer le produit'));
       await tester.tap(find.text('Créer le produit'));
       await tester.pumpAndSettle();
@@ -179,6 +194,10 @@ void main() {
       // Quantité en chaîne décimale, jamais un double (règle 10).
       expect(sent['minThreshold'], '12.500');
       expect(sent.containsKey('barcode'), isFalse);
+      // Stock à la saisie : seul le lieu renseigné part, en chaîne décimale.
+      expect(sent['initialStock'], [
+        {'locationId': 'mag', 'quantity': '120.000'},
+      ]);
       expect(sent.containsKey('isActive'), isFalse);
     },
   );
@@ -195,7 +214,7 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), 'Disjoncteur');
     await tester.enterText(fields.at(1), 'DIS');
-    await tester.enterText(fields.at(4), '-3');
+    await tester.enterText(fields.at(6), '-3');
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));
     await tester.pumpAndSettle();

@@ -94,6 +94,10 @@ describe('Catalogue (e2e)', () => {
         ],
       },
     });
+    await prisma.stockMovement.deleteMany({
+      where: { productId: { in: productIds } },
+    });
+    await prisma.stock.deleteMany({ where: { productId: { in: productIds } } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
     await prisma.category.deleteMany({
       where: { parentId: { in: categoryIds } },
@@ -186,6 +190,77 @@ describe('Catalogue (e2e)', () => {
       });
       expect(audit).toHaveLength(1);
       expect(audit[0].action).toBe('CREATE');
+    });
+
+    it('stock initial à la saisie : un mouvement par lieu, projection à jour, tracé', async () => {
+      const [magasin, depot] = await Promise.all(
+        (['MAGASIN', 'DEPOT'] as const).map((type) =>
+          prisma.location.findFirstOrThrow({ where: { type } }),
+        ),
+      );
+      const product = await createProduct({
+        unit: 'METRE',
+        initialStock: [
+          { locationId: magasin.id, quantity: '120' },
+          { locationId: depot.id, quantity: '480.5' },
+        ],
+      });
+
+      const stocks = await prisma.stock.findMany({
+        where: { productId: product.id },
+      });
+      expect(
+        Object.fromEntries(
+          stocks.map((s) => [s.locationId, s.quantity.toFixed(3)]),
+        ),
+      ).toEqual({ [magasin.id]: '120.000', [depot.id]: '480.500' });
+      const movements = await prisma.stockMovement.findMany({
+        where: { productId: product.id },
+      });
+      expect(movements).toHaveLength(2);
+      expect(movements.every((m) => m.type === 'AJUSTEMENT_INVENTAIRE')).toBe(
+        true,
+      );
+      const [audit] = await prisma.auditLog.findMany({
+        where: {
+          entityType: 'Product',
+          entityId: product.id,
+          action: 'CREATE',
+        },
+      });
+      expect(
+        (audit.newValue as { initialStock: unknown[] }).initialStock,
+      ).toHaveLength(2);
+    });
+
+    it('stock initial invalide : rien n’est créé (atomicité)', async () => {
+      const depot = await prisma.location.findFirstOrThrow({
+        where: { type: 'DEPOT' },
+      });
+      const bin = await prisma.location.create({
+        data: {
+          code: uid('BIN').toUpperCase(),
+          name: 'Position',
+          type: 'EMPLACEMENT',
+          parentId: depot.id,
+        },
+      });
+      locationIds.push(bin.id);
+      for (const initialStock of [
+        [{ locationId: bin.id, quantity: '5' }],
+        [{ locationId: depot.id, quantity: '-5' }],
+        [
+          { locationId: depot.id, quantity: '1' },
+          { locationId: depot.id, quantity: '2' },
+        ],
+      ]) {
+        const sku = uid('SKU');
+        await as(tokens.admin)
+          .post('/api/products')
+          .send({ sku, name: 'Stock faux', unit: 'PIECE', initialStock })
+          .expect(422);
+        expect(await prisma.product.count({ where: { sku } })).toBe(0);
+      }
     });
 
     it('seuil négatif ou flottant exotique → 422', async () => {

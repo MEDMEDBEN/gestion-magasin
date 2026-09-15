@@ -16,11 +16,14 @@ class _SignedOutAuthController extends AuthController {
 }
 
 Widget _wrap(Widget child, {bool dark = true}) => ProviderScope(
-      overrides: [
-        authControllerProvider.overrideWith(_SignedOutAuthController.new),
-      ],
-      child: MaterialApp(theme: AppTheme.mobile(dark: dark), home: child),
-    );
+  overrides: [
+    authControllerProvider.overrideWith(_SignedOutAuthController.new),
+  ],
+  child: MaterialApp(
+    theme: AppTheme.mobile(dark: dark),
+    home: child,
+  ),
+);
 
 void main() {
   group('LoginScreen', () {

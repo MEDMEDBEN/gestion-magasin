@@ -84,12 +84,16 @@ class AuthController extends AsyncNotifier<AuthState> {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final deviceId = await ref.read(deviceIdProvider.future);
-      final session = await ref.read(authApiProvider).login(
+      final session = await ref
+          .read(authApiProvider)
+          .login(
             identifier: identifier,
             password: password,
             deviceId: deviceId,
           );
-      await ref.read(tokenStoreProvider).saveTokens(
+      await ref
+          .read(tokenStoreProvider)
+          .saveTokens(
             accessToken: session.accessToken,
             refreshToken: session.refreshToken,
           );
@@ -109,12 +113,16 @@ class AuthController extends AsyncNotifier<AuthState> {
     required String newPassword,
   }) async {
     final deviceId = await ref.read(deviceIdProvider.future);
-    final session = await ref.read(authApiProvider).changePassword(
+    final session = await ref
+        .read(authApiProvider)
+        .changePassword(
           currentPassword: currentPassword,
           newPassword: newPassword,
           deviceId: deviceId,
         );
-    await ref.read(tokenStoreProvider).saveTokens(
+    await ref
+        .read(tokenStoreProvider)
+        .saveTokens(
           accessToken: session.accessToken,
           refreshToken: session.refreshToken,
         );
@@ -205,5 +213,6 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 }
 
-final authControllerProvider =
-    AsyncNotifierProvider<AuthController, AuthState>(AuthController.new);
+final authControllerProvider = AsyncNotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);

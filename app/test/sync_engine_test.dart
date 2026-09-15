@@ -65,7 +65,10 @@ void main() {
 
   test('file vide : aucun appel réseau', () async {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+    final outcome = await SyncEngine(
+      api: api,
+      queue: queue,
+    ).synchronize(authorUserId: author);
 
     expect(api.calls, isEmpty);
     expect(outcome.isFullySynced, isTrue);
@@ -76,7 +79,10 @@ void main() {
     await enqueue();
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+    final outcome = await SyncEngine(
+      api: api,
+      queue: queue,
+    ).synchronize(authorUserId: author);
 
     expect(outcome.sent, 2);
     expect(outcome.confirmed, 2);
@@ -127,13 +133,19 @@ void main() {
         message: 'Serveur injoignable',
       );
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+    final outcome = await SyncEngine(
+      api: api,
+      queue: queue,
+    ).synchronize(authorUserId: author);
 
     expect(outcome.hasFailure, isTrue);
     expect(outcome.stillPending, 1);
     expect(await queue.byStatus(LocalMutationStatus.rejetee), isEmpty);
     // La mutation garde son identifiant : le renvoi restera idempotent.
-    expect((await queue.nextBatch(authorUserId: author)).single.clientMutationId, id);
+    expect(
+      (await queue.nextBatch(authorUserId: author)).single.clientMutationId,
+      id,
+    );
   });
 
   test('le lot part dans l’ordre du timestamp appareil', () async {
@@ -143,10 +155,10 @@ void main() {
 
     await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
 
-    expect(
-      api.calls.single.map((m) => m.clientMutationId).toList(),
-      [first, second],
-    );
+    expect(api.calls.single.map((m) => m.clientMutationId).toList(), [
+      first,
+      second,
+    ]);
   });
 
   test('deux cycles concurrents ne produisent qu’un seul envoi', () async {
@@ -154,7 +166,10 @@ void main() {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
     final engine = SyncEngine(api: api, queue: queue);
 
-    await Future.wait([engine.synchronize(authorUserId: author), engine.synchronize(authorUserId: author)]);
+    await Future.wait([
+      engine.synchronize(authorUserId: author),
+      engine.synchronize(authorUserId: author),
+    ]);
 
     expect(api.calls, hasLength(1));
   });
@@ -178,22 +193,31 @@ void main() {
     final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee))
       ..failure = const ApiException(statusCode: 0, message: 'hors ligne');
 
-    final outcome = await SyncEngine(api: api, queue: queue).synchronizeAll(authorUserId: author);
+    final outcome = await SyncEngine(
+      api: api,
+      queue: queue,
+    ).synchronizeAll(authorUserId: author);
 
     expect(outcome.hasFailure, isTrue);
     expect(api.calls, hasLength(1));
   });
 
-  test('ne pousse JAMAIS les mutations d’un autre compte (poste partagé)', () async {
-    final mine = await enqueue(DateTime.utc(2026, 9, 9, 9));
-    await enqueue(DateTime.utc(2026, 9, 9, 8), 'compte-b');
-    final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
+  test(
+    'ne pousse JAMAIS les mutations d’un autre compte (poste partagé)',
+    () async {
+      final mine = await enqueue(DateTime.utc(2026, 9, 9, 9));
+      await enqueue(DateTime.utc(2026, 9, 9, 8), 'compte-b');
+      final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
 
-    await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+      await SyncEngine(
+        api: api,
+        queue: queue,
+      ).synchronize(authorUserId: author);
 
-    // Envoyées avec la session de A, celles de B seraient attribuées à A par
-    // le serveur (et jugées selon SES droits) : elles restent en quarantaine.
-    expect(api.calls.single.map((m) => m.clientMutationId), [mine]);
-    expect(await queue.pendingCount(authorUserId: 'compte-b'), 1);
-  });
+      // Envoyées avec la session de A, celles de B seraient attribuées à A par
+      // le serveur (et jugées selon SES droits) : elles restent en quarantaine.
+      expect(api.calls.single.map((m) => m.clientMutationId), [mine]);
+      expect(await queue.pendingCount(authorUserId: 'compte-b'), 1);
+    },
+  );
 }

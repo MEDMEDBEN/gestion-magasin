@@ -32,7 +32,11 @@ class UserRoleBadges extends StatelessWidget {
 
 /// Statut d'un compte — TOUJOURS un libellé, jamais la couleur seule (§12.4).
 class UserStatusBadges extends StatelessWidget {
-  const UserStatusBadges({super.key, required this.user, this.showActive = false});
+  const UserStatusBadges({
+    super.key,
+    required this.user,
+    this.showActive = false,
+  });
 
   final ManagedUser user;
 
@@ -101,7 +105,9 @@ class UsersListFooter extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: state.isLoadingMore ? null : onLoadMore,
               icon: const Icon(LucideIcons.chevronsDown, size: 17),
-              label: Text(state.isLoadingMore ? 'Chargement…' : 'Afficher plus'),
+              label: Text(
+                state.isLoadingMore ? 'Chargement…' : 'Afficher plus',
+              ),
             ),
         ],
       ),

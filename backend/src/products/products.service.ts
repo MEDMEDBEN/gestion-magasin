@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../common/permissions';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Product } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
   CreateProductDto,
   ProductDto,
@@ -41,7 +42,10 @@ const INTERNAL_BARCODE_ATTEMPTS = 5;
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ledger: StockLedgerService,
+  ) {}
 
   static toDto(product: Product): ProductDto {
     return {
@@ -176,11 +180,20 @@ export class ProductsService {
         },
       });
       const created = ProductsService.toDto(product);
+      const initialStock = await this.applyInitialStock(
+        tx,
+        created.id,
+        dto.initialStock ?? [],
+        actor,
+      );
       await writeAudit(tx, actor, {
         action: 'CREATE',
         entityType: 'Product',
         entityId: created.id,
-        newValue: ProductsService.auditSnapshot(created),
+        newValue: {
+          ...(ProductsService.auditSnapshot(created) as Prisma.InputJsonObject),
+          initialStock,
+        },
       });
       return created;
     });
@@ -281,6 +294,55 @@ export class ProductsService {
       }
       return after;
     });
+  }
+
+  /// Stock présent au moment de la saisie : un mouvement AJUSTEMENT_INVENTAIRE
+  /// par lieu (règle 2 : la projection suit le journal, dans la transaction de
+  /// la création). Seuls le MAGASIN et le DÉPÔT portent du stock.
+  private async applyInitialStock(
+    tx: Db,
+    productId: string,
+    lines: { locationId: string; quantity: string }[],
+    actor: ActorContext,
+  ): Promise<Prisma.InputJsonArray> {
+    const applied: Prisma.InputJsonObject[] = [];
+    const seen = new Set<string>();
+    for (const line of lines) {
+      const invalid = (message: string) =>
+        new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          `initialStock : ${message}`,
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      if (seen.has(line.locationId)) throw invalid('un lieu est répété');
+      seen.add(line.locationId);
+      const quantity = parseQuantity(line.quantity, 'initialStock.quantity');
+      if (quantity.isZero()) continue;
+      if (quantity.isNegative()) throw invalid('quantité négative');
+      const location = await tx.location.findUnique({
+        where: { id: line.locationId },
+        select: { type: true },
+      });
+      if (location?.type !== 'MAGASIN' && location?.type !== 'DEPOT') {
+        throw invalid('le stock initial se pose au magasin ou au dépôt');
+      }
+      const movement = await this.ledger.applyMovement(tx, {
+        productId,
+        locationId: line.locationId,
+        quantity,
+        type: 'AJUSTEMENT_INVENTAIRE',
+        operationType: 'PRODUCT',
+        operationId: productId,
+        userId: actor.userId,
+        comment: 'Stock initial à la création du produit',
+      });
+      applied.push({
+        locationId: line.locationId,
+        quantity: movement.quantityAfter,
+        movementId: movement.movementId,
+      });
+    }
+    return applied;
   }
 
   private static async lockWrites(tx: Db) {

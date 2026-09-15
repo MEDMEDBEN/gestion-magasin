@@ -9,6 +9,8 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../application/catalog_controller.dart';
+import '../../stock/application/stock_controller.dart';
+import '../../stock/presentation/stock_status.dart';
 import '../data/catalog_models.dart';
 
 /// Création, modification ou consultation d'un produit.
@@ -21,11 +23,13 @@ class ProductForm extends ConsumerStatefulWidget {
     this.existing,
     required this.canEdit,
     required this.canDisable,
+    this.canReadStock = false,
   });
 
   final Product? existing;
   final bool canEdit;
   final bool canDisable;
+  final bool canReadStock;
 
   @override
   ConsumerState<ProductForm> createState() => _ProductFormState();
@@ -40,6 +44,11 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   late final TextEditingController _description;
   late final TextEditingController _minThreshold;
   late final TextEditingController _safetyStock;
+
+  /// Stock présent à la saisie (création seulement) : devient un mouvement
+  /// « stock initial » côté serveur, jamais une quantité écrite directement.
+  final _storeStock = TextEditingController();
+  final _depotStock = TextEditingController();
   late ProductUnit _unit;
   String? _categoryId;
   String? _taxRateId;
@@ -85,6 +94,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _description,
       _minThreshold,
       _safetyStock,
+      _storeStock,
+      _depotStock,
     ]) {
       c.dispose();
     }
@@ -140,9 +151,20 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     if (existing == null) {
       // Création : un champ vide n'est pas envoyé — sans code-barres, le
       // serveur en génère un unique (règle 15).
+      final locations = _stockLocationIds();
+      final initialStock = [
+        for (final (type, controller) in [
+          ('MAGASIN', _storeStock),
+          ('DEPOT', _depotStock),
+        ])
+          if (locations[type] != null &&
+              (parseQuantity(controller.text) ?? Quantity.zero) > Quantity.zero)
+            {'locationId': locations[type], 'quantity': _quantity(controller)},
+      ];
       payload = {
         for (final e in values.entries)
           if (e.value != null) e.key: e.value,
+        if (initialStock.isNotEmpty) 'initialStock': initialStock,
       };
     } else {
       // Un code-barres ne se retire pas : vidé, il reste inchangé.
@@ -176,6 +198,32 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     });
   }
 
+  Map<String, String> _stockLocationIds() => {
+    for (final l
+        in ref.read(locationsProvider).value ?? const <StorageLocation>[])
+      if (l.type == 'MAGASIN' || l.type == 'DEPOT') l.type: l.id,
+  };
+
+  Widget _quantityField(
+    String label,
+    TextEditingController controller,
+  ) => Expanded(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AmpereFieldLabel(label),
+        TextFormField(
+          controller: controller,
+          enabled: !_locked,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: AmpereType.input.copyWith(color: AmpereColors.of(context).ink),
+          decoration: InputDecoration(suffixText: _unit.short),
+          validator: _validateQuantity,
+        ),
+      ],
+    ),
+  );
+
   String? _validateQuantity(String? value) {
     final raw = value?.trim() ?? '';
     if (raw.isEmpty) return null;
@@ -192,6 +240,10 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final colors = AmpereColors.of(context);
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final taxRates = ref.watch(taxRatesProvider).value ?? const [];
+    // Stock en ligne, si le compte peut le lire : état affiché sur la fiche.
+    final existingStock = widget.existing == null || !widget.canReadStock
+        ? null
+        : ref.watch(stockByProductProvider).value?[widget.existing!.id];
     final bins = [
       for (final l in ref.watch(locationsProvider).value ?? const [])
         if (l.isBin) l,
@@ -343,6 +395,35 @@ class _ProductFormState extends ConsumerState<ProductForm> {
               : (v) => setState(() => _storageLocationId = v),
         ),
         formFieldGap,
+        if (!_isEdit) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _quantityField('Stock au magasin', _storeStock),
+              const SizedBox(width: 12),
+              _quantityField('Stock au dépôt', _depotStock),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Quantités présentes aujourd’hui. Ensuite, le stock ne change que par '
+              'une opération (vente, réception, perte, inventaire).',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+          ),
+          formFieldGap,
+        ] else if (existingStock != null) ...[
+          const AmpereFieldLabel('Stock actuel'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StockStatusBadge(
+              product: widget.existing!,
+              stock: existingStock,
+            ),
+          ),
+          formFieldGap,
+        ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -28,10 +28,7 @@ void main() {
 
     test('reste sur le login sans boucler', () {
       expect(
-        resolveRedirect(
-          auth: const AuthSignedOut(),
-          location: AppRoutes.login,
-        ),
+        resolveRedirect(auth: const AuthSignedOut(), location: AppRoutes.login),
         isNull,
       );
     });
@@ -79,10 +76,7 @@ void main() {
 
     test('est renvoyé à l’accueil s’il retourne sur le login', () {
       expect(
-        resolveRedirect(
-          auth: AuthSignedIn(_user()),
-          location: AppRoutes.login,
-        ),
+        resolveRedirect(auth: AuthSignedIn(_user()), location: AppRoutes.login),
         AppRoutes.home,
       );
     });

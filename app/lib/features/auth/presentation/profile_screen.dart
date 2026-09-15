@@ -42,7 +42,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // Réserve honnête (contre-revue S16) : un appareil déjà connecté garde un
       // accès limité jusqu'à l'expiration de son access token (15 min) ; seules
       // les actions sensibles lui sont refusées immédiatement.
-      body: 'Toutes vos sessions seront fermées, y compris celle-ci. '
+      body:
+          'Toutes vos sessions seront fermées, y compris celle-ci. '
           'Vous devrez vous reconnecter. Un appareil déjà ouvert peut garder '
           'un accès limité jusqu’à 15 minutes.',
       confirmLabel: 'Tout déconnecter',
@@ -59,7 +60,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = 'Révocation NON effectuée : ${error.userMessage}. '
+        _error =
+            'Révocation NON effectuée : ${error.userMessage}. '
             'Réessayez, ou demandez à l’administrateur de révoquer vos sessions.';
       });
     }
@@ -73,7 +75,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final confirmed = await showAmpereConfirmDialog(
         context,
         title: 'Opérations non synchronisées',
-        body: '$pending opération${pending > 1 ? 's' : ''} saisie'
+        body:
+            '$pending opération${pending > 1 ? 's' : ''} saisie'
             '${pending > 1 ? 's' : ''} sur cet appareil '
             '${pending > 1 ? 'attendent' : 'attend'} encore le serveur. '
             'Elles resteront ici et ne partiront qu’à votre prochaine '
@@ -92,7 +95,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     // Écoutés (et non lus à la volée) : un provider non écouté est mis en
     // pause par Riverpod et sa valeur ne serait pas à jour au moment du clic.
     final pending = ref.watch(pendingMutationsCountProvider).value ?? 0;
-    final foreignPending = ref.watch(foreignPendingMutationsCountProvider).value ?? 0;
+    final foreignPending =
+        ref.watch(foreignPendingMutationsCountProvider).value ?? 0;
 
     return Align(
       alignment: Alignment.topCenter,
@@ -108,7 +112,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               AmpereInlineAlert(
                 tone: StatusTone.warn,
                 icon: LucideIcons.refreshCw,
-                message: '$foreignPending opération'
+                message:
+                    '$foreignPending opération'
                     '${foreignPending > 1 ? 's' : ''} saisie'
                     '${foreignPending > 1 ? 's' : ''} par un autre compte '
                     '${foreignPending > 1 ? 'attendent' : 'attend'} sur cet '
@@ -126,11 +131,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               onTap: _busy
                   ? null
                   : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              const ChangePasswordScreen(forced: false),
-                        ),
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            const ChangePasswordScreen(forced: false),
                       ),
+                    ),
             ),
             _ActionTile(
               icon: LucideIcons.smartphone,
@@ -148,7 +153,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const _SectionLabel('Affichage'),
             Card(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 6,
+                ),
                 child: Row(
                   children: [
                     Icon(LucideIcons.moon, size: 19, color: colors.ink2),
@@ -211,7 +219,9 @@ class _IdentityCard extends StatelessWidget {
                     children: [
                       Text(
                         user.fullName,
-                        style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+                        style: AmpereType.sectionTitle.copyWith(
+                          color: colors.ink,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -298,11 +308,18 @@ class _ActionTile extends StatelessWidget {
         color: colors.surface,
         child: Container(
           // Cible tactile : jamais sous 56 pour une ligne de liste (§7).
-          constraints: const BoxConstraints(minHeight: AmpereGeometry.listRowMin),
+          constraints: const BoxConstraints(
+            minHeight: AmpereGeometry.listRowMin,
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
-            border: Border.all(color: colors.line, width: AmpereGeometry.borderWidth),
-            borderRadius: BorderRadius.circular(AmpereGeometry.cardRadiusMobile),
+            border: Border.all(
+              color: colors.line,
+              width: AmpereGeometry.borderWidth,
+            ),
+            borderRadius: BorderRadius.circular(
+              AmpereGeometry.cardRadiusMobile,
+            ),
           ),
           child: Row(
             children: [

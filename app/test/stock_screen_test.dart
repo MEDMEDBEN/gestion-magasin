@@ -11,6 +11,7 @@ import 'package:gestion_magasin/features/stock/application/stock_controller.dart
 import 'package:gestion_magasin/features/stock/data/stock_api.dart';
 import 'package:gestion_magasin/features/stock/data/stock_models.dart';
 import 'package:gestion_magasin/features/stock/presentation/stock_screen.dart';
+import 'package:gestion_magasin/features/stock/presentation/stock_status.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
@@ -158,6 +159,16 @@ void main() {
     );
   }
 
+  test('état du stock : rupture, faible (≤ seuil), en stock', () {
+    Decimal d(String v) => Decimal.parse(v);
+    expect(stockStateOf(d('0'), d('10')), StockState.out);
+    expect(stockStateOf(d('-2'), d('0')), StockState.out);
+    expect(stockStateOf(d('10'), d('10')), StockState.low);
+    expect(stockStateOf(d('10.001'), d('10')), StockState.inStock);
+    // Sans seuil, tout stock positif est « en stock ».
+    expect(stockStateOf(d('1'), d('0')), StockState.inStock);
+  });
+
   test('ProductStock : total et disponible additionnent les emplacements', () {
     final stock = ProductStock([
       _level('p1', 'magasin', '20.5'),
@@ -180,7 +191,7 @@ void main() {
     expect(find.text('50 pce'), findsOneWidget);
     expect(find.text('70 pce'), findsNWidgets(2)); // total + disponible
     // 70 < seuil 100 : signalé par un LIBELLÉ, pas seulement une couleur.
-    expect(find.text('Sous le seuil'), findsOneWidget);
+    expect(find.text('Stock faible · 70 pce'), findsOneWidget);
     expect(find.text('Pertes'), findsNothing);
   });
 

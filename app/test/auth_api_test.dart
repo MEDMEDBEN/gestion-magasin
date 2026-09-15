@@ -44,7 +44,10 @@ void main() {
   var sessionExpired = 0;
 
   setUp(() {
-    tokens = MemoryTokenStore(access: 'access-expire', refresh: 'refresh-courant');
+    tokens = MemoryTokenStore(
+      access: 'access-expire',
+      refresh: 'refresh-courant',
+    );
     sessionExpired = 0;
   });
 
@@ -58,18 +61,26 @@ void main() {
     return AuthApi(client.dio);
   }
 
-  test('le logout part SANS access token, le refresh token servant de preuve', () async {
-    final adapter = _Recorder();
+  test(
+    'le logout part SANS access token, le refresh token servant de preuve',
+    () async {
+      final adapter = _Recorder();
 
-    final revoked = await apiWith(adapter).logout(refreshToken: 'refresh-courant');
+      final revoked = await apiWith(
+        adapter,
+      ).logout(refreshToken: 'refresh-courant');
 
-    expect(revoked, 1);
-    final request = adapter.requests.single;
-    // Le vrai intercepteur joint un token à toute requête non publique :
-    // son absence prouve que la route est bien marquée publique.
-    expect(request.headers.containsKey('Authorization'), isFalse);
-    expect(request.data, {'refreshToken': 'refresh-courant', 'allDevices': false});
-  });
+      expect(revoked, 1);
+      final request = adapter.requests.single;
+      // Le vrai intercepteur joint un token à toute requête non publique :
+      // son absence prouve que la route est bien marquée publique.
+      expect(request.headers.containsKey('Authorization'), isFalse);
+      expect(request.data, {
+        'refreshToken': 'refresh-courant',
+        'allDevices': false,
+      });
+    },
+  );
 
   test('un 401 sur le logout ne déclenche AUCUN refresh', () async {
     final adapter = _Recorder(
@@ -78,7 +89,9 @@ void main() {
     );
 
     await expectLater(
-      apiWith(adapter).logout(refreshToken: 'refresh-courant', allDevices: true),
+      apiWith(
+        adapter,
+      ).logout(refreshToken: 'refresh-courant', allDevices: true),
       throwsA(isA<ApiException>()),
     );
 

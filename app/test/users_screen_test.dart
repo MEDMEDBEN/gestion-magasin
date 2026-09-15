@@ -26,11 +26,13 @@ Widget _wrap(
         userSearchProvider.overrideWith(() => _SeededSearch(initialSearch)),
     ],
     child: MaterialApp(
-      theme: desktop ? AppTheme.desktop(dark: true) : AppTheme.mobile(dark: true),
+      theme: desktop
+          ? AppTheme.desktop(dark: true)
+          : AppTheme.mobile(dark: true),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(textScale),
-        ),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
       // Hébergé comme dans une coquille : un Scaffold SANS AppBar.
@@ -51,12 +53,18 @@ void main() {
   group('liste mobile', () {
     setUp(() {});
 
-    testWidgets('affiche les comptes avec leurs rôles traduits', (tester) async {
+    testWidgets('affiche les comptes avec leurs rôles traduits', (
+      tester,
+    ) async {
       useScreenSize(tester, const Size(400, 800));
       final api = FakeUsersApi(
         users: [
           managedUser(),
-          managedUser(id: 'u2', fullName: 'Karim Saidi', roles: const ['MAGASINIER', 'VENDEUR']),
+          managedUser(
+            id: 'u2',
+            fullName: 'Karim Saidi',
+            roles: const ['MAGASINIER', 'VENDEUR'],
+          ),
         ],
       );
 
@@ -72,23 +80,26 @@ void main() {
       expect(find.text('DERNIÈRE CONNEXION'), findsNothing);
     });
 
-    testWidgets('signale un compte désactivé et un mot de passe temporaire par un LIBELLÉ', (
-      tester,
-    ) async {
-      useScreenSize(tester, const Size(400, 800));
-      final api = FakeUsersApi(
-        users: [managedUser(isActive: false, mustChangePassword: true)],
-      );
+    testWidgets(
+      'signale un compte désactivé et un mot de passe temporaire par un LIBELLÉ',
+      (tester) async {
+        useScreenSize(tester, const Size(400, 800));
+        final api = FakeUsersApi(
+          users: [managedUser(isActive: false, mustChangePassword: true)],
+        );
 
-      await tester.pumpWidget(_wrap(api));
-      await tester.pumpAndSettle();
+        await tester.pumpWidget(_wrap(api));
+        await tester.pumpAndSettle();
 
-      expect(find.text('Désactivé'), findsOneWidget);
-      expect(find.text('Mot de passe temporaire'), findsOneWidget);
-    });
+        expect(find.text('Désactivé'), findsOneWidget);
+        expect(find.text('Mot de passe temporaire'), findsOneWidget);
+      },
+    );
   });
 
-  testWidgets('desktop : tableau dense avec en-tête et dernière connexion', (tester) async {
+  testWidgets('desktop : tableau dense avec en-tête et dernière connexion', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(1300, 900));
     final api = FakeUsersApi(
       users: [managedUser(lastLoginAt: DateTime(2026, 9, 5, 8, 14))],
@@ -103,7 +114,9 @@ void main() {
     expect(find.text('Actif'), findsOneWidget);
   });
 
-  testWidgets('liste vide : UN SEUL bouton primaire à l’écran (§6)', (tester) async {
+  testWidgets('liste vide : UN SEUL bouton primaire à l’écran (§6)', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(400, 800));
     await tester.pumpWidget(_wrap(FakeUsersApi()));
     await tester.pumpAndSettle();
@@ -112,8 +125,12 @@ void main() {
     expect(find.byType(FilledButton), findsOneWidget);
   });
 
-  testWidgets('recherche sans résultat : reprend le terme cherché', (tester) async {
-    await tester.pumpWidget(_wrap(FakeUsersApi(users: [managedUser()]), initialSearch: 'zzz'));
+  testWidgets('recherche sans résultat : reprend le terme cherché', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(FakeUsersApi(users: [managedUser()]), initialSearch: 'zzz'),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Aucun résultat'), findsOneWidget);
@@ -122,7 +139,10 @@ void main() {
 
   testWidgets('hors ligne : le dit, et propose de réessayer', (tester) async {
     final api = FakeUsersApi()
-      ..failure = const ApiException(statusCode: 0, message: 'Serveur injoignable');
+      ..failure = const ApiException(
+        statusCode: 0,
+        message: 'Serveur injoignable',
+      );
 
     await tester.pumpWidget(_wrap(api));
     await tester.pumpAndSettle();
@@ -131,9 +151,14 @@ void main() {
     expect(find.text('Réessayer'), findsOneWidget);
   });
 
-  testWidgets('erreur serveur : état d’erreur, saisie garantie', (tester) async {
+  testWidgets('erreur serveur : état d’erreur, saisie garantie', (
+    tester,
+  ) async {
     final api = FakeUsersApi()
-      ..failure = const ApiException(statusCode: 500, message: 'Erreur interne du serveur');
+      ..failure = const ApiException(
+        statusCode: 500,
+        message: 'Erreur interne du serveur',
+      );
 
     await tester.pumpWidget(_wrap(api));
     await tester.pumpAndSettle();
@@ -142,10 +167,15 @@ void main() {
     expect(find.text('Réessayer'), findsOneWidget);
   });
 
-  testWidgets('au-delà de 50 comptes, « Afficher plus » charge la suite', (tester) async {
+  testWidgets('au-delà de 50 comptes, « Afficher plus » charge la suite', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(1300, 900));
     final api = FakeUsersApi(
-      users: [for (var i = 0; i < 120; i++) managedUser(id: 'u$i', fullName: 'Membre $i')],
+      users: [
+        for (var i = 0; i < 120; i++)
+          managedUser(id: 'u$i', fullName: 'Membre $i'),
+      ],
     );
 
     await tester.pumpWidget(_wrap(api, desktop: true));
@@ -161,12 +191,16 @@ void main() {
     expect(find.text('100 affichés sur 120 comptes'), findsOneWidget);
   });
 
-  testWidgets('un rechargement garde la liste affichée (pas de squelette)', (tester) async {
+  testWidgets('un rechargement garde la liste affichée (pas de squelette)', (
+    tester,
+  ) async {
     final api = FakeUsersApi(users: [managedUser()]);
     await tester.pumpWidget(_wrap(api));
     await tester.pumpAndSettle();
 
-    final container = ProviderScope.containerOf(tester.element(find.byType(UsersScreen)));
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(UsersScreen)),
+    );
     container.read(usersControllerProvider.notifier).refresh();
     await tester.pump();
 
@@ -175,9 +209,15 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('sur SON compte, le menu ne propose que « Modifier »', (tester) async {
+  testWidgets('sur SON compte, le menu ne propose que « Modifier »', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(400, 800));
-    final api = FakeUsersApi(users: [managedUser(id: 'me', fullName: 'Moi Admin', roles: const ['ADMIN'])]);
+    final api = FakeUsersApi(
+      users: [
+        managedUser(id: 'me', fullName: 'Moi Admin', roles: const ['ADMIN']),
+      ],
+    );
 
     await tester.pumpWidget(_wrap(api));
     await tester.pumpAndSettle();
@@ -189,7 +229,9 @@ void main() {
     expect(find.text('Réinitialiser le mot de passe'), findsNothing);
   });
 
-  testWidgets('désactiver un compte : confirmation en style Danger (§6)', (tester) async {
+  testWidgets('désactiver un compte : confirmation en style Danger (§6)', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(400, 800));
     final api = FakeUsersApi(users: [managedUser()]);
 
@@ -203,14 +245,22 @@ void main() {
     final confirm = find.widgetWithText(AmpereDangerButton, 'Désactiver');
     expect(confirm, findsOneWidget);
     // Jamais un bouton rempli pour confirmer une destruction.
-    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(FilledButton)), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+      findsNothing,
+    );
 
     await tester.tap(confirm);
     await tester.pumpAndSettle();
     expect(api.updates.single.$2, {'isActive': false});
   });
 
-  testWidgets('le menu d’actions reste lisible au zoom texte 200 % (§12)', (tester) async {
+  testWidgets('le menu d’actions reste lisible au zoom texte 200 % (§12)', (
+    tester,
+  ) async {
     useScreenSize(tester, const Size(400, 800));
     final api = FakeUsersApi(users: [managedUser()]);
 

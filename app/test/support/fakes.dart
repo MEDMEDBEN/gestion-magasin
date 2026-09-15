@@ -78,8 +78,10 @@ class FakeUsersApi implements UsersApi {
     final filtered = query == null || query.isEmpty
         ? users
         : users
-            .where((u) => u.fullName.toLowerCase().contains(query.toLowerCase()))
-            .toList();
+              .where(
+                (u) => u.fullName.toLowerCase().contains(query.toLowerCase()),
+              )
+              .toList();
     final start = (page - 1) * limit;
     final slice = filtered.skip(start).take(limit).toList();
     return UserPage(
@@ -124,8 +126,10 @@ class FakeUsersApi implements UsersApi {
   }
 
   @override
-  Future<ManagedUser> resetPassword(String id, String temporaryPassword) async =>
-      users.firstWhere((u) => u.id == id);
+  Future<ManagedUser> resetPassword(
+    String id,
+    String temporaryPassword,
+  ) async => users.firstWhere((u) => u.id == id);
 
   @override
   Future<int> revokeSessions(String id) async => 2;
@@ -142,7 +146,10 @@ class FakeAuthApi implements AuthApi {
   int allDevicesRevoked = 3;
 
   @override
-  Future<int> logout({required String refreshToken, bool allDevices = false}) async {
+  Future<int> logout({
+    required String refreshToken,
+    bool allDevices = false,
+  }) async {
     logoutCalls.add(allDevices);
     if (logoutFailure != null) throw logoutFailure!;
     return allDevices ? allDevicesRevoked : 1;
@@ -172,8 +179,12 @@ class FakeAuthApi implements AuthApi {
     required String password,
     String? deviceId,
     String? deviceName,
-  }) async =>
-      AuthSession(accessToken: 'a', refreshToken: 'r', expiresIn: 900, user: user);
+  }) async => AuthSession(
+    accessToken: 'a',
+    refreshToken: 'r',
+    expiresIn: 900,
+    user: user,
+  );
 }
 
 /// Stockage de tokens en mémoire (le plugin natif est absent en test).

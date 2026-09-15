@@ -50,11 +50,43 @@ class _SignedOut extends AuthController {
 }
 
 final _users = [
-  managedUser(id: 'me', fullName: 'Radhi Badache', email: 'admin@magasin.dz', roles: const ['ADMIN'], lastLoginAt: DateTime(2026, 9, 11, 9, 2)),
-  managedUser(id: 'u2', fullName: 'Amine Benali', email: 'amine@magasin.dz', roles: const ['VENDEUR'], lastLoginAt: DateTime(2026, 9, 10, 17, 45)),
-  managedUser(id: 'u3', fullName: 'Karim Saidi', email: null, phone: '+213555123456', roles: const ['MAGASINIER', 'VENDEUR'], lastLoginAt: DateTime(2026, 9, 11, 7, 58)),
-  managedUser(id: 'u4', fullName: 'Nadia Kaci', email: 'nadia@magasin.dz', roles: const ['VENDEUR'], mustChangePassword: true),
-  managedUser(id: 'u5', fullName: 'Yacine Ouali', email: 'yacine@magasin.dz', roles: const ['MAGASINIER'], isActive: false, lastLoginAt: DateTime(2026, 8, 28, 16, 10)),
+  managedUser(
+    id: 'me',
+    fullName: 'Radhi Badache',
+    email: 'admin@magasin.dz',
+    roles: const ['ADMIN'],
+    lastLoginAt: DateTime(2026, 9, 11, 9, 2),
+  ),
+  managedUser(
+    id: 'u2',
+    fullName: 'Amine Benali',
+    email: 'amine@magasin.dz',
+    roles: const ['VENDEUR'],
+    lastLoginAt: DateTime(2026, 9, 10, 17, 45),
+  ),
+  managedUser(
+    id: 'u3',
+    fullName: 'Karim Saidi',
+    email: null,
+    phone: '+213555123456',
+    roles: const ['MAGASINIER', 'VENDEUR'],
+    lastLoginAt: DateTime(2026, 9, 11, 7, 58),
+  ),
+  managedUser(
+    id: 'u4',
+    fullName: 'Nadia Kaci',
+    email: 'nadia@magasin.dz',
+    roles: const ['VENDEUR'],
+    mustChangePassword: true,
+  ),
+  managedUser(
+    id: 'u5',
+    fullName: 'Yacine Ouali',
+    email: 'yacine@magasin.dz',
+    roles: const ['MAGASINIER'],
+    isActive: false,
+    lastLoginAt: DateTime(2026, 8, 28, 16, 10),
+  ),
 ];
 
 class _IdleSync extends CatalogSyncController {
@@ -62,7 +94,17 @@ class _IdleSync extends CatalogSyncController {
   Future<void> build() async {}
 }
 
-const _adminPermissions = ['user.manage', 'product.read', 'product.write', 'product.disable', 'location.manage', 'stock.read.store', 'stock.read.warehouse', 'stock.loss', 'stock.adjust.validate'];
+const _adminPermissions = [
+  'user.manage',
+  'product.read',
+  'product.write',
+  'product.disable',
+  'location.manage',
+  'stock.read.store',
+  'stock.read.warehouse',
+  'stock.loss',
+  'stock.adjust.validate',
+];
 
 final _categories = [
   category(id: 'cab', name: 'Câbles'),
@@ -72,24 +114,86 @@ final _categories = [
 ];
 
 final _products = [
-  product(id: 'p1', name: 'Câble souple H07RN-F 3G2,5', sku: 'CAB-3G25', barcode: '3245060123458', brand: 'Nexans', categoryId: 'cab-s', unit: ProductUnit.metre, minThreshold: '100'),
-  product(id: 'p2', name: 'Disjoncteur DX³ 16A courbe C', sku: 'DIS-16C', barcode: '3245064074152', brand: 'Legrand', categoryId: 'prot', minThreshold: '10'),
-  product(id: 'p3', name: 'Interrupteur différentiel 40A 30mA', sku: 'ID-40-30', barcode: '2000000000015', brand: 'Schneider', categoryId: 'prot', minThreshold: '4'),
-  product(id: 'p4', name: 'Réglette LED 36W 120 cm', sku: 'LED-R36', barcode: '2000000000022', categoryId: 'ecl', minThreshold: '12.5'),
-  product(id: 'p5', name: 'Gaine ICTA Ø20 (couronne 100 m)', sku: 'GAI-20', barcode: '2000000000039', unit: ProductUnit.rouleau, minThreshold: '3'),
+  product(
+    id: 'p1',
+    name: 'Câble souple H07RN-F 3G2,5',
+    sku: 'CAB-3G25',
+    barcode: '3245060123458',
+    brand: 'Nexans',
+    categoryId: 'cab-s',
+    unit: ProductUnit.metre,
+    minThreshold: '100',
+  ),
+  product(
+    id: 'p2',
+    name: 'Disjoncteur DX³ 16A courbe C',
+    sku: 'DIS-16C',
+    barcode: '3245064074152',
+    brand: 'Legrand',
+    categoryId: 'prot',
+    minThreshold: '10',
+  ),
+  product(
+    id: 'p3',
+    name: 'Interrupteur différentiel 40A 30mA',
+    sku: 'ID-40-30',
+    barcode: '2000000000015',
+    brand: 'Schneider',
+    categoryId: 'prot',
+    minThreshold: '4',
+  ),
+  product(
+    id: 'p4',
+    name: 'Réglette LED 36W 120 cm',
+    sku: 'LED-R36',
+    barcode: '2000000000022',
+    categoryId: 'ecl',
+    minThreshold: '12.5',
+  ),
+  product(
+    id: 'p5',
+    name: 'Gaine ICTA Ø20 (couronne 100 m)',
+    sku: 'GAI-20',
+    barcode: '2000000000039',
+    unit: ProductUnit.rouleau,
+    minThreshold: '3',
+  ),
 ];
 
-StorageLocation _bin(String id, String code, String name) => StorageLocation(id: id, code: code, name: name, type: 'EMPLACEMENT', parentId: 'depot', isActive: true, updatedAt: DateTime.utc(2026, 9, 14));
+StorageLocation _bin(String id, String code, String name) => StorageLocation(
+  id: id,
+  code: code,
+  name: name,
+  type: 'EMPLACEMENT',
+  parentId: 'depot',
+  isActive: true,
+  updatedAt: DateTime.utc(2026, 9, 14),
+);
 
 final _locations = [
-  StorageLocation(id: 'magasin', code: 'MAGASIN', name: 'Magasin', type: 'MAGASIN', isActive: true, updatedAt: DateTime.utc(2026, 9, 14)),
-  StorageLocation(id: 'depot', code: 'DEPOT', name: 'Dépôt', type: 'DEPOT', isActive: true, updatedAt: DateTime.utc(2026, 9, 14)),
+  StorageLocation(
+    id: 'magasin',
+    code: 'MAGASIN',
+    name: 'Magasin',
+    type: 'MAGASIN',
+    isActive: true,
+    updatedAt: DateTime.utc(2026, 9, 14),
+  ),
+  StorageLocation(
+    id: 'depot',
+    code: 'DEPOT',
+    name: 'Dépôt',
+    type: 'DEPOT',
+    isActive: true,
+    updatedAt: DateTime.utc(2026, 9, 14),
+  ),
   _bin('l1', 'A-01-01-01', 'Zone A · Rayon 01 · Étagère 01 · Position 01'),
   _bin('l2', 'A-01-02-03', 'Zone A · Rayon 01 · Étagère 02 · Position 03'),
   _bin('l3', 'B-04-01-02', 'Zone B · Rayon 04 · Étagère 01 · Position 02'),
 ];
 
-StockLevel _stock(String productId, String locationId, String quantity) => StockLevel(
+StockLevel _stock(String productId, String locationId, String quantity) =>
+    StockLevel(
       productId: productId,
       locationId: locationId,
       quantity: Decimal.parse(quantity),
@@ -99,10 +203,22 @@ StockLevel _stock(String productId, String locationId, String quantity) => Stock
     );
 
 final _stockByProduct = {
-  'p1': ProductStock([_stock('p1', 'magasin', '120'), _stock('p1', 'depot', '480')]),
-  'p2': ProductStock([_stock('p2', 'magasin', '4'), _stock('p2', 'depot', '2')]),
-  'p3': ProductStock([_stock('p3', 'magasin', '6'), _stock('p3', 'depot', '12')]),
-  'p4': ProductStock([_stock('p4', 'magasin', '9'), _stock('p4', 'depot', '40')]),
+  'p1': ProductStock([
+    _stock('p1', 'magasin', '120'),
+    _stock('p1', 'depot', '480'),
+  ]),
+  'p2': ProductStock([
+    _stock('p2', 'magasin', '4'),
+    _stock('p2', 'depot', '2'),
+  ]),
+  'p3': ProductStock([
+    _stock('p3', 'magasin', '6'),
+    _stock('p3', 'depot', '12'),
+  ]),
+  'p4': ProductStock([
+    _stock('p4', 'magasin', '9'),
+    _stock('p4', 'depot', '40'),
+  ]),
   'p5': ProductStock([_stock('p5', 'depot', '7')]),
 };
 
@@ -110,19 +226,43 @@ class _CaptureStockApi extends StockApi {
   _CaptureStockApi() : super(Dio());
 
   @override
-  Future<StockLossPage> losses({StockLossStatus? status, int limit = 200}) async => StockLossPage(
-        data: [
-          StockLoss(id: 'l1', productId: 'p4', locationId: 'depot', quantity: Decimal.parse('2'), comment: 'Deux réglettes cassées au déchargement', status: StockLossStatus.pending, declaredById: 'm', createdAt: DateTime(2026, 9, 14, 8, 40)),
-          StockLoss(id: 'l2', productId: 'p1', locationId: 'magasin', quantity: Decimal.parse('3.5'), comment: 'Chute de coupe inutilisable', status: StockLossStatus.pending, declaredById: 'm', createdAt: DateTime(2026, 9, 14, 10, 5)),
-        ],
-        meta: const PageMeta(page: 1, limit: 200, total: 2),
-      );
+  Future<StockLossPage> losses({
+    StockLossStatus? status,
+    int limit = 200,
+  }) async => StockLossPage(
+    data: [
+      StockLoss(
+        id: 'l1',
+        productId: 'p4',
+        locationId: 'depot',
+        quantity: Decimal.parse('2'),
+        comment: 'Deux réglettes cassées au déchargement',
+        status: StockLossStatus.pending,
+        declaredById: 'm',
+        createdAt: DateTime(2026, 9, 14, 8, 40),
+      ),
+      StockLoss(
+        id: 'l2',
+        productId: 'p1',
+        locationId: 'magasin',
+        quantity: Decimal.parse('3.5'),
+        comment: 'Chute de coupe inutilisable',
+        status: StockLossStatus.pending,
+        declaredById: 'm',
+        createdAt: DateTime(2026, 9, 14, 10, 5),
+      ),
+    ],
+    meta: const PageMeta(page: 1, limit: 200, total: 2),
+  );
 }
 
 Future<void> _loadFonts() async {
-  final archivo = FontLoader('Archivo')..addFont(rootBundle.load('fonts/Archivo-Variable.ttf'));
+  final archivo = FontLoader('Archivo')
+    ..addFont(rootBundle.load('fonts/Archivo-Variable.ttf'));
   final lucide = FontLoader('packages/lucide_icons_flutter/Lucide')
-    ..addFont(rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'));
+    ..addFont(
+      rootBundle.load('packages/lucide_icons_flutter/assets/lucide.ttf'),
+    );
   await Future.wait([archivo.load(), lucide.load()]);
 }
 
@@ -146,7 +286,17 @@ Future<void> _capture(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        authControllerProvider.overrideWith(auth ?? () => _SignedIn(user ?? authUser(id: 'me', fullName: 'Radhi Badache', permissions: _adminPermissions))),
+        authControllerProvider.overrideWith(
+          auth ??
+              () => _SignedIn(
+                user ??
+                    authUser(
+                      id: 'me',
+                      fullName: 'Radhi Badache',
+                      permissions: _adminPermissions,
+                    ),
+              ),
+        ),
         catalogSyncProvider.overrideWith(_IdleSync.new),
         productsProvider.overrideWith((ref) => Stream.value(_products)),
         categoriesProvider.overrideWith((ref) => Stream.value(_categories)),
@@ -159,7 +309,9 @@ Future<void> _capture(
         usersApiProvider.overrideWithValue(FakeUsersApi(users: _users)),
         currentUserIdProvider.overrideWithValue('me'),
         pendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
-        foreignPendingMutationsCountProvider.overrideWith((ref) => Stream.value(foreignPending)),
+        foreignPendingMutationsCountProvider.overrideWith(
+          (ref) => Stream.value(foreignPending),
+        ),
         rejectedMutationsProvider.overrideWith((ref) => Stream.value(const [])),
       ],
       child: RepaintBoundary(
@@ -184,7 +336,8 @@ Future<void> _capture(
   }
 
   await tester.runAsync(() async {
-    final boundary = key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final boundary =
+        key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
     final image = await boundary.toImage(pixelRatio: 1);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     File('$out/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
@@ -204,86 +357,293 @@ void main() {
   setUpAll(_loadFonts);
   const skip = out == '';
 
-  testWidgets('01 login desktop sombre', skip: skip, (t) => _capture(t, name: '01_login_desktop_sombre', size: const Size(1440, 900), home: const LoginScreen(), auth: _SignedOut.new));
-  testWidgets('02 login mobile clair', skip: skip, (t) => _capture(t, name: '02_login_mobile_clair', size: const Size(390, 844), home: const LoginScreen(), auth: _SignedOut.new, dark: false));
-  testWidgets('03 mot de passe force mobile', skip: skip, (t) => _capture(t, name: '03_mdp_force_mobile', size: const Size(390, 844), home: const ChangePasswordScreen()));
-  testWidgets('04 utilisateurs desktop sombre', skip: skip, (t) => _capture(t, name: '04_utilisateurs_desktop_sombre', size: const Size(1440, 900), home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.text('Utilisateurs'))));
-  testWidgets('05 utilisateurs desktop clair', skip: skip, (t) => _capture(t, name: '05_utilisateurs_desktop_clair', size: const Size(1440, 900), home: const AdaptiveShell(), dark: false,
-      interact: (t) async => t.tap(find.text('Utilisateurs'))));
-  testWidgets('06 formulaire panneau desktop', skip: skip, (t) => _capture(t, name: '06_formulaire_panneau_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+  testWidgets(
+    '01 login desktop sombre',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '01_login_desktop_sombre',
+      size: const Size(1440, 900),
+      home: const LoginScreen(),
+      auth: _SignedOut.new,
+    ),
+  );
+  testWidgets(
+    '02 login mobile clair',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '02_login_mobile_clair',
+      size: const Size(390, 844),
+      home: const LoginScreen(),
+      auth: _SignedOut.new,
+      dark: false,
+    ),
+  );
+  testWidgets(
+    '03 mot de passe force mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '03_mdp_force_mobile',
+      size: const Size(390, 844),
+      home: const ChangePasswordScreen(),
+    ),
+  );
+  testWidgets(
+    '04 utilisateurs desktop sombre',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '04_utilisateurs_desktop_sombre',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Utilisateurs')),
+    ),
+  );
+  testWidgets(
+    '05 utilisateurs desktop clair',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '05_utilisateurs_desktop_clair',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      interact: (t) async => t.tap(find.text('Utilisateurs')),
+    ),
+  );
+  testWidgets(
+    '06 formulaire panneau desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '06_formulaire_panneau_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Utilisateurs'));
         await t.pumpAndSettle();
         await t.tap(find.text('Karim Saidi'));
-      }));
-  testWidgets('07 tablette rail', skip: skip, (t) => _capture(t, name: '07_tablette_rail', size: const Size(1024, 768), home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.byTooltip('Utilisateurs'))));
-  testWidgets('08 utilisateurs mobile sombre', skip: skip, (t) => _capture(t, name: '08_utilisateurs_mobile_sombre', size: const Size(390, 844), home: const AdaptiveShell(),
-      interact: (t) => _viaMore(t, 'Utilisateurs')));
-  testWidgets('09 formulaire plein ecran mobile', skip: skip, (t) => _capture(t, name: '09_formulaire_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
+      },
+    ),
+  );
+  testWidgets(
+    '07 tablette rail',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '07_tablette_rail',
+      size: const Size(1024, 768),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.byTooltip('Utilisateurs')),
+    ),
+  );
+  testWidgets(
+    '08 utilisateurs mobile sombre',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '08_utilisateurs_mobile_sombre',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) => _viaMore(t, 'Utilisateurs'),
+    ),
+  );
+  testWidgets(
+    '09 formulaire plein ecran mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '09_formulaire_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await _viaMore(t, 'Utilisateurs');
         await t.pumpAndSettle();
         await t.tap(find.text('Nouveau'));
-      }));
-  testWidgets('10 confirmation danger desktop', skip: skip, (t) => _capture(t, name: '10_confirmation_danger', size: const Size(1440, 900), home: const AdaptiveShell(),
+      },
+    ),
+  );
+  testWidgets(
+    '10 confirmation danger desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '10_confirmation_danger',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Utilisateurs'));
         await t.pumpAndSettle();
         await t.tap(find.byTooltip('Actions').at(1));
         await t.pumpAndSettle();
         await t.tap(find.text('Désactiver'));
-      }));
-  testWidgets('11 profil mobile', skip: skip, (t) => _capture(t, name: '11_profil_mobile', size: const Size(390, 844), home: const AdaptiveShell(), foreignPending: 2,
-      interact: (t) => _viaMore(t, 'Mon profil')));
+      },
+    ),
+  );
+  testWidgets(
+    '11 profil mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '11_profil_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      foreignPending: 2,
+      interact: (t) => _viaMore(t, 'Mon profil'),
+    ),
+  );
 
-  testWidgets('12 catalogue desktop sombre', skip: skip, (t) => _capture(t, name: '12_catalogue_desktop_sombre', size: const Size(1440, 900), home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.text('Catalogue'))));
-  testWidgets('13 fiche produit panneau desktop', skip: skip, (t) => _capture(t, name: '13_produit_panneau_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+  testWidgets(
+    '12 catalogue desktop sombre',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '12_catalogue_desktop_sombre',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Catalogue')),
+    ),
+  );
+  testWidgets(
+    '13 fiche produit panneau desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '13_produit_panneau_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
         await t.tap(find.text('Disjoncteur DX³ 16A courbe C'));
-      }));
-  testWidgets('14 catalogue mobile clair vendeur', skip: skip, (t) => _capture(t, name: '14_catalogue_mobile_clair_vendeur', size: const Size(390, 844), home: const AdaptiveShell(), dark: false,
-      user: authUser(id: 'v', fullName: 'Amine Benali', roles: const ['VENDEUR'], permissions: const ['product.read', 'price.read']),
-      interact: (t) async => t.tap(find.text('Catalogue'))));
-  testWidgets('15 categories desktop', skip: skip, (t) => _capture(t, name: '15_categories_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+      },
+    ),
+  );
+  testWidgets(
+    '14 catalogue mobile clair vendeur',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '14_catalogue_mobile_clair_vendeur',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      dark: false,
+      user: authUser(
+        id: 'v',
+        fullName: 'Amine Benali',
+        roles: const ['VENDEUR'],
+        permissions: const ['product.read', 'price.read'],
+      ),
+      interact: (t) async => t.tap(find.text('Catalogue')),
+    ),
+  );
+  testWidgets(
+    '15 categories desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '15_categories_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
         await t.tap(find.text('Catégories'));
-      }));
-  testWidgets('16 emplacements mobile magasinier', skip: skip, (t) => _capture(t, name: '16_emplacements_mobile_magasinier', size: const Size(390, 844), home: const AdaptiveShell(),
-      user: authUser(id: 'm', fullName: 'Karim Saidi', roles: const ['MAGASINIER'], permissions: const ['product.read', 'location.manage']),
+      },
+    ),
+  );
+  testWidgets(
+    '16 emplacements mobile magasinier',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '16_emplacements_mobile_magasinier',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      user: authUser(
+        id: 'm',
+        fullName: 'Karim Saidi',
+        roles: const ['MAGASINIER'],
+        permissions: const ['product.read', 'location.manage'],
+      ),
       interact: (t) async {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
         await t.tap(find.text('Emplacements'));
-      }));
-  testWidgets('17 nouveau produit mobile', skip: skip, (t) => _capture(t, name: '17_nouveau_produit_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
+      },
+    ),
+  );
+  testWidgets(
+    '17 nouveau produit mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '17_nouveau_produit_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
         await t.tap(find.text('Nouveau'));
-      }));
+      },
+    ),
+  );
 
-  testWidgets('18 stock desktop', skip: skip, (t) => _capture(t, name: '18_stock_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.text('Stock'))));
-  testWidgets('19 pertes a valider admin mobile', skip: skip, (t) => _capture(t, name: '19_pertes_admin_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
+  testWidgets(
+    '18 stock desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '18_stock_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Stock')),
+    ),
+  );
+  testWidgets(
+    '19 pertes a valider admin mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '19_pertes_admin_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
       interact: (t) async {
         await t.tap(find.text('Stock'));
         await t.pumpAndSettle();
         await t.tap(find.text('Pertes'));
-      }));
-  testWidgets('20 declarer perte magasinier mobile', skip: skip, (t) => _capture(t, name: '20_declarer_perte_magasinier', size: const Size(390, 844), home: const AdaptiveShell(),
-      user: authUser(id: 'm', fullName: 'Karim Saidi', roles: const ['MAGASINIER'], permissions: const ['product.read', 'location.manage', 'stock.read.store', 'stock.read.warehouse', 'stock.loss']),
+      },
+    ),
+  );
+  testWidgets(
+    '20 declarer perte magasinier mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '20_declarer_perte_magasinier',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      user: authUser(
+        id: 'm',
+        fullName: 'Karim Saidi',
+        roles: const ['MAGASINIER'],
+        permissions: const [
+          'product.read',
+          'location.manage',
+          'stock.read.store',
+          'stock.read.warehouse',
+          'stock.loss',
+        ],
+      ),
       interact: (t) async {
         await t.tap(find.text('Stock'));
         await t.pumpAndSettle();
         await t.tap(find.text('Pertes'));
         await t.pumpAndSettle();
         await t.tap(find.text('Déclarer une perte'));
-      }));
+      },
+    ),
+  );
 }

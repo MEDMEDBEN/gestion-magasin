@@ -53,7 +53,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
       _error = null;
     });
     try {
-      await ref.read(authControllerProvider.notifier).changePassword(
+      await ref
+          .read(authControllerProvider.notifier)
+          .changePassword(
             currentPassword: _current.text,
             newPassword: _next.text,
           );
@@ -109,7 +111,8 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     const AmpereInlineAlert(
                       tone: StatusTone.warn,
                       icon: LucideIcons.shield,
-                      message: 'Votre mot de passe est temporaire. '
+                      message:
+                          'Votre mot de passe est temporaire. '
                           'Choisissez-en un nouveau pour accéder à l’application.',
                     )
                   else
@@ -216,8 +219,9 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
                     TextButton.icon(
                       onPressed: isLoading
                           ? null
-                          : () =>
-                              ref.read(authControllerProvider.notifier).logout(),
+                          : () => ref
+                                .read(authControllerProvider.notifier)
+                                .logout(),
                       icon: const Icon(LucideIcons.logOut, size: 17),
                       label: const Text('Se déconnecter'),
                     ),

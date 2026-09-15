@@ -41,11 +41,11 @@ class UsersListState {
   bool get hasMore => items.length < total;
 
   UsersListState copyWith({bool? isLoadingMore}) => UsersListState(
-        items: items,
-        total: total,
-        page: page,
-        isLoadingMore: isLoadingMore ?? this.isLoadingMore,
-      );
+    items: items,
+    total: total,
+    page: page,
+    isLoadingMore: isLoadingMore ?? this.isLoadingMore,
+  );
 }
 
 /// Liste paginée des comptes, filtrée par le terme courant.
@@ -82,7 +82,9 @@ class UsersController extends AsyncNotifier<UsersListState> {
 
     state = AsyncData(current.copyWith(isLoadingMore: true));
     try {
-      final next = await ref.read(usersApiProvider).list(
+      final next = await ref
+          .read(usersApiProvider)
+          .list(
             page: current.page + 1,
             limit: pageSize,
             query: ref.read(userSearchProvider),
@@ -109,7 +111,9 @@ class UsersController extends AsyncNotifier<UsersListState> {
     required String temporaryPassword,
     required List<String> roles,
   }) async {
-    final created = await ref.read(usersApiProvider).create(
+    final created = await ref
+        .read(usersApiProvider)
+        .create(
           email: email,
           phone: phone,
           fullName: fullName,
@@ -146,4 +150,3 @@ final usersControllerProvider =
     AsyncNotifierProvider.autoDispose<UsersController, UsersListState>(
       UsersController.new,
     );
-

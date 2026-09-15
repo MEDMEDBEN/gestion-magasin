@@ -17,6 +17,7 @@ import '../../catalog/data/catalog_models.dart';
 import '../application/stock_controller.dart';
 import '../data/stock_models.dart';
 import 'loss_form.dart';
+import 'stock_status.dart';
 
 /// Droits du stock, MIROIRS des guards serveur (`docs/permissions.md`).
 class StockRights {
@@ -224,11 +225,7 @@ class _LevelRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final unit = product.unit.short;
-    // Sous le seuil minimum : à réapprovisionner (la couleur n'est jamais seule,
-    // le badge porte le libellé — §12.4).
-    final low =
-        product.minThreshold > Quantity.zero &&
-        stock.total < product.minThreshold;
+
     String at(String type) => locationIds[type] == null
         ? '0'
         : formatQuantity(stock.at(locationIds[type]!));
@@ -285,11 +282,7 @@ class _LevelRow extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (low)
-                    const AmpereBadge(
-                      label: 'Sous le seuil',
-                      tone: StatusTone.warn,
-                    ),
+                  StockStatusBadge(product: product, stock: stock),
                 ],
               ),
             ),
