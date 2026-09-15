@@ -23,16 +23,20 @@ class AmpereDangerButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final style = OutlinedButton.styleFrom(
-      foregroundColor: colors.error,
-      backgroundColor: Colors.transparent,
-    ).copyWith(
-      // Bordure `error` au repos, anneau de focus `accent` au clavier.
-      side: AppTheme.focusSide(
-        colors,
-        idle: BorderSide(color: colors.error, width: AmpereGeometry.borderWidth),
-      ),
-    );
+    final style =
+        OutlinedButton.styleFrom(
+          foregroundColor: colors.error,
+          backgroundColor: Colors.transparent,
+        ).copyWith(
+          // Bordure `error` au repos, anneau de focus `accent` au clavier.
+          side: AppTheme.focusSide(
+            colors,
+            idle: BorderSide(
+              color: colors.error,
+              width: AmpereGeometry.borderWidth,
+            ),
+          ),
+        );
     final text = Text(label);
     return icon == null
         ? OutlinedButton(onPressed: onPressed, style: style, child: text)

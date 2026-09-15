@@ -27,7 +27,9 @@ class ThemeModeController extends Notifier<ThemeMode> {
   }
 
   Future<void> _restore(String userId) async {
-    final stored = await ref.read(localSettingsStoreProvider).read(_key(userId));
+    final stored = await ref
+        .read(localSettingsStoreProvider)
+        .read(_key(userId));
     final mode = switch (stored) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
@@ -53,5 +55,6 @@ class ThemeModeController extends Notifier<ThemeMode> {
       set(state == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
 }
 
-final themeModeProvider =
-    NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
+final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(
+  ThemeModeController.new,
+);

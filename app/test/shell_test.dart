@@ -36,17 +36,22 @@ Future<void> _pumpShell(
       overrides: [
         authControllerProvider.overrideWith(() => _SignedIn(user)),
         appDatabaseProvider.overrideWithValue(db),
-        usersApiProvider.overrideWithValue(FakeUsersApi(users: [managedUser()])),
+        usersApiProvider.overrideWithValue(
+          FakeUsersApi(users: [managedUser()]),
+        ),
         // Les flux Drift réels ne se résolvent pas dans le temps simulé des
         // tests d'écran ; la file elle-même est testée à part.
         pendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
-        foreignPendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
+        foreignPendingMutationsCountProvider.overrideWith(
+          (ref) => Stream.value(0),
+        ),
         rejectedMutationsProvider.overrideWith((ref) => Stream.value(const [])),
-        if (!reachable)
-          serverReachableProvider.overrideWith(_Unreachable.new),
+        if (!reachable) serverReachableProvider.overrideWith(_Unreachable.new),
       ],
       child: MaterialApp(
-        theme: size.width >= 768 ? AppTheme.desktop(dark: true) : AppTheme.mobile(dark: true),
+        theme: size.width >= 768
+            ? AppTheme.desktop(dark: true)
+            : AppTheme.mobile(dark: true),
         home: const AdaptiveShell(),
       ),
     ),
@@ -64,7 +69,10 @@ void main() {
     testWidgets('un VENDEUR ne voit pas « Utilisateurs »', (tester) async {
       await _pumpShell(
         tester,
-        user: authUser(roles: const ['VENDEUR'], permissions: const ['sale.create']),
+        user: authUser(
+          roles: const ['VENDEUR'],
+          permissions: const ['sale.create'],
+        ),
         size: const Size(400, 800),
       );
 
@@ -72,15 +80,18 @@ void main() {
       expect(find.text('Mon profil'), findsWidgets);
     });
 
-    testWidgets('un ADMIN SANS la permission user.manage ne le voit pas non plus', (tester) async {
-      await _pumpShell(
-        tester,
-        user: authUser(permissions: const []),
-        size: const Size(1300, 900),
-      );
+    testWidgets(
+      'un ADMIN SANS la permission user.manage ne le voit pas non plus',
+      (tester) async {
+        await _pumpShell(
+          tester,
+          user: authUser(permissions: const []),
+          size: const Size(1300, 900),
+        );
 
-      expect(find.text('Utilisateurs'), findsNothing);
-    });
+        expect(find.text('Utilisateurs'), findsNothing);
+      },
+    );
 
     testWidgets('un ADMIN avec user.manage le voit', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
@@ -89,15 +100,18 @@ void main() {
     });
   });
 
-  testWidgets('mobile : UNE seule barre d’en-tête sur l’onglet Utilisateurs (C10)', (tester) async {
-    await _pumpShell(tester, user: authUser(), size: const Size(400, 800));
+  testWidgets(
+    'mobile : UNE seule barre d’en-tête sur l’onglet Utilisateurs (C10)',
+    (tester) async {
+      await _pumpShell(tester, user: authUser(), size: const Size(400, 800));
 
-    await tester.tap(find.text('Utilisateurs'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Utilisateurs'));
+      await tester.pumpAndSettle();
 
-    expect(find.byType(AppBar), findsOneWidget);
-    expect(find.text('Amine Benali'), findsOneWidget);
-  });
+      expect(find.byType(AppBar), findsOneWidget);
+      expect(find.text('Amine Benali'), findsOneWidget);
+    },
+  );
 
   group('points de rupture AMPÈRE §9', () {
     testWidgets('< 768 : coquille mobile à onglets', (tester) async {
@@ -107,7 +121,9 @@ void main() {
       expect(find.byType(NavigationBar), findsOneWidget);
     });
 
-    testWidgets('768-1180 : desktop avec sidebar en rail de 64 px', (tester) async {
+    testWidgets('768-1180 : desktop avec sidebar en rail de 64 px', (
+      tester,
+    ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1000, 800));
 
       final shell = tester.widget<DesktopShell>(find.byType(DesktopShell));
@@ -119,12 +135,48 @@ void main() {
     testWidgets('≥ 1180 : sidebar complète', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 
-      expect(tester.widget<DesktopShell>(find.byType(DesktopShell)).compact, isFalse);
+      expect(
+        tester.widget<DesktopShell>(find.byType(DesktopShell)).compact,
+        isFalse,
+      );
       expect(find.text('Gestion magasin'), findsOneWidget);
     });
   });
 
-  testWidgets('serveur injoignable : l’en-tête affiche « Hors ligne »', (tester) async {
+  testWidgets(
+    'mobile : au-delà de 4 destinations, « Plus » liste les suivantes (§7)',
+    (tester) async {
+      await _pumpShell(
+        tester,
+        user: authUser(
+          permissions: const [
+            'user.manage',
+            'product.read',
+            'stock.read.store',
+          ],
+        ),
+        size: const Size(400, 800),
+      );
+
+      // Accueil, Catalogue, Stock + Plus : 4 onglets, jamais 5.
+      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.text('Plus'), findsOneWidget);
+      expect(find.text('Utilisateurs'), findsNothing);
+
+      await tester.tap(find.text('Plus'));
+      await tester.pumpAndSettle();
+      expect(find.text('Utilisateurs'), findsOneWidget);
+      expect(find.text('Mon profil'), findsOneWidget);
+
+      await tester.tap(find.text('Mon profil'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Mon profil'), findsOneWidget);
+    },
+  );
+
+  testWidgets('serveur injoignable : l’en-tête affiche « Hors ligne »', (
+    tester,
+  ) async {
     await _pumpShell(
       tester,
       user: authUser(),

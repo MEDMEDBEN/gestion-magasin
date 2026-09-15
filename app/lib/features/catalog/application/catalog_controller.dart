@@ -85,6 +85,12 @@ Set<String> categoryWithChildren(String id, List<ProductCategory> categories) =>
         if (c.parentId == id) c.id,
     };
 
+/// Tous les produits actifs, sans filtre d'écran — pour les sélecteurs de
+/// produit des autres features (perte, vente, réception…).
+final activeProductsProvider = StreamProvider.autoDispose<List<Product>>(
+  (ref) => ref.watch(catalogRepositoryProvider).watchProducts(),
+);
+
 final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
   final filter = ref.watch(productFilterProvider);
   final categoryId = filter.categoryId;

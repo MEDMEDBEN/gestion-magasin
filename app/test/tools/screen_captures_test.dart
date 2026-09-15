@@ -14,6 +14,12 @@ import 'package:gestion_magasin/features/auth/presentation/change_password_scree
 import 'package:gestion_magasin/features/auth/presentation/login_screen.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
+import 'package:gestion_magasin/features/stock/application/stock_controller.dart';
+import 'package:gestion_magasin/features/stock/data/stock_api.dart';
+import 'package:gestion_magasin/features/stock/data/stock_models.dart';
+import 'package:decimal/decimal.dart';
+import 'package:dio/dio.dart';
+import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/breakpoints.dart';
@@ -56,7 +62,7 @@ class _IdleSync extends CatalogSyncController {
   Future<void> build() async {}
 }
 
-const _adminPermissions = ['user.manage', 'product.read', 'product.write', 'product.disable', 'location.manage'];
+const _adminPermissions = ['user.manage', 'product.read', 'product.write', 'product.disable', 'location.manage', 'stock.read.store', 'stock.read.warehouse', 'stock.loss', 'stock.adjust.validate'];
 
 final _categories = [
   category(id: 'cab', name: 'Câbles'),
@@ -76,10 +82,42 @@ final _products = [
 StorageLocation _bin(String id, String code, String name) => StorageLocation(id: id, code: code, name: name, type: 'EMPLACEMENT', parentId: 'depot', isActive: true, updatedAt: DateTime.utc(2026, 9, 14));
 
 final _locations = [
+  StorageLocation(id: 'magasin', code: 'MAGASIN', name: 'Magasin', type: 'MAGASIN', isActive: true, updatedAt: DateTime.utc(2026, 9, 14)),
+  StorageLocation(id: 'depot', code: 'DEPOT', name: 'Dépôt', type: 'DEPOT', isActive: true, updatedAt: DateTime.utc(2026, 9, 14)),
   _bin('l1', 'A-01-01-01', 'Zone A · Rayon 01 · Étagère 01 · Position 01'),
   _bin('l2', 'A-01-02-03', 'Zone A · Rayon 01 · Étagère 02 · Position 03'),
   _bin('l3', 'B-04-01-02', 'Zone B · Rayon 04 · Étagère 01 · Position 02'),
 ];
+
+StockLevel _stock(String productId, String locationId, String quantity) => StockLevel(
+      productId: productId,
+      locationId: locationId,
+      quantity: Decimal.parse(quantity),
+      reservedQuantity: Decimal.zero,
+      inTransitQuantity: Decimal.zero,
+      availableQuantity: Decimal.parse(quantity),
+    );
+
+final _stockByProduct = {
+  'p1': ProductStock([_stock('p1', 'magasin', '120'), _stock('p1', 'depot', '480')]),
+  'p2': ProductStock([_stock('p2', 'magasin', '4'), _stock('p2', 'depot', '2')]),
+  'p3': ProductStock([_stock('p3', 'magasin', '6'), _stock('p3', 'depot', '12')]),
+  'p4': ProductStock([_stock('p4', 'magasin', '9'), _stock('p4', 'depot', '40')]),
+  'p5': ProductStock([_stock('p5', 'depot', '7')]),
+};
+
+class _CaptureStockApi extends StockApi {
+  _CaptureStockApi() : super(Dio());
+
+  @override
+  Future<StockLossPage> losses({StockLossStatus? status, int limit = 200}) async => StockLossPage(
+        data: [
+          StockLoss(id: 'l1', productId: 'p4', locationId: 'depot', quantity: Decimal.parse('2'), comment: 'Deux réglettes cassées au déchargement', status: StockLossStatus.pending, declaredById: 'm', createdAt: DateTime(2026, 9, 14, 8, 40)),
+          StockLoss(id: 'l2', productId: 'p1', locationId: 'magasin', quantity: Decimal.parse('3.5'), comment: 'Chute de coupe inutilisable', status: StockLossStatus.pending, declaredById: 'm', createdAt: DateTime(2026, 9, 14, 10, 5)),
+        ],
+        meta: const PageMeta(page: 1, limit: 200, total: 2),
+      );
+}
 
 Future<void> _loadFonts() async {
   final archivo = FontLoader('Archivo')..addFont(rootBundle.load('fonts/Archivo-Variable.ttf'));
@@ -114,6 +152,9 @@ Future<void> _capture(
         categoriesProvider.overrideWith((ref) => Stream.value(_categories)),
         locationsProvider.overrideWith((ref) => Stream.value(_locations)),
         taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
+        activeProductsProvider.overrideWith((ref) => Stream.value(_products)),
+        stockByProductProvider.overrideWith((ref) async => _stockByProduct),
+        stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
         usersApiProvider.overrideWithValue(FakeUsersApi(users: _users)),
         currentUserIdProvider.overrideWithValue('me'),
@@ -152,6 +193,13 @@ Future<void> _capture(
   await tester.runAsync(db.close);
 }
 
+/// Mobile : l'admin a plus de 4 destinations, les dernières sont sous « Plus ».
+Future<void> _viaMore(WidgetTester t, String label) async {
+  await t.tap(find.text('Plus'));
+  await t.pumpAndSettle();
+  await t.tap(find.text(label));
+}
+
 void main() {
   setUpAll(_loadFonts);
   const skip = out == '';
@@ -172,10 +220,10 @@ void main() {
   testWidgets('07 tablette rail', skip: skip, (t) => _capture(t, name: '07_tablette_rail', size: const Size(1024, 768), home: const AdaptiveShell(),
       interact: (t) async => t.tap(find.byTooltip('Utilisateurs'))));
   testWidgets('08 utilisateurs mobile sombre', skip: skip, (t) => _capture(t, name: '08_utilisateurs_mobile_sombre', size: const Size(390, 844), home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.text('Utilisateurs'))));
+      interact: (t) => _viaMore(t, 'Utilisateurs')));
   testWidgets('09 formulaire plein ecran mobile', skip: skip, (t) => _capture(t, name: '09_formulaire_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
       interact: (t) async {
-        await t.tap(find.text('Utilisateurs'));
+        await _viaMore(t, 'Utilisateurs');
         await t.pumpAndSettle();
         await t.tap(find.text('Nouveau'));
       }));
@@ -188,7 +236,7 @@ void main() {
         await t.tap(find.text('Désactiver'));
       }));
   testWidgets('11 profil mobile', skip: skip, (t) => _capture(t, name: '11_profil_mobile', size: const Size(390, 844), home: const AdaptiveShell(), foreignPending: 2,
-      interact: (t) async => t.tap(find.text('Mon profil'))));
+      interact: (t) => _viaMore(t, 'Mon profil')));
 
   testWidgets('12 catalogue desktop sombre', skip: skip, (t) => _capture(t, name: '12_catalogue_desktop_sombre', size: const Size(1440, 900), home: const AdaptiveShell(),
       interact: (t) async => t.tap(find.text('Catalogue'))));
@@ -219,5 +267,23 @@ void main() {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
         await t.tap(find.text('Nouveau'));
+      }));
+
+  testWidgets('18 stock desktop', skip: skip, (t) => _capture(t, name: '18_stock_desktop', size: const Size(1440, 900), home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Stock'))));
+  testWidgets('19 pertes a valider admin mobile', skip: skip, (t) => _capture(t, name: '19_pertes_admin_mobile', size: const Size(390, 844), home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Stock'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Pertes'));
+      }));
+  testWidgets('20 declarer perte magasinier mobile', skip: skip, (t) => _capture(t, name: '20_declarer_perte_magasinier', size: const Size(390, 844), home: const AdaptiveShell(),
+      user: authUser(id: 'm', fullName: 'Karim Saidi', roles: const ['MAGASINIER'], permissions: const ['product.read', 'location.manage', 'stock.read.store', 'stock.read.warehouse', 'stock.loss']),
+      interact: (t) async {
+        await t.tap(find.text('Stock'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Pertes'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Déclarer une perte'));
       }));
 }

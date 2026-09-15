@@ -89,8 +89,9 @@ class _Sidebar extends StatelessWidget {
           SizedBox(
             height: 56,
             child: Row(
-              mainAxisAlignment:
-                  compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              mainAxisAlignment: compact
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
               children: [
                 if (!compact) const SizedBox(width: 18),
                 // `zap` est le SEUL éclair du système (§5).
@@ -188,15 +189,17 @@ class _NavItem extends StatelessWidget {
             decoration: BoxDecoration(
               // Actif : voile d'accent + trait de 2 px à gauche (§6).
               color: selected ? colors.accentBg : Colors.transparent,
-              borderRadius:
-                  BorderRadius.circular(AmpereGeometry.fieldRadiusDesktop),
+              borderRadius: BorderRadius.circular(
+                AmpereGeometry.fieldRadiusDesktop,
+              ),
               border: selected
                   ? Border(left: BorderSide(color: colors.accent, width: 2))
                   : null,
             ),
             child: Row(
-              mainAxisAlignment:
-                  compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              mainAxisAlignment: compact
+                  ? MainAxisAlignment.center
+                  : MainAxisAlignment.start,
               children: [
                 Icon(
                   entry.icon,
@@ -212,8 +215,9 @@ class _NavItem extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AmpereType.bodyDesktop.copyWith(
                         color: selected ? colors.ink : colors.ink2,
-                        fontWeight:
-                            selected ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                       ),
                     ),
                   ),
@@ -267,7 +271,9 @@ class _TopBar extends ConsumerWidget {
           ),
           const SizedBox(width: 10),
           IconButton(
-            tooltip: themeMode == ThemeMode.dark ? 'Thème clair' : 'Thème sombre',
+            tooltip: themeMode == ThemeMode.dark
+                ? 'Thème clair'
+                : 'Thème sombre',
             onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
             icon: Icon(
               themeMode == ThemeMode.dark ? LucideIcons.sun : LucideIcons.moon,

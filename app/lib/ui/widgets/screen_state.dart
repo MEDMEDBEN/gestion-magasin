@@ -9,7 +9,15 @@ import '../theme/ampere_typography.dart';
 ///
 /// `syncPending` est distinct de `success` : une opération non confirmée par le
 /// serveur ne s'affiche JAMAIS comme définitive (`docs/context.md` §6).
-enum ScreenStatus { loading, empty, noResults, error, success, offline, syncPending }
+enum ScreenStatus {
+  loading,
+  empty,
+  noResults,
+  error,
+  success,
+  offline,
+  syncPending,
+}
 
 /// Squelettes aux dimensions réelles — §8 interdit la roue centrée pendant un
 /// chargement de liste : elle ne dit rien de ce qui arrive.
@@ -56,7 +64,9 @@ class _AmpereSkeletonListState extends State<AmpereSkeletonList>
           height: widget.rowHeight,
           decoration: BoxDecoration(
             color: colors.surface2,
-            borderRadius: BorderRadius.circular(AmpereGeometry.cardRadiusMobile),
+            borderRadius: BorderRadius.circular(
+              AmpereGeometry.cardRadiusMobile,
+            ),
           ),
         ),
       ),
@@ -100,44 +110,44 @@ class ScreenStateView extends StatelessWidget {
 
     final (icon, tone, defaultTitle, defaultMessage) = switch (status) {
       ScreenStatus.empty => (
-          LucideIcons.inbox,
-          StatusTone.neutral,
-          'Rien à afficher',
-          'Aucune donnée pour le moment.',
-        ),
+        LucideIcons.inbox,
+        StatusTone.neutral,
+        'Rien à afficher',
+        'Aucune donnée pour le moment.',
+      ),
       ScreenStatus.noResults => (
-          LucideIcons.search,
-          StatusTone.neutral,
-          'Aucun résultat',
-          searchTerm == null
-              ? 'Aucun élément ne correspond.'
-              : 'Aucun élément ne correspond à « $searchTerm ».',
-        ),
+        LucideIcons.search,
+        StatusTone.neutral,
+        'Aucun résultat',
+        searchTerm == null
+            ? 'Aucun élément ne correspond.'
+            : 'Aucun élément ne correspond à « $searchTerm ».',
+      ),
       ScreenStatus.error => (
-          LucideIcons.triangleAlert,
-          StatusTone.error,
-          'Action impossible',
-          'Le serveur n’a pas répondu. Vos saisies sont conservées.',
-        ),
+        LucideIcons.triangleAlert,
+        StatusTone.error,
+        'Action impossible',
+        'Le serveur n’a pas répondu. Vos saisies sont conservées.',
+      ),
       ScreenStatus.offline => (
-          LucideIcons.cloudOff,
-          StatusTone.warn,
-          'Hors connexion',
-          'Les données affichées peuvent être périmées. '
-              'Vos opérations sont conservées et partiront au retour du réseau.',
-        ),
+        LucideIcons.cloudOff,
+        StatusTone.warn,
+        'Hors connexion',
+        'Les données affichées peuvent être périmées. '
+            'Vos opérations sont conservées et partiront au retour du réseau.',
+      ),
       ScreenStatus.syncPending => (
-          LucideIcons.refreshCw,
-          StatusTone.warn,
-          'En attente de synchronisation',
-          'Enregistré sur cet appareil, pas encore confirmé par le serveur.',
-        ),
+        LucideIcons.refreshCw,
+        StatusTone.warn,
+        'En attente de synchronisation',
+        'Enregistré sur cet appareil, pas encore confirmé par le serveur.',
+      ),
       _ => (
-          LucideIcons.circleCheck,
-          StatusTone.ok,
-          'Terminé',
-          'L’opération a abouti.',
-        ),
+        LucideIcons.circleCheck,
+        StatusTone.ok,
+        'Terminé',
+        'L’opération a abouti.',
+      ),
     };
 
     return Center(
@@ -152,7 +162,9 @@ class ScreenStateView extends StatelessWidget {
               height: 56,
               decoration: BoxDecoration(
                 color: tone.background(colors),
-                borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
+                borderRadius: BorderRadius.circular(
+                  AmpereGeometry.iconChipRadius,
+                ),
               ),
               child: Icon(icon, size: 26, color: tone.foreground(colors)),
             ),
@@ -210,14 +222,10 @@ class SyncIndicator extends StatelessWidget {
             '$rejectedCount échouée${rejectedCount > 1 ? 's' : ''}',
           )
         : isOffline
-            ? (LucideIcons.cloudOff, StatusTone.warn, 'Hors ligne')
-            : pendingCount > 0
-                ? (
-                    LucideIcons.refreshCw,
-                    StatusTone.warn,
-                    '$pendingCount en attente',
-                  )
-                : (LucideIcons.check, StatusTone.ok, 'Synchronisé');
+        ? (LucideIcons.cloudOff, StatusTone.warn, 'Hors ligne')
+        : pendingCount > 0
+        ? (LucideIcons.refreshCw, StatusTone.warn, '$pendingCount en attente')
+        : (LucideIcons.check, StatusTone.ok, 'Synchronisé');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),

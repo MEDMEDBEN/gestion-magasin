@@ -207,18 +207,18 @@ enum StatusTone { ok, warn, error, info, neutral }
 
 extension StatusToneColors on StatusTone {
   Color foreground(AmpereColors c) => switch (this) {
-        StatusTone.ok => c.ok,
-        StatusTone.warn => c.warn,
-        StatusTone.error => c.error,
-        StatusTone.info => c.info,
-        StatusTone.neutral => c.neutral,
-      };
+    StatusTone.ok => c.ok,
+    StatusTone.warn => c.warn,
+    StatusTone.error => c.error,
+    StatusTone.info => c.info,
+    StatusTone.neutral => c.neutral,
+  };
 
   Color background(AmpereColors c) => switch (this) {
-        StatusTone.ok => c.okBg,
-        StatusTone.warn => c.warnBg,
-        StatusTone.error => c.errorBg,
-        StatusTone.info => c.infoBg,
-        StatusTone.neutral => c.neutralBg,
-      };
+    StatusTone.ok => c.okBg,
+    StatusTone.warn => c.warnBg,
+    StatusTone.error => c.errorBg,
+    StatusTone.info => c.infoBg,
+    StatusTone.neutral => c.neutralBg,
+  };
 }

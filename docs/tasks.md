@@ -237,7 +237,7 @@ déploiement (`docs/DEPLOYMENT.md`). M5 reste à faire avec la feature Ventes (F
 **Reprise ICI** : relecture humaine des captures 12-17 par MEDMEDBEN → cocher la dernière case de
 `docs/plan.md` (P0 n°2) → **P0 #3 (Stock : quantités, mouvements traçables, projection atomique)**.
 
-### 🚧 P0 #3 STOCK EN COURS — 2026-09-14 · **MEDMEDBEN** (backend fait et prouvé, app à faire)
+### 🚧 P0 #3 STOCK EN COURS — 2026-09-14 · **MEDMEDBEN** (backend + app faits et prouvés, audits en cours)
 > MEDMEDBEN a dit « continue » après la P0 #2 : la relecture humaine des captures 12-17 reste NON cochée.
 - **Décision MEDMEDBEN** : perte du MAGASINIER = EN ATTENTE jusqu'à validation ADMIN (voir `docs/permissions.md`).
 - Migration ADDITIVE `stock_loss_declaration` : table `StockLossDeclaration` + enum `StockLossStatus`.
@@ -250,8 +250,16 @@ déploiement (`docs/DEPLOYMENT.md`). M5 reste à faire avec la feature Ventes (F
   `test/sync.e2e-spec.ts` exerce le moteur avec un ADMIN + nouveau test « magasinier hors-ligne = EN ATTENTE ».
 - `test/stock.e2e-spec.ts` : 13 tests. Contre-épreuves : règle d'attente retirée → échec ; verrou retiré → échec.
 Preuve : `tsc` OK · lint propre · **60** unitaires · **137** e2e.
-**Reprise ICI** : app `features/stock/` (stock par produit et emplacement, journal, pertes : déclaration
-magasinier, file de validation admin), onglet mobile « Plus » au-delà de 4 destinations, tests, audits.
+**App — FAITE** : `features/stock/` — `StockScreen` (destination « Stock », `stock.read.store`) : section Niveaux
+(magasin · dépôt · transit · total · disponible par produit, badge « Sous le seuil », fiche : niveaux par
+emplacement + 50 derniers mouvements) ; section Pertes (ADMIN/MAGASINIER + `stock.loss`) : liste filtrée,
+`LossForm` (UUID client v7, quantité décimale en chaîne), Valider / Refuser (confirmation) pour l'ADMIN.
+Stock lu EN LIGNE (jamais un chiffre périmé affiché comme vrai). `activeProductsProvider` ajouté au catalogue.
+Coquille mobile : au-delà de 4 destinations, le 4ᵉ onglet devient **« Plus »** (§7).
+Preuve : `flutter analyze` propre · `flutter test` **+170 ~20**. Captures 18-20 relues par l'agent (1 défaut
+corrigé : liste « Où » sans indication) ; scénarios 08/09/11 passés par « Plus ».
+**Reprise ICI** : audits `reviewer` + `security-reviewer` P0 #3 (lancés) → corriger → relecture humaine des
+captures 12-20 par MEDMEDBEN → P0 #4 (Ventes).
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
@@ -468,7 +476,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
 | **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
 | Produits + catégories + emplacements | 🟡 **~95 %** — relecture humaine des écrans | 🟡 Contrat figé (501) | — | — | — |
-| Stock + mouvements | 🟡 Noyau prêt | 🟡 `StockLedgerService` prêt · routes 501 | — | 🟢 couvert via le sync | — |
+| Stock + mouvements | 🟡 **~85 %** — audits | 🟢 Lecture, journal, pertes + validation | 🟢 Niveaux, pertes, « Plus » mobile | 🟢 137 e2e · 170 app | ⏳ |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
+import '../features/stock/presentation/stock_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import 'widgets/screen_state.dart';
 
@@ -42,6 +43,13 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.package,
       label: 'Catalogue',
       builder: (context, user) => CatalogScreen(user: user),
+    ),
+  // `/stock` : 3 rôles + stock.read.store.
+  if (user.can('stock.read.store'))
+    AppDestination(
+      icon: LucideIcons.warehouse,
+      label: 'Stock',
+      builder: (context, user) => StockScreen(user: user),
     ),
   // `/users` : @Roles(ADMIN) + user.manage.
   if (user.hasRole('ADMIN') && user.can('user.manage'))

@@ -12,22 +12,22 @@ class AppTheme {
   const AppTheme._();
 
   static ThemeData mobile({required bool dark}) => _build(
-        colors: dark ? AmpereColors.mobileDark : AmpereColors.mobileLight,
-        dark: dark,
-        cardRadius: AmpereGeometry.cardRadiusMobile,
-        fieldRadius: AmpereGeometry.fieldRadiusMobile,
-        fieldHeight: AmpereGeometry.fieldHeightMobile,
-        bodyStyle: AmpereType.body,
-      );
+    colors: dark ? AmpereColors.mobileDark : AmpereColors.mobileLight,
+    dark: dark,
+    cardRadius: AmpereGeometry.cardRadiusMobile,
+    fieldRadius: AmpereGeometry.fieldRadiusMobile,
+    fieldHeight: AmpereGeometry.fieldHeightMobile,
+    bodyStyle: AmpereType.body,
+  );
 
   static ThemeData desktop({required bool dark}) => _build(
-        colors: dark ? AmpereColors.desktopDark : AmpereColors.desktopLight,
-        dark: dark,
-        cardRadius: AmpereGeometry.cardRadiusDesktop,
-        fieldRadius: AmpereGeometry.fieldRadiusDesktop,
-        fieldHeight: AmpereGeometry.fieldHeightDesktop,
-        bodyStyle: AmpereType.bodyDesktop,
-      );
+    colors: dark ? AmpereColors.desktopDark : AmpereColors.desktopLight,
+    dark: dark,
+    cardRadius: AmpereGeometry.cardRadiusDesktop,
+    fieldRadius: AmpereGeometry.fieldRadiusDesktop,
+    fieldHeight: AmpereGeometry.fieldHeightDesktop,
+    bodyStyle: AmpereType.bodyDesktop,
+  );
 
   static ThemeData _build({
     required AmpereColors colors,
@@ -65,7 +65,10 @@ class AppTheme {
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: BorderSide(color: colors.line, width: AmpereGeometry.borderWidth),
+          side: BorderSide(
+            color: colors.line,
+            width: AmpereGeometry.borderWidth,
+          ),
         ),
       ),
 
@@ -79,7 +82,10 @@ class AppTheme {
         filled: true,
         fillColor: colors.surface2,
         constraints: BoxConstraints(minHeight: fieldHeight),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: _fieldBorder(fieldRadius, colors.line),
         enabledBorder: _fieldBorder(fieldRadius, colors.line),
         // Focus toujours visible (§12.10) — jamais d'`outline:none`.
@@ -110,24 +116,25 @@ class AppTheme {
       ),
 
       outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: colors.ink,
-          backgroundColor: colors.surface2,
-          minimumSize: Size(0, fieldHeight),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(fieldRadius),
-          ),
-        ).copyWith(
-          side: focusSide(
-            colors,
-            idle: BorderSide(
-              color: colors.line,
-              width: AmpereGeometry.borderWidth,
+        style:
+            OutlinedButton.styleFrom(
+              foregroundColor: colors.ink,
+              backgroundColor: colors.surface2,
+              minimumSize: Size(0, fieldHeight),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(fieldRadius),
+              ),
+            ).copyWith(
+              side: focusSide(
+                colors,
+                idle: BorderSide(
+                  color: colors.line,
+                  width: AmpereGeometry.borderWidth,
+                ),
+              ),
             ),
-          ),
-        ),
       ),
 
       textButtonTheme: TextButtonThemeData(
@@ -227,26 +234,24 @@ class AppTheme {
   static WidgetStateProperty<BorderSide?> focusSide(
     AmpereColors colors, {
     BorderSide? idle,
-  }) =>
-      WidgetStateProperty.resolveWith(
-        (states) => states.contains(WidgetState.focused)
-            ? BorderSide(
-                color: colors.accent,
-                width: 2,
-                strokeAlign: BorderSide.strokeAlignOutside,
-              )
-            : idle,
-      );
+  }) => WidgetStateProperty.resolveWith(
+    (states) => states.contains(WidgetState.focused)
+        ? BorderSide(
+            color: colors.accent,
+            width: 2,
+            strokeAlign: BorderSide.strokeAlignOutside,
+          )
+        : idle,
+  );
 
   static OutlineInputBorder _fieldBorder(
     double radius,
     Color color, {
     double width = AmpereGeometry.borderWidth,
-  }) =>
-      OutlineInputBorder(
-        borderRadius: BorderRadius.circular(radius),
-        borderSide: BorderSide(color: color, width: width),
-      );
+  }) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(radius),
+    borderSide: BorderSide(color: color, width: width),
+  );
 
   static TextTheme _textTheme(AmpereColors colors, TextStyle bodyStyle) {
     return TextTheme(
