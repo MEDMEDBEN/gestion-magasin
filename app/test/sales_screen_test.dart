@@ -1,0 +1,196 @@
+import 'package:decimal/decimal.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/features/auth/data/auth_models.dart';
+import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
+import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
+import 'package:gestion_magasin/features/sales/data/sales_api.dart';
+import 'package:gestion_magasin/features/sales/data/sales_models.dart';
+import 'package:gestion_magasin/features/sales/presentation/sales_screen.dart';
+import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/ui/theme/app_theme.dart';
+
+import 'support/catalog_fakes.dart';
+import 'support/fakes.dart';
+
+class _FakeSalesApi extends SalesApi {
+  _FakeSalesApi({this.cash}) : super(Dio());
+
+  final CashSession? cash;
+  Map<String, Object?>? sent;
+
+  @override
+  Future<CashSession?> currentCashSession() async => cash;
+
+  @override
+  Future<Sale> createSale({
+    required String id,
+    String? customerId,
+    required List<({String productId, String quantity})> lines,
+    required int paidAmount,
+  }) async {
+    sent = {
+      'id': id,
+      'customerId': customerId,
+      'lines': lines,
+      'paidAmount': paidAmount,
+    };
+    return Sale(
+      id: id,
+      number: 'TK-2026-000042',
+      type: 'TICKET',
+      status: 'VALIDEE',
+      totalHt: 362500,
+      totalTax: 68875,
+      totalTtc: 431375,
+      paidAmount: paidAmount,
+      remainingAmount: 0,
+      lines: const [],
+      soldAt: DateTime.utc(2026, 9, 15),
+    );
+  }
+}
+
+final _openCash = CashSession(
+  id: 'cash',
+  status: 'OUVERTE',
+  openingFloat: 500000,
+  cashSalesAmount: 0,
+  cashSalesCount: 0,
+  currentAmount: 500000,
+  openedAt: DateTime.utc(2026, 9, 15, 8),
+);
+
+Product _cable() =>
+    product(id: 'p1', name: 'Câble 3G2,5', barcode: '3245060123458').copyWith(
+      taxRateId: 'tva19',
+      prices: const [ProductPriceLine(priceTierId: 'detail', priceHt: 145000)],
+    );
+
+AuthUser _vendeur() => authUser(
+  id: 'v',
+  roles: const ['VENDEUR'],
+  permissions: const [
+    'sale.create',
+    'invoice.issue',
+    'cash.session.manage',
+    'customer.read',
+    'customer.write',
+    'customer.payment.create',
+  ],
+);
+
+void main() {
+  test('estimation du panier : mêmes règles et même arrondi que le serveur', () {
+    // Référence e2e serveur : 2,5 × 1 450,00 HT, TVA 19 % → 3 625,00 / 688,75.
+    final cart = CartState(
+      saleId: 's',
+      lines: [CartLine(_cable(), Decimal.parse('2.5'))],
+    );
+    final estimate = estimateCart(
+      cart,
+      defaultTierId: 'detail',
+      taxRates: {'tva19': Decimal.fromInt(19)},
+    );
+    expect(
+      (estimate.totalHt, estimate.totalTax, estimate.totalTtc),
+      (362500, 68875, 431375),
+    );
+
+    // Tarif sans prix pour ce produit : signalé, jamais inventé.
+    final gros = estimateCart(cart, defaultTierId: 'gros', taxRates: const {});
+    expect(gros.missingPrices, hasLength(1));
+    expect(gros.totalTtc, 0);
+  });
+
+  testWidgets(
+    'douchette → panier → encaissement : produit + quantité, monnaie rendue',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(cash: _openCash);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            salesApiProvider.overrideWithValue(api),
+            activeProductsProvider.overrideWith(
+              (ref) => Stream.value([_cable()]),
+            ),
+            locationsProvider.overrideWith((ref) => Stream.value(const [])),
+            priceTiersProvider.overrideWith(
+              (ref) async => const [
+                PriceTier(
+                  id: 'detail',
+                  code: 'DETAIL',
+                  name: 'Détail',
+                  isDefault: true,
+                ),
+              ],
+            ),
+            taxRatesProvider.overrideWith(
+              (ref) => Stream.value([
+                TaxRate(
+                  id: 'tva19',
+                  code: 'TVA19',
+                  name: 'TVA 19 %',
+                  rate: '19.00',
+                  isDefault: true,
+                  isActive: true,
+                  updatedAt: DateTime.utc(2026),
+                ),
+              ]),
+            ),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.mobile(dark: true),
+            home: Scaffold(body: SalesScreen(user: _vendeur())),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // La douchette tape le code puis « Entrée », deux fois + une quantité.
+      for (var i = 0; i < 2; i++) {
+        await tester.enterText(find.byType(TextField).first, '3245060123458');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('Câble 3G2,5'), findsOneWidget);
+      expect(find.text('2 pce'), findsOneWidget);
+
+      // 2 × 1 450,00 × 1,19 = 3 451,00 DA TTC
+      expect(find.textContaining('Encaisser 3'), findsOneWidget);
+      await tester.tap(find.textContaining('Encaisser 3'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '4000');
+      await tester.tap(find.text('Valider la vente'));
+      await tester.pumpAndSettle();
+
+      expect(api.sent!['paidAmount'], 345100);
+      expect(api.sent!['lines'], [(productId: 'p1', quantity: '2.000')]);
+      expect(api.sent!.containsKey('unitPriceHt'), isFalse);
+      expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
+    },
+  );
+
+  test(
+    'menu : « Vente » pour ADMIN/VENDEUR avec sale.create, jamais le magasinier',
+    () {
+      expect(
+        destinationsFor(_vendeur()).map((d) => d.label),
+        contains('Vente'),
+      );
+      expect(
+        destinationsFor(
+          authUser(
+            roles: const ['MAGASINIER'],
+            permissions: const ['sale.create'],
+          ),
+        ).map((d) => d.label),
+        isNot(contains('Vente')),
+      );
+    },
+  );
+}

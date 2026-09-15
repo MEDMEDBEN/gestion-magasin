@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
+import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import 'widgets/screen_state.dart';
@@ -37,6 +38,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       message: 'Les modules arrivent avec les prochaines features P0.',
     ),
   ),
+  // `/sales` : ADMIN|VENDEUR + sale.create.
+  if ((user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+      user.can('sale.create'))
+    AppDestination(
+      icon: LucideIcons.shoppingCart,
+      label: 'Vente',
+      builder: (context, user) => SalesScreen(user: user),
+    ),
   // `/products`, `/categories`, `/locations` en lecture : 3 rôles + product.read.
   if (user.can('product.read'))
     AppDestination(

@@ -329,7 +329,13 @@ Découpage (chaque tranche testée + poussée) :
    `POST /payments/customer` : espèces dans la caisse OUVERTE (`CashMovement ENTREE`), jamais au-delà de la dette
    ni du reste dû de la vente visée, verrou client, audit. Fournisseurs et paiement fournisseur restent 501 (P0 #5).
    4 e2e. Backend **65** unit · **175** e2e.
-6. ⏳ App : écran Caisse, écran Vente (recherche/douchette, panier, client, encaissement), ticket, liste.
+6. ✅ **App** — `features/sales/` : destination « Vente » (ADMIN/VENDEUR + sale.create) ; barre de caisse (ouvrir avec
+   fond, clôturer → rapport Z) ; panier (douchette = saisie + Entrée, recherche, +/−, retirer) avec UUID de vente
+   stable (renvoi idempotent) ; client facultatif (recherche, dette, plafond) ; estimation HT/TVA/TTC avec les
+   MÊMES règles et arrondi que le serveur (testé sur la référence e2e) ; encaissement : espèces reçues → gardé ≤
+   total, reste = crédit, monnaie à rendre ; ticket + « Émettre la facture » ; section Clients (création, dette,
+   règlement espèces). Le client n'envoie jamais de prix. Preuve : app **+178 ~20**.
+7. ⏳ **PDF** ticket/facture (moteur unique, `common/pdf/`) · audits `reviewer` + `security-reviewer` P0 #4 (lancés).
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 
 ### ▶️ ENSUITE
