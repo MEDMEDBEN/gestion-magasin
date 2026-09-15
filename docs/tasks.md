@@ -342,7 +342,18 @@ Découpage (chaque tranche testée + poussée) :
    rapport Z avec entrées/sorties, spec §ventes alignée (FA-AAAA-NNNNNN, ventes non auditées), 5 e2e ajoutés
    (caisse clôturée, règlement rattaché, acompte général, total changé, panier modifié).
    Preuve : backend **65** unit · **183** e2e (`--runInBand`) ; app analyze propre, **+178 ~20**.
-8. ⏳ **PDF** ticket/facture (moteur unique, `common/pdf/`) → captures Vente/Caisse/Clients → contre-audit → P0 #5.
+8. ✅ **PDF** — moteur UNIQUE `pdfkit` (`backend/src/common/pdf/pdf.ts` : `renderPdf`, `formatDA`, heure d'Alger ;
+   polices standard, rien à embarquer dans Docker). `GET /sales/:id/pdf` : **facture A4** si numéro légal (vendeur,
+   NIF/RC/NIS/AI, client, lignes PU HT/TVA/total HT, TVA ventilée par taux, TTC, payé/reste, « VENTE ANNULÉE »), sinon
+   **ticket 80 mm** ; mêmes droits que le détail (vendeur : ses ventes, 404 sinon). Identité du magasin : variables
+   `STORE_NAME/ADDRESS/PHONE/NIF/RC/NIS/AI` (backend/.env.example, infra/.env.example — **à renseigner avant la mise
+   en service**). App : bouton « Imprimer le ticket / la facture » (paquet `printing` : impression, « Enregistrer en
+   PDF », partage mobile) ; total HT estimé affiché sur chaque ligne du panier. Rendus relus (ticket + facture annulée).
+   Captures **21** vente desktop, **22** vente mobile, **23** clients mobile. Preuve : backend **68** unit · **184** e2e ;
+   app analyze propre, **+178 ~23**.
+   Non fait (volontairement) : archivage des factures dans MinIO (spec : « peuvent », à la demande), montant en
+   lettres sur la facture (à confirmer si exigé).
+9. ⏳ Contre-audit `reviewer` + `security-reviewer` (PDF + correctifs) → relecture humaine captures 21-23 → P0 #5.
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 
 ### ▶️ ENSUITE

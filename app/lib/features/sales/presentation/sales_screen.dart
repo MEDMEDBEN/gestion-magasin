@@ -448,6 +448,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             _CartLineRow(
               line: line,
               missingPrice: estimate.missingPrices.contains(line.product),
+              totalHt: estimate.lineTotalsHt[line.product.id],
             ),
         if (!cart.isEmpty) ...[
           const Divider(height: 28),
@@ -523,10 +524,15 @@ class _TotalRow extends StatelessWidget {
 }
 
 class _CartLineRow extends ConsumerWidget {
-  const _CartLineRow({required this.line, required this.missingPrice});
+  const _CartLineRow({
+    required this.line,
+    required this.missingPrice,
+    this.totalHt,
+  });
 
   final CartLine line;
   final bool missingPrice;
+  final int? totalHt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -545,7 +551,9 @@ class _CartLineRow extends ConsumerWidget {
                   style: AmpereType.rowTitle.copyWith(color: colors.ink),
                 ),
                 Text(
-                  line.product.sku,
+                  totalHt == null
+                      ? line.product.sku
+                      : '${line.product.sku} · ${formatDA(totalHt!)} HT',
                   style: AmpereType.mono.copyWith(color: colors.ink3),
                 ),
                 if (missingPrice)
@@ -710,6 +718,17 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
   late Sale _sale = widget.sale;
   bool _busy = false;
 
+  Future<void> _print() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(salesActionsProvider).printDocument(_sale);
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final names = {
@@ -762,6 +781,15 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
                   },
             child: const Text('Émettre la facture'),
           ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _print,
+          icon: const Icon(LucideIcons.printer, size: 16),
+          label: Text(
+            _sale.invoiceNumber == null
+                ? 'Imprimer le ticket'
+                : 'Imprimer la facture',
+          ),
+        ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Nouvelle vente'),

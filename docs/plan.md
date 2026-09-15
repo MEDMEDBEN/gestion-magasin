@@ -177,6 +177,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-15 : NON CONFORME → 1 important + 3 mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 18 à 20 à relire par MEDMEDBEN)_
 
+### Feature P0 n°4 : Ventes (tarifs, TVA/ticket/facture PDF, caisse, dettes clients)
+- [x] Schéma DB validé _(migration ADDITIVE `sale_ticket_seq` ; pas de réservation de stock en P0 — décision 2026-09-15)_
+- [x] Matrice de permissions CRUD par rôle définie _(prix/tarif/plafond : admin seul ; annulation : admin ; paiement : espèces)_
+- [x] Endpoints API implémentés _(prix par tarif, caisse + rapport Z, ventes, facture FA-AAAA-NNNNNN, PDF, annulation, clients, règlements)_
+- [x] Validation des entrées (class-validator) en place _(montants bornés, total annoncé vérifié, id idempotents)_
+- [x] Tests unitaires backend passent _(68 — 2026-09-15)_
+- [x] Tests d'intégration backend passent _(184 e2e — 2026-09-15)_
+- [x] UI desktop implémentée
+- [x] UI mobile implémentée
+- [ ] Sync offline gérée si applicable _(ventes hors-ligne = feature P0 #12, après N6b)_
+- [x] Revue par subagent `reviewer` _(2026-09-15 : PAS OK → 5 points corrigés ; contre-revue du PDF à faire)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-15 : corrigé commit 12b890a ; contre-audit du PDF à faire)_
+- [ ] Tests manuels effectués par un humain _(captures 21 à 23 + PDF ticket/facture à relire par MEDMEDBEN)_
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

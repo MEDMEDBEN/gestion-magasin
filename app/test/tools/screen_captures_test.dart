@@ -20,6 +20,8 @@ import 'package:gestion_magasin/features/stock/data/stock_models.dart';
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
+import 'package:gestion_magasin/features/sales/data/sales_api.dart';
+import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/breakpoints.dart';
@@ -256,6 +258,100 @@ class _CaptureStockApi extends StockApi {
   );
 }
 
+class _CaptureSalesApi extends SalesApi {
+  _CaptureSalesApi() : super(Dio());
+
+  @override
+  Future<CashSession?> currentCashSession() async => CashSession(
+    id: 'cash',
+    status: 'OUVERTE',
+    openingFloat: 500000,
+    cashSalesAmount: 1845000,
+    cashSalesCount: 7,
+    currentAmount: 2345000,
+    openedAt: DateTime(2026, 9, 15, 8, 2),
+  );
+
+  @override
+  Future<CustomerPage> customers({String? query, int limit = 50}) async =>
+      const CustomerPage(
+        data: [
+          Customer(
+            id: 'c1',
+            name: 'SARL Électricité Benali',
+            phone: '0550 12 34 56',
+            priceTierId: 'gros',
+            creditLimit: 5000000,
+            balanceDue: 1284000,
+            isActive: true,
+          ),
+          Customer(
+            id: 'c2',
+            name: 'Mourad Hamdi',
+            phone: '0661 98 76 54',
+            creditLimit: 0,
+            balanceDue: 0,
+            isActive: true,
+          ),
+          Customer(
+            id: 'c3',
+            name: 'Chantier Les Oliviers',
+            creditLimit: 2000000,
+            balanceDue: 1950000,
+            isActive: true,
+          ),
+        ],
+        meta: PageMeta(page: 1, limit: 50, total: 3),
+      );
+}
+
+/// Vendeuse au comptoir : panier rempli à la douchette.
+final _vendeuse = authUser(
+  id: 'v',
+  fullName: 'Nadia Kaci',
+  roles: const ['VENDEUR'],
+  permissions: const [
+    'product.read',
+    'stock.read.store',
+    'sale.create',
+    'sale.credit',
+    'invoice.issue',
+    'cash.session.manage',
+    'customer.read',
+    'customer.write',
+    'customer.payment.create',
+  ],
+);
+
+final _priced = [
+  for (final (p, ht) in [
+    (_products[0], 14500),
+    (_products[1], 89000),
+    (_products[2], 1250000),
+    (_products[3], 185000),
+    (_products[4], 420000),
+  ])
+    p.copyWith(
+      taxRateId: 'tva19',
+      prices: [ProductPriceLine(priceTierId: 'detail', priceHt: ht)],
+    ),
+];
+
+Future<void> _fillCart(WidgetTester t) async {
+  await t.tap(find.text('Vente'));
+  await t.pumpAndSettle();
+  for (final code in [
+    '3245060123458',
+    '3245064074152',
+    '3245064074152',
+    '2000000000022',
+  ]) {
+    await t.enterText(find.byType(TextField).first, code);
+    await t.testTextInput.receiveAction(TextInputAction.done);
+    await t.pumpAndSettle();
+  }
+}
+
 Future<void> _loadFonts() async {
   final archivo = FontLoader('Archivo')
     ..addFont(rootBundle.load('fonts/Archivo-Variable.ttf'));
@@ -276,6 +372,7 @@ Future<void> _capture(
   AuthUser? user,
   int foreignPending = 0,
   Future<void> Function(WidgetTester)? interact,
+  List<Product>? products,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -298,11 +395,39 @@ Future<void> _capture(
               ),
         ),
         catalogSyncProvider.overrideWith(_IdleSync.new),
-        productsProvider.overrideWith((ref) => Stream.value(_products)),
+        productsProvider.overrideWith(
+          (ref) => Stream.value(products ?? _products),
+        ),
         categoriesProvider.overrideWith((ref) => Stream.value(_categories)),
         locationsProvider.overrideWith((ref) => Stream.value(_locations)),
-        taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
-        activeProductsProvider.overrideWith((ref) => Stream.value(_products)),
+        taxRatesProvider.overrideWith(
+          (ref) => Stream.value([
+            TaxRate(
+              id: 'tva19',
+              code: 'TVA19',
+              name: 'TVA 19 %',
+              rate: '19.00',
+              isDefault: true,
+              isActive: true,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ]),
+        ),
+        activeProductsProvider.overrideWith(
+          (ref) => Stream.value(products ?? _products),
+        ),
+        priceTiersProvider.overrideWith(
+          (ref) async => const [
+            PriceTier(
+              id: 'detail',
+              code: 'DETAIL',
+              name: 'Détail',
+              isDefault: true,
+            ),
+            PriceTier(id: 'gros', code: 'GROS', name: 'Gros', isDefault: false),
+          ],
+        ),
+        salesApiProvider.overrideWithValue(_CaptureSalesApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -643,6 +768,50 @@ void main() {
         await t.tap(find.text('Pertes'));
         await t.pumpAndSettle();
         await t.tap(find.text('Déclarer une perte'));
+      },
+    ),
+  );
+
+  testWidgets(
+    '21 vente desktop vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '21_vente_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: _fillCart,
+    ),
+  );
+  testWidgets(
+    '22 vente mobile vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '22_vente_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: _fillCart,
+    ),
+  );
+  testWidgets(
+    '23 clients mobile vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '23_clients_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: (t) async {
+        await t.tap(find.text('Vente'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Clients'));
       },
     ),
   );

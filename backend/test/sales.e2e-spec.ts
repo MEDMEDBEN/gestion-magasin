@@ -554,6 +554,50 @@ describe('Ventes (e2e)', () => {
       expect(numbers[4] - numbers[0]).toBe(4);
     });
 
+    it('PDF : ticket 80 mm avant facturation, facture A4 après ; jamais celui d’un collègue', async () => {
+      const p = await product('10.000');
+      const sale = (
+        await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            lines: [{ productId: p, quantity: '2.5' }],
+            paidAmount: 431375,
+          })
+          .expect(201)
+      ).body;
+      const pdf = async (token: string, status = 200) =>
+        as(token)
+          .get(`/api/sales/${sale.id}/pdf`)
+          .buffer(true)
+          .parse((res, cb) => {
+            const chunks: Buffer[] = [];
+            res.on('data', (c: Buffer) => chunks.push(c));
+            res.on('end', () => cb(null, Buffer.concat(chunks)));
+          })
+          .expect(status);
+
+      const ticket = await pdf(tokens.vendeur);
+      expect(ticket.headers['content-type']).toBe('application/pdf');
+      const ticketText = (ticket.body as Buffer).toString('latin1');
+      expect(ticketText.startsWith('%PDF-')).toBe(true);
+      expect(ticketText).toContain(`(Ticket ${sale.number})`);
+      expect(ticketText).toContain('/MediaBox [0 0 226.77');
+
+      const invoiced = await as(tokens.vendeur)
+        .post(`/api/sales/${sale.id}/invoice`)
+        .expect(200);
+      const invoice = await pdf(tokens.vendeur);
+      expect(invoice.headers['content-disposition']).toContain(
+        `${invoiced.body.invoiceNumber}.pdf`,
+      );
+      const invoiceText = (invoice.body as Buffer).toString('latin1');
+      expect(invoiceText).toContain(`(Facture ${invoiced.body.invoiceNumber})`);
+      expect(invoiceText).toContain('/MediaBox [0 0 595.28 841.89]');
+
+      await pdf(tokens.autreVendeur, 404);
+      await pdf(tokens.magasinier, 403);
+    });
+
     it('un vendeur ne facture pas la vente d’un collègue', async () => {
       const p = await product('10.000');
       const sale = (

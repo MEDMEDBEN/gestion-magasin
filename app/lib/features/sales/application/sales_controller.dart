@@ -1,6 +1,7 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:printing/printing.dart';
 
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
@@ -114,6 +115,7 @@ class CartEstimate {
     required this.totalHt,
     required this.totalTax,
     required this.missingPrices,
+    this.lineTotalsHt = const {},
   });
 
   final int totalHt;
@@ -122,6 +124,9 @@ class CartEstimate {
 
   /// Produits sans prix pour le tarif applicable : la vente serait refusée.
   final List<Product> missingPrices;
+
+  /// Total HT estimé par produit (affiché sur chaque ligne du panier).
+  final Map<String, int> lineTotalsHt;
 }
 
 int _roundMoney(Decimal value) =>
@@ -136,6 +141,7 @@ CartEstimate estimateCart(
   var ht = 0;
   var tax = 0;
   final missing = <Product>[];
+  final lineTotals = <String, int>{};
   for (final line in cart.lines) {
     final price = line.product.prices
         .where((p) => p.priceTierId == tierId)
@@ -146,6 +152,7 @@ CartEstimate estimateCart(
     }
     final lineHt = _roundMoney(Decimal.fromInt(price.priceHt) * line.quantity);
     final rate = taxRates[line.product.taxRateId] ?? Decimal.zero;
+    lineTotals[line.product.id] = lineHt;
     ht += lineHt;
     tax += _roundMoney(
       (Decimal.fromInt(lineHt) * rate / Decimal.fromInt(100)).toDecimal(
@@ -153,7 +160,12 @@ CartEstimate estimateCart(
       ),
     );
   }
-  return CartEstimate(totalHt: ht, totalTax: tax, missingPrices: missing);
+  return CartEstimate(
+    totalHt: ht,
+    totalTax: tax,
+    missingPrices: missing,
+    lineTotalsHt: lineTotals,
+  );
 }
 
 final cartEstimateProvider = Provider.autoDispose<CartEstimate>((ref) {
@@ -165,6 +177,15 @@ final cartEstimateProvider = Provider.autoDispose<CartEstimate>((ref) {
     taxRates: {for (final r in rates) r.id: Decimal.parse(r.rate)},
   );
 });
+
+/// Impression / partage d'un PDF (boîte système : imprimante, « Enregistrer en
+/// PDF », partage mobile). Remplaçable en test.
+final printPdfProvider =
+    Provider<Future<void> Function(Uint8List bytes, String name)>(
+      (ref) =>
+          (bytes, name) =>
+              Printing.layoutPdf(onLayout: (_) async => bytes, name: name),
+    );
 
 /// Écritures Caisse / Ventes / Clients — toujours validées par le serveur.
 class SalesActions {
@@ -218,6 +239,15 @@ class SalesActions {
     final sale = await _api.issueInvoice(saleId);
     _ref.invalidate(mySalesProvider);
     return sale;
+  }
+
+  /// Télécharge le PDF de la vente et l'envoie à l'impression / au partage.
+  Future<void> printDocument(Sale sale) async {
+    final bytes = await _api.saleDocument(sale.id);
+    await _ref.read(printPdfProvider)(
+      bytes,
+      '${sale.invoiceNumber ?? sale.number}.pdf',
+    );
   }
 
   Future<Customer> createCustomer(String name, String? phone) async {

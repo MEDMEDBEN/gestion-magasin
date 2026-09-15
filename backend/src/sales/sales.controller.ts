@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -16,6 +17,7 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
@@ -92,6 +94,27 @@ export class SalesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<SaleDto> {
     return this.sales.findOne(id, user);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  @Get(':id/pdf')
+  @ApiOperation({
+    summary: 'PDF de la vente : facture A4 si facturée, sinon ticket 80 mm',
+    description:
+      'Généré serveur à la demande (rendu identique pour tous). Mêmes droits que le détail.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async document(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    const { filename, pdf } = await this.sales.renderDocument(id, user);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)

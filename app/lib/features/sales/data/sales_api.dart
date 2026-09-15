@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,6 +80,17 @@ class SalesApi {
 
   Future<Sale> issueInvoice(String saleId) =>
       _post('/sales/$saleId/invoice', null, Sale.fromJson);
+
+  /// PDF généré serveur : facture A4 si facturée, sinon ticket 80 mm.
+  Future<Uint8List> saleDocument(String saleId) {
+    return guardApi(() async {
+      final response = await _dio.get<List<int>>(
+        '/sales/$saleId/pdf',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data!);
+    });
+  }
 
   // ── Clients ─────────────────────────────────────────────────────────────
   Future<CustomerPage> customers({String? query, int limit = 50}) {

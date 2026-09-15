@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +26,10 @@ class _FakeSalesApi extends SalesApi {
 
   @override
   Future<CashSession?> currentCashSession() async => cash;
+
+  @override
+  Future<Uint8List> saleDocument(String saleId) async =>
+      Uint8List.fromList('%PDF-1.3'.codeUnits);
 
   @override
   Future<Sale> createSale({
@@ -101,6 +107,7 @@ void main() {
       (estimate.totalHt, estimate.totalTax, estimate.totalTtc),
       (362500, 68875, 431375),
     );
+    expect(estimate.lineTotalsHt, {'p1': 362500});
 
     // Tarif sans prix pour ce produit : signalé, jamais inventé.
     final gros = estimateCart(cart, defaultTierId: 'gros', taxRates: const {});
@@ -113,10 +120,14 @@ void main() {
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       final api = _FakeSalesApi(cash: _openCash);
+      final printed = <String>[];
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
             salesApiProvider.overrideWithValue(api),
+            printPdfProvider.overrideWithValue((bytes, name) async {
+              printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
+            }),
             activeProductsProvider.overrideWith(
               (ref) => Stream.value([_cable()]),
             ),
@@ -176,6 +187,11 @@ void main() {
       expect(api.sent!['lines'], [(productId: 'p1', quantity: '2.000')]);
       expect(api.sent!.containsKey('unitPriceHt'), isFalse);
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
+
+      // Le ticket PDF (généré serveur) part vers l'impression / le partage.
+      await tester.tap(find.text('Imprimer le ticket'));
+      await tester.pumpAndSettle();
+      expect(printed, ['TK-2026-000042.pdf:%PDF-']);
     },
   );
 

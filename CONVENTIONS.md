@@ -113,7 +113,7 @@ lib/features/<feature>/
 ## Génération de fichiers (une seule lib par besoin)
 
 Pour éviter que deux agents utilisent des outils différents pour le même besoin :
-- **PDF** (ticket, facture, devis, bons, rapports) : générés **côté serveur** à partir de templates HTML rendus en PDF. **Choisir UN moteur** (ex : HTML→PDF via le Chromium déjà présent, ou `pdfkit`) et le centraliser dans `backend/src/common/pdf/`. Ne pas mélanger deux moteurs.
+- **PDF** (ticket, facture, devis, bons, rapports) : générés **côté serveur** à partir de templates HTML rendus en PDF. **Choisir UN moteur** (ex : HTML→PDF via le Chromium déjà présent, ou `pdfkit`) et le centraliser dans `backend/src/common/pdf/`. Ne pas mélanger deux moteurs. **Choix fait (2026-09-15) : `pdfkit`** (`common/pdf/pdf.ts` → `renderPdf`), polices standard — pas de Chromium dans l'image. Côté app, impression/partage d'un PDF reçu : paquet `printing` uniquement.
 - **Excel / CSV** : `exceljs`, centralisé dans `common/export/`.
 - **Codes-barres** (image EAN-13 / Code128) : `bwip-js`, centralisé dans `common/barcode/`. La **génération du code interne** (si le produit n'en a pas) passe par un service unique qui garantit l'unicité (séquence + contrainte DB, retry sur collision).
 - **Étiquettes** : composition (nom, prix, image code-barres) en PDF via le même moteur PDF ; deux gabarits — planche A4 et rouleau thermique.

@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
@@ -17,6 +18,7 @@ import {
   SaleTypeDto,
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
+import { renderSaleDocument } from './sale-document';
 
 type Db = Prisma.TransactionClient;
 type SaleWithLines = Sale & { lines: SaleLine[] };
@@ -44,6 +46,7 @@ export class SalesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,
+    private readonly config: ConfigService,
   ) {}
 
   /// Vente validée (CLAUDE.md règle 3) : Sale + lignes + mouvements de stock +
@@ -295,6 +298,50 @@ export class SalesService {
     });
     SalesService.assertCanSee(sale, user);
     return this.toDto(this.prisma, sale!);
+  }
+
+  /// PDF de la vente : facture A4 si un numéro légal est attribué, sinon ticket
+  /// 80 mm. Mêmes droits de lecture que le détail de la vente.
+  async renderDocument(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<{ filename: string; pdf: Buffer }> {
+    const sale = await this.findOne(id, user);
+    const [products, customer, seller] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: sale.lines.map((l) => l.productId) } },
+        select: { id: true, name: true, sku: true, unit: true },
+      }),
+      sale.customerId
+        ? this.prisma.customer.findUnique({
+            where: { id: sale.customerId },
+            select: { name: true, address: true, phone: true },
+          })
+        : null,
+      this.prisma.user.findUnique({
+        where: { id: sale.userId },
+        select: { fullName: true },
+      }),
+    ]);
+    const env = (key: string) =>
+      this.config.get<string>(key)?.trim() || undefined;
+    const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
+      const value = env(`STORE_${key}`);
+      return value ? [`${key} : ${value}`] : [];
+    });
+    const pdf = await renderSaleDocument({
+      sale,
+      store: {
+        name: env('STORE_NAME') ?? 'Magasin',
+        address: env('STORE_ADDRESS'),
+        phone: env('STORE_PHONE'),
+        legal,
+      },
+      sellerName: seller?.fullName ?? '',
+      customer,
+      products: new Map(products.map((p) => [p.id, p])),
+    });
+    return { filename: `${sale.invoiceNumber ?? sale.number}.pdf`, pdf };
   }
 
   /// Ticket → facture : numéro légal séquentiel SANS TROU, attribué en
