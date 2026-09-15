@@ -9,9 +9,12 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
+import { IsCanonicalUuid } from '../../common/validation';
 
 export enum SaleTypeDto {
   TICKET = 'TICKET',
@@ -29,7 +32,10 @@ export enum PaymentMethodDto {
 export class CreateSaleLineDto {
   @ApiProperty() @IsUUID() productId!: string;
 
-  @ApiProperty({ example: '12.500', description: 'Quantité décimale, en chaîne.' })
+  @ApiProperty({
+    example: '12.500',
+    description: 'Quantité décimale, en chaîne.',
+  })
   @IsNumberString()
   quantity!: string;
 
@@ -46,13 +52,16 @@ export class CreateSaleLineDto {
 
 export class CreateSaleDto {
   @ApiPropertyOptional({
-    description: 'UUID généré par le client (vente hors-ligne). Absent → généré serveur.',
+    description:
+      'UUID généré par le client (vente hors-ligne). Absent → généré serveur.',
   })
   @IsUUID()
   @IsOptional()
   id?: string;
 
-  @ApiPropertyOptional({ description: 'Client — absent pour une vente comptoir.' })
+  @ApiPropertyOptional({
+    description: 'Client — absent pour une vente comptoir.',
+  })
   @IsUUID()
   @IsOptional()
   customerId?: string;
@@ -63,7 +72,9 @@ export class CreateSaleDto {
 
   @ApiProperty() @IsUUID() locationId!: string;
 
-  @ApiPropertyOptional({ description: 'Session de caisse — OBLIGATOIRE si paiement espèces.' })
+  @ApiPropertyOptional({
+    description: 'Session de caisse — OBLIGATOIRE si paiement espèces.',
+  })
   @IsUUID()
   @IsOptional()
   cashSessionId?: string;
@@ -75,7 +86,10 @@ export class CreateSaleDto {
   @Type(() => CreateSaleLineDto)
   lines!: CreateSaleLineDto[];
 
-  @ApiProperty({ example: 250000, description: 'Montant encaissé, en centimes.' })
+  @ApiProperty({
+    example: 250000,
+    description: 'Montant encaissé, en centimes.',
+  })
   @IsInt()
   @Min(0)
   paidAmount!: number;
@@ -85,12 +99,16 @@ export class CreateSaleDto {
   @IsOptional()
   paymentMethod?: PaymentMethodDto;
 
-  @ApiPropertyOptional({ description: 'Échéance si vente à crédit (ISO 8601).' })
+  @ApiPropertyOptional({
+    description: 'Échéance si vente à crédit (ISO 8601).',
+  })
   @IsString()
   @IsOptional()
   dueDate?: string;
 
-  @ApiPropertyOptional({ description: 'Idempotence sync — unique par mutation.' })
+  @ApiPropertyOptional({
+    description: 'Idempotence sync — unique par mutation.',
+  })
   @IsUUID()
   @IsOptional()
   clientMutationId?: string;
@@ -100,7 +118,10 @@ export class SaleLineDto {
   @ApiProperty() id!: string;
   @ApiProperty() productId!: string;
   @ApiProperty({ example: '12.500' }) quantity!: string;
-  @ApiProperty({ example: 14500, description: 'Prix HT figé au moment de la vente.' })
+  @ApiProperty({
+    example: 14500,
+    description: 'Prix HT figé au moment de la vente.',
+  })
   unitPriceHt!: number;
   @ApiProperty({ example: '19.00' }) taxRate!: string;
   @ApiProperty() discountAmount!: number;
@@ -125,7 +146,8 @@ export class SaleDto {
   @ApiProperty() totalTtc!: number;
   @ApiProperty() paidAmount!: number;
   @ApiProperty({
-    description: 'totalTtc − paidAmount − paiements ultérieurs. TOUJOURS recalculé.',
+    description:
+      'totalTtc − paidAmount − paiements ultérieurs. TOUJOURS recalculé.',
   })
   remainingAmount!: number;
   @ApiProperty({ type: [SaleLineDto] }) lines!: SaleLineDto[];
@@ -139,35 +161,65 @@ export class CreateCustomerPaymentDto {
   @IsInt()
   @Min(1)
   amount!: number;
-  @ApiProperty({ enum: PaymentMethodDto }) @IsEnum(PaymentMethodDto) method!: PaymentMethodDto;
+  @ApiProperty({ enum: PaymentMethodDto })
+  @IsEnum(PaymentMethodDto)
+  method!: PaymentMethodDto;
   @ApiPropertyOptional() @IsString() @IsOptional() note?: string;
   @ApiPropertyOptional() @IsUUID() @IsOptional() clientMutationId?: string;
 }
 
+/// Borne des montants en centimes : colonnes `Int` PostgreSQL (≈ 21 M DA).
+export const MAX_MONEY = 2_000_000_000;
+
 export class OpenCashSessionDto {
-  @ApiProperty() @IsUUID() locationId!: string;
+  @ApiProperty({ description: 'Le MAGASIN' })
+  @IsCanonicalUuid()
+  locationId!: string;
   @ApiProperty({ example: 500000, description: 'Fond de caisse en centimes.' })
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY)
   openingFloat!: number;
 }
 
 export class CloseCashSessionDto {
-  @ApiProperty({ example: 1250000, description: 'Espèces réellement comptées, en centimes.' })
+  @ApiProperty({
+    example: 1250000,
+    description: 'Espèces réellement comptées, en centimes.',
+  })
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY)
   countedAmount!: number;
-  @ApiPropertyOptional() @IsString() @IsOptional() note?: string;
+  @ApiPropertyOptional()
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  note?: string;
 }
 
 export class CashSessionDto {
   @ApiProperty() id!: string;
+  @ApiProperty() userId!: string;
+  @ApiProperty() locationId!: string;
   @ApiProperty({ example: 'OUVERTE' }) status!: string;
   @ApiProperty() openingFloat!: number;
+  @ApiProperty({
+    description: 'Total des ventes encaissées en espèces (centimes).',
+  })
+  cashSalesAmount!: number;
+  @ApiProperty() cashSalesCount!: number;
+  @ApiProperty({
+    description: 'Espèces censées être dans le tiroir, en ce moment.',
+  })
+  currentAmount!: number;
   @ApiProperty({ nullable: true, description: 'Attendu calculé à la clôture.' })
   expectedAmount!: number | null;
   @ApiProperty({ nullable: true }) countedAmount!: number | null;
-  @ApiProperty({ nullable: true, description: 'countedAmount − expectedAmount (écart).' })
+  @ApiProperty({
+    nullable: true,
+    description: 'countedAmount − expectedAmount (écart).',
+  })
   difference!: number | null;
   @ApiProperty() openedAt!: Date;
   @ApiProperty({ nullable: true }) closedAt!: Date | null;

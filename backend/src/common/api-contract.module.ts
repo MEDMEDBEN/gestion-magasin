@@ -12,11 +12,7 @@ import {
   PurchaseOrdersController,
   ReceptionsController,
 } from '../purchases/purchases.controller';
-import {
-  CashSessionsController,
-  PaymentsController,
-  SalesController,
-} from '../sales/sales.controller';
+import { PaymentsController, SalesController } from '../sales/sales.controller';
 import { TransfersController } from '../transfers/transfers.controller';
 
 /// Contrat OpenAPI des endpoints P0 : routes, DTO et guards FIGÉS,
@@ -25,7 +21,6 @@ import { TransfersController } from '../transfers/transfers.controller';
 @Module({
   controllers: [
     SalesController,
-    CashSessionsController,
     PaymentsController,
     CustomersController,
     SuppliersController,

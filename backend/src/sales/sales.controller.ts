@@ -1,17 +1,27 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { RequirePermissions, RoleCode, Roles } from '../common/auth.decorators';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { notImplemented } from '../common/not-implemented';
 import { PERMISSIONS } from '../common/permissions';
 import {
-  CashSessionDto,
-  CloseCashSessionDto,
   CreateCustomerPaymentDto,
   CreateSaleDto,
   SaleDto,
 } from './dto/sale.dto';
-import { OpenCashSessionDto } from './dto/sale.dto';
 
 /// CONTRAT FIGÉ — implémentation avec la feature P0 n°4 « Ventes ».
 @ApiTags('Ventes')
@@ -70,44 +80,6 @@ export class SalesController {
   }
 }
 
-@ApiTags('Caisse')
-@ApiBearerAuth()
-@Controller('cash-sessions')
-export class CashSessionsController {
-  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
-  @RequirePermissions(PERMISSIONS.CASH_SESSION_MANAGE)
-  @Post()
-  @ApiOperation({ summary: 'Ouvre une session de caisse avec un fond' })
-  @ApiOkResponse({ type: CashSessionDto })
-  open(@Body() _dto: OpenCashSessionDto): Promise<CashSessionDto> {
-    return notImplemented('Ventes / caisse');
-  }
-
-  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
-  @RequirePermissions(PERMISSIONS.CASH_SESSION_MANAGE)
-  @Post(':id/close')
-  @ApiOperation({
-    summary: 'Clôture la session et produit le rapport Z',
-    description: 'Compare le réel au théorique et enregistre l’écart.',
-  })
-  @ApiOkResponse({ type: CashSessionDto })
-  close(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CloseCashSessionDto,
-  ): Promise<CashSessionDto> {
-    return notImplemented('Ventes / caisse');
-  }
-
-  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
-  @RequirePermissions(PERMISSIONS.CASH_REPORT_READ)
-  @Get(':id/report')
-  @ApiOperation({ summary: 'Rapport Z d’une session' })
-  @ApiOkResponse({ type: CashSessionDto })
-  report(@Param('id', ParseUUIDPipe) _id: string): Promise<CashSessionDto> {
-    return notImplemented('Ventes / caisse');
-  }
-}
-
 @ApiTags('Paiements')
 @ApiBearerAuth()
 @Controller('payments')
@@ -117,16 +89,21 @@ export class PaymentsController {
   @Post('customer')
   @ApiOperation({
     summary: 'Enregistre un paiement client',
-    description: 'Réduit la dette, qui reste TOUJOURS recalculée (jamais stockée).',
+    description:
+      'Réduit la dette, qui reste TOUJOURS recalculée (jamais stockée).',
   })
-  createCustomerPayment(@Body() _dto: CreateCustomerPaymentDto): Promise<unknown> {
+  createCustomerPayment(
+    @Body() _dto: CreateCustomerPaymentDto,
+  ): Promise<unknown> {
     return notImplemented('Clients / dettes');
   }
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
   @Post('supplier')
-  @ApiOperation({ summary: 'Enregistre un paiement fournisseur (admin uniquement)' })
+  @ApiOperation({
+    summary: 'Enregistre un paiement fournisseur (admin uniquement)',
+  })
   createSupplierPayment(@Body() _dto: Record<string, never>): Promise<unknown> {
     return notImplemented('Fournisseurs / dettes');
   }
