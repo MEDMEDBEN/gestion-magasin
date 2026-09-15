@@ -237,7 +237,7 @@ déploiement (`docs/DEPLOYMENT.md`). M5 reste à faire avec la feature Ventes (F
 **Reprise ICI** : relecture humaine des captures 12-17 par MEDMEDBEN → cocher la dernière case de
 `docs/plan.md` (P0 n°2) → **P0 #3 (Stock : quantités, mouvements traçables, projection atomique)**.
 
-### 🚧 P0 #3 STOCK EN COURS — 2026-09-14 · **MEDMEDBEN** (backend + app faits et prouvés, audits en cours)
+### ✅ P0 #3 STOCK — 2026-09-15 · **MEDMEDBEN** (fait, audits corrigés ; relecture humaine en attente)
 > MEDMEDBEN a dit « continue » après la P0 #2 : la relecture humaine des captures 12-17 reste NON cochée.
 - **Décision MEDMEDBEN** : perte du MAGASINIER = EN ATTENTE jusqu'à validation ADMIN (voir `docs/permissions.md`).
 - Migration ADDITIVE `stock_loss_declaration` : table `StockLossDeclaration` + enum `StockLossStatus`.
@@ -258,8 +258,23 @@ Stock lu EN LIGNE (jamais un chiffre périmé affiché comme vrai). `activeProdu
 Coquille mobile : au-delà de 4 destinations, le 4ᵉ onglet devient **« Plus »** (§7).
 Preuve : `flutter analyze` propre · `flutter test` **+170 ~20**. Captures 18-20 relues par l'agent (1 défaut
 corrigé : liste « Où » sans indication) ; scénarios 08/09/11 passés par « Plus ».
-**Reprise ICI** : audits `reviewer` + `security-reviewer` P0 #3 (lancés) → corriger → relecture humaine des
-captures 12-20 par MEDMEDBEN → P0 #4 (Ventes).
+**Audits (2026-09-15)** — `reviewer` : PAS OK (2 bloquants) ; `security-reviewer` : NON CONFORME (1 important,
+3 mineurs). Tout corrigé et testé :
+- bloquant 1 : perte déclarée seulement au MAGASIN ou au DÉPÔT (vérifié serveur, e2e sur un EMPLACEMENT).
+- bloquant 2 : renvoi du même formulaire → même déclaration rendue, jamais une seconde perte (id généré UNE
+  fois par `LossForm` ; serveur idempotent pour le même déclarant, 409 pour un autre).
+- sécu I1 + revue 3 : `FreshAccessGuard` sur déclarer / valider / refuser ET sur `POST /sync` — un admin
+  rétrogradé ne valide plus et ses pertes repassent EN ATTENTE, en ligne comme hors-ligne (e2e + contre-épreuve).
+- sécu M1 : dates `from`/`to` strictes, date illisible → 400 (plus de 500).
+- sécu M2 : journal — le VENDEUR voit le mouvement PERTE_CASSE sans constat ni déclarant.
+- sécu M3 + revue 5 : audit `CREATE` en ligne et hors-ligne, avec l'état appliqué (`auditNewValue` du handler).
+- revue 4 : `StockService.visibleLocations` testé (unitaire) ; revue 6 : `docs/plan.md` liste la nouvelle table.
+- suggestions : tri whitelisté sur mouvements/pertes ; champ `type` inutile retiré du DTO ; limite de la liste
+  des pertes notée `ponytail:`. Motif de refus non saisi dans l'app (le serveur l'accepte) — plus tard.
+Preuve : backend `tsc` OK · **62** unitaires · **141** e2e ; app analyze propre · **+170 ~20**.
+> ⚠️ Docker s'est arrêté pendant la session : relancé, volume `infra_postgres_dev_data` intact.
+**Reprise ICI** : relecture humaine des captures 12-20 par MEDMEDBEN (non faite) → cocher `docs/plan.md` →
+P0 #4 (Ventes : tarifs, TVA/ticket/facture, caisse, dettes clients). Rappel : réservation de stock à trancher.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
@@ -476,7 +491,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | **Phase 0 — Fondation** | 🟢 **Terminée** | 🟢 Schéma · OpenAPI · Auth · Sync | 🟢 Structure, session, sync, thème | 🟢 67 backend + 73 app | 🟢 3 audits passés |
 | **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
 | Produits + catégories + emplacements | 🟡 **~95 %** — relecture humaine des écrans | 🟡 Contrat figé (501) | — | — | — |
-| Stock + mouvements | 🟡 **~85 %** — audits | 🟢 Lecture, journal, pertes + validation | 🟢 Niveaux, pertes, « Plus » mobile | 🟢 137 e2e · 170 app | ⏳ |
+| Stock + mouvements | 🟡 **~95 %** — relecture humaine | 🟢 Lecture, journal, pertes + validation | 🟢 Niveaux, pertes, « Plus » mobile | 🟢 141 e2e · 170 app | 🟢 corrigé |
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

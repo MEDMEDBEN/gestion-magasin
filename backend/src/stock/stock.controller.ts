@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,6 +29,7 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
+import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   DeclareLossDto,
@@ -97,6 +99,8 @@ export class StockController {
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.STOCK_LOSS)
+  // Peut retirer du stock (ADMIN) : l'accès est relu en base, pas dans le token.
+  @UseGuards(FreshAccessGuard)
   @Post('losses')
   @ApiOperation({
     summary: 'Déclare une perte ou une casse',
@@ -119,6 +123,7 @@ export class StockController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.STOCK_ADJUST_VALIDATE)
+  @UseGuards(FreshAccessGuard)
   @Post('losses/:id/validate')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -139,6 +144,7 @@ export class StockController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.STOCK_ADJUST_VALIDATE)
+  @UseGuards(FreshAccessGuard)
   @Post('losses/:id/reject')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

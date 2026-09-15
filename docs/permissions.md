@@ -111,6 +111,10 @@ aucune migration destructive sans confirmation).
   `StockLossDeclaration` **EN_ATTENTE** ; le stock ne bouge qu'à la **validation de l'ADMIN**
   (`stock.adjust.validate`). Refusée : aucun mouvement, la déclaration reste en historique.
 - L'ADMIN qui déclare applique directement. Même règle hors-ligne (handler de sync `MANUAL`).
+- Les droits qui décident « appliquer / valider » sont relus EN BASE (`FreshAccessGuard` sur les routes de
+  pertes ET sur `POST /sync`) : un admin rétrogradé perd la main tout de suite.
+- Le VENDEUR voit dans le journal les mouvements `PERTE_CASSE` (le stock doit rester explicable), mais
+  **ni le constat, ni le déclarant** (`comment`, `userId`, `operationId` masqués sans `stock.loss`).
 
 ## Décision du 2026-09-14 (MEDMEDBEN) — coût d'achat
 - Le **coût d'achat** (`Product.lastPurchasePriceHt`, dernier prix réceptionné = base de la marge) est

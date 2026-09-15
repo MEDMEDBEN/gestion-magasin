@@ -203,7 +203,9 @@ export class SyncService {
             action: handler.auditAction,
             entityType: handler.auditEntityType,
             entityId: outcome.entityId,
-            newValue: mutation.payload as Prisma.InputJsonValue,
+            newValue:
+              outcome.auditNewValue ??
+              (mutation.payload as Prisma.InputJsonValue),
             ipAddress: ipAddress ?? null,
           },
         });

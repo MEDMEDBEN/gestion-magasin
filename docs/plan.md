@@ -37,6 +37,7 @@ Catalogue
 
 Stock
   Stock (projection), StockMovement (source de vérité)
+  StockLossDeclaration (perte / casse ; celle du magasinier attend la validation admin — ajoutée en P0 n°3, migration additive)
 
 Ventes
   Sale, SaleLine
@@ -161,6 +162,20 @@ Traçabilité / système
 - [x] Revue par subagent `reviewer` _(2026-09-14 : aucun bloquant, 3 points corrigés + suggestions)_
 - [x] Audit par subagent `security-reviewer` _(2026-09-14 : NON CONFORME → tout corrigé → contre-audit **CONFORME**)_
 - [ ] Tests manuels effectués par un humain _(captures 12 à 17 à relire par MEDMEDBEN — `flutter test test/tools/screen_captures_test.dart --dart-define=CAPTURE_OUT=<dossier>`)_
+
+### Feature P0 n°3 : Stock (quantités, mouvements traçables, projection atomique)
+- [x] Schéma DB validé _(migration ADDITIVE `stock_loss_declaration`)_
+- [x] Matrice de permissions CRUD par rôle définie _(perte du magasinier EN ATTENTE jusqu'à validation admin — décision 2026-09-14)_
+- [x] Endpoints API implémentés _(GET /stock, /stock/movements, GET|POST /stock/losses, validate, reject)_
+- [x] Validation des entrées (class-validator) en place
+- [x] Tests unitaires backend passent _(62 — 2026-09-15)_
+- [x] Tests d'intégration backend passent _(141 e2e — 2026-09-15)_
+- [x] UI desktop implémentée
+- [x] UI mobile implémentée _(+ onglet « Plus » au-delà de 4 destinations)_
+- [x] Sync offline gérée si applicable _(handler MANUAL = même règle qu'en ligne ; déclaration hors-ligne dans l'app : après N6b)_
+- [x] Revue par subagent `reviewer` _(2026-09-15 : 2 bloquants + 4 points corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-15 : NON CONFORME → 1 important + 3 mineurs corrigés)_
+- [ ] Tests manuels effectués par un humain _(captures 18 à 20 à relire par MEDMEDBEN)_
 
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 

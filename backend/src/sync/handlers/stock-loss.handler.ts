@@ -67,6 +67,10 @@ export class StockLossHandler implements SyncMutationHandler<StockLossPayloadDto
       serverState.quantityAfter = view.quantity;
       serverState.availableAfter = view.availableQuantity;
     }
-    return { entityId: loss.id, serverState };
+    return {
+      entityId: loss.id,
+      serverState,
+      auditNewValue: StockService.lossAudit(loss),
+    };
   }
 }

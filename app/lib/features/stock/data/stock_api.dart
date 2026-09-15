@@ -43,6 +43,8 @@ class StockApi {
     });
   }
 
+  /// ponytail: une seule page (200 plus récentes) ; paginer « Toutes » quand
+  /// l'historique des pertes dépassera ce volume.
   Future<StockLossPage> losses({StockLossStatus? status, int limit = 200}) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -30,6 +31,7 @@ class _LossFormState extends ConsumerState<LossForm> {
   final _formKey = GlobalKey<FormState>();
   final _quantity = TextEditingController();
   final _comment = TextEditingController();
+  late final String _declarationId = ref.read(uuidProvider).v7();
   Product? _product;
   String? _locationId;
   String? _productError;
@@ -59,6 +61,7 @@ class _LossFormState extends ConsumerState<LossForm> {
       final loss = await ref
           .read(stockActionsProvider)
           .declareLoss(
+            id: _declarationId,
             productId: _product!.id,
             locationId: _locationId!,
             quantity: parseQuantity(_quantity.text)!,

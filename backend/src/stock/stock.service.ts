@@ -76,8 +76,10 @@ export class StockService {
       ...(query.type && { type: query.type }),
       ...((query.from || query.to) && {
         createdAt: {
-          ...(query.from && { gte: new Date(query.from) }),
-          ...(query.to && { lt: new Date(query.to) }),
+          ...(query.from && {
+            gte: StockService.dateParam(query.from, 'from'),
+          }),
+          ...(query.to && { lt: StockService.dateParam(query.to, 'to') }),
         },
       }),
       ...StockService.visibleLocations(viewer),
@@ -87,12 +89,24 @@ export class StockService {
         where,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          parseSort(query.sort, ['createdAt'] as const, { createdAt: 'desc' }),
+          { id: 'desc' },
+        ],
       }),
       this.prisma.stockMovement.count({ where }),
     ]);
+    // Le détail d'une perte (constat libre, déclarant) relève de `stock.loss` :
+    // le vendeur voit le mouvement dans le journal, pas qui l'a déclaré ni pourquoi.
+    const seesLossDetail = viewer.permissions.includes(PERMISSIONS.STOCK_LOSS);
     return {
-      data: rows.map(StockService.movementToDto),
+      data: rows.map((row) => {
+        const movement = StockService.movementToDto(row);
+        return movement.type === StockMovementTypeDto.PERTE_CASSE &&
+          !seesLossDetail
+          ? { ...movement, comment: null, userId: null, operationId: null }
+          : movement;
+      }),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -106,7 +120,10 @@ export class StockService {
         where,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          parseSort(query.sort, ['createdAt'] as const, { createdAt: 'desc' }),
+          { id: 'desc' },
+        ],
       }),
       this.prisma.stockLossDeclaration.count({ where }),
     ]);
@@ -122,11 +139,23 @@ export class StockService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<StockLossDto> {
+    // Renvoi du MÊME formulaire (réponse perdue après le commit) : on rend la
+    // déclaration existante au lieu d'en créer une seconde — une perte ne doit
+    // jamais être retirée deux fois du stock. L'id est généré par le client.
+    if (dto.id) {
+      const existing = await this.prisma.stockLossDeclaration.findUnique({
+        where: { id: dto.id },
+      });
+      if (existing?.declaredById === user.id) {
+        return StockService.lossToDto(existing);
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       const loss = await this.declareLossInTx(tx, dto, user);
+      // Même action qu'hors-ligne (handler de sync) : la déclaration est CRÉÉE ;
+      // son application éventuelle est tracée par le mouvement du journal.
       await writeAudit(tx, actor, {
-        action:
-          loss.status === StockLossStatusDto.VALIDEE ? 'ADJUST' : 'CREATE',
+        action: 'CREATE',
         entityType: 'StockLossDeclaration',
         entityId: loss.id,
         newValue: StockService.lossAudit(loss),
@@ -158,12 +187,21 @@ export class StockService {
     });
     const location = await tx.location.findUnique({
       where: { id: dto.locationId },
-      select: { isActive: true },
+      select: { isActive: true, type: true },
     });
     if (!product?.isActive || !location?.isActive) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
         'Produit ou emplacement introuvable ou inactif',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    // Le stock vit au MAGASIN et au DEPOT : une position (EMPLACEMENT) ou le
+    // TRANSIT ne portent pas de projection propre à déclarer en perte.
+    if (location.type !== 'MAGASIN' && location.type !== 'DEPOT') {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Une perte se déclare au magasin ou au dépôt',
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
@@ -291,7 +329,21 @@ export class StockService {
     return StockService.lossToDto(validated);
   }
 
-  private static visibleLocations(viewer: Viewer) {
+  /// `@IsISO8601` accepte des formes (semaine, jour de l'année) que `Date` ne
+  /// sait pas lire : une date illisible est un 400, jamais une 500.
+  private static dateParam(raw: string, field: string): Date {
+    const date = new Date(raw);
+    const year = date.getUTCFullYear();
+    if (Number.isNaN(date.getTime()) || year < 2000 || year > 9999) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `${field} : date invalide (attendu AAAA-MM-JJ ou ISO 8601 complet)`,
+      );
+    }
+    return date;
+  }
+
+  static visibleLocations(viewer: Pick<Viewer, 'permissions'>) {
     return viewer.permissions.includes(PERMISSIONS.STOCK_READ_WAREHOUSE)
       ? {}
       : { location: { type: 'MAGASIN' as const } };
@@ -343,7 +395,7 @@ export class StockService {
     };
   }
 
-  private static lossAudit(loss: StockLossDto): Prisma.InputJsonObject {
+  static lossAudit(loss: StockLossDto): Prisma.InputJsonObject {
     return {
       productId: loss.productId,
       locationId: loss.locationId,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -127,7 +128,9 @@ describe('Stock (e2e)', () => {
       const audit = await prisma.auditLog.findFirst({
         where: { entityType: 'StockLossDeclaration', entityId: res.body.id },
       });
-      expect(audit?.action).toBe('ADJUST');
+      // Même action en ligne et hors-ligne ; l'application est dans le journal.
+      expect(audit?.action).toBe('CREATE');
+      expect(audit?.newValue).toMatchObject({ status: 'VALIDEE' });
     });
 
     it('MAGASINIER : EN ATTENTE, le stock ne bouge PAS avant validation', async () => {
@@ -267,6 +270,108 @@ describe('Stock (e2e)', () => {
       expect(await stockOf(productId)).toBe('10.000');
     });
 
+    it('une perte se déclare au magasin ou au dépôt, jamais sur une position', async () => {
+      const productId = await productWithStock('10.000');
+      const bin = await prisma.location.create({
+        data: {
+          code: `E2E-BIN-${suffix}`,
+          name: 'Position e2e',
+          type: 'EMPLACEMENT',
+          parentId: depotId,
+        },
+      });
+      try {
+        await as(tokens.admin)
+          .post('/api/stock/losses')
+          .send({ productId, locationId: bin.id, quantity: '1.000' })
+          .expect(422);
+        expect(
+          await prisma.stock.count({ where: { locationId: bin.id } }),
+        ).toBe(0);
+      } finally {
+        await prisma.location.delete({ where: { id: bin.id } });
+      }
+    });
+
+    it('renvoi du même formulaire (même id) : UNE seule perte appliquée', async () => {
+      const productId = await productWithStock('10.000');
+      const id = randomUUID();
+      const send = () =>
+        as(tokens.admin)
+          .post('/api/stock/losses')
+          .send({ id, productId, locationId: depotId, quantity: '2.000' });
+
+      const first = await send().expect(201);
+      const second = await send().expect(201);
+
+      expect(second.body.id).toBe(first.body.id);
+      expect(await stockOf(productId)).toBe('8.000');
+      // Un AUTRE compte ne récupère pas la déclaration d'un collègue.
+      await as(tokens.magasinier)
+        .post('/api/stock/losses')
+        .send({ id, productId, locationId: depotId, quantity: '2.000' })
+        .expect(409);
+    });
+
+    it('admin RÉTROGRADÉ : droits relus en base, en ligne comme en synchronisation', async () => {
+      const email = `e2e-stock-demoted-${suffix}@test.local`;
+      const user = await createTestUser(prisma, {
+        email,
+        password: PASSWORD,
+        roles: [RoleCode.ADMIN],
+      });
+      userIds.push(user.id);
+      const token = (
+        await request(server)
+          .post('/api/auth/login')
+          .send({ identifier: email, password: PASSWORD })
+          .expect(200)
+      ).body.accessToken as string;
+      const productId = await productWithStock('10.000');
+      const pending = (await declare(tokens.magasinier, productId).expect(201))
+        .body;
+
+      // Rétrogradé en base ; son token (15 min) porte encore ADMIN.
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { roles: { set: [{ code: RoleCode.MAGASINIER }] } },
+      });
+
+      await as(token)
+        .post(`/api/stock/losses/${pending.id}/validate`)
+        .expect(403);
+      // Sa perte n'est plus appliquée d'office : elle attend, en ligne…
+      const online = await declare(token, productId).expect(201);
+      expect(online.body.status).toBe('EN_ATTENTE');
+      // … et hors-ligne.
+      const synced = await request(server)
+        .post('/api/sync')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          mutations: [
+            {
+              clientMutationId: randomUUID(),
+              deviceId: 'e2e-stock',
+              operationType: 'MANUAL',
+              deviceTimestamp: new Date().toISOString(),
+              payload: {
+                productId,
+                locationId: depotId,
+                quantity: '1.000',
+                type: 'PERTE_CASSE',
+              },
+            },
+          ],
+        })
+        .expect(200);
+      expect(synced.body.results[0]).toMatchObject({
+        status: 'CONFIRMEE',
+        serverState: { status: 'EN_ATTENTE' },
+      });
+      expect(await stockOf(productId)).toBe('10.000');
+      await prisma.syncMutation.deleteMany({ where: { userId: user.id } });
+    });
+
     it('liste filtrée par statut, paginée', async () => {
       const productId = await productWithStock('10.000');
       const pending = (await declare(tokens.magasinier, productId).expect(201))
@@ -327,7 +432,28 @@ describe('Stock (e2e)', () => {
       await as(tokens.admin).post('/api/stock/movements').send({}).expect(404);
     });
 
+    it('journal : le VENDEUR voit la perte, pas son constat ni son déclarant', async () => {
+      const productId = await productWithStock('10.000');
+      await declare(tokens.admin, productId, '1.000').expect(201);
+      const url = `/api/stock/movements?productId=${productId}`;
+
+      const vendeur = await as(tokens.vendeur).get(url).expect(200);
+      expect(vendeur.body.data[0]).toMatchObject({
+        quantity: '-1.000',
+        comment: null,
+        userId: null,
+        operationId: null,
+      });
+      const magasinier = await as(tokens.magasinier).get(url).expect(200);
+      expect(magasinier.body.data[0].comment).toBe('Carton écrasé');
+    });
+
     it('filtres invalides → 400', async () => {
+      for (const from of ['2026-W05', '2026-123', '2021-02-30', '1900-01-01']) {
+        await as(tokens.admin)
+          .get(`/api/stock/movements?from=${from}`)
+          .expect(400);
+      }
       await as(tokens.admin).get('/api/stock/movements?from=hier').expect(400);
       await as(tokens.admin)
         .get('/api/stock?productId=pas-un-uuid')

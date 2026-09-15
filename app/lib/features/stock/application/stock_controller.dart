@@ -71,7 +71,11 @@ class StockActions {
 
   final Ref _ref;
 
+  /// `id` : généré UNE fois par formulaire — un renvoi après coupure renvoie le
+  /// même id, et le serveur rend la déclaration déjà créée au lieu d'en faire une
+  /// seconde (une perte n'est jamais retirée deux fois du stock).
   Future<StockLoss> declareLoss({
+    required String id,
     required String productId,
     required String locationId,
     required Quantity quantity,
@@ -80,8 +84,7 @@ class StockActions {
     final loss = await _ref
         .read(stockApiProvider)
         .declareLoss(
-          // UUID client : un renvoi après coupure ne crée pas un doublon.
-          id: _ref.read(uuidProvider).v7(),
+          id: id,
           productId: productId,
           locationId: locationId,
           quantity: quantityToJson(quantity),

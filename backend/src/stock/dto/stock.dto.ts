@@ -67,11 +67,11 @@ export class MovementQueryDto extends PaginationQueryDto {
   @IsOptional()
   type?: StockMovementTypeDto;
   @ApiPropertyOptional({ description: 'Depuis (ISO 8601, inclus)' })
-  @IsISO8601()
+  @IsISO8601({ strict: true, strictSeparator: true })
   @IsOptional()
   from?: string;
   @ApiPropertyOptional({ description: 'Jusqu’à (ISO 8601, exclu)' })
-  @IsISO8601()
+  @IsISO8601({ strict: true, strictSeparator: true })
   @IsOptional()
   to?: string;
 }
@@ -118,14 +118,6 @@ export class DeclareLossDto {
   @IsString()
   @MaxLength(20)
   quantity!: string;
-
-  @ApiPropertyOptional({
-    enum: [StockMovementTypeDto.PERTE_CASSE],
-    default: StockMovementTypeDto.PERTE_CASSE,
-  })
-  @IsEnum([StockMovementTypeDto.PERTE_CASSE])
-  @IsOptional()
-  type?: StockMovementTypeDto.PERTE_CASSE;
 
   @ApiPropertyOptional()
   @Transform(trimOrNull)

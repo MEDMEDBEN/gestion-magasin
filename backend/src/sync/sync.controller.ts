@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Ip,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -18,6 +19,7 @@ import {
   RoleCode,
   Roles,
 } from '../common/auth.decorators';
+import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { SyncBatchDto, SyncBatchResultDto } from './dto/sync.dto';
 import { SyncService } from './sync.service';
 
@@ -33,6 +35,9 @@ export class SyncController {
   /// exactement les mêmes permissions qu'en ligne, et une mutation non autorisée est
   /// rejetée individuellement sans faire échouer le lot.
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER)
+  // Un lot peut modifier le stock : rôles et permissions relus EN BASE une fois par
+  // lot (compte actif, session vivante) — jamais ceux d'un token de 15 min.
+  @UseGuards(FreshAccessGuard)
   @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
