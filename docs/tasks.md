@@ -310,10 +310,20 @@ Découpage (chaque tranche testée + poussée) :
    centimes, audit `ProductPrice` avant/après), `prices` dans chaque produit et dans le delta (produit « touché »).
    App : prix par tarif dans le formulaire (ADMIN), lecture seule pour les autres. Preuve : backend 41 e2e
    catalogue ; app **+175 ~20**.
-2. ⏳ Caisse : ouvrir / session courante / clôturer (rapport Z : attendu, compté, écart).
-3. ⏳ Vente : `POST /sales` (lignes → prix du tarif client ou défaut, TVA figée, mouvements VENTE au MAGASIN,
-   espèces rattachées à la session, crédit ≤ plafond), liste, détail, annulation ADMIN (mouvements inverses).
-4. ⏳ Facture : `POST /sales/:id/invoice` (numéro légal) + PDF (moteur unique à choisir, `common/pdf/`).
+2. ✅ **Caisse (backend)** — `src/sales/cash-sessions.*` : ouvrir au MAGASIN (1 caisse ouverte par compte, verrou),
+   `GET /cash-sessions/current` (corps vide si aucune), clôture = rapport Z (attendu = fond + ventes espèces +
+   entrées − sorties ; écart), rapport : le vendeur sa session, l'admin toutes (404 pour autrui). 4 e2e.
+3. ✅ **Vente (backend)** — `src/sales/sales.service.ts` : `POST /sales` au MAGASIN, prix NON envoyé par le client
+   (tarif du client ou défaut, figé), TVA figée, arrondi au centime demi-haut, remise ADMIN seule, espèces →
+   caisse ouverte du vendeur (`CashMovement VENTE_ESPECES`), reste = crédit (client + `sale.credit` + plafond sous
+   verrou client), ticket `TK-AAAA-NNNNNN` (séquence `sale_ticket_seq`, migration additive), mouvements VENTE via
+   le journal, UNE transaction, idempotent sur l'id client. `GET /sales` (vendeur : les siennes), `GET /sales/:id`.
+   Annulation ADMIN : retours stock (RETOUR_CLIENT), sortie de caisse, ANNULEE, audit ; refus si facturée, réglée
+   ou caisse clôturée. Ventes normales NON auditées (spec §24).
+4. ✅ **Facture (numéro)** — `POST /sales/:id/invoice` : `FA-AAAA-NNNNNN` via `InvoiceCounter` (UPDATE … RETURNING
+   sous verrou de ligne, année Africa/Algiers), idempotent, audit VALIDATE. ⏳ **PDF** : moteur unique à choisir.
+   Preuve : 19 e2e ventes (stock insuffisant atomique, dernière unité en concurrence, crédit concurrent — contre-
+   épreuve verrou retiré → échec —, 5 facturations simultanées consécutives…). Backend **65** unit · **171** e2e.
 5. ⏳ Clients minimum (création, tarif, plafond) + paiements de dette.
 6. ⏳ App : écran Caisse, écran Vente (recherche/douchette, panier, client, encaissement), ticket, liste.
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).

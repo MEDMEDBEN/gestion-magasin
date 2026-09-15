@@ -57,7 +57,9 @@ describe('Auth (e2e)', () => {
         where: { entityType: 'User', entityId: userId },
         orderBy: { createdAt: 'asc' },
       })
-    ).map((entry) => (entry.newValue as Record<string, unknown> | null)?.operation);
+    ).map(
+      (entry) => (entry.newValue as Record<string, unknown> | null)?.operation,
+    );
 
   beforeAll(async () => {
     e2e = await createE2eApp();
@@ -80,7 +82,9 @@ describe('Auth (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({
-      where: { OR: [{ entityId: { in: createdIds } }, { userId: { in: createdIds } }] },
+      where: {
+        OR: [{ entityId: { in: createdIds } }, { userId: { in: createdIds } }],
+      },
     });
     await prisma.user.deleteMany({ where: { id: { in: createdIds } } });
     await e2e.app.close();
@@ -152,7 +156,9 @@ describe('Auth (e2e)', () => {
       where: { entityType: 'User', entityId: user.id },
       orderBy: { createdAt: 'desc' },
     });
-    expect(entry?.newValue).toMatchObject({ operation: 'REFRESH_TOKEN_REUSE_DETECTED' });
+    expect(entry?.newValue).toMatchObject({
+      operation: 'REFRESH_TOKEN_REUSE_DETECTED',
+    });
     // Pas d'auteur authentifié : c'est le serveur qui réagit.
     expect(entry?.userId).toBeNull();
   });
@@ -186,7 +192,10 @@ describe('Auth (e2e)', () => {
   it('le refresh d’un compte DÉSACTIVÉ est refusé et ferme ses sessions', async () => {
     const user = await newUser('refresh-off');
     const session = await login(user.email, TEMP_PASSWORD);
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+    });
 
     const res = await refresh(session.body.refreshToken);
 
@@ -246,7 +255,10 @@ describe('Auth (e2e)', () => {
       where: { userId: user.id, revokedAt: null },
       select: { deviceId: true },
     });
-    expect(active.map((t) => t.deviceId).sort()).toEqual(['autre-appareil', 'mobile-42']);
+    expect(active.map((t) => t.deviceId).sort()).toEqual([
+      'autre-appareil',
+      'mobile-42',
+    ]);
   });
 
   it('un VENDEUR est bloqué sur une route ADMIN', async () => {
@@ -341,7 +353,10 @@ describe('Auth (e2e)', () => {
     const user = await newUser('cp-off');
     const session = await login(user.email, TEMP_PASSWORD);
     // Désactivé APRÈS la connexion : son access token vit encore ≤ 15 min.
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+    });
     await prisma.refreshToken.updateMany({
       where: { userId: user.id },
       data: { revokedAt: new Date() },
@@ -361,7 +376,10 @@ describe('Auth (e2e)', () => {
   it('/auth/me refuse un compte désactivé', async () => {
     const user = await newUser('me-off');
     const session = await login(user.email, TEMP_PASSWORD);
-    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isActive: false },
+    });
 
     const res = await request(server)
       .get('/api/auth/me')
@@ -388,9 +406,9 @@ describe('Auth (e2e)', () => {
     const entries = await prisma.auditLog.findMany({
       where: { entityType: 'User', entityId: user.id },
     });
-    expect(entries.map((e) => (e.newValue as Record<string, unknown>).operation)).toContain(
-      'PASSWORD_CHANGE',
-    );
+    expect(
+      entries.map((e) => (e.newValue as Record<string, unknown>).operation),
+    ).toContain('PASSWORD_CHANGE');
     const dump = JSON.stringify(entries);
     expect(dump).not.toContain(TEMP_PASSWORD);
     expect(dump).not.toContain(NEW_PASSWORD);
@@ -425,7 +443,10 @@ describe('Auth (e2e)', () => {
     const res = await request(server)
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${session.body.accessToken}`)
-      .send({ currentPassword: 'PasLeBonMotDePasse', newPassword: NEW_PASSWORD });
+      .send({
+        currentPassword: 'PasLeBonMotDePasse',
+        newPassword: NEW_PASSWORD,
+      });
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('CURRENT_PASSWORD_INVALID');
@@ -473,7 +494,9 @@ describe('Auth (e2e)', () => {
     createdIds.push(created.body.id);
 
     expect(created.body.email).toBe(`karim.mixte-${suffix}@test.local`);
-    expect((await login(`KARIM.MIXTE-${suffix}@test.local`, TEMP_PASSWORD)).status).toBe(200);
+    expect(
+      (await login(`KARIM.MIXTE-${suffix}@test.local`, TEMP_PASSWORD)).status,
+    ).toBe(200);
   });
 
   it('le téléphone se saisit avec ou sans ponctuation', async () => {
@@ -498,7 +521,10 @@ describe('Auth (e2e)', () => {
 
   it('borne la taille des champs d’authentification (anti-DoS argon2)', async () => {
     const tooLongPassword = await login(adminEmail, 'x'.repeat(129));
-    const tooLongIdentifier = await login(`${'a'.repeat(300)}@test.local`, TEMP_PASSWORD);
+    const tooLongIdentifier = await login(
+      `${'a'.repeat(300)}@test.local`,
+      TEMP_PASSWORD,
+    );
 
     expect(tooLongPassword.status).toBe(400);
     expect(tooLongPassword.body.code).toBe('VALIDATION_FAILED');
@@ -506,9 +532,11 @@ describe('Auth (e2e)', () => {
   });
 
   it('rejette un payload avec un champ inconnu (whitelist stricte)', async () => {
-    const res = await request(server)
-      .post('/api/auth/login')
-      .send({ identifier: adminEmail, password: TEMP_PASSWORD, champInconnu: 'x' });
+    const res = await request(server).post('/api/auth/login').send({
+      identifier: adminEmail,
+      password: TEMP_PASSWORD,
+      champInconnu: 'x',
+    });
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('VALIDATION_FAILED');
@@ -518,7 +546,7 @@ describe('Auth (e2e)', () => {
     const session = await login(adminEmail, TEMP_PASSWORD);
 
     const res = await request(server)
-      .get('/api/sales')
+      .get('/api/customers')
       .set('Authorization', `Bearer ${session.body.accessToken}`);
 
     expect(res.status).toBe(501);
@@ -526,7 +554,9 @@ describe('Auth (e2e)', () => {
   });
 
   it('refuse de réutiliser le mot de passe courant au changement', async () => {
-    const user = await newUser('reuse', RoleCode.VENDEUR, { mustChangePassword: true });
+    const user = await newUser('reuse', RoleCode.VENDEUR, {
+      mustChangePassword: true,
+    });
     const session = await login(user.email, TEMP_PASSWORD);
 
     const res = await request(server)

@@ -20,7 +20,6 @@ import { TransfersController } from '../transfers/transfers.controller';
 /// Chaque route répond 501 + `NOT_IMPLEMENTED` tant que sa feature n'est pas faite.
 @Module({
   controllers: [
-    SalesController,
     PaymentsController,
     CustomersController,
     SuppliersController,

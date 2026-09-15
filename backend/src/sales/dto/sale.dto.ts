@@ -1,11 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  PaginationMetaDto,
+  PaginationQueryDto,
+} from '../../common/dto/pagination.dto';
+import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsEnum,
   IsInt,
-  IsNumberString,
   IsOptional,
   IsString,
   IsUUID,
@@ -15,6 +19,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsCanonicalUuid } from '../../common/validation';
+
+/// Borne des montants en centimes : colonnes `Int` PostgreSQL (≈ 21 M DA).
+export const MAX_MONEY = 2_000_000_000;
 
 export enum SaleTypeDto {
   TICKET = 'TICKET',
@@ -30,88 +37,72 @@ export enum PaymentMethodDto {
 }
 
 export class CreateSaleLineDto {
-  @ApiProperty() @IsUUID() productId!: string;
+  @ApiProperty() @IsCanonicalUuid() productId!: string;
 
   @ApiProperty({
     example: '12.500',
-    description: 'Quantité décimale, en chaîne.',
+    description: 'Quantité décimale positive, en chaîne.',
   })
-  @IsNumberString()
+  @IsString()
+  @MaxLength(20)
   quantity!: string;
 
   @ApiPropertyOptional({
     description:
-      'Remise en centimes. Réservée à l’ADMIN (permission `sale.discount`) — ' +
+      'Remise en centimes sur la ligne. Réservée à l’ADMIN (`sale.discount`) — ' +
       'le vendeur n’applique aucune remise libre.',
   })
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY)
   @IsOptional()
   discountAmount?: number;
 }
 
+/// Vente au comptoir du MAGASIN. Le PRIX n'est jamais envoyé par le client : le
+/// serveur applique le tarif du client (ou le tarif par défaut) et le fige sur
+/// la ligne (règle 13). Paiement : ESPÈCES uniquement (décision 2026-09-15),
+/// le reste éventuel part en crédit client dans son plafond.
 export class CreateSaleDto {
   @ApiPropertyOptional({
     description:
-      'UUID généré par le client (vente hors-ligne). Absent → généré serveur.',
+      'UUID généré par le client : un renvoi ne crée pas une seconde vente.',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   id?: string;
 
   @ApiPropertyOptional({
     description: 'Client — absent pour une vente comptoir.',
   })
-  @IsUUID()
+  @IsCanonicalUuid()
   @IsOptional()
   customerId?: string;
-
-  @ApiProperty({ enum: SaleTypeDto, default: SaleTypeDto.TICKET })
-  @IsEnum(SaleTypeDto)
-  type!: SaleTypeDto;
-
-  @ApiProperty() @IsUUID() locationId!: string;
-
-  @ApiPropertyOptional({
-    description: 'Session de caisse — OBLIGATOIRE si paiement espèces.',
-  })
-  @IsUUID()
-  @IsOptional()
-  cashSessionId?: string;
 
   @ApiProperty({ type: [CreateSaleLineDto] })
   @IsArray()
   @ArrayNotEmpty()
+  @ArrayMaxSize(200)
   @ValidateNested({ each: true })
   @Type(() => CreateSaleLineDto)
   lines!: CreateSaleLineDto[];
 
   @ApiProperty({
     example: 250000,
-    description: 'Montant encaissé, en centimes.',
+    description:
+      'Espèces ENCAISSÉES pour cette vente, en centimes (≤ total TTC ; la monnaie ' +
+      'rendue ne compte pas). Le reste est du crédit client.',
   })
   @IsInt()
   @Min(0)
+  @Max(MAX_MONEY)
   paidAmount!: number;
 
-  @ApiPropertyOptional({ enum: PaymentMethodDto })
-  @IsEnum(PaymentMethodDto)
-  @IsOptional()
-  paymentMethod?: PaymentMethodDto;
-
-  @ApiPropertyOptional({
-    description: 'Échéance si vente à crédit (ISO 8601).',
-  })
+  @ApiPropertyOptional()
   @IsString()
+  @MaxLength(500)
   @IsOptional()
-  dueDate?: string;
-
-  @ApiPropertyOptional({
-    description: 'Idempotence sync — unique par mutation.',
-  })
-  @IsUUID()
-  @IsOptional()
-  clientMutationId?: string;
+  note?: string;
 }
 
 export class SaleLineDto {
@@ -123,6 +114,7 @@ export class SaleLineDto {
     description: 'Prix HT figé au moment de la vente.',
   })
   unitPriceHt!: number;
+  @ApiProperty({ nullable: true }) priceTierId!: string | null;
   @ApiProperty({ example: '19.00' }) taxRate!: string;
   @ApiProperty() discountAmount!: number;
   @ApiProperty() lineTotalHt!: number;
@@ -132,26 +124,39 @@ export class SaleLineDto {
 
 export class SaleDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ description: 'Numéro de ticket' }) number!: string;
+  @ApiProperty({ description: 'Numéro de ticket TK-AAAA-NNNNNN' })
+  number!: string;
   @ApiProperty({
     nullable: true,
-    description: 'Numéro légal FAC-AAAA-NNNNN — serveur, en ligne uniquement.',
+    description: 'Numéro légal FA-AAAA-NNNNNN — serveur, en ligne uniquement.',
   })
   invoiceNumber!: string | null;
   @ApiProperty({ enum: SaleTypeDto }) type!: SaleTypeDto;
   @ApiProperty({ example: 'VALIDEE' }) status!: string;
   @ApiProperty({ nullable: true }) customerId!: string | null;
+  @ApiProperty() userId!: string;
+  @ApiProperty({ nullable: true }) cashSessionId!: string | null;
   @ApiProperty() totalHt!: number;
   @ApiProperty() totalTax!: number;
   @ApiProperty() totalTtc!: number;
   @ApiProperty() paidAmount!: number;
   @ApiProperty({
     description:
-      'totalTtc − paidAmount − paiements ultérieurs. TOUJOURS recalculé.',
+      'totalTtc − encaissé − paiements ultérieurs. TOUJOURS recalculé.',
   })
   remainingAmount!: number;
   @ApiProperty({ type: [SaleLineDto] }) lines!: SaleLineDto[];
   @ApiProperty() soldAt!: Date;
+  @ApiProperty({ nullable: true }) cancelledAt!: Date | null;
+}
+
+export class SaleListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() customerId?: string;
+}
+
+export class SaleListDto {
+  @ApiProperty({ type: [SaleDto] }) data!: SaleDto[];
+  @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
 }
 
 export class CreateCustomerPaymentDto {
@@ -167,9 +172,6 @@ export class CreateCustomerPaymentDto {
   @ApiPropertyOptional() @IsString() @IsOptional() note?: string;
   @ApiPropertyOptional() @IsUUID() @IsOptional() clientMutationId?: string;
 }
-
-/// Borne des montants en centimes : colonnes `Int` PostgreSQL (≈ 21 M DA).
-export const MAX_MONEY = 2_000_000_000;
 
 export class OpenCashSessionDto {
   @ApiProperty({ description: 'Le MAGASIN' })

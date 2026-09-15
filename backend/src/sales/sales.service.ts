@@ -1,0 +1,555 @@
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { ActorContext, writeAudit } from '../audit/audit-writer';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
+import { BusinessException } from '../common/business.exception';
+import { ErrorCode } from '../common/error-codes';
+import { PERMISSIONS } from '../common/permissions';
+import { formatQuantity, parseQuantity } from '../common/quantity';
+import { Prisma, Sale, SaleLine } from '../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
+import { StockLedgerService } from '../stock/stock-ledger.service';
+import {
+  CreateSaleDto,
+  SaleDto,
+  SaleListDto,
+  SaleListQueryDto,
+  SaleTypeDto,
+} from './dto/sale.dto';
+
+type Db = Prisma.TransactionClient;
+type SaleWithLines = Sale & { lines: SaleLine[] };
+
+const SALE_INCLUDE = { lines: true } as const;
+
+/// Arrondi monétaire unique des ventes : au centime, demi vers le haut.
+function roundMoney(value: Prisma.Decimal): number {
+  return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
+}
+
+/// Année civile en Algérie (Africa/Algiers) — le compteur de factures repart
+/// à 1 chaque 1er janvier local, pas UTC.
+function localYear(date: Date): number {
+  return Number(
+    new Intl.DateTimeFormat('en', {
+      timeZone: 'Africa/Algiers',
+      year: 'numeric',
+    }).format(date),
+  );
+}
+
+@Injectable()
+export class SalesService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ledger: StockLedgerService,
+  ) {}
+
+  /// Vente validée (CLAUDE.md règle 3) : Sale + lignes + mouvements de stock +
+  /// projection + encaissement de caisse, dans UNE transaction — tout ou rien.
+  async create(dto: CreateSaleDto, user: AuthenticatedUser): Promise<SaleDto> {
+    // Renvoi du même panier (réponse perdue) : on rend la vente déjà créée.
+    if (dto.id) {
+      const existing = await this.prisma.sale.findUnique({
+        where: { id: dto.id },
+        include: SALE_INCLUDE,
+      });
+      if (existing) {
+        if (existing.userId !== user.id) {
+          throw new BusinessException(
+            ErrorCode.CONFLICT,
+            'Cet identifiant de vente est déjà utilisé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        return this.toDto(this.prisma, existing);
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const store = await tx.location.findFirst({
+        where: { type: 'MAGASIN', isActive: true },
+      });
+      if (!store) {
+        throw new BusinessException(
+          ErrorCode.CONFLICT,
+          'Aucun magasin actif : vente impossible',
+          HttpStatus.CONFLICT,
+        );
+      }
+
+      const customer = dto.customerId
+        ? await SalesService.lockCustomer(tx, dto.customerId)
+        : null;
+      const tier = customer?.priceTierId
+        ? { id: customer.priceTierId }
+        : await tx.priceTier.findFirst({
+            where: { isDefault: true, isActive: true },
+          });
+      if (!tier) {
+        throw new BusinessException(
+          ErrorCode.PRICE_NOT_DEFINED,
+          'Aucun tarif par défaut : l’administrateur doit en définir un',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+
+      const canDiscount = user.permissions.includes(PERMISSIONS.SALE_DISCOUNT);
+      const lines = [];
+      for (const line of dto.lines) {
+        lines.push(
+          await SalesService.priceLine(tx, line, tier.id, canDiscount),
+        );
+      }
+      const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
+      const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
+      const totalTtc = totalHt + totalTax;
+
+      if (dto.paidAmount > totalTtc) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+
+      // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
+      const cashSession =
+        dto.paidAmount > 0
+          ? await tx.cashSession.findFirst({
+              where: {
+                userId: user.id,
+                status: 'OUVERTE',
+                locationId: store.id,
+              },
+            })
+          : null;
+      if (dto.paidAmount > 0 && !cashSession) {
+        throw new BusinessException(
+          ErrorCode.CASH_SESSION_REQUIRED,
+          'Ouvrez votre caisse avant d’encaisser des espèces',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+
+      // Crédit : client identifié, droit `sale.credit`, dans son plafond.
+      const credit = totalTtc - dto.paidAmount;
+      if (credit > 0) {
+        if (!customer) {
+          throw new BusinessException(
+            ErrorCode.CREDIT_LIMIT_EXCEEDED,
+            'Vente non soldée : choisissez le client à qui accorder le crédit',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+        if (!user.permissions.includes(PERMISSIONS.SALE_CREDIT)) {
+          throw new BusinessException(
+            ErrorCode.FORBIDDEN_PERMISSION,
+            'Permission requise pour vendre à crédit : sale.credit',
+            HttpStatus.FORBIDDEN,
+          );
+        }
+        const debt = await SalesService.customerDebt(tx, customer.id);
+        if (debt + credit > customer.creditLimit) {
+          throw new BusinessException(
+            ErrorCode.CREDIT_LIMIT_EXCEEDED,
+            `Plafond de crédit dépassé : dette ${debt}, crédit demandé ${credit}, ` +
+              `plafond ${customer.creditLimit} (centimes)`,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+      }
+
+      const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+        SELECT nextval('sale_ticket_seq') AS value`;
+      const soldAt = new Date();
+      const sale = await tx.sale.create({
+        data: {
+          id: dto.id,
+          number: `TK-${localYear(soldAt)}-${String(value).padStart(6, '0')}`,
+          customerId: customer?.id ?? null,
+          userId: user.id,
+          locationId: store.id,
+          cashSessionId: cashSession?.id ?? null,
+          totalHt,
+          totalTax,
+          totalTtc,
+          paidAmount: dto.paidAmount,
+          paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
+          soldAt,
+          note: dto.note ?? null,
+          lines: {
+            create: lines.map(({ productId, ...rest }) => ({
+              productId,
+              ...rest,
+            })),
+          },
+        },
+        include: SALE_INCLUDE,
+      });
+
+      // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
+      for (const line of sale.lines) {
+        await this.ledger.applyMovement(tx, {
+          productId: line.productId,
+          locationId: store.id,
+          quantity: line.quantity.negated(),
+          type: 'VENTE',
+          operationType: 'SALE',
+          operationId: sale.id,
+          userId: user.id,
+        });
+      }
+      if (cashSession) {
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: cashSession.id,
+            userId: user.id,
+            saleId: sale.id,
+            type: 'VENTE_ESPECES',
+            amount: dto.paidAmount,
+          },
+        });
+      }
+      // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
+      return this.toDto(tx, sale);
+    });
+  }
+
+  async findAll(
+    query: SaleListQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<SaleListDto> {
+    const where: Prisma.SaleWhereInput = {
+      ...(query.customerId && { customerId: query.customerId }),
+      // Le vendeur voit SES ventes ; l'admin toutes.
+      ...(!user.roles.includes(RoleCode.ADMIN) && { userId: user.id }),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.sale.findMany({
+        where,
+        include: SALE_INCLUDE,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
+      }),
+      this.prisma.sale.count({ where }),
+    ]);
+    const data = [];
+    for (const row of rows) data.push(await this.toDto(this.prisma, row));
+    return { data, meta: { page: query.page, limit: query.limit, total } };
+  }
+
+  async findOne(id: string, user: AuthenticatedUser): Promise<SaleDto> {
+    const sale = await this.prisma.sale.findUnique({
+      where: { id },
+      include: SALE_INCLUDE,
+    });
+    SalesService.assertCanSee(sale, user);
+    return this.toDto(this.prisma, sale!);
+  }
+
+  /// Ticket → facture : numéro légal séquentiel SANS TROU, attribué en
+  /// transaction sous verrou du compteur de l'année (règle 11).
+  async issueInvoice(
+    id: string,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<SaleDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const sale = await SalesService.lockSale(tx, id);
+      SalesService.assertCanSee(sale, user);
+      if (sale!.status !== 'VALIDEE') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Une vente annulée ne se facture pas',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (sale!.invoiceNumber) return this.toDto(tx, sale!);
+
+      const year = localYear(new Date());
+      await tx.$executeRaw`
+        INSERT INTO "InvoiceCounter" ("id", "documentType", "year", "lastNumber", "updatedAt")
+        VALUES (gen_random_uuid(), 'FACTURE', ${year}, 0, now())
+        ON CONFLICT ("documentType", "year") DO NOTHING`;
+      const [counter] = await tx.$queryRaw<{ lastNumber: number }[]>`
+        UPDATE "InvoiceCounter" SET "lastNumber" = "lastNumber" + 1, "updatedAt" = now()
+        WHERE "documentType" = 'FACTURE' AND "year" = ${year}
+        RETURNING "lastNumber"`;
+      const invoiceNumber = `FA-${year}-${String(counter.lastNumber).padStart(6, '0')}`;
+      const invoiced = await tx.sale.update({
+        where: { id },
+        data: { type: 'FACTURE', invoiceNumber },
+        include: SALE_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'VALIDATE',
+        entityType: 'Sale',
+        entityId: id,
+        newValue: { number: invoiced.number, invoiceNumber },
+      });
+      return this.toDto(tx, invoiced);
+    });
+  }
+
+  /// Annulation ADMIN (règle 7) : jamais de suppression — mouvements inverses,
+  /// sortie de caisse, statut ANNULEE. Une facture émise ne s'annule pas ici
+  /// (document légal : avoir, hors P0).
+  async cancel(
+    id: string,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<SaleDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const sale = await SalesService.lockSale(tx, id);
+      if (!sale) {
+        throw new BusinessException(
+          ErrorCode.NOT_FOUND,
+          'Vente introuvable',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      if (sale.status !== 'VALIDEE') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Vente déjà annulée',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (sale.invoiceNumber) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Vente facturée : l’annulation passe par un avoir',
+          HttpStatus.CONFLICT,
+        );
+      }
+      const payments = await tx.customerPayment.count({
+        where: { saleId: id },
+      });
+      if (payments > 0) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Des règlements existent sur cette vente : annulation impossible',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (sale.cashSessionId && sale.paidAmount > 0) {
+        const session = await tx.cashSession.findUnique({
+          where: { id: sale.cashSessionId },
+        });
+        if (session?.status !== 'OUVERTE') {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'La caisse de cette vente est clôturée : annulation impossible',
+            HttpStatus.CONFLICT,
+          );
+        }
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: session.id,
+            userId: user.id,
+            saleId: id,
+            type: 'SORTIE',
+            amount: sale.paidAmount,
+            note: `Annulation ${sale.number}`,
+          },
+        });
+      }
+      for (const line of sale.lines) {
+        await this.ledger.applyMovement(tx, {
+          productId: line.productId,
+          locationId: sale.locationId,
+          quantity: line.quantity,
+          type: 'RETOUR_CLIENT',
+          operationType: 'SALE',
+          operationId: id,
+          userId: user.id,
+          comment: `Annulation ${sale.number}`,
+        });
+      }
+      const cancelled = await tx.sale.update({
+        where: { id },
+        data: { status: 'ANNULEE', cancelledAt: new Date() },
+        include: SALE_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'CANCEL',
+        entityType: 'Sale',
+        entityId: id,
+        oldValue: { status: 'VALIDEE', totalTtc: sale.totalTtc },
+        newValue: { status: 'ANNULEE' },
+      });
+      return this.toDto(tx, cancelled);
+    });
+  }
+
+  /// Dette d'un client = ventes validées non soldées − règlements hors vente.
+  /// TOUJOURS recalculée, jamais stockée.
+  static async customerDebt(
+    db: Db | PrismaService,
+    customerId: string,
+  ): Promise<number> {
+    const [sales, payments] = await Promise.all([
+      db.sale.aggregate({
+        where: { customerId, status: 'VALIDEE' },
+        _sum: { totalTtc: true, paidAmount: true },
+      }),
+      db.customerPayment.aggregate({
+        where: { customerId },
+        _sum: { amount: true },
+      }),
+    ]);
+    return (
+      (sales._sum.totalTtc ?? 0) -
+      (sales._sum.paidAmount ?? 0) -
+      (payments._sum.amount ?? 0)
+    );
+  }
+
+  private static async priceLine(
+    tx: Db,
+    line: CreateSaleDto['lines'][number],
+    priceTierId: string,
+    canDiscount: boolean,
+  ) {
+    const quantity = parseQuantity(line.quantity, 'lines.quantity');
+    if (quantity.lessThanOrEqualTo(0)) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Quantité vendue strictement positive',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const product = await tx.product.findUnique({
+      where: { id: line.productId },
+      include: { taxRate: true, prices: { where: { priceTierId } } },
+    });
+    if (!product?.isActive) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Produit introuvable ou désactivé : ${line.productId}`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const price = product.prices[0];
+    if (!price) {
+      throw new BusinessException(
+        ErrorCode.PRICE_NOT_DEFINED,
+        `« ${product.name} » n’a pas de prix pour ce tarif`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const discount = line.discountAmount ?? 0;
+    if (discount > 0 && !canDiscount) {
+      throw new BusinessException(
+        ErrorCode.DISCOUNT_NOT_ALLOWED,
+        'Remise réservée à l’administrateur',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const grossHt = roundMoney(new Prisma.Decimal(price.priceHt).mul(quantity));
+    if (discount > grossHt) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Remise supérieure au montant de la ligne « ${product.name} »`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+    const lineTotalHt = grossHt - discount;
+    const lineTaxAmount = roundMoney(
+      new Prisma.Decimal(lineTotalHt).mul(taxRate).div(100),
+    );
+    return {
+      productId: product.id,
+      priceTierId,
+      quantity,
+      unitPriceHt: price.priceHt,
+      taxRate,
+      discountAmount: discount,
+      lineTotalHt,
+      lineTaxAmount,
+      lineTotalTtc: lineTotalHt + lineTaxAmount,
+    };
+  }
+
+  private static async lockCustomer(tx: Db, id: string) {
+    // Verrou : deux ventes à crédit simultanées ne dépassent pas le plafond.
+    await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    const customer = await tx.customer.findUnique({ where: { id } });
+    if (!customer?.isActive) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Client introuvable ou inactif',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return customer;
+  }
+
+  private static async lockSale(
+    tx: Db,
+    id: string,
+  ): Promise<SaleWithLines | null> {
+    await tx.$queryRaw`SELECT "id" FROM "Sale" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    return tx.sale.findUnique({ where: { id }, include: SALE_INCLUDE });
+  }
+
+  private static assertCanSee(
+    sale: Sale | null,
+    user: AuthenticatedUser,
+  ): void {
+    if (
+      !sale ||
+      (sale.userId !== user.id && !user.roles.includes(RoleCode.ADMIN))
+    ) {
+      throw new BusinessException(
+        ErrorCode.NOT_FOUND,
+        'Vente introuvable',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+  }
+
+  private async toDto(
+    db: Db | PrismaService,
+    sale: SaleWithLines,
+  ): Promise<SaleDto> {
+    const later = await db.customerPayment.aggregate({
+      where: { saleId: sale.id },
+      _sum: { amount: true },
+    });
+    return {
+      id: sale.id,
+      number: sale.number,
+      invoiceNumber: sale.invoiceNumber,
+      type: sale.type as SaleTypeDto,
+      status: sale.status,
+      customerId: sale.customerId,
+      userId: sale.userId,
+      cashSessionId: sale.cashSessionId,
+      totalHt: sale.totalHt,
+      totalTax: sale.totalTax,
+      totalTtc: sale.totalTtc,
+      paidAmount: sale.paidAmount,
+      remainingAmount:
+        sale.status === 'ANNULEE'
+          ? 0
+          : sale.totalTtc - sale.paidAmount - (later._sum.amount ?? 0),
+      lines: sale.lines.map((line) => ({
+        id: line.id,
+        productId: line.productId,
+        quantity: formatQuantity(line.quantity),
+        unitPriceHt: line.unitPriceHt,
+        priceTierId: line.priceTierId,
+        taxRate: line.taxRate.toFixed(2),
+        discountAmount: line.discountAmount,
+        lineTotalHt: line.lineTotalHt,
+        lineTaxAmount: line.lineTaxAmount,
+        lineTotalTtc: line.lineTotalTtc,
+      })),
+      soldAt: sale.soldAt,
+      cancelledAt: sale.cancelledAt,
+    };
+  }
+}
