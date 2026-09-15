@@ -12,6 +12,7 @@ import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/catalog/presentation/catalog_screen.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/ui/widgets/form_panel.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
@@ -31,6 +32,7 @@ class _ApiOnlyActions extends CatalogActions {
   final RecordingCatalogApi api;
 
   Uint8List? lastPhoto;
+  Map<String, int> lastPrices = const {};
 
   @override
   Future<Product> saveProduct(
@@ -38,8 +40,10 @@ class _ApiOnlyActions extends CatalogActions {
     Map<String, Object?> fields, {
     Uint8List? photo,
     bool removePhoto = false,
+    Map<String, int> prices = const {},
   }) {
     lastPhoto = photo;
+    lastPrices = prices;
     return id == null
         ? api.createProduct(fields)
         : api.updateProduct(id, fields);
@@ -47,6 +51,7 @@ class _ApiOnlyActions extends CatalogActions {
 }
 
 const _allProductPermissions = [
+  'price.manage',
   'product.read',
   'product.write',
   'product.disable',
@@ -105,6 +110,17 @@ void main() {
           ]),
         ),
         taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
+        priceTiersProvider.overrideWith(
+          (ref) async => const [
+            PriceTier(
+              id: 'detail',
+              code: 'DETAIL',
+              name: 'Détail',
+              isDefault: true,
+            ),
+            PriceTier(id: 'gros', code: 'GROS', name: 'Gros', isDefault: false),
+          ],
+        ),
         catalogActionsProvider.overrideWithValue(actions),
         pickProductPhotoProvider.overrideWithValue(() async => pickedPhoto),
       ],
@@ -300,6 +316,81 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(actions.lastPhoto, photo);
+  });
+
+  testWidgets('prix : l’ADMIN n’envoie que le prix modifié, en centimes', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 1400));
+    await tester.pumpWidget(
+      wrap(
+        _admin(),
+        desktop: true,
+        products: [
+          product(id: 'p1', name: 'Disjoncteur').copyWith(
+            prices: const [
+              ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
+            ],
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disjoncteur'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('PRIX GROS (HT)'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(FormPanelFrame),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    // Les prix ferment le formulaire : « Gros » est le dernier champ.
+    await tester.enterText(find.byType(TextFormField).last, '1200,50');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+
+    expect(actions.lastPrices, {'gros': 120050});
+  });
+
+  testWidgets('prix : le VENDEUR les voit sans pouvoir les modifier', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 1600));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [
+          product(id: 'p1', name: 'Disjoncteur').copyWith(
+            prices: const [
+              ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
+            ],
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Disjoncteur'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Gros : non fixé'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(FormPanelFrame),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.textContaining('Détail : 1'), findsOneWidget);
+    expect(find.text('Gros : non fixé'), findsOneWidget);
+    expect(find.text('PRIX DÉTAIL (HT)'), findsNothing);
   });
 
   test('menu : le catalogue est proposé à tout compte qui a product.read', () {

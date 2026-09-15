@@ -131,6 +131,11 @@ Uint8List? compressProductPhoto(Uint8List bytes) {
   return img.encodeJpg(resized, quality: 80);
 }
 
+/// Tarifs actifs (DETAIL, GROS…), lus en ligne pour le formulaire produit.
+final priceTiersProvider = FutureProvider.autoDispose<List<PriceTier>>(
+  (ref) => ref.watch(catalogApiProvider).priceTiers(),
+);
+
 final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
   final filter = ref.watch(productFilterProvider);
   final categoryId = filter.categoryId;
@@ -164,6 +169,7 @@ class CatalogActions {
     Map<String, Object?> fields, {
     Uint8List? photo,
     bool removePhoto = false,
+    Map<String, int> prices = const {},
   }) async {
     var product = id == null
         ? await _api.createProduct(fields)
@@ -175,6 +181,10 @@ class CatalogActions {
       product = await _api.uploadImage(productId, photo);
     } else if (removePhoto) {
       product = await _api.removeImage(productId);
+    }
+    // Prix modifiés, un tarif à la fois (chaque changement est tracé serveur).
+    for (final entry in prices.entries) {
+      product = await _api.setPrice(productId, entry.key, entry.value);
     }
     if (product == null) {
       throw StateError('saveProduct appelé sans aucun changement');

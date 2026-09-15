@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/money.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -27,12 +28,16 @@ class ProductForm extends ConsumerStatefulWidget {
     required this.canEdit,
     required this.canDisable,
     this.canReadStock = false,
+    this.canSetPrices = false,
   });
 
   final Product? existing;
   final bool canEdit;
   final bool canDisable;
   final bool canReadStock;
+
+  /// ADMIN + `price.manage` : les prix sont modifiables ; sinon lecture seule.
+  final bool canSetPrices;
 
   @override
   ConsumerState<ProductForm> createState() => _ProductFormState();
@@ -47,6 +52,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   late final TextEditingController _description;
   late final TextEditingController _minThreshold;
   late final TextEditingController _safetyStock;
+
+  /// Un champ de prix par tarif, créé à l'arrivée de la liste des tarifs.
+  final Map<String, TextEditingController> _prices = {};
 
   /// Stock présent à la saisie (création seulement) : devient un mouvement
   /// « stock initial » côté serveur, jamais une quantité écrite directement.
@@ -103,6 +111,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _safetyStock,
       _storeStock,
       _depotStock,
+      ..._prices.values,
     ]) {
       c.dispose();
     }
@@ -177,7 +186,10 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       // Un code-barres ne se retire pas : vidé, il reste inchangé.
       if (values['barcode'] == null) values['barcode'] = existing.barcode;
       payload = changedFields(_valuesOf(existing), values);
-      if (payload.isEmpty && _newPhoto == null && !_removePhoto) {
+      if (payload.isEmpty &&
+          _newPhoto == null &&
+          !_removePhoto &&
+          _changedPrices().isEmpty) {
         Navigator.of(context).pop(existing);
         return;
       }
@@ -195,6 +207,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             payload,
             photo: _newPhoto,
             removePhoto: _removePhoto,
+            prices: _changedPrices(),
           );
       if (mounted) Navigator.of(context).pop(saved);
     } on ApiException catch (error) {
@@ -235,6 +248,80 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       ],
     ),
   );
+
+  /// Prix saisis qui diffèrent de ceux du produit, en centimes.
+  Map<String, int> _changedPrices() {
+    final current = {
+      for (final p in widget.existing?.prices ?? const <ProductPriceLine>[])
+        p.priceTierId: p.priceHt,
+    };
+    return {
+      for (final entry in _prices.entries)
+        if (parseDA(entry.value.text) case final int price
+            when price != current[entry.key])
+          entry.key: price,
+    };
+  }
+
+  Widget _pricesSection(AmpereColors colors, List<PriceTier> tiers) {
+    final existing = {
+      for (final p in widget.existing?.prices ?? const <ProductPriceLine>[])
+        p.priceTierId: p.priceHt,
+    };
+    if (!widget.canSetPrices) {
+      return Wrap(
+        spacing: 16,
+        runSpacing: 6,
+        children: [
+          for (final tier in tiers)
+            Text(
+              '${tier.name} : ${existing[tier.id] == null ? 'non fixé' : formatDA(existing[tier.id]!)}',
+              style: AmpereType.body.copyWith(color: colors.ink),
+            ),
+        ],
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, tier) in tiers.indexed) ...[
+          if (i > 0) const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                AmpereFieldLabel('Prix ${tier.name} (HT)'),
+                TextFormField(
+                  controller: _prices.putIfAbsent(
+                    tier.id,
+                    () => TextEditingController(
+                      text: existing[tier.id] == null
+                          ? ''
+                          : formatDA(existing[tier.id]!, withSymbol: false),
+                    ),
+                  ),
+                  enabled: !_saving,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  style: AmpereType.input.copyWith(color: colors.ink),
+                  decoration: const InputDecoration(suffixText: 'DA'),
+                  validator: (v) {
+                    final raw = v?.trim() ?? '';
+                    if (raw.isEmpty) return null;
+                    final price = parseDA(raw);
+                    return price == null || price < 0
+                        ? 'Montant invalide, ex. 1450,50'
+                        : null;
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 
   Future<void> _pickPhoto() async {
     final photo = await ref.read(pickProductPhotoProvider)();
@@ -314,6 +401,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final colors = AmpereColors.of(context);
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final taxRates = ref.watch(taxRatesProvider).value ?? const [];
+    final priceTiers =
+        ref.watch(priceTiersProvider).value ?? const <PriceTier>[];
     // Stock en ligne, si le compte peut le lire : état affiché sur la fiche.
     final existingStock = widget.existing == null || !widget.canReadStock
         ? null
@@ -577,6 +666,12 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           maxLines: 5,
           style: inputStyle,
         ),
+        formFieldGap,
+        if (priceTiers.isNotEmpty) ...[
+          if (!widget.canSetPrices)
+            const AmpereFieldLabel('Prix de vente (HT)'),
+          _pricesSection(colors, priceTiers),
+        ],
       ],
     );
   }

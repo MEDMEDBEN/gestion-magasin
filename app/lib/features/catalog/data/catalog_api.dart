@@ -38,6 +38,27 @@ class CatalogApi {
 
   /// Photo déjà compressée par l'app (JPEG ≤ 1024 px). Le serveur vérifie le
   /// type sur le contenu et renvoie le produit avec sa nouvelle `imageKey`.
+  Future<List<PriceTier>> priceTiers() {
+    return guardApi(() async {
+      final response = await _dio.get<List<dynamic>>('/pricing/tiers');
+      return [
+        for (final row in response.data!)
+          PriceTier.fromJson(row as Map<String, dynamic>),
+      ];
+    });
+  }
+
+  /// Prix HT en centimes — ADMIN seul (le serveur relit ses droits en base).
+  Future<Product> setPrice(String productId, String priceTierId, int priceHt) {
+    return guardApi(() async {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/products/$productId/prices',
+        data: {'priceTierId': priceTierId, 'priceHt': priceHt},
+      );
+      return Product.fromJson(response.data!);
+    });
+  }
+
   Future<Product> uploadImage(String productId, Uint8List jpeg) {
     return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(

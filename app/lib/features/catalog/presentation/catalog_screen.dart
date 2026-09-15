@@ -25,6 +25,7 @@ class CatalogRights {
     : canWriteProducts = user.hasRole('ADMIN') && user.can('product.write'),
       canDisableProducts = user.hasRole('ADMIN') && user.can('product.disable'),
       canReadStock = user.can('stock.read.store'),
+      canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
       canManageLocations =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('location.manage');
@@ -33,6 +34,7 @@ class CatalogRights {
   final bool canDisableProducts;
   final bool canManageLocations;
   final bool canReadStock;
+  final bool canSetPrices;
 }
 
 enum _Section { products, categories, locations }
@@ -82,6 +84,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         canEdit: rights.canWriteProducts,
         canDisable: rights.canDisableProducts,
         canReadStock: rights.canReadStock,
+        canSetPrices: rights.canSetPrices,
       ),
     );
     if (saved == null || saved == product) return;

@@ -298,6 +298,26 @@ Demandé : fournisseur sur la fiche, photo du produit, quantité à la saisie, �
 **Reprise ICI** : relecture humaine des captures (12-20 + fiche produit avec photo/stock initial) → P0 #4 Ventes.
 Preuve : backend **62** unitaires · **143** e2e (stock initial ×2) ; app analyze propre · **+171 ~20**.
 
+### 🚧 P0 #4 VENTES — EN COURS (2026-09-15 · **MEDMEDBEN**)
+**Décisions MEDMEDBEN (2026-09-15)** :
+- **Pas de réservation de stock en P0** : vente validée = sortie de stock immédiate (`reservedQuantity` reste
+  à 0 ; réservation plus tard pour commandes client / devis).
+- **N° de facture** : `FA-AAAA-NNNNNN` (ex. `FA-2026-000001`), compteur remis à 1 chaque 1er janvier,
+  attribué serveur en transaction (`InvoiceCounter` FACTURE × année).
+- **Paiement : ESPÈCES uniquement** (+ vente à crédit dans le plafond du client). Chèque/virement/carte : non.
+Découpage (chaque tranche testée + poussée) :
+1. ✅ **Prix par tarif** — `POST /products/:id/prices` (ADMIN + price.manage + `FreshAccessGuard`, borne 2 Md
+   centimes, audit `ProductPrice` avant/après), `prices` dans chaque produit et dans le delta (produit « touché »).
+   App : prix par tarif dans le formulaire (ADMIN), lecture seule pour les autres. Preuve : backend 41 e2e
+   catalogue ; app **+175 ~20**.
+2. ⏳ Caisse : ouvrir / session courante / clôturer (rapport Z : attendu, compté, écart).
+3. ⏳ Vente : `POST /sales` (lignes → prix du tarif client ou défaut, TVA figée, mouvements VENTE au MAGASIN,
+   espèces rattachées à la session, crédit ≤ plafond), liste, détail, annulation ADMIN (mouvements inverses).
+4. ⏳ Facture : `POST /sales/:id/invoice` (numéro légal) + PDF (moteur unique à choisir, `common/pdf/`).
+5. ⏳ Clients minimum (création, tarif, plafond) + paiements de dette.
+6. ⏳ App : écran Caisse, écran Vente (recherche/douchette, panier, client, encaissement), ticket, liste.
+Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
+
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 

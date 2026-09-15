@@ -70,6 +70,9 @@ abstract class Product with _$Product {
 
     /// Version opaque de la photo ; `null` = pas de photo.
     String? imageKey,
+
+    /// Prix de vente HT par tarif, en centimes (règles 4 et 13).
+    @Default(<ProductPriceLine>[]) List<ProductPriceLine> prices,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
     required Quantity minThreshold,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
@@ -82,6 +85,32 @@ abstract class Product with _$Product {
 
   factory Product.fromJson(Map<String, dynamic> json) =>
       _$ProductFromJson(json);
+}
+
+/// Prix HT d'un produit pour un tarif — centimes, jamais un double (règle 4).
+@freezed
+abstract class ProductPriceLine with _$ProductPriceLine {
+  const factory ProductPriceLine({
+    required String priceTierId,
+    required int priceHt,
+  }) = _ProductPriceLine;
+
+  factory ProductPriceLine.fromJson(Map<String, dynamic> json) =>
+      _$ProductPriceLineFromJson(json);
+}
+
+/// Tarif (DETAIL, GROS…) — miroir de `PriceTierDto`.
+@freezed
+abstract class PriceTier with _$PriceTier {
+  const factory PriceTier({
+    required String id,
+    required String code,
+    required String name,
+    required bool isDefault,
+  }) = _PriceTier;
+
+  factory PriceTier.fromJson(Map<String, dynamic> json) =>
+      _$PriceTierFromJson(json);
 }
 
 /// Miroir de `CategoryDto` — deux niveaux : catégorie → sous-catégorie.
