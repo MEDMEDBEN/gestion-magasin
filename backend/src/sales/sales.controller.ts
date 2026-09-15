@@ -32,7 +32,6 @@ import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { notImplemented } from '../common/not-implemented';
 import { PERMISSIONS } from '../common/permissions';
 import {
-  CreateCustomerPaymentDto,
   CreateSaleDto,
   SaleDto,
   SaleListDto,
@@ -141,21 +140,7 @@ export class SalesController {
 @ApiTags('Paiements')
 @ApiBearerAuth()
 @Controller('payments')
-export class PaymentsController {
-  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
-  @RequirePermissions(PERMISSIONS.CUSTOMER_PAYMENT_CREATE)
-  @Post('customer')
-  @ApiOperation({
-    summary: 'Enregistre un paiement client',
-    description:
-      'Réduit la dette, qui reste TOUJOURS recalculée (jamais stockée).',
-  })
-  createCustomerPayment(
-    @Body() _dto: CreateCustomerPaymentDto,
-  ): Promise<unknown> {
-    return notImplemented('Clients / dettes');
-  }
-
+export class SupplierPaymentsController {
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
   @Post('supplier')

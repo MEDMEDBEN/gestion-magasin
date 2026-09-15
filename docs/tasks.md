@@ -324,7 +324,11 @@ Découpage (chaque tranche testée + poussée) :
    sous verrou de ligne, année Africa/Algiers), idempotent, audit VALIDATE. ⏳ **PDF** : moteur unique à choisir.
    Preuve : 19 e2e ventes (stock insuffisant atomique, dernière unité en concurrence, crédit concurrent — contre-
    épreuve verrou retiré → échec —, 5 facturations simultanées consécutives…). Backend **65** unit · **171** e2e.
-5. ⏳ Clients minimum (création, tarif, plafond) + paiements de dette.
+5. ✅ **Clients + règlements (backend)** — `src/customers/` : liste (recherche nom/téléphone/code) et fiche avec
+   dette recalculée, création/modif par ADMIN+VENDEUR, **tarif et plafond : ADMIN seul** (403 sinon, audité) ;
+   `POST /payments/customer` : espèces dans la caisse OUVERTE (`CashMovement ENTREE`), jamais au-delà de la dette
+   ni du reste dû de la vente visée, verrou client, audit. Fournisseurs et paiement fournisseur restent 501 (P0 #5).
+   4 e2e. Backend **65** unit · **175** e2e.
 6. ⏳ App : écran Caisse, écran Vente (recherche/douchette, panier, client, encaissement), ticket, liste.
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 

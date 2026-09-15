@@ -12,6 +12,7 @@ import { RolesGuard } from './common/roles.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { LocationsModule } from './locations/locations.module';
 import { ProductsModule } from './products/products.module';
+import { CustomersModule } from './customers/customers.module';
 import { SalesModule } from './sales/sales.module';
 import { StorageModule } from './storage/storage.module';
 import { SyncModule } from './sync/sync.module';
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     StorageModule,
     SalesModule,
+    CustomersModule,
     ProductsModule,
     LocationsModule,
     SyncModule,

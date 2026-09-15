@@ -8,11 +8,9 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
-  IsEnum,
   IsInt,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -157,20 +155,6 @@ export class SaleListQueryDto extends PaginationQueryDto {
 export class SaleListDto {
   @ApiProperty({ type: [SaleDto] }) data!: SaleDto[];
   @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
-}
-
-export class CreateCustomerPaymentDto {
-  @ApiProperty() @IsUUID() customerId!: string;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() saleId?: string;
-  @ApiProperty({ example: 20000, description: 'Montant en centimes.' })
-  @IsInt()
-  @Min(1)
-  amount!: number;
-  @ApiProperty({ enum: PaymentMethodDto })
-  @IsEnum(PaymentMethodDto)
-  method!: PaymentMethodDto;
-  @ApiPropertyOptional() @IsString() @IsOptional() note?: string;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() clientMutationId?: string;
 }
 
 export class OpenCashSessionDto {
