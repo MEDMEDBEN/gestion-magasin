@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -23,6 +24,7 @@ import {
   Roles,
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import { CustomersService } from './customers.service';
 import {
@@ -65,6 +67,8 @@ export class CustomersController {
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE)
+  // Tarif et plafond (conditions commerciales) : droits relus en base.
+  @UseGuards(FreshAccessGuard)
   @Post()
   @ApiOperation({
     summary: 'Crée un client',
@@ -81,6 +85,7 @@ export class CustomersController {
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE)
+  @UseGuards(FreshAccessGuard)
   @Patch(':id')
   @ApiOperation({
     summary: 'Modifie un client (tarif et plafond : ADMIN seul)',

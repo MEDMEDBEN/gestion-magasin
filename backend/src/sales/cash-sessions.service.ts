@@ -148,6 +148,29 @@ export class CashSessionsService {
     }
   }
 
+  /// Caisse OUVERTE du compte, VERROUILLÉE jusqu'au commit de l'appelant : une
+  /// clôture concurrente (qui prend le même verrou) ne peut plus « rater » un
+  /// encaissement — l'un attend l'autre, et le rapport Z reste juste (règle 12).
+  static async lockOpenSession(
+    tx: Db,
+    where: { userId?: string; id?: string; locationId?: string },
+  ): Promise<CashSession | null> {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "CashSession"
+      WHERE "status" = 'OUVERTE'
+        AND (${where.userId ?? null}::uuid IS NULL OR "userId" = ${where.userId ?? null}::uuid)
+        AND (${where.id ?? null}::uuid IS NULL OR "id" = ${where.id ?? null}::uuid)
+        AND (${where.locationId ?? null}::uuid IS NULL OR "locationId" = ${where.locationId ?? null}::uuid)
+      LIMIT 1
+      FOR UPDATE`;
+    if (rows.length === 0) return null;
+    // Relue APRÈS le verrou : une clôture tout juste validée est vue.
+    const session = await tx.cashSession.findUnique({
+      where: { id: rows[0].id },
+    });
+    return session?.status === 'OUVERTE' ? session : null;
+  }
+
   /// Entrées (ventes espèces + apports) et sorties (retraits + prélèvements).
   static async totals(db: Db | PrismaService, cashSessionId: string) {
     const grouped = await db.cashMovement.groupBy({

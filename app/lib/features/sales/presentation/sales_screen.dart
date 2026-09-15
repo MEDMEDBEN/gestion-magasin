@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
+import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -45,6 +46,17 @@ void _snack(BuildContext context, String message) {
         action: SnackBarAction(label: 'Fermer', onPressed: () {}),
       ),
     );
+}
+
+/// Relance automatique UNE fois si le serveur n'a pas répondu : l'opération
+/// porte un id stable, un doublon est donc impossible côté serveur.
+Future<T> _retryable<T>(Future<T> Function() action) async {
+  try {
+    return await action();
+  } on ApiException catch (error) {
+    if (!error.isOffline) rethrow;
+    return action();
+  }
 }
 
 String _errorText(Object error) =>
@@ -817,6 +829,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
   }
 
   Future<void> _pay(Customer customer) async {
+    final paymentId = ref.read(uuidProvider).v7();
     final amount = await _askAmount(
       context,
       title: 'Règlement de ${customer.name}',
@@ -827,7 +840,12 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (amount == null || amount == 0 || !mounted) return;
     try {
-      await ref.read(salesActionsProvider).payCustomer(customer.id, amount);
+      // Même id à chaque nouvel essai de CE règlement.
+      await _retryable(
+        () => ref
+            .read(salesActionsProvider)
+            .payCustomer(customer.id, amount, paymentId: paymentId),
+      );
       if (mounted) {
         _snack(context, 'Règlement de ${formatDA(amount)} encaissé.');
       }

@@ -290,6 +290,51 @@ describe('Ventes (e2e)', () => {
       });
     });
 
+    it('total démesuré → 422 (jamais une 500)', async () => {
+      const p = await product('99999999999.000', 2_000_000_000, 2_000_000_000);
+      const res = await as(tokens.admin)
+        .post('/api/sales')
+        .send({ lines: [{ productId: p, quantity: '5' }], paidAmount: 0 })
+        .expect(422);
+      expect(res.body.code).toBe('VALIDATION_FAILED');
+    });
+
+    it('tarif du client désactivé : le tarif par défaut s’applique', async () => {
+      const p = await product('10.000');
+      const tier = await prisma.priceTier.create({
+        data: {
+          code: `E2E-OFF-${suffix}`,
+          name: 'Tarif retiré',
+          isActive: false,
+        },
+      });
+      try {
+        const c = await customer(0, tier.id);
+        const res = await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            customerId: c,
+            lines: [{ productId: p, quantity: '1' }],
+            paidAmount: 172550,
+          })
+          .expect(201);
+        expect(res.body.lines[0]).toMatchObject({
+          priceTierId: detailId,
+          unitPriceHt: 145000,
+        });
+      } finally {
+        await prisma.customer.updateMany({
+          where: { priceTierId: tier.id },
+          data: { priceTierId: null },
+        });
+        await prisma.saleLine.updateMany({
+          where: { priceTierId: tier.id },
+          data: { priceTierId: null },
+        });
+        await prisma.priceTier.delete({ where: { id: tier.id } });
+      }
+    });
+
     it('le client n’envoie JAMAIS le prix : un champ de prix est refusé', async () => {
       const p = await product('10.000');
       await as(tokens.vendeur)

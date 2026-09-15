@@ -13,8 +13,10 @@ import {
   SaleDto,
   SaleListDto,
   SaleListQueryDto,
+  MAX_MONEY,
   SaleTypeDto,
 } from './dto/sale.dto';
+import { CashSessionsService } from './cash-sessions.service';
 
 type Db = Prisma.TransactionClient;
 type SaleWithLines = Sale & { lines: SaleLine[] };
@@ -80,11 +82,17 @@ export class SalesService {
       const customer = dto.customerId
         ? await SalesService.lockCustomer(tx, dto.customerId)
         : null;
-      const tier = customer?.priceTierId
-        ? { id: customer.priceTierId }
-        : await tx.priceTier.findFirst({
-            where: { isDefault: true, isActive: true },
-          });
+      // Tarif du client s'il est encore actif, sinon le tarif par défaut.
+      const customerTier = customer?.priceTierId
+        ? await tx.priceTier.findFirst({
+            where: { id: customer.priceTierId, isActive: true },
+          })
+        : null;
+      const tier =
+        customerTier ??
+        (await tx.priceTier.findFirst({
+          where: { isDefault: true, isActive: true },
+        }));
       if (!tier) {
         throw new BusinessException(
           ErrorCode.PRICE_NOT_DEFINED,
@@ -103,6 +111,17 @@ export class SalesService {
       const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
       const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
       const totalTtc = totalHt + totalTax;
+      // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
+      if (
+        totalTtc > MAX_MONEY ||
+        lines.some((l) => l.lineTotalTtc > MAX_MONEY)
+      ) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'Montant de la vente trop élevé',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
 
       if (dto.paidAmount > totalTtc) {
         throw new BusinessException(
@@ -115,12 +134,9 @@ export class SalesService {
       // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
       const cashSession =
         dto.paidAmount > 0
-          ? await tx.cashSession.findFirst({
-              where: {
-                userId: user.id,
-                status: 'OUVERTE',
-                locationId: store.id,
-              },
+          ? await CashSessionsService.lockOpenSession(tx, {
+              userId: user.id,
+              locationId: store.id,
             })
           : null;
       if (dto.paidAmount > 0 && !cashSession) {
@@ -188,7 +204,10 @@ export class SalesService {
       });
 
       // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
-      for (const line of sale.lines) {
+      // Ordre fixe (par produit) : deux paniers A,B / B,A ne s'interbloquent pas.
+      for (const line of [...sale.lines].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
         await this.ledger.applyMovement(tx, {
           productId: line.productId,
           locationId: store.id,
@@ -334,10 +353,10 @@ export class SalesService {
         );
       }
       if (sale.cashSessionId && sale.paidAmount > 0) {
-        const session = await tx.cashSession.findUnique({
-          where: { id: sale.cashSessionId },
+        const session = await CashSessionsService.lockOpenSession(tx, {
+          id: sale.cashSessionId,
         });
-        if (session?.status !== 'OUVERTE') {
+        if (!session) {
           throw new BusinessException(
             ErrorCode.INVALID_STATE_TRANSITION,
             'La caisse de cette vente est clôturée : annulation impossible',
@@ -355,7 +374,9 @@ export class SalesService {
           },
         });
       }
-      for (const line of sale.lines) {
+      for (const line of [...sale.lines].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
         await this.ledger.applyMovement(tx, {
           productId: line.productId,
           locationId: sale.locationId,

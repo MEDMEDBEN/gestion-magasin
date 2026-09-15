@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -237,6 +238,42 @@ describe('Clients et règlements (e2e)', () => {
         paidAmount: 0,
       })
       .expect(201);
+  });
+
+  it('règlement renvoyé (même id, réponse perdue) : la dette n’est réduite qu’UNE fois', async () => {
+    const c = (
+      await createCustomer(tokens.admin, {
+        name: `Client renvoi ${suffix}`,
+        creditLimit: 500000,
+      })
+    ).body;
+    await as(tokens.vendeur)
+      .post('/api/sales')
+      .send({
+        customerId: c.id,
+        lines: [{ productId, quantity: '1' }],
+        paidAmount: 0,
+      })
+      .expect(201);
+    const body = { id: randomUUID(), customerId: c.id, amount: 30000 };
+
+    const first = await as(tokens.vendeur)
+      .post('/api/payments/customer')
+      .send(body)
+      .expect(201);
+    const second = await as(tokens.vendeur)
+      .post('/api/payments/customer')
+      .send(body)
+      .expect(201);
+
+    expect(second.body.id).toBe(first.body.id);
+    expect(
+      (await as(tokens.vendeur).get(`/api/customers/${c.id}`).expect(200)).body
+        .balanceDue,
+    ).toBe(70000);
+    expect(
+      await prisma.customerPayment.count({ where: { customerId: c.id } }),
+    ).toBe(1);
   });
 
   it('règlement : jamais au-delà du dû, jamais sans caisse ouverte, ni sur la vente d’un autre', async () => {

@@ -47,6 +47,8 @@ export class SalesController {
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  // Remise et crédit se décident sur les droits : relus en base, pas dans le token.
+  @UseGuards(FreshAccessGuard)
   @Post()
   @ApiOperation({
     summary: 'Valide une vente au comptoir du magasin',

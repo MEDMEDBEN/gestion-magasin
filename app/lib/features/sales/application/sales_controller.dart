@@ -223,9 +223,15 @@ class SalesActions {
     return customer;
   }
 
-  Future<void> payCustomer(String customerId, int amount) async {
+  /// `paymentId` : généré UNE fois par saisie — un renvoi après coupure
+  /// réutilise le même id et le serveur n'efface pas la dette deux fois.
+  Future<void> payCustomer(
+    String customerId,
+    int amount, {
+    required String paymentId,
+  }) async {
     await _api.payCustomer(
-      id: _ref.read(uuidProvider).v7(),
+      id: paymentId,
       customerId: customerId,
       amount: amount,
     );

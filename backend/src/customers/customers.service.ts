@@ -6,6 +6,7 @@ import { ErrorCode } from '../common/error-codes';
 import { PERMISSIONS } from '../common/permissions';
 import { Customer, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CashSessionsService } from '../sales/cash-sessions.service';
 import { SalesService } from '../sales/sales.service';
 import {
   CreateCustomerDto,
@@ -120,6 +121,8 @@ export class CustomersService {
       });
       const snapshot = (c: Customer) => ({
         name: c.name,
+        phone: c.phone,
+        address: c.address,
         isActive: c.isActive,
         priceTierId: c.priceTierId,
         creditLimit: c.creditLimit,
@@ -147,6 +150,36 @@ export class CustomersService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<CustomerPaymentDto> {
+    // Renvoi du même règlement (réponse perdue) : on rend celui déjà enregistré —
+    // une dette n'est jamais effacée deux fois pour un seul paiement.
+    if (dto.id) {
+      const existing = await this.prisma.customerPayment.findUnique({
+        where: { id: dto.id },
+      });
+      if (existing) {
+        if (
+          existing.userId !== user.id ||
+          existing.customerId !== dto.customerId
+        ) {
+          throw new BusinessException(
+            ErrorCode.CONFLICT,
+            'Cet identifiant de règlement est déjà utilisé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        return {
+          id: existing.id,
+          customerId: existing.customerId,
+          saleId: existing.saleId,
+          amount: existing.amount,
+          paidAt: existing.paidAt,
+          balanceDue: await SalesService.customerDebt(
+            this.prisma,
+            existing.customerId,
+          ),
+        };
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${dto.customerId}::uuid FOR UPDATE`;
       const customer = await tx.customer.findUnique({
@@ -190,8 +223,8 @@ export class CustomersService {
         }
       }
 
-      const session = await tx.cashSession.findFirst({
-        where: { userId: user.id, status: 'OUVERTE' },
+      const session = await CashSessionsService.lockOpenSession(tx, {
+        userId: user.id,
       });
       if (!session) {
         throw new BusinessException(
@@ -218,7 +251,9 @@ export class CustomersService {
           userId: user.id,
           type: 'ENTREE',
           amount: dto.amount,
-          note: `Règlement client ${customer.name}`,
+          saleId: dto.saleId ?? null,
+          // Rapprochement caisse ↔ règlement par l'id du règlement.
+          note: `Règlement ${payment.id} — ${customer.name}`,
         },
       });
       await writeAudit(tx, actor, {
