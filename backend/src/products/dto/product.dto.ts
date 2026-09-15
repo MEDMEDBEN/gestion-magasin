@@ -283,6 +283,13 @@ export class ProductDto {
   lastPurchasePriceHt!: number | null;
   @ApiProperty() allowBackorder!: boolean;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Photo : version opaque (change à chaque nouvelle photo). Image servie par ' +
+      '`GET /products/:id/image`. `null` = pas de photo.',
+  })
+  imageKey!: string | null;
   @ApiProperty() updatedAt!: Date;
 }
 

@@ -1,17 +1,26 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Ip,
   Param,
   Patch,
   Post,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiBody,
   ApiConflictResponse,
+  ApiConsumes,
+  ApiNotFoundResponse,
+  ApiProduces,
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
@@ -47,6 +56,9 @@ import {
   UpdateProductDto,
 } from './dto/product.dto';
 import { ProductsService } from './products.service';
+
+/// Photo déjà compressée par l'app (≤ 1024 px) : 2 Mo suffisent largement.
+export const PRODUCT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -143,6 +155,76 @@ export class ProductsController {
       await this.productsService.update(id, dto, user, actorOf(user, ip)),
       user,
     );
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
+  @Post(':id/image')
+  @UseInterceptors(
+    FileInterceptor('image', {
+      limits: { fileSize: PRODUCT_IMAGE_MAX_BYTES, files: 1, fields: 0 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { image: { type: 'string', format: 'binary' } },
+    },
+  })
+  @ApiOperation({
+    summary: 'Pose ou remplace la photo du produit (admin)',
+    description: 'JPEG, PNG ou WebP, 2 Mo max — type vérifié sur le contenu.',
+  })
+  @ApiOkResponse({ type: ProductDto })
+  async setImage(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<ProductDto> {
+    return ProductsService.forViewer(
+      await this.productsService.setImage(id, file, actorOf(user, ip)),
+      user,
+    );
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
+  @Delete(':id/image')
+  @ApiOperation({ summary: 'Retire la photo du produit (admin)' })
+  @ApiOkResponse({ type: ProductDto })
+  async removeImage(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<ProductDto> {
+    return ProductsService.forViewer(
+      await this.productsService.removeImage(id, actorOf(user, ip)),
+      user,
+    );
+  }
+
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ)
+  @Get(':id/image')
+  @ApiOperation({
+    summary: 'Photo du produit (authentifiée)',
+    description:
+      'Le stockage est privé : la photo ne sort que par cette route.',
+  })
+  @ApiProduces('image/jpeg', 'image/png', 'image/webp')
+  @ApiNotFoundResponse({ description: 'Le produit n’a pas de photo' })
+  async image(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, contentType } = await this.productsService.openImage(id);
+    res.setHeader('Content-Type', contentType);
+    // Clé versionnée : l'app peut garder la photo en cache sans risque.
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    stream.pipe(res);
   }
 
   @Roles(RoleCode.ADMIN)

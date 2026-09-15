@@ -8,7 +8,10 @@ import { ErrorCode } from '../common/error-codes';
 import { PERMISSIONS } from '../common/permissions';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Product } from '../generated/prisma/client';
+import { randomUUID } from 'crypto';
+import { detectImageFormat } from '../common/image-format';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
   CreateProductDto,
@@ -45,7 +48,102 @@ export class ProductsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,
+    private readonly storage: StorageService,
   ) {}
+
+  /// Pose ou remplace la photo d'un produit. Le type est vérifié sur les OCTETS
+  /// (signature du fichier), jamais sur l'extension ni l'en-tête déclaré.
+  async setImage(
+    id: string,
+    file: { buffer: Buffer } | undefined,
+    actor: ActorContext,
+  ): Promise<ProductDto> {
+    if (!file?.buffer?.length) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Photo absente : champ multipart « image »',
+      );
+    }
+    const format = detectImageFormat(file.buffer);
+    if (!format) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Photo refusée : JPEG, PNG ou WebP uniquement',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const exists = await this.prisma.product.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!exists) throw ProductsService.notFound();
+
+    const key = `products/${id}/${randomUUID()}.${format.extension}`;
+    await this.storage.put(key, file.buffer, format.contentType);
+    try {
+      const { product, previous } = await this.prisma.$transaction(
+        async (tx) => {
+          const before = await tx.product.findUniqueOrThrow({ where: { id } });
+          const updated = await tx.product.update({
+            where: { id },
+            data: { imageUrl: key },
+          });
+          await writeAudit(tx, actor, {
+            action: 'UPDATE',
+            entityType: 'Product',
+            entityId: id,
+            oldValue: { imageKey: before.imageUrl },
+            newValue: { imageKey: key },
+          });
+          return { product: updated, previous: before.imageUrl };
+        },
+      );
+      if (previous) await this.storage.remove(previous);
+      return ProductsService.toDto(product);
+    } catch (error) {
+      // Rien d'orphelin : la photo n'est gardée que si la base l'a enregistrée.
+      await this.storage.remove(key);
+      throw error;
+    }
+  }
+
+  async removeImage(id: string, actor: ActorContext): Promise<ProductDto> {
+    const { product, previous } = await this.prisma.$transaction(async (tx) => {
+      const before = await tx.product.findUnique({ where: { id } });
+      if (!before) throw ProductsService.notFound();
+      const updated = await tx.product.update({
+        where: { id },
+        data: { imageUrl: null },
+      });
+      if (before.imageUrl) {
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'Product',
+          entityId: id,
+          oldValue: { imageKey: before.imageUrl },
+          newValue: { imageKey: null },
+        });
+      }
+      return { product: updated, previous: before.imageUrl };
+    });
+    if (previous) await this.storage.remove(previous);
+    return ProductsService.toDto(product);
+  }
+
+  async openImage(id: string) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      select: { imageUrl: true },
+    });
+    if (!product?.imageUrl) {
+      throw new BusinessException(
+        ErrorCode.NOT_FOUND,
+        'Ce produit n’a pas de photo',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return this.storage.get(product.imageUrl);
+  }
 
   static toDto(product: Product): ProductDto {
     return {
@@ -65,6 +163,7 @@ export class ProductsService {
       lastPurchasePriceHt: product.lastPurchasePriceHt,
       allowBackorder: product.allowBackorder,
       isActive: product.isActive,
+      imageKey: product.imageUrl,
       updatedAt: product.updatedAt,
     };
   }

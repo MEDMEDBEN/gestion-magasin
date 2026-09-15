@@ -418,6 +418,107 @@ describe('Catalogue (e2e)', () => {
     });
   });
 
+  describe('photo du produit (MinIO privé)', () => {
+    /// PNG 1×1 réel.
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+    const upload = (
+      token: string,
+      id: string,
+      content: Buffer,
+      name = 'photo.png',
+    ) =>
+      request(server)
+        .post(`/api/products/${id}/image`)
+        .set('Authorization', `Bearer ${token}`)
+        .attach('image', content, name);
+    const download = (token: string, id: string) =>
+      request(server)
+        .get(`/api/products/${id}/image`)
+        .set('Authorization', `Bearer ${token}`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        });
+
+    it('ADMIN pose une photo ; les 3 rôles la voient, par la route authentifiée', async () => {
+      const product = await createProduct();
+
+      const res = await upload(tokens.admin, product.id, PNG).expect(201);
+      expect(res.body.imageKey).toMatch(
+        new RegExp(`^products/${product.id}/.+\\.png$`),
+      );
+
+      for (const token of Object.values(tokens)) {
+        const image = await download(token, product.id).expect(200);
+        expect(image.headers['content-type']).toBe('image/png');
+        expect(image.headers['x-content-type-options']).toBe('nosniff');
+        expect(Buffer.compare(image.body as Buffer, PNG)).toBe(0);
+      }
+      // Sans token : rien.
+      await request(server)
+        .get(`/api/products/${product.id}/image`)
+        .expect(401);
+    });
+
+    it('remplacer : nouvelle version, audit ; retirer : plus de photo', async () => {
+      const product = await createProduct();
+      const first = (await upload(tokens.admin, product.id, PNG).expect(201))
+        .body;
+      const second = (
+        await upload(tokens.admin, product.id, JPEG, 'photo.jpg').expect(201)
+      ).body;
+
+      expect(second.imageKey).not.toBe(first.imageKey);
+      expect(second.imageKey).toMatch(/\.jpg$/);
+      const image = await download(tokens.vendeur, product.id).expect(200);
+      expect(image.headers['content-type']).toBe('image/jpeg');
+
+      const removed = await request(server)
+        .delete(`/api/products/${product.id}/image`)
+        .set('Authorization', `Bearer ${tokens.admin}`)
+        .expect(200);
+      expect(removed.body.imageKey).toBeNull();
+      await download(tokens.vendeur, product.id).expect(404);
+
+      const audits = await prisma.auditLog.count({
+        where: {
+          entityType: 'Product',
+          entityId: product.id,
+          action: 'UPDATE',
+        },
+      });
+      expect(audits).toBe(3);
+    });
+
+    it('type vérifié sur le CONTENU : un SVG renommé en .png est refusé', async () => {
+      const product = await createProduct();
+      await upload(
+        tokens.admin,
+        product.id,
+        Buffer.from(
+          '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+        ),
+        'photo.png',
+      ).expect(422);
+      await download(tokens.admin, product.id).expect(404);
+    });
+
+    it('plus de 2 Mo → 413 ; VENDEUR et MAGASINIER ne posent pas de photo', async () => {
+      const product = await createProduct();
+      const huge = Buffer.concat([JPEG, Buffer.alloc(2 * 1024 * 1024)]);
+      await upload(tokens.admin, product.id, huge, 'huge.jpg').expect(413);
+      for (const token of [tokens.vendeur, tokens.magasinier]) {
+        await upload(token, product.id, PNG).expect(403);
+      }
+    });
+  });
+
   describe('matrice des rôles (docs/permissions.md)', () => {
     it('vendeur et magasinier consultent, ne créent ni ne modifient un produit', async () => {
       const product = await createProduct();
@@ -722,10 +823,13 @@ describe('Catalogue (e2e)', () => {
 
   describe('descente delta du catalogue', () => {
     /// Fait « vieillir » une ligne au-delà du délai de stabilisation.
+    /// Fait « vieillir » une ligne JUSTE au-delà du délai de stabilisation. Une
+    /// marge plus large la daterait avant le curseur d'une descente faite juste
+    /// avant (le vrai serveur date toujours au présent) : test instable.
     const age = (id: string) =>
       prisma.product.update({
         where: { id },
-        data: { updatedAt: new Date(Date.now() - CATALOG_SETTLE_MS - 1000) },
+        data: { updatedAt: new Date(Date.now() - CATALOG_SETTLE_MS - 5) },
       });
 
     const pullAll = async (token: string, cursor?: string) => {
