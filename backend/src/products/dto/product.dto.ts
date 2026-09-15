@@ -8,6 +8,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -290,7 +291,19 @@ export class ProductDto {
       '`GET /products/:id/image`. `null` = pas de photo.',
   })
   imageKey!: string | null;
+  @ApiProperty({
+    type: () => [ProductPriceLineDto],
+    description:
+      'Prix de vente HT par tarif, en centimes (vide sans `price.read`).',
+  })
+  prices!: ProductPriceLineDto[];
   @ApiProperty() updatedAt!: Date;
+}
+
+export class ProductPriceLineDto {
+  @ApiProperty() priceTierId!: string;
+  @ApiProperty({ example: 145000, description: 'Centimes de DA' })
+  priceHt!: number;
 }
 
 export class ProductListDto {
@@ -375,6 +388,8 @@ export class SetProductPriceDto {
   })
   @IsInt()
   @Min(0)
+  // Colonne Int PostgreSQL : au-delà, la base lèverait une 500. 20 M DA suffisent.
+  @Max(2_000_000_000)
   priceHt!: number;
 }
 

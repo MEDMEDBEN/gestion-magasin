@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Delete,
+  HttpCode,
+  HttpStatus,
   Get,
   Ip,
   Param,
@@ -10,6 +12,7 @@ import {
   Query,
   Res,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -24,7 +27,6 @@ import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { ActorContext } from '../audit/audit-writer';
@@ -37,7 +39,7 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
-import { notImplemented } from '../common/not-implemented';
+import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import { CatalogService } from './catalog.service';
 import { CatalogChangesDto, CatalogChangesQueryDto } from './dto/catalog.dto';
@@ -49,7 +51,6 @@ import {
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
-  ProductPriceDto,
   SetProductPriceDto,
   TaxRateDto,
   UpdateCategoryDto,
@@ -229,17 +230,26 @@ export class ProductsController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  // Route sensible (prix) : accès relu en base (CONVENTIONS.md § Sécurité, audit M5).
+  @UseGuards(FreshAccessGuard)
   @Post(':id/prices')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Fixe le prix d’un produit pour un tarif (admin uniquement)',
     description:
       'Prix HT en centimes. Le vendeur applique, il ne fixe jamais un prix.',
   })
-  @ApiOkResponse({ type: ProductPriceDto })
-  @ApiParam({ name: 'id', format: 'uuid' })
-  @ApiBody({ type: SetProductPriceDto })
-  setPrice(): Promise<ProductPriceDto> {
-    return notImplemented('Ventes / tarifs');
+  @ApiOkResponse({ type: ProductDto })
+  async setPrice(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: SetProductPriceDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<ProductDto> {
+    return ProductsService.forViewer(
+      await this.productsService.setPrice(id, dto, actorOf(user, ip)),
+      user,
+    );
   }
 }
 

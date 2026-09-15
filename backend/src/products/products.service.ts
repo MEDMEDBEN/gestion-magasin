@@ -23,6 +23,14 @@ import {
 } from './dto/product.dto';
 
 type Db = Prisma.TransactionClient;
+
+/// Prix de vente par tarif, embarqués dans chaque produit renvoyé (règle 13).
+export const PRODUCT_INCLUDE = {
+  prices: { select: { priceTierId: true, priceHt: true } },
+} as const;
+type ProductWithPrices = Product & {
+  prices?: { priceTierId: string; priceHt: number }[];
+};
 type Viewer = Pick<AuthenticatedUser, 'permissions'>;
 
 const SORTABLE_FIELDS = [
@@ -87,6 +95,7 @@ export class ProductsService {
           const updated = await tx.product.update({
             where: { id },
             data: { imageUrl: key },
+            include: PRODUCT_INCLUDE,
           });
           await writeAudit(tx, actor, {
             action: 'UPDATE',
@@ -114,6 +123,7 @@ export class ProductsService {
       const updated = await tx.product.update({
         where: { id },
         data: { imageUrl: null },
+        include: PRODUCT_INCLUDE,
       });
       if (before.imageUrl) {
         await writeAudit(tx, actor, {
@@ -128,6 +138,56 @@ export class ProductsService {
     });
     if (previous) await this.storage.remove(previous);
     return ProductsService.toDto(product);
+  }
+
+  /// Fixe le prix HT d'un produit pour un tarif (ADMIN, `price.manage`) —
+  /// « modification de prix » tracée (spec §24). Le produit est « touché » pour
+  /// que la descente delta du catalogue transporte le nouveau prix.
+  async setPrice(
+    id: string,
+    dto: { priceTierId: string; priceHt: number },
+    actor: ActorContext,
+  ): Promise<ProductDto> {
+    return this.prisma.$transaction(async (tx) => {
+      await ProductsService.lockWrites(tx);
+      const product = await tx.product.findUnique({ where: { id } });
+      if (!product) throw ProductsService.notFound();
+      const tier = await tx.priceTier.findFirst({
+        where: { id: dto.priceTierId, isActive: true },
+      });
+      if (!tier) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'priceTierId : tarif introuvable ou inactif',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      const before = await tx.productPrice.findUnique({
+        where: {
+          productId_priceTierId: { productId: id, priceTierId: tier.id },
+        },
+      });
+      await tx.productPrice.upsert({
+        where: {
+          productId_priceTierId: { productId: id, priceTierId: tier.id },
+        },
+        create: { productId: id, priceTierId: tier.id, priceHt: dto.priceHt },
+        update: { priceHt: dto.priceHt },
+      });
+      const updated = await tx.product.update({
+        where: { id },
+        data: { updatedAt: new Date() },
+        include: PRODUCT_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'ProductPrice',
+        entityId: id,
+        oldValue: { tier: tier.code, priceHt: before?.priceHt ?? null },
+        newValue: { tier: tier.code, priceHt: dto.priceHt },
+      });
+      return ProductsService.toDto(updated);
+    });
   }
 
   async openImage(id: string) {
@@ -145,7 +205,7 @@ export class ProductsService {
     return this.storage.get(product.imageUrl);
   }
 
-  static toDto(product: Product): ProductDto {
+  static toDto(product: ProductWithPrices): ProductDto {
     return {
       id: product.id,
       sku: product.sku,
@@ -164,6 +224,10 @@ export class ProductsService {
       allowBackorder: product.allowBackorder,
       isActive: product.isActive,
       imageKey: product.imageUrl,
+      prices: (product.prices ?? []).map(({ priceTierId, priceHt }) => ({
+        priceTierId,
+        priceHt,
+      })),
       updatedAt: product.updatedAt,
     };
   }
@@ -181,6 +245,7 @@ export class ProductsService {
       mainSupplierId: can(PERMISSIONS.SUPPLIER_READ)
         ? product.mainSupplierId
         : null,
+      prices: can(PERMISSIONS.PRICE_READ) ? product.prices : [],
     };
   }
 
@@ -208,6 +273,7 @@ export class ProductsService {
     const [rows, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
+        include: PRODUCT_INCLUDE,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         orderBy: [orderBy, { id: 'asc' }],
@@ -223,7 +289,10 @@ export class ProductsService {
   }
 
   async findOne(id: string, viewer: Viewer): Promise<ProductDto> {
-    const product = await this.prisma.product.findUnique({ where: { id } });
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: PRODUCT_INCLUDE,
+    });
     if (!product) throw ProductsService.notFound();
     return ProductsService.forViewer(ProductsService.toDto(product), viewer);
   }
@@ -232,6 +301,7 @@ export class ProductsService {
   async findByBarcode(raw: string, viewer: Viewer): Promise<ProductDto> {
     const product = await this.prisma.product.findUnique({
       where: { barcode: raw.trim() },
+      include: PRODUCT_INCLUDE,
     });
     if (!product) throw ProductsService.notFound();
     return ProductsService.forViewer(ProductsService.toDto(product), viewer);
@@ -255,6 +325,7 @@ export class ProductsService {
       }
 
       const product = await tx.product.create({
+        include: PRODUCT_INCLUDE,
         data: {
           id: dto.id,
           sku: dto.sku,
@@ -318,7 +389,10 @@ export class ProductsService {
 
     return this.prisma.$transaction(async (tx) => {
       await ProductsService.lockWrites(tx);
-      const before = await tx.product.findUnique({ where: { id } });
+      const before = await tx.product.findUnique({
+        where: { id },
+        include: PRODUCT_INCLUDE,
+      });
       if (!before) throw ProductsService.notFound();
       // Seuls les rattachements MODIFIÉS sont contrôlés : un formulaire renvoyé tel
       // quel ne doit pas échouer parce que sa catégorie a été désactivée entre-temps.
@@ -375,7 +449,11 @@ export class ProductsService {
         data.allowBackorder = dto.allowBackorder;
       if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
-      const product = await tx.product.update({ where: { id }, data });
+      const product = await tx.product.update({
+        where: { id },
+        data,
+        include: PRODUCT_INCLUDE,
+      });
       const after = ProductsService.toDto(product);
       const oldValue = ProductsService.auditSnapshot(
         ProductsService.toDto(before),

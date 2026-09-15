@@ -15,7 +15,7 @@ import {
   TaxRateDto,
   UpdateCategoryDto,
 } from './dto/product.dto';
-import { ProductsService } from './products.service';
+import { PRODUCT_INCLUDE, ProductsService } from './products.service';
 
 type Db = Prisma.TransactionClient;
 
@@ -220,7 +220,10 @@ export class CatalogService {
     });
 
     const [products, categories, locations, taxRates] = await Promise.all([
-      this.prisma.product.findMany(window(cursor.products)),
+      this.prisma.product.findMany({
+        ...window(cursor.products),
+        include: PRODUCT_INCLUDE,
+      }),
       this.prisma.category.findMany(window(cursor.categories)),
       this.prisma.location.findMany(window(cursor.locations)),
       this.prisma.taxRate.findMany(window(cursor.taxRates)),

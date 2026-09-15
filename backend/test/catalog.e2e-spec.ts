@@ -629,12 +629,73 @@ describe('Catalogue (e2e)', () => {
       }
     });
 
-    it('le prix reste 501 (feature Ventes / tarifs)', async () => {
+    it('prix par tarif : ADMIN seul le fixe, tracé, visible des 3 rôles', async () => {
       const product = await createProduct();
+      const tiers = await prisma.priceTier.findMany({
+        orderBy: { code: 'asc' },
+      });
+      const [detail, gros] = [
+        tiers.find((t) => t.code === 'DETAIL')!,
+        tiers.find((t) => t.code === 'GROS')!,
+      ];
+      const setPrice = (token: string, body: object) =>
+        as(token).post(`/api/products/${product.id}/prices`).send(body);
+
+      await setPrice(tokens.admin, {
+        priceTierId: detail.id,
+        priceHt: 145000,
+      }).expect(200);
+      const res = await setPrice(tokens.admin, {
+        priceTierId: gros.id,
+        priceHt: 120000,
+      }).expect(200);
+      expect(res.body.prices).toEqual(
+        expect.arrayContaining([
+          { priceTierId: detail.id, priceHt: 145000 },
+          { priceTierId: gros.id, priceHt: 120000 },
+        ]),
+      );
+      // Modifier un prix existant : upsert, jamais un doublon.
+      await setPrice(tokens.admin, {
+        priceTierId: detail.id,
+        priceHt: 150000,
+      }).expect(200);
+      expect(
+        await prisma.productPrice.count({ where: { productId: product.id } }),
+      ).toBe(2);
+
+      for (const token of [tokens.vendeur, tokens.magasinier]) {
+        await setPrice(token, { priceTierId: detail.id, priceHt: 1 }).expect(
+          403,
+        );
+        const seen = await as(token)
+          .get(`/api/products/${product.id}`)
+          .expect(200);
+        expect(seen.body.prices).toHaveLength(2);
+      }
+      const audit = await prisma.auditLog.findMany({
+        where: { entityType: 'ProductPrice', entityId: product.id },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(
+        audit.map((a) => (a.newValue as { priceHt: number }).priceHt),
+      ).toEqual([145000, 120000, 150000]);
+      expect((audit[2].oldValue as { priceHt: number }).priceHt).toBe(145000);
+    });
+
+    it('prix invalide : décimal, négatif, démesuré → 400 ; tarif inconnu → 422', async () => {
+      const product = await createProduct();
+      const tier = await prisma.priceTier.findFirstOrThrow();
+      for (const priceHt of [1450.5, -1, 3_000_000_000, '145000']) {
+        await as(tokens.admin)
+          .post(`/api/products/${product.id}/prices`)
+          .send({ priceTierId: tier.id, priceHt })
+          .expect(400);
+      }
       await as(tokens.admin)
         .post(`/api/products/${product.id}/prices`)
         .send({ priceTierId: randomUUID(), priceHt: 100 })
-        .expect(501);
+        .expect(422);
     });
   });
 
