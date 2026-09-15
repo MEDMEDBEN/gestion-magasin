@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/error/error_codes.dart';
 import '../../../core/money.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
@@ -356,9 +357,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       final change = received - kept;
       await _showTicket(sale, change: change);
     } on ApiException catch (error) {
-      if (error.statusCode == 409) {
+      if (error.code == ErrorCodes.saleTotalChanged) {
         // Prix changé entre-temps : le catalogue local est remis à jour.
         ref.read(catalogSyncProvider.notifier).refresh();
+      } else if (error.code == ErrorCodes.saleAlreadyRecorded) {
+        // La vente précédente EXISTE : ce panier ne doit pas la réécrire en
+        // boucle ; il repart avec un nouvel id, le vendeur vérifie d'abord.
+        ref.read(cartProvider.notifier).clear();
+        ref.invalidate(mySalesProvider);
+        ref.invalidate(currentCashSessionProvider);
       }
       if (mounted) _snack(context, error.userMessage);
     } finally {
@@ -724,6 +731,9 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
       await ref.read(salesActionsProvider).printDocument(_sale);
     } on ApiException catch (error) {
       if (mounted) _snack(context, error.userMessage);
+    } catch (_) {
+      // Boîte d'impression indisponible (plateforme, aucune imprimante…).
+      if (mounted) _snack(context, 'Impression impossible sur cet appareil');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

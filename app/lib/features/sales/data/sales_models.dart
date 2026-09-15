@@ -55,6 +55,7 @@ abstract class Sale with _$Sale {
     required String id,
     required String number,
     String? invoiceNumber,
+    DateTime? invoicedAt,
     required String type,
     required String status,
     String? customerId,

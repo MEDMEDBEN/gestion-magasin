@@ -1,4 +1,5 @@
 import { formatDA, formatDateTime, PdfDoc, renderPdf } from '../common/pdf/pdf';
+import { Prisma } from '../generated/prisma/client';
 import { SaleDto } from './dto/sale.dto';
 
 /// Identité du vendeur imprimée en tête (variables STORE_* ; vides = omises).
@@ -66,7 +67,15 @@ const TICKET_MARGIN = 10;
 
 function renderTicket(data: SaleDocumentData): Promise<Buffer> {
   const { sale, store } = data;
-  const height = 240 + sale.lines.length * 34 + store.legal.length * 10;
+  // Hauteur du rouleau : ~38 caractères par ligne de désignation à 80 mm.
+  const nameLines = sale.lines.reduce(
+    (n, l) =>
+      n +
+      Math.max(1, Math.ceil(designation(data, l.productId).name.length / 38)),
+    0,
+  );
+  const height =
+    240 + sale.lines.length * 34 + nameLines * 11 + store.legal.length * 10;
   return renderPdf(
     {
       size: [TICKET_WIDTH, height],
@@ -115,9 +124,11 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
         const d = designation(data, line.productId);
         doc.font('Helvetica-Bold').text(d.name, x, doc.y, { width: w });
         // Prix unitaire TTC affiché (le total de ligne, lui, vient du serveur).
-        const unitTtc = Math.round(
-          (line.unitPriceHt * (100 + Number(line.taxRate))) / 100,
-        );
+        const unitTtc = new Prisma.Decimal(line.unitPriceHt)
+          .mul(new Prisma.Decimal(line.taxRate).add(100))
+          .div(100)
+          .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
+          .toNumber();
         row(
           `${qty(line.quantity)} ${d.unit} × ${formatDA(unitTtc)}`,
           formatDA(line.lineTotalTtc),
@@ -179,11 +190,14 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
         .text('FACTURE', left + w / 2, top, { width: w / 2, align: 'right' });
       doc.font('Helvetica').fontSize(10);
       doc.text(`N° ${sale.invoiceNumber}`, { width: w / 2, align: 'right' });
-      doc.text(`Date : ${formatDateTime(new Date(sale.soldAt))}`, {
-        width: w / 2,
-        align: 'right',
-      });
-      doc.text(`Ticket : ${sale.number}`, { width: w / 2, align: 'right' });
+      doc.text(
+        `Date : ${formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))}`,
+        { width: w / 2, align: 'right' },
+      );
+      doc.text(
+        `Ticket ${sale.number} du ${formatDateTime(new Date(sale.soldAt))}`,
+        { width: w / 2, align: 'right' },
+      );
       doc.y = Math.max(leftBottom, doc.y) + 20;
 
       // Client

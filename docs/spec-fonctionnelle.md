@@ -134,7 +134,7 @@ Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`
 - Une vente est de type **`TICKET`** (par défaut) ou **`FACTURE`**.
 - La vente stocke **HT / TVA / TTC** (calcul déterministe à partir des lignes).
 - Une **facture** reçoit un **numéro légal séquentiel et continu**, attribué **côté serveur en ligne** (jamais côté client, jamais hors-ligne). Une vente faite hors-ligne est un **ticket** ; sa transformation en facture (attribution du numéro) se fait à la reconnexion. Voir règle 11 de `CLAUDE.md`.
-- **Formats de numérotation** (par année, séquence réinitialisée chaque année) : facture `FA-AAAA-NNNNNN` (ex : `FA-2026-000001`, décision MEDMEDBEN 2026-09-15), devis `DEV-AAAA-NNNNN`, bon de commande `BC-AAAA-NNNNN`, transfert `TRF-AAAA-NNNNN` (ex : `FAC-2026-00001`). Le compteur de facture est sans trou (transaction serveur) ; les autres compteurs sont séquentiels par type.
+- **Formats de numérotation** (par année, séquence réinitialisée chaque année) : facture `FA-AAAA-NNNNNN` (ex : `FA-2026-000001`, décision MEDMEDBEN 2026-09-15), devis `DEV-AAAA-NNNNN`, bon de commande `BC-AAAA-NNNNN`, transfert `TRF-AAAA-NNNNN`. La facture est datée du jour de sa **facturation** (`invoicedAt`), pas de la vente. Le compteur de facture est sans trou (transaction serveur) ; les autres compteurs sont séquentiels par type.
 
 ### Caisse (clôture quotidienne)
 - Le caissier **ouvre une session** de caisse avec un **fond de caisse** (`CashSession`).

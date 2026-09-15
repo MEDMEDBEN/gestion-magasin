@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
@@ -19,9 +20,10 @@ import 'support/catalog_fakes.dart';
 import 'support/fakes.dart';
 
 class _FakeSalesApi extends SalesApi {
-  _FakeSalesApi({this.cash}) : super(Dio());
+  _FakeSalesApi({this.cash, this.failure}) : super(Dio());
 
   final CashSession? cash;
+  final ApiException? failure;
   Map<String, Object?>? sent;
 
   @override
@@ -46,6 +48,7 @@ class _FakeSalesApi extends SalesApi {
       'lines': lines,
       'paidAmount': paidAmount,
     };
+    if (failure != null) throw failure!;
     return Sale(
       id: id,
       number: 'TK-2026-000042',
@@ -91,6 +94,66 @@ AuthUser _vendeur() => authUser(
   ],
 );
 
+Future<void> _pumpScreen(
+  WidgetTester tester,
+  _FakeSalesApi api,
+  List<String> printed,
+) async {
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        salesApiProvider.overrideWithValue(api),
+        printPdfProvider.overrideWithValue((bytes, name) async {
+          printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
+        }),
+        activeProductsProvider.overrideWith((ref) => Stream.value([_cable()])),
+        locationsProvider.overrideWith((ref) => Stream.value(const [])),
+        priceTiersProvider.overrideWith(
+          (ref) async => const [
+            PriceTier(
+              id: 'detail',
+              code: 'DETAIL',
+              name: 'Détail',
+              isDefault: true,
+            ),
+          ],
+        ),
+        taxRatesProvider.overrideWith(
+          (ref) => Stream.value([
+            TaxRate(
+              id: 'tva19',
+              code: 'TVA19',
+              name: 'TVA 19 %',
+              rate: '19.00',
+              isDefault: true,
+              isActive: true,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ]),
+        ),
+      ],
+      child: MaterialApp(
+        theme: AppTheme.mobile(dark: true),
+        home: Scaffold(body: SalesScreen(user: _vendeur())),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scanTwiceAndPay(WidgetTester tester) async {
+  for (var i = 0; i < 2; i++) {
+    await tester.enterText(find.byType(TextField).first, '3245060123458');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.textContaining('Encaisser 3'));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byType(TextField).last, '4000');
+  await tester.tap(find.text('Valider la vente'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   test('estimation du panier : mêmes règles et même arrondi que le serveur', () {
     // Référence e2e serveur : 2,5 × 1 450,00 HT, TVA 19 % → 3 625,00 / 688,75.
@@ -121,48 +184,7 @@ void main() {
       useScreenSize(tester, const Size(500, 1400));
       final api = _FakeSalesApi(cash: _openCash);
       final printed = <String>[];
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            salesApiProvider.overrideWithValue(api),
-            printPdfProvider.overrideWithValue((bytes, name) async {
-              printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
-            }),
-            activeProductsProvider.overrideWith(
-              (ref) => Stream.value([_cable()]),
-            ),
-            locationsProvider.overrideWith((ref) => Stream.value(const [])),
-            priceTiersProvider.overrideWith(
-              (ref) async => const [
-                PriceTier(
-                  id: 'detail',
-                  code: 'DETAIL',
-                  name: 'Détail',
-                  isDefault: true,
-                ),
-              ],
-            ),
-            taxRatesProvider.overrideWith(
-              (ref) => Stream.value([
-                TaxRate(
-                  id: 'tva19',
-                  code: 'TVA19',
-                  name: 'TVA 19 %',
-                  rate: '19.00',
-                  isDefault: true,
-                  isActive: true,
-                  updatedAt: DateTime.utc(2026),
-                ),
-              ]),
-            ),
-          ],
-          child: MaterialApp(
-            theme: AppTheme.mobile(dark: true),
-            home: Scaffold(body: SalesScreen(user: _vendeur())),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+      await _pumpScreen(tester, api, printed);
 
       // La douchette tape le code puis « Entrée », deux fois + une quantité.
       for (var i = 0; i < 2; i++) {
@@ -192,6 +214,31 @@ void main() {
       await tester.tap(find.text('Imprimer le ticket'));
       await tester.pumpAndSettle();
       expect(printed, ['TK-2026-000042.pdf:%PDF-']);
+    },
+  );
+
+  testWidgets(
+    'vente déjà enregistrée avec un autre panier : message, panier vidé (nouvel id)',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(
+        cash: _openCash,
+        failure: const ApiException(
+          statusCode: 409,
+          code: 'SALE_ALREADY_RECORDED',
+          message: 'Vente déjà enregistrée : TK-2026-000041 (3 451,00 DA)',
+        ),
+      );
+      await _pumpScreen(tester, api, []);
+      await _scanTwiceAndPay(tester);
+      final firstId = api.sent!['id'];
+
+      expect(find.textContaining('TK-2026-000041'), findsOneWidget);
+      expect(find.textContaining('Encaisser'), findsNothing);
+
+      // Le panier suivant ne réutilise JAMAIS l'id de la vente existante.
+      await _scanTwiceAndPay(tester);
+      expect(api.sent!['id'], isNot(firstId));
     },
   );
 

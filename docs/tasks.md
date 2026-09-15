@@ -353,7 +353,25 @@ Découpage (chaque tranche testée + poussée) :
    app analyze propre, **+178 ~23**.
    Non fait (volontairement) : archivage des factures dans MinIO (spec : « peuvent », à la demande), montant en
    lettres sur la facture (à confirmer si exigé).
-9. ⏳ Contre-audit `reviewer` + `security-reviewer` (PDF + correctifs) → relecture humaine captures 21-23 → P0 #5.
+9. ✅ **Contre-audits** — `security-reviewer` **CONFORME** (4 mineurs) · `reviewer` **PAS OK** (1 bloquant) → tout corrigé :
+   - **Facture datée du jour de FACTURATION** : colonne `Sale.invoicedAt` (migration ADDITIVE
+     `20260915200731_sale_invoiced_at`, anciennes factures remplies avec `soldAt`), imprimée comme date ; le ticket
+     d'origine et sa date restent mentionnés. Sinon un ticket du 31/12 facturé le 02/01 portait `FA-2027-…` daté 2026.
+   - Annulation : **verrou client** avant le calcul de dette (acompte simultané ne peut plus rendre la dette négative).
+   - Renvoi du même id : panier comparé en multi-ensemble (doublons, remises, client) ; code dédié
+     `SALE_ALREADY_RECORDED` avec n° et montant de la vente existante → l'app **vide le panier (nouvel id)** au lieu
+     de renvoyer en boucle ; `SALE_TOTAL_CHANGED` (montant en DA, plus en centimes).
+   - PDF : **facture refusée (422 `STORE_IDENTITY_MISSING`) sans `STORE_NIF` et `STORE_RC`** (le ticket reste
+     imprimable) ; hauteur du rouleau selon la longueur des désignations (test unitaire : 200 lignes × 150 car. = 1 page,
+     contre-éprouvé) ; PU TTC en Decimal ; PDF bridé à 30/min ; erreur d'impression locale affichée.
+   - Docs : exemple `FAC-` retiré de la spec, CONVENTIONS sans « templates HTML ».
+   Preuve : backend **72** unit · **184** e2e (`--runInBand`) ; app analyze propre, **+179 ~23** (test « vente déjà
+   enregistrée » contre-éprouvé).
+   ⚠️ Piège : `npm run lint` fait `--fix` et reformate ~40 fichiers anciens (fins de ligne / prettier) — ne pas les
+   committer avec une feature. Les stubs 501 (`_dto` inutilisés) font toujours échouer `lint` : disparaîtront avec leurs features.
+10. ⏳ Relecture humaine (captures 21-23, PDF ticket/facture) → **P0 #5 Fournisseurs** (+ fournisseur dans la fiche
+   produit, demandé par MEDMEDBEN). À confirmer par MEDMEDBEN : montant en lettres et NIF client sur la facture, mention
+   « DUPLICATA » à la réimpression, police arabe (Helvetica n'affiche pas l'arabe).
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 
 ### ▶️ ENSUITE

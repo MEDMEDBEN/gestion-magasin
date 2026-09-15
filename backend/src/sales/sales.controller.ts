@@ -21,6 +21,7 @@ import {
   ApiTags,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -98,6 +99,8 @@ export class SalesController {
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  // Rendu synchrone : bridé à part pour qu'une boucle ne ralentisse pas l'API.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Get(':id/pdf')
   @ApiOperation({
     summary: 'PDF de la vente : facture A4 si facturée, sinon ticket 80 mm',
@@ -172,7 +175,7 @@ export class SupplierPaymentsController {
   @ApiOperation({
     summary: 'Enregistre un paiement fournisseur (admin uniquement)',
   })
-  createSupplierPayment(@Body() _dto: Record<string, never>): Promise<unknown> {
+  createSupplierPayment(): Promise<unknown> {
     return notImplemented('Fournisseurs / dettes');
   }
 }

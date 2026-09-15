@@ -602,6 +602,9 @@ model Sale {
   number        String     @unique
   /// Numéro légal de facture (FA-AAAA-NNNNNN) — attribué SERVEUR, en ligne uniquement.
   invoiceNumber String?    @unique
+  /// Date de facturation (attribution du numéro) : c'est elle qui date la facture,
+  /// dans l'ordre des numéros — pas la date de vente.
+  invoicedAt    DateTime?
   type          SaleType   @default(TICKET)
   status        SaleStatus @default(VALIDEE)
   customerId    String?    @db.Uuid

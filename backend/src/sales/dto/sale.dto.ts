@@ -141,6 +141,11 @@ export class SaleDto {
     description: 'Numéro légal FA-AAAA-NNNNNN — serveur, en ligne uniquement.',
   })
   invoiceNumber!: string | null;
+  @ApiProperty({
+    nullable: true,
+    description: 'Date de facturation (date imprimée sur la facture).',
+  })
+  invoicedAt!: Date | null;
   @ApiProperty({ enum: SaleTypeDto }) type!: SaleTypeDto;
   @ApiProperty({ example: 'VALIDEE' }) status!: string;
   @ApiProperty({ nullable: true }) customerId!: string | null;

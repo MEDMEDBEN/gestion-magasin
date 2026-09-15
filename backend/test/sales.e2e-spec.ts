@@ -385,8 +385,33 @@ describe('Ventes (e2e)', () => {
           paidAmount: 345100,
         })
         .expect(409);
-      expect(res.body.code).toBe('CONFLICT');
-      expect(await stockOf(p)).toBe('9.000');
+      expect(res.body.code).toBe('SALE_ALREADY_RECORDED');
+      // Même nombre de lignes et même montant, mais un doublon à la place de B.
+      const b = await product('10.000');
+      const id2 = randomUUID();
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          id: id2,
+          lines: [
+            { productId: p, quantity: '1' },
+            { productId: b, quantity: '1' },
+          ],
+          paidAmount: 345100,
+        })
+        .expect(201);
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          id: id2,
+          lines: [
+            { productId: p, quantity: '1' },
+            { productId: p, quantity: '1' },
+          ],
+          paidAmount: 345100,
+        })
+        .expect(409);
+      expect(await stockOf(p)).toBe('8.000');
     });
 
     it('total annoncé par l’app ≠ total serveur (prix changé) → 409, rien n’est écrit', async () => {
@@ -399,7 +424,8 @@ describe('Ventes (e2e)', () => {
           expectedTotalTtc: 150000,
         })
         .expect(409);
-      expect(res.body.code).toBe('CONFLICT');
+      expect(res.body.code).toBe('SALE_TOTAL_CHANGED');
+      expect(res.body.message).toContain('1 725,50 DA');
       expect(await stockOf(p)).toBe('10.000');
       await as(tokens.vendeur)
         .post('/api/sales')
@@ -515,6 +541,10 @@ describe('Ventes (e2e)', () => {
         .expect(200);
       expect(fa.body.invoiceNumber).toMatch(/^FA-\d{4}-\d{6}$/);
       expect(fa.body.type).toBe('FACTURE');
+      // Datée du jour de facturation (ordre des numéros), pas de la vente.
+      expect(new Date(fa.body.invoicedAt).getTime()).toBeGreaterThanOrEqual(
+        new Date(a.soldAt).getTime(),
+      );
       const seq = (n: string) => Number(n.slice(-6));
       expect(seq(fb.body.invoiceNumber)).toBe(seq(fa.body.invoiceNumber) + 1);
 
@@ -586,7 +616,19 @@ describe('Ventes (e2e)', () => {
       const invoiced = await as(tokens.vendeur)
         .post(`/api/sales/${sale.id}/invoice`)
         .expect(200);
-      const invoice = await pdf(tokens.vendeur);
+      // Mentions légales absentes : pas de facture imprimable (le ticket, si).
+      const configured = Boolean(process.env.STORE_NIF && process.env.STORE_RC);
+      if (!configured) {
+        await pdf(tokens.vendeur, 422);
+        process.env.STORE_NIF = '000123456789012';
+        process.env.STORE_RC = '16/00-1234567B20';
+      }
+      const invoice = await pdf(tokens.vendeur).finally(() => {
+        if (!configured) {
+          delete process.env.STORE_NIF;
+          delete process.env.STORE_RC;
+        }
+      });
       expect(invoice.headers['content-disposition']).toContain(
         `${invoiced.body.invoiceNumber}.pdf`,
       );

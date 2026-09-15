@@ -5,6 +5,7 @@ import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { PERMISSIONS } from '../common/permissions';
+import { formatDA } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Sale, SaleLine } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -67,22 +68,32 @@ export class SalesService {
           );
         }
         // Même id mais panier différent (modifié après coupure) : ce n'est pas un renvoi.
+        // Comparaison en multi-ensembles triés : doublons et remises comptent.
+        const key = (productId: string, quantity: string, discount: number) =>
+          `${productId}|${quantity}|${discount}`;
+        const sorted = (keys: string[]) => [...keys].sort().join(';');
         const sameCart =
           existing.paidAmount === dto.paidAmount &&
-          existing.lines.length === dto.lines.length &&
-          dto.lines.every((line) =>
-            existing.lines.some(
-              (l) =>
-                l.productId === line.productId &&
-                l.quantity.equals(
-                  parseQuantity(line.quantity, 'lines.quantity'),
-                ),
+          existing.customerId === (dto.customerId ?? null) &&
+          sorted(
+            existing.lines.map((l) =>
+              key(l.productId, formatQuantity(l.quantity), l.discountAmount),
             ),
-          );
+          ) ===
+            sorted(
+              dto.lines.map((l) =>
+                key(
+                  l.productId,
+                  formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
+                  l.discountAmount ?? 0,
+                ),
+              ),
+            );
         if (!sameCart) {
           throw new BusinessException(
-            ErrorCode.CONFLICT,
-            'Cette vente a déjà été enregistrée avec un autre contenu',
+            ErrorCode.SALE_ALREADY_RECORDED,
+            `Vente déjà enregistrée : ${existing.number} (${formatDA(existing.totalTtc)}) — ` +
+              'vérifiez-la avant de refaire une vente',
             HttpStatus.CONFLICT,
           );
         }
@@ -151,8 +162,8 @@ export class SalesService {
         dto.expectedTotalTtc !== totalTtc
       ) {
         throw new BusinessException(
-          ErrorCode.CONFLICT,
-          `Le total a changé : ${totalTtc} centimes (prix mis à jour) — vérifiez avant d’encaisser`,
+          ErrorCode.SALE_TOTAL_CHANGED,
+          `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
           HttpStatus.CONFLICT,
         );
       }
@@ -325,6 +336,14 @@ export class SalesService {
     ]);
     const env = (key: string) =>
       this.config.get<string>(key)?.trim() || undefined;
+    // Pas de facture sans mentions légales ; un ticket, lui, reste imprimable.
+    if (sale.invoiceNumber && !(env('STORE_NIF') && env('STORE_RC'))) {
+      throw new BusinessException(
+        ErrorCode.STORE_IDENTITY_MISSING,
+        'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
     const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
       const value = env(`STORE_${key}`);
       return value ? [`${key} : ${value}`] : [];
@@ -375,7 +394,7 @@ export class SalesService {
       const invoiceNumber = `FA-${year}-${String(counter.lastNumber).padStart(6, '0')}`;
       const invoiced = await tx.sale.update({
         where: { id },
-        data: { type: 'FACTURE', invoiceNumber },
+        data: { type: 'FACTURE', invoiceNumber, invoicedAt: new Date() },
         include: SALE_INCLUDE,
       });
       await writeAudit(tx, actor, {
@@ -418,6 +437,11 @@ export class SalesService {
           'Vente facturée : l’annulation passe par un avoir',
           HttpStatus.CONFLICT,
         );
+      }
+      // Verrou client (comme règlement et vente) : un acompte simultané ne peut
+      // pas passer entre le calcul de dette et l'annulation.
+      if (sale.customerId) {
+        await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${sale.customerId}::uuid FOR UPDATE`;
       }
       const payments = await tx.customerPayment.count({
         where: { saleId: id },
@@ -633,6 +657,7 @@ export class SalesService {
       id: sale.id,
       number: sale.number,
       invoiceNumber: sale.invoiceNumber,
+      invoicedAt: sale.invoicedAt,
       type: sale.type as SaleTypeDto,
       status: sale.status,
       customerId: sale.customerId,

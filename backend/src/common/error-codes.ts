@@ -41,6 +41,13 @@ export enum ErrorCode {
   PRICE_NOT_DEFINED = 'PRICE_NOT_DEFINED',
   DISCOUNT_NOT_ALLOWED = 'DISCOUNT_NOT_ALLOWED',
   CREDIT_LIMIT_EXCEEDED = 'CREDIT_LIMIT_EXCEEDED',
+  /// Total calculé serveur ≠ total annoncé au client (prix changé) : rien écrit.
+  SALE_TOTAL_CHANGED = 'SALE_TOTAL_CHANGED',
+  /// Id de vente déjà enregistré avec un AUTRE panier : la première vente EXISTE
+  /// (stock sorti, espèces en caisse) — ne pas la refaire à l'aveugle.
+  SALE_ALREADY_RECORDED = 'SALE_ALREADY_RECORDED',
+  /// Facture demandée sans les mentions légales du magasin (STORE_NIF, STORE_RC).
+  STORE_IDENTITY_MISSING = 'STORE_IDENTITY_MISSING',
 
   // Caisse (règle 12)
   CASH_SESSION_REQUIRED = 'CASH_SESSION_REQUIRED',

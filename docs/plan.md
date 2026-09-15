@@ -182,13 +182,13 @@ Traçabilité / système
 - [x] Matrice de permissions CRUD par rôle définie _(prix/tarif/plafond : admin seul ; annulation : admin ; paiement : espèces)_
 - [x] Endpoints API implémentés _(prix par tarif, caisse + rapport Z, ventes, facture FA-AAAA-NNNNNN, PDF, annulation, clients, règlements)_
 - [x] Validation des entrées (class-validator) en place _(montants bornés, total annoncé vérifié, id idempotents)_
-- [x] Tests unitaires backend passent _(68 — 2026-09-15)_
+- [x] Tests unitaires backend passent _(72 — 2026-09-15)_
 - [x] Tests d'intégration backend passent _(184 e2e — 2026-09-15)_
 - [x] UI desktop implémentée
 - [x] UI mobile implémentée
 - [ ] Sync offline gérée si applicable _(ventes hors-ligne = feature P0 #12, après N6b)_
-- [x] Revue par subagent `reviewer` _(2026-09-15 : PAS OK → 5 points corrigés ; contre-revue du PDF à faire)_
-- [x] Audit par subagent `security-reviewer` _(2026-09-15 : corrigé commit 12b890a ; contre-audit du PDF à faire)_
+- [x] Revue par subagent `reviewer` _(2026-09-15 : PAS OK → corrigé ; contre-revue PAS OK (date de facture) → corrigé)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-15 : corrigé commit 12b890a ; contre-audit **CONFORME**, 4 mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 21 à 23 + PDF ticket/facture à relire par MEDMEDBEN)_
 
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)

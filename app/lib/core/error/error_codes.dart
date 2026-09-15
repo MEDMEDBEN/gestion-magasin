@@ -38,6 +38,8 @@ class ErrorCodes {
   static const String priceNotDefined = 'PRICE_NOT_DEFINED';
   static const String discountNotAllowed = 'DISCOUNT_NOT_ALLOWED';
   static const String creditLimitExceeded = 'CREDIT_LIMIT_EXCEEDED';
+  static const String saleTotalChanged = 'SALE_TOTAL_CHANGED';
+  static const String saleAlreadyRecorded = 'SALE_ALREADY_RECORDED';
 
   // Caisse
   static const String cashSessionRequired = 'CASH_SESSION_REQUIRED';
