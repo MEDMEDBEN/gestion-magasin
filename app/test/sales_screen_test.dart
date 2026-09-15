@@ -31,8 +31,10 @@ class _FakeSalesApi extends SalesApi {
     String? customerId,
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
+    int? expectedTotalTtc,
   }) async {
     sent = {
+      'expectedTotalTtc': expectedTotalTtc,
       'id': id,
       'customerId': customerId,
       'lines': lines,
@@ -169,6 +171,8 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.sent!['paidAmount'], 345100);
+      // Le serveur refusera si le total a changé depuis l'affichage.
+      expect(api.sent!['expectedTotalTtc'], 345100);
       expect(api.sent!['lines'], [(productId: 'p1', quantity: '2.000')]);
       expect(api.sent!.containsKey('unitPriceHt'), isFalse);
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);

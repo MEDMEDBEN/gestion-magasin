@@ -335,7 +335,14 @@ Découpage (chaque tranche testée + poussée) :
    MÊMES règles et arrondi que le serveur (testé sur la référence e2e) ; encaissement : espèces reçues → gardé ≤
    total, reste = crédit, monnaie à rendre ; ticket + « Émettre la facture » ; section Clients (création, dette,
    règlement espèces). Le client n'envoie jamais de prix. Preuve : app **+178 ~20**.
-7. ⏳ **PDF** ticket/facture (moteur unique, `common/pdf/`) · audits `reviewer` + `security-reviewer` P0 #4 (lancés).
+7. ✅ **Audits P0 #4** — `security-reviewer` (commit 12b890a : caisse verrouillée `FOR UPDATE` pendant encaissement/
+   annulation/règlement, règlement idempotent, droits relus en base, total borné, verrous triés, tarif inactif) puis
+   `reviewer` : `expectedTotalTtc` (409 si le total serveur ≠ total affiché — l'app recharge le catalogue), renvoi
+   du même id avec un autre panier → 409, annulation refusée si elle rendrait la dette négative (acompte général),
+   rapport Z avec entrées/sorties, spec §ventes alignée (FA-AAAA-NNNNNN, ventes non auditées), 5 e2e ajoutés
+   (caisse clôturée, règlement rattaché, acompte général, total changé, panier modifié).
+   Preuve : backend **65** unit · **183** e2e (`--runInBand`) ; app analyze propre, **+178 ~20**.
+8. ⏳ **PDF** ticket/facture (moteur unique, `common/pdf/`) → captures Vente/Caisse/Clients → contre-audit → P0 #5.
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 
 ### ▶️ ENSUITE

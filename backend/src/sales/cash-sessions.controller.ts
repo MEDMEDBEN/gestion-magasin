@@ -63,7 +63,8 @@ export class CashSessionsController {
   @RequirePermissions(PERMISSIONS.CASH_SESSION_MANAGE)
   @Get('current')
   @ApiOperation({
-    summary: 'Caisse ouverte du compte connecté (null si aucune)',
+    summary: 'Caisse ouverte du compte connecté',
+    description: 'Corps de réponse VIDE si aucune caisse n’est ouverte.',
   })
   @ApiOkResponse({ type: CashSessionDto })
   current(
@@ -78,7 +79,8 @@ export class CashSessionsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Clôture la session et produit le rapport Z',
-    description: 'Attendu = fond + ventes espèces ; écart = compté − attendu.',
+    description:
+      'Attendu = fond + entrées (ventes espèces, règlements) − sorties ; écart = compté − attendu.',
   })
   @ApiOkResponse({ type: CashSessionDto })
   close(

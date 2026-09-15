@@ -217,6 +217,8 @@ class _CashBar extends ConsumerWidget {
                 'Ventes espèces : ${formatDA(report.cashSalesAmount)} '
                 '(${report.cashSalesCount})',
               ),
+              Text('Entrées totales : ${formatDA(report.cashInAmount)}'),
+              Text('Sorties : ${formatDA(report.cashOutAmount)}'),
               Text('Attendu : ${formatDA(report.expectedAmount ?? 0)}'),
               Text('Compté : ${formatDA(report.countedAmount ?? 0)}'),
               const SizedBox(height: 6),
@@ -347,11 +349,17 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
     setState(() => _busy = true);
     try {
-      final sale = await ref.read(salesActionsProvider).checkout(kept);
+      final sale = await ref
+          .read(salesActionsProvider)
+          .checkout(kept, expectedTotalTtc: estimate.totalTtc);
       if (!mounted) return;
       final change = received - kept;
       await _showTicket(sale, change: change);
     } on ApiException catch (error) {
+      if (error.statusCode == 409) {
+        // Prix changé entre-temps : le catalogue local est remis à jour.
+        ref.read(catalogSyncProvider.notifier).refresh();
+      }
       if (mounted) _snack(context, error.userMessage);
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -745,7 +753,7 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
                       final invoiced = await ref
                           .read(salesActionsProvider)
                           .invoice(_sale.id);
-                      setState(() => _sale = invoiced);
+                      if (mounted) setState(() => _sale = invoiced);
                     } on ApiException catch (error) {
                       if (context.mounted) _snack(context, error.userMessage);
                     } finally {

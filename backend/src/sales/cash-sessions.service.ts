@@ -204,6 +204,8 @@ export class CashSessionsService {
       cashSalesAmount: totals.cashSales,
       cashSalesCount: totals.cashSalesCount,
       currentAmount: session.openingFloat + totals.cashIn - totals.cashOut,
+      cashInAmount: totals.cashIn,
+      cashOutAmount: totals.cashOut,
       expectedAmount: session.expectedAmount,
       countedAmount: session.countedAmount,
       difference: session.difference,

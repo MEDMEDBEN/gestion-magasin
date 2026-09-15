@@ -474,7 +474,7 @@ model TaxRate {
   products Product[]
 }
 
-/// Compteur séquentiel par type de document et par année (FAC-2026-00001…).
+/// Compteur séquentiel par type de document et par année (FA-2026-000001…).
 /// Le numéro de facture est attribué côté serveur, en transaction, sans trou (CLAUDE.md règle 11).
 model InvoiceCounter {
   id           String       @id @default(uuid(7)) @db.Uuid
@@ -600,7 +600,7 @@ model Sale {
   id            String     @id @default(uuid(7)) @db.Uuid
   /// Numéro de ticket (séquentiel applicatif) — toujours présent.
   number        String     @unique
-  /// Numéro légal de facture (FAC-AAAA-NNNNN) — attribué SERVEUR, en ligne uniquement.
+  /// Numéro légal de facture (FA-AAAA-NNNNNN) — attribué SERVEUR, en ligne uniquement.
   invoiceNumber String?    @unique
   type          SaleType   @default(TICKET)
   status        SaleStatus @default(VALIDEE)

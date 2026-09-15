@@ -63,6 +63,26 @@ export class SalesService {
             HttpStatus.CONFLICT,
           );
         }
+        // Même id mais panier différent (modifié après coupure) : ce n'est pas un renvoi.
+        const sameCart =
+          existing.paidAmount === dto.paidAmount &&
+          existing.lines.length === dto.lines.length &&
+          dto.lines.every((line) =>
+            existing.lines.some(
+              (l) =>
+                l.productId === line.productId &&
+                l.quantity.equals(
+                  parseQuantity(line.quantity, 'lines.quantity'),
+                ),
+            ),
+          );
+        if (!sameCart) {
+          throw new BusinessException(
+            ErrorCode.CONFLICT,
+            'Cette vente a déjà été enregistrée avec un autre contenu',
+            HttpStatus.CONFLICT,
+          );
+        }
         return this.toDto(this.prisma, existing);
       }
     }
@@ -123,6 +143,16 @@ export class SalesService {
         );
       }
 
+      if (
+        dto.expectedTotalTtc !== undefined &&
+        dto.expectedTotalTtc !== totalTtc
+      ) {
+        throw new BusinessException(
+          ErrorCode.CONFLICT,
+          `Le total a changé : ${totalTtc} centimes (prix mis à jour) — vérifiez avant d’encaisser`,
+          HttpStatus.CONFLICT,
+        );
+      }
       if (dto.paidAmount > totalTtc) {
         throw new BusinessException(
           ErrorCode.VALIDATION_FAILED,
@@ -345,6 +375,18 @@ export class SalesService {
       const payments = await tx.customerPayment.count({
         where: { saleId: id },
       });
+      // Un acompte général a pu solder cette vente : l'annuler rendrait la dette
+      // négative sans remboursement prévu.
+      if (sale.customerId && payments === 0) {
+        const debt = await SalesService.customerDebt(tx, sale.customerId);
+        if (debt - (sale.totalTtc - sale.paidAmount) < 0) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Le client a déjà réglé cette vente : annulation impossible',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
       if (payments > 0) {
         throw new BusinessException(
           ErrorCode.INVALID_STATE_TRANSITION,

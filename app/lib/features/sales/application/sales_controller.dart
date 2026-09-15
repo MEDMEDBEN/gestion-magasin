@@ -194,7 +194,9 @@ class SalesActions {
 
   /// Valide le panier. `paidAmount` : espèces GARDÉES (≤ total) ; le reste
   /// part en crédit client. Le panier n'est vidé qu'après succès.
-  Future<Sale> checkout(int paidAmount) async {
+  /// `expectedTotalTtc` : le total annoncé au client ; le serveur refuse (409)
+  /// s'il a changé, pour ne jamais encaisser ou rendre la monnaie sur un faux total.
+  Future<Sale> checkout(int paidAmount, {required int expectedTotalTtc}) async {
     final cart = _ref.read(cartProvider);
     final sale = await _api.createSale(
       id: cart.saleId,
@@ -204,6 +206,7 @@ class SalesActions {
           (productId: line.product.id, quantity: quantityToJson(line.quantity)),
       ],
       paidAmount: paidAmount,
+      expectedTotalTtc: expectedTotalTtc,
     );
     _ref.read(cartProvider.notifier).clear();
     _ref.invalidate(currentCashSessionProvider);

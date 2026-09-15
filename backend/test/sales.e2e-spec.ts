@@ -366,6 +366,51 @@ describe('Ventes (e2e)', () => {
       expect(await stockOf(p)).toBe('9.000');
     });
 
+    it('renvoi du même id avec un AUTRE panier → 409, rien de plus n’est sorti', async () => {
+      const p = await product('10.000');
+      const id = randomUUID();
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          id,
+          lines: [{ productId: p, quantity: '1' }],
+          paidAmount: 172550,
+        })
+        .expect(201);
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          id,
+          lines: [{ productId: p, quantity: '2' }],
+          paidAmount: 345100,
+        })
+        .expect(409);
+      expect(res.body.code).toBe('CONFLICT');
+      expect(await stockOf(p)).toBe('9.000');
+    });
+
+    it('total annoncé par l’app ≠ total serveur (prix changé) → 409, rien n’est écrit', async () => {
+      const p = await product('10.000');
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [{ productId: p, quantity: '1' }],
+          paidAmount: 150000,
+          expectedTotalTtc: 150000,
+        })
+        .expect(409);
+      expect(res.body.code).toBe('CONFLICT');
+      expect(await stockOf(p)).toBe('10.000');
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [{ productId: p, quantity: '1' }],
+          paidAmount: 172550,
+          expectedTotalTtc: 172550,
+        })
+        .expect(201);
+    });
+
     it('MAGASINIER ne vend pas ; encaissé > total → 422 ; quantité nulle → 422', async () => {
       const p = await product('10.000');
       await as(tokens.magasinier)
@@ -575,6 +620,69 @@ describe('Ventes (e2e)', () => {
       ).body;
       await as(tokens.admin).post(`/api/sales/${sale.id}/invoice`).expect(200);
       await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
+    });
+  });
+
+  describe('annulation refusée (argent déjà bougé ailleurs)', () => {
+    it('caisse de la vente déjà clôturée → 409', async () => {
+      const p = await product('10.000');
+      await openCash(tokens.vendeurSansCaisse).expect(201);
+      const sale = (
+        await as(tokens.vendeurSansCaisse)
+          .post('/api/sales')
+          .send({
+            lines: [{ productId: p, quantity: '1' }],
+            paidAmount: 172550,
+          })
+          .expect(201)
+      ).body;
+      await as(tokens.vendeurSansCaisse)
+        .post(`/api/cash-sessions/${sale.cashSessionId}/close`)
+        .send({ countedAmount: 172550 })
+        .expect(200);
+      await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
+      expect(await stockOf(p)).toBe('9.000');
+    });
+
+    it('règlement rattaché à la vente → 409', async () => {
+      const p = await product('10.000');
+      const c = await customer(500000);
+      const sale = (
+        await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            customerId: c,
+            lines: [{ productId: p, quantity: '1' }],
+            paidAmount: 0,
+          })
+          .expect(201)
+      ).body;
+      await as(tokens.vendeur)
+        .post('/api/payments/customer')
+        .send({ customerId: c, saleId: sale.id, amount: 10000 })
+        .expect(201);
+      await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
+    });
+
+    it('vente soldée par un acompte général : l’annuler rendrait la dette négative → 409', async () => {
+      const p = await product('10.000');
+      const c = await customer(500000);
+      const sale = (
+        await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            customerId: c,
+            lines: [{ productId: p, quantity: '1' }],
+            paidAmount: 0,
+          })
+          .expect(201)
+      ).body;
+      await as(tokens.vendeur)
+        .post('/api/payments/customer')
+        .send({ customerId: c, amount: 172550 })
+        .expect(201);
+      await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
+      expect(await stockOf(p)).toBe('9.000');
     });
   });
 

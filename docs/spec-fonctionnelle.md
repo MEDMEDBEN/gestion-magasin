@@ -118,7 +118,7 @@ Workflow : `Produit → Client → Panier → Paiement → Validation`. Ajout pr
 
 Panier (par ligne) : produit ; quantité ; prix unitaire ; remise (si autorisée) ; total ; disponibilité.
 
-Une vente **validée** (dans une seule transaction) : enregistre la vente + ses lignes ; crée les mouvements de stock (magasin −qté) ; met à jour la projection ; met à jour le CA/statistiques ; crée/met à jour la dette client si vente à crédit ; écrit l'audit.
+Une vente **validée** (dans une seule transaction) : enregistre la vente + ses lignes ; crée les mouvements de stock (magasin −qté) ; met à jour la projection ; met à jour le CA/statistiques ; crée/met à jour la dette client si vente à crédit. Conformément au §24, une vente normale n'écrit pas dans le journal d'audit (elle reste tracée par la vente et ses mouvements de stock, immuables) ; la facturation et l'annulation, elles, sont auditées.
 
 > La vente peut être créée **hors-ligne** (voir §22 et le contrat de sync) : le stock est re-validé au moment du sync, la dette est calculée côté serveur.
 
@@ -134,7 +134,7 @@ Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`
 - Une vente est de type **`TICKET`** (par défaut) ou **`FACTURE`**.
 - La vente stocke **HT / TVA / TTC** (calcul déterministe à partir des lignes).
 - Une **facture** reçoit un **numéro légal séquentiel et continu**, attribué **côté serveur en ligne** (jamais côté client, jamais hors-ligne). Une vente faite hors-ligne est un **ticket** ; sa transformation en facture (attribution du numéro) se fait à la reconnexion. Voir règle 11 de `CLAUDE.md`.
-- **Formats de numérotation** (par année, séquence réinitialisée chaque année) : facture `FAC-AAAA-NNNNN`, devis `DEV-AAAA-NNNNN`, bon de commande `BC-AAAA-NNNNN`, transfert `TRF-AAAA-NNNNN` (ex : `FAC-2026-00001`). Le compteur de facture est sans trou (transaction serveur) ; les autres compteurs sont séquentiels par type.
+- **Formats de numérotation** (par année, séquence réinitialisée chaque année) : facture `FA-AAAA-NNNNNN` (ex : `FA-2026-000001`, décision MEDMEDBEN 2026-09-15), devis `DEV-AAAA-NNNNN`, bon de commande `BC-AAAA-NNNNN`, transfert `TRF-AAAA-NNNNN` (ex : `FAC-2026-00001`). Le compteur de facture est sans trou (transaction serveur) ; les autres compteurs sont séquentiels par type.
 
 ### Caisse (clôture quotidienne)
 - Le caissier **ouvre une session** de caisse avec un **fond de caisse** (`CashSession`).

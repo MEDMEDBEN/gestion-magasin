@@ -17,6 +17,8 @@ abstract class CashSession with _$CashSession {
     required int cashSalesAmount,
     required int cashSalesCount,
     required int currentAmount,
+    @Default(0) int cashInAmount,
+    @Default(0) int cashOutAmount,
     int? expectedAmount,
     int? countedAmount,
     int? difference,

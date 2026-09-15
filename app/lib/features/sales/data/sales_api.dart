@@ -52,8 +52,10 @@ class SalesApi {
     String? customerId,
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
+    int? expectedTotalTtc,
   }) {
     return _post('/sales', {
+      'expectedTotalTtc': ?expectedTotalTtc,
       'id': id,
       'customerId': ?customerId,
       'lines': [

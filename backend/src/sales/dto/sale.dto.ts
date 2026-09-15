@@ -96,6 +96,18 @@ export class CreateSaleDto {
   @Max(MAX_MONEY)
   paidAmount!: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Total TTC annoncé au client par l’app (centimes). S’il diffère du total serveur ' +
+      '(catalogue local en retard sur un prix), la vente est refusée en 409 : rien ne ' +
+      'part en crédit ni ne se rend en monnaie sur un montant faux.',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MONEY)
+  @IsOptional()
+  expectedTotalTtc?: number;
+
   @ApiPropertyOptional()
   @IsString()
   @MaxLength(500)
@@ -199,6 +211,12 @@ export class CashSessionDto {
     description: 'Espèces censées être dans le tiroir, en ce moment.',
   })
   currentAmount!: number;
+  @ApiProperty({
+    description: 'Ventes espèces + entrées (règlements clients), centimes.',
+  })
+  cashInAmount!: number;
+  @ApiProperty({ description: 'Sorties (annulations remboursées), centimes.' })
+  cashOutAmount!: number;
   @ApiProperty({ nullable: true, description: 'Attendu calculé à la clôture.' })
   expectedAmount!: number | null;
   @ApiProperty({ nullable: true }) countedAmount!: number | null;
