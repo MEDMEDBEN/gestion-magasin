@@ -287,7 +287,15 @@ Demandé : fournisseur sur la fiche, photo du produit, quantité à la saisie, �
 - ✅ **État du stock** : `stock/presentation/stock_status.dart` — Rupture (≤ 0), Stock faible (≤ seuil
   minimum), En stock — colonne « Stock » du catalogue (desktop + mobile), fiche produit, écran Stock.
   Lu en ligne ; sans droit ou hors ligne, rien n'est affirmé.
-- ⏳ **Photo du produit** : à faire (MinIO, upload serveur, sélecteur d'image dans l'app).
+- ✅ **Photo du produit** : `src/storage/` (MinIO, bucket PRIVÉ, config validée au démarrage : `MINIO_*` dans
+  `backend/.env`) ; `POST|DELETE /products/:id/image` (ADMIN + product.write, 2 Mo, type vérifié sur les OCTETS —
+  JPEG/PNG/WebP), `GET /products/:id/image` (3 rôles, authentifié, `nosniff`), clé versionnée `imageKey`, audit,
+  aucun objet orphelin. App : `image_picker` + `image` (JPEG ≤ 1024 px avant envoi), section Photo du formulaire,
+  vignette à la demande (`productImageProvider`, jamais préchargée) dans la liste mobile.
+  ⚠️ Image MinIO passée sur `quay.io/minio/minio` (Docker Hub refuse désormais `minio/minio`).
+  Preuve : backend **65** unitaires · **147** e2e (photo ×4 sur le vrai MinIO) ; app analyze propre · **+173 ~20**
+  (dont un vrai bug trouvé : fichier corrompu → plantage du décodeur, désormais refusé).
+**Reprise ICI** : relecture humaine des captures (12-20 + fiche produit avec photo/stock initial) → P0 #4 Ventes.
 Preuve : backend **62** unitaires · **143** e2e (stock initial ×2) ; app analyze propre · **+171 ~20**.
 
 ### ▶️ ENSUITE

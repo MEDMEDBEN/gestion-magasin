@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
@@ -8,6 +7,7 @@ import '../../../../ui/widgets/screen_state.dart';
 import '../../../stock/application/stock_controller.dart';
 import '../../../stock/presentation/stock_status.dart';
 import '../../data/catalog_models.dart';
+import '../product_photo.dart';
 
 /// Liste mobile (AMPÈRE §7, §9 : aucun tableau sur mobile) — lignes tactiles
 /// ≥ 56 : désignation, référence et code-barres, catégorie. Tirer pour mettre
@@ -86,10 +86,7 @@ class _ProductRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            AmpereIconChip(
-              icon: LucideIcons.package,
-              tone: product.isActive ? StatusTone.info : StatusTone.neutral,
-            ),
+            ProductThumbnail(product: product, size: 44),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

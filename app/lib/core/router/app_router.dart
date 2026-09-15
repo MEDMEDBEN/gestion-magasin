@@ -18,10 +18,7 @@ class AppRoutes {
 ///
 /// Extrait du routeur pour être testable sans monter un widget :
 /// c'est une règle de sécurité, elle mérite un test unitaire.
-String? resolveRedirect({
-  required AuthState? auth,
-  required String location,
-}) {
+String? resolveRedirect({required AuthState? auth, required String location}) {
   // État encore inconnu (démarrage, ou hors-ligne au lancement) : on ne
   // redirige pas, l'écran de chargement reste affiché.
   if (auth == null || auth is AuthUnknown) return null;

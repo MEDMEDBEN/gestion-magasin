@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/catalog_api.dart';
@@ -91,6 +93,44 @@ final activeProductsProvider = StreamProvider.autoDispose<List<Product>>(
   (ref) => ref.watch(catalogRepositoryProvider).watchProducts(),
 );
 
+/// Photo d'un produit, chargée À LA DEMANDE (jamais préchargée en masse,
+/// docs/context.md) et gardée en mémoire pour la session. La clé versionnée
+/// (`imageKey`) fait recharger dès qu'une nouvelle photo est posée.
+final productImageProvider = FutureProvider.autoDispose
+    .family<Uint8List, ({String productId, String imageKey})>((ref, photo) {
+      ref.keepAlive();
+      return ref.watch(catalogApiProvider).imageBytes(photo.productId);
+    });
+
+/// Choix d'une photo par l'utilisateur (galerie, ou fichier sur desktop),
+/// compressée avant envoi. Remplaçable en test.
+final pickProductPhotoProvider = Provider<Future<Uint8List?> Function()>(
+  (ref) => () async {
+    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (file == null) return null;
+    return compute(compressProductPhoto, await file.readAsBytes());
+  },
+);
+
+/// JPEG ≤ 1024 px de côté, qualité 80 : quelques centaines de ko, loin des 2 Mo
+/// acceptés par le serveur. `null` si le fichier n'est pas une image lisible.
+Uint8List? compressProductPhoto(Uint8List bytes) {
+  final img.Image? decoded;
+  try {
+    decoded = img.decodeImage(bytes);
+  } catch (_) {
+    // Un fichier tronqué ou d'un autre format peut faire lever le décodeur.
+    return null;
+  }
+  if (decoded == null) return null;
+  final resized = decoded.width >= decoded.height
+      ? (decoded.width > 1024 ? img.copyResize(decoded, width: 1024) : decoded)
+      : (decoded.height > 1024
+            ? img.copyResize(decoded, height: 1024)
+            : decoded);
+  return img.encodeJpg(resized, quality: 80);
+}
+
 final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
   final filter = ref.watch(productFilterProvider);
   final categoryId = filter.categoryId;
@@ -117,10 +157,28 @@ class CatalogActions {
   final CatalogApi _api;
   final CatalogRepository _repository;
 
-  Future<Product> saveProduct(String? id, Map<String, Object?> fields) async {
-    final product = id == null
+  /// `photo` : nouvelle photo (déjà compressée) ; `removePhoto` : la retirer.
+  /// La photo part APRÈS l'enregistrement du produit (il faut son id).
+  Future<Product> saveProduct(
+    String? id,
+    Map<String, Object?> fields, {
+    Uint8List? photo,
+    bool removePhoto = false,
+  }) async {
+    var product = id == null
         ? await _api.createProduct(fields)
+        : fields.isEmpty
+        ? null
         : await _api.updateProduct(id, fields);
+    final productId = product?.id ?? id!;
+    if (photo != null) {
+      product = await _api.uploadImage(productId, photo);
+    } else if (removePhoto) {
+      product = await _api.removeImage(productId);
+    }
+    if (product == null) {
+      throw StateError('saveProduct appelé sans aucun changement');
+    }
     await _repository.saveAll(products: [product]);
     return product;
   }

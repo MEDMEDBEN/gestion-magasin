@@ -17,7 +17,8 @@ class DioClient {
     String? baseUrl,
     Dio? dio,
   }) {
-    this.dio = dio ??
+    this.dio =
+        dio ??
         Dio(
           BaseOptions(
             baseUrl: baseUrl ?? AppConfig.apiBaseUrl,
@@ -27,20 +28,20 @@ class DioClient {
           ),
         );
     this.dio.interceptors.add(
-          InterceptorsWrapper(
-            onRequest: _attachAccessToken,
-            onResponse: (response, handler) {
-              _onReachability?.call(true);
-              handler.next(response);
-            },
-            onError: (error, handler) {
-              // Une réponse, même en erreur, prouve que le serveur est joignable ;
-              // seule l'ABSENCE de réponse signale une coupure.
-              _onReachability?.call(error.response != null);
-              _refreshOnUnauthorized(error, handler);
-            },
-          ),
-        );
+      InterceptorsWrapper(
+        onRequest: _attachAccessToken,
+        onResponse: (response, handler) {
+          _onReachability?.call(true);
+          handler.next(response);
+        },
+        onError: (error, handler) {
+          // Une réponse, même en erreur, prouve que le serveur est joignable ;
+          // seule l'ABSENCE de réponse signale une coupure.
+          _onReachability?.call(error.response != null);
+          _refreshOnUnauthorized(error, handler);
+        },
+      ),
+    );
   }
 
   late final Dio dio;
@@ -80,7 +81,8 @@ class DioClient {
         ? (response!.data as Map)['code'] as String?
         : null;
 
-    final isExpiredAccessToken = response?.statusCode == 401 &&
+    final isExpiredAccessToken =
+        response?.statusCode == 401 &&
         (code == ErrorCodes.accessTokenInvalid ||
             code == ErrorCodes.accessTokenMissing);
 
@@ -97,10 +99,11 @@ class DioClient {
     // Rejouer directement évite une rotation inutile (le quota de /auth/refresh
     // est limité côté serveur, l'épuiser casserait la session).
     final currentToken = await _tokenStore.readAccessToken();
-    final sentToken =
-        (error.requestOptions.headers['Authorization'] as String?)
-            ?.replaceFirst('Bearer ', '');
-    if (currentToken != null && sentToken != null && currentToken != sentToken) {
+    final sentToken = (error.requestOptions.headers['Authorization'] as String?)
+        ?.replaceFirst('Bearer ', '');
+    if (currentToken != null &&
+        sentToken != null &&
+        currentToken != sentToken) {
       return _replay(error, handler);
     }
 

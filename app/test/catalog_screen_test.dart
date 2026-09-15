@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
@@ -27,9 +30,20 @@ class _ApiOnlyActions extends CatalogActions {
 
   final RecordingCatalogApi api;
 
+  Uint8List? lastPhoto;
+
   @override
-  Future<Product> saveProduct(String? id, Map<String, Object?> fields) =>
-      id == null ? api.createProduct(fields) : api.updateProduct(id, fields);
+  Future<Product> saveProduct(
+    String? id,
+    Map<String, Object?> fields, {
+    Uint8List? photo,
+    bool removePhoto = false,
+  }) {
+    lastPhoto = photo;
+    return id == null
+        ? api.createProduct(fields)
+        : api.updateProduct(id, fields);
+  }
 }
 
 const _allProductPermissions = [
@@ -55,6 +69,7 @@ AuthUser _magasinier() => authUser(
 void main() {
   late AppDatabase db;
   late RecordingCatalogApi api;
+  late _ApiOnlyActions actions;
 
   setUp(() {
     db = AppDatabase.forTesting();
@@ -67,8 +82,10 @@ void main() {
     List<Product> products = const [],
     List<ProductCategory> categories = const [],
     bool desktop = false,
+    Uint8List? pickedPhoto,
   }) {
     final repo = CatalogRepository(db, LocalSettingsStore(db), api);
+    actions = _ApiOnlyActions(api, repo);
     return ProviderScope(
       overrides: [
         catalogSyncProvider.overrideWith(_IdleSync.new),
@@ -88,7 +105,8 @@ void main() {
           ]),
         ),
         taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
-        catalogActionsProvider.overrideWithValue(_ApiOnlyActions(api, repo)),
+        catalogActionsProvider.overrideWithValue(actions),
+        pickProductPhotoProvider.overrideWithValue(() async => pickedPhoto),
       ],
       child: MaterialApp(
         theme: desktop
@@ -247,6 +265,41 @@ void main() {
 
     expect(api.productCalls.single.$1, 'p1');
     expect(api.productCalls.single.$2, {'name': 'Nouveau nom'});
+  });
+
+  test('photo : compressée en JPEG ≤ 1024 px ; fichier illisible refusé', () {
+    final big = img.Image(width: 3000, height: 1500);
+    final jpeg = compressProductPhoto(Uint8List.fromList(img.encodePng(big)))!;
+    expect(jpeg.sublist(0, 3), [0xff, 0xd8, 0xff]);
+    final decoded = img.decodeJpg(jpeg)!;
+    expect((decoded.width, decoded.height), (1024, 512));
+    expect(compressProductPhoto(Uint8List.fromList([1, 2, 3])), isNull);
+  });
+
+  testWidgets('ADMIN : la photo choisie part avec l’enregistrement', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    final photo = Uint8List.fromList(
+      img.encodeJpg(img.Image(width: 8, height: 8)),
+    );
+    await tester.pumpWidget(wrap(_admin(), pickedPhoto: photo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajouter une photo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Changer la photo'), findsOneWidget);
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Disjoncteur');
+    await tester.enterText(fields.at(1), 'DIS-PHOTO');
+    await tester.ensureVisible(find.text('Créer le produit'));
+    await tester.tap(find.text('Créer le produit'));
+    await tester.pumpAndSettle();
+
+    expect(actions.lastPhoto, photo);
   });
 
   test('menu : le catalogue est proposé à tout compte qui a product.read', () {

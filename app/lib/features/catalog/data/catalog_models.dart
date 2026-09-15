@@ -67,6 +67,9 @@ abstract class Product with _$Product {
     String? taxRateId,
     String? mainSupplierId,
     String? storageLocationId,
+
+    /// Version opaque de la photo ; `null` = pas de photo.
+    String? imageKey,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
     required Quantity minThreshold,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)

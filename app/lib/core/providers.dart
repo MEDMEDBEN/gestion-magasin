@@ -47,8 +47,9 @@ class ServerReachability extends Notifier<bool> {
   }
 }
 
-final serverReachableProvider =
-    NotifierProvider<ServerReachability, bool>(ServerReachability.new);
+final serverReachableProvider = NotifierProvider<ServerReachability, bool>(
+  ServerReachability.new,
+);
 
 final dioClientProvider = Provider<DioClient>((ref) {
   return DioClient(
@@ -61,8 +62,9 @@ final dioClientProvider = Provider<DioClient>((ref) {
   );
 });
 
-final syncApiProvider =
-    Provider<SyncApi>((ref) => SyncApi(ref.watch(dioClientProvider).dio));
+final syncApiProvider = Provider<SyncApi>(
+  (ref) => SyncApi(ref.watch(dioClientProvider).dio),
+);
 
 final syncEngineProvider = Provider<SyncEngine>(
   (ref) => SyncEngine(

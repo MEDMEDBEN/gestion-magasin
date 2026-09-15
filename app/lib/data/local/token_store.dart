@@ -4,10 +4,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// jamais dans des préférences en clair (CLAUDE.md règle 14, § Sécurité).
 class TokenStore {
   TokenStore([FlutterSecureStorage? storage])
-      // Depuis flutter_secure_storage 11, le chiffrement fort (AES-GCM +
-      // enveloppe RSA-OAEP sur Android, Keychain sur iOS, DPAPI sur Windows)
-      // est le comportement PAR DÉFAUT : aucune option à forcer.
-      : _storage = storage ?? const FlutterSecureStorage();
+    // Depuis flutter_secure_storage 11, le chiffrement fort (AES-GCM +
+    // enveloppe RSA-OAEP sur Android, Keychain sur iOS, DPAPI sur Windows)
+    // est le comportement PAR DÉFAUT : aucune option à forcer.
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

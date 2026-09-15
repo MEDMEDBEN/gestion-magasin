@@ -14,10 +14,10 @@ class SyncOutcome {
   });
 
   const SyncOutcome.offline(this.stillPending)
-      : sent = 0,
-        confirmed = 0,
-        rejected = 0,
-        failure = 'Pas de connexion au serveur';
+    : sent = 0,
+      confirmed = 0,
+      rejected = 0,
+      failure = 'Pas de connexion au serveur';
 
   final int sent;
   final int confirmed;
@@ -49,8 +49,9 @@ class SyncEngine {
   /// l'envoi. Celles d'un autre compte ne partent jamais avec cette session : le
   /// serveur les attribuerait (et les jugerait) au mauvais utilisateur.
   Future<SyncOutcome> synchronize({required String authorUserId}) {
-    return _inFlight ??=
-        _run(authorUserId).whenComplete(() => _inFlight = null);
+    return _inFlight ??= _run(
+      authorUserId,
+    ).whenComplete(() => _inFlight = null);
   }
 
   Future<SyncOutcome> _run(String authorUserId) async {

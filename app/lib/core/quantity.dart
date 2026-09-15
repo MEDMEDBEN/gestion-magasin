@@ -10,17 +10,16 @@ const int quantityScale = 3;
 
 /// Décode une quantité reçue du serveur (toujours une chaîne).
 Quantity quantityFromJson(Object? value) => switch (value) {
-      null => Decimal.zero,
-      String s => Decimal.parse(s),
-      int i => Decimal.fromInt(i),
-      // Un nombre JSON non entier signale un producteur qui n'applique pas le
-      // contrat : on le convertit sans passer par un double.
-      _ => Decimal.parse(value.toString()),
-    };
+  null => Decimal.zero,
+  String s => Decimal.parse(s),
+  int i => Decimal.fromInt(i),
+  // Un nombre JSON non entier signale un producteur qui n'applique pas le
+  // contrat : on le convertit sans passer par un double.
+  _ => Decimal.parse(value.toString()),
+};
 
 /// Encode une quantité pour le serveur, à l'échelle exacte du schéma.
-String quantityToJson(Quantity value) =>
-    value.toStringAsFixed(quantityScale);
+String quantityToJson(Quantity value) => value.toStringAsFixed(quantityScale);
 
 /// Parse une saisie utilisateur (« 12,5 » ou « 12.5 »). Null si invalide.
 Quantity? parseQuantity(String input) {

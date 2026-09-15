@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -12,6 +14,7 @@ import '../application/catalog_controller.dart';
 import '../../stock/application/stock_controller.dart';
 import '../../stock/presentation/stock_status.dart';
 import '../data/catalog_models.dart';
+import 'product_photo.dart';
 
 /// Création, modification ou consultation d'un produit.
 ///
@@ -55,6 +58,10 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   String? _storageLocationId;
   late bool _allowBackorder;
   late bool _isActive;
+
+  /// Nouvelle photo choisie (déjà compressée), ou demande de retrait.
+  Uint8List? _newPhoto;
+  bool _removePhoto = false;
   bool _saving = false;
   String? _error;
 
@@ -170,7 +177,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       // Un code-barres ne se retire pas : vidé, il reste inchangé.
       if (values['barcode'] == null) values['barcode'] = existing.barcode;
       payload = changedFields(_valuesOf(existing), values);
-      if (payload.isEmpty) {
+      if (payload.isEmpty && _newPhoto == null && !_removePhoto) {
         Navigator.of(context).pop(existing);
         return;
       }
@@ -183,7 +190,12 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     try {
       final saved = await ref
           .read(catalogActionsProvider)
-          .saveProduct(existing?.id, payload);
+          .saveProduct(
+            existing?.id,
+            payload,
+            photo: _newPhoto,
+            removePhoto: _removePhoto,
+          );
       if (mounted) Navigator.of(context).pop(saved);
     } on ApiException catch (error) {
       _fail(error.userMessage);
@@ -223,6 +235,68 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       ],
     ),
   );
+
+  Future<void> _pickPhoto() async {
+    final photo = await ref.read(pickProductPhotoProvider)();
+    if (!mounted) return;
+    if (photo == null) return;
+    setState(() {
+      _newPhoto = photo;
+      _removePhoto = false;
+    });
+  }
+
+  Widget _photoSection(AmpereColors colors) {
+    final existing = widget.existing;
+    final hasPhoto =
+        _newPhoto != null || (!_removePhoto && existing?.imageKey != null);
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: _newPhoto != null
+                ? Image.memory(_newPhoto!, fit: BoxFit.cover)
+                : hasPhoto
+                ? ProductThumbnail(product: existing!, size: 96)
+                : ColoredBox(
+                    color: colors.surface2,
+                    child: Icon(LucideIcons.image, color: colors.ink3),
+                  ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        if (widget.canEdit)
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _saving ? null : _pickPhoto,
+                  icon: const Icon(LucideIcons.imagePlus, size: 17),
+                  label: Text(
+                    hasPhoto ? 'Changer la photo' : 'Ajouter une photo',
+                  ),
+                ),
+                if (hasPhoto)
+                  TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() {
+                            _newPhoto = null;
+                            _removePhoto = existing?.imageKey != null;
+                          }),
+                    child: const Text('Retirer'),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
   String? _validateQuantity(String? value) {
     final raw = value?.trim() ?? '';
@@ -273,6 +347,11 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       saving: _saving,
       error: _error,
       children: [
+        if (widget.canEdit || widget.existing?.imageKey != null) ...[
+          const AmpereFieldLabel('Photo'),
+          _photoSection(colors),
+          formFieldGap,
+        ],
         const AmpereFieldLabel('Désignation'),
         TextFormField(
           controller: _name,

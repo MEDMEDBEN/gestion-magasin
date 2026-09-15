@@ -11,9 +11,9 @@ class LocalSettingsStore {
   final AppDatabase _db;
 
   Future<String?> read(String key) async {
-    final row = await (_db.select(_db.localSettings)
-          ..where((t) => t.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (_db.select(
+      _db.localSettings,
+    )..where((t) => t.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 

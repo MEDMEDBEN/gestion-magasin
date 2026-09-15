@@ -66,29 +66,27 @@ class ErrorCodes {
 
   /// Messages destinés à l'utilisateur, en français, dérivés du code stable.
   static String userMessage(String? code, String fallback) => switch (code) {
-        invalidCredentials => 'Identifiant ou mot de passe incorrect',
-        currentPasswordInvalid => 'Mot de passe actuel incorrect',
-        accountDisabled => 'Ce compte est désactivé',
-        passwordChangeRequired => 'Vous devez changer votre mot de passe',
-        refreshTokenExpired ||
-        refreshTokenRevoked ||
-        refreshTokenInvalid =>
-          'Session expirée, reconnectez-vous',
-        forbiddenRole || forbiddenPermission =>
-          "Vous n'avez pas les droits pour cette action",
-        selfModificationForbidden =>
-          'Vos rôles et votre activation sont modifiés par un autre administrateur',
-        lastActiveAdmin =>
-          'Impossible : ce compte est le dernier administrateur actif',
-        rateLimited => 'Trop de tentatives. Patientez quelques minutes.',
-        stockNegative ||
-        stockInsufficient =>
-          'Stock insuffisant pour cette opération',
-        cashSessionRequired => 'Ouvrez une session de caisse au préalable',
-        invoiceOnlineOnly =>
-          'La facturation exige une connexion — le ticket reste valable',
-        creditLimitExceeded => 'Limite de crédit du client dépassée',
-        notImplemented => "Fonctionnalité pas encore disponible",
-        _ => fallback,
-      };
+    invalidCredentials => 'Identifiant ou mot de passe incorrect',
+    currentPasswordInvalid => 'Mot de passe actuel incorrect',
+    accountDisabled => 'Ce compte est désactivé',
+    passwordChangeRequired => 'Vous devez changer votre mot de passe',
+    refreshTokenExpired ||
+    refreshTokenRevoked ||
+    refreshTokenInvalid => 'Session expirée, reconnectez-vous',
+    forbiddenRole ||
+    forbiddenPermission => "Vous n'avez pas les droits pour cette action",
+    selfModificationForbidden =>
+      'Vos rôles et votre activation sont modifiés par un autre administrateur',
+    lastActiveAdmin =>
+      'Impossible : ce compte est le dernier administrateur actif',
+    rateLimited => 'Trop de tentatives. Patientez quelques minutes.',
+    stockNegative ||
+    stockInsufficient => 'Stock insuffisant pour cette opération',
+    cashSessionRequired => 'Ouvrez une session de caisse au préalable',
+    invoiceOnlineOnly =>
+      'La facturation exige une connexion — le ticket reste valable',
+    creditLimitExceeded => 'Limite de crédit du client dépassée',
+    notImplemented => "Fonctionnalité pas encore disponible",
+    _ => fallback,
+  };
 }

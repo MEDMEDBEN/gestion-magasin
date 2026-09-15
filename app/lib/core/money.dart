@@ -42,7 +42,9 @@ Money? parseDA(String input) {
   // On retire tout ce qui n'est ni chiffre, ni signe, ni séparateur décimal :
   // cela couvre d'un coup toutes les variantes d'espace (dont l'espace fine
   // insécable produite par formatDA) et un éventuel symbole « DA » collé.
-  final cleaned = input.replaceAll(RegExp(r'[^\d,.\-]'), '').replaceAll(',', '.');
+  final cleaned = input
+      .replaceAll(RegExp(r'[^\d,.\-]'), '')
+      .replaceAll(',', '.');
   if (cleaned.isEmpty) return null;
 
   final parts = cleaned.split('.');

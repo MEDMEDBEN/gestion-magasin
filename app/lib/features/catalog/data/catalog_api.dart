@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -33,6 +35,40 @@ class CatalogApi {
   /// N'envoie que les champs modifiés — `null` retire un rattachement.
   Future<Product> updateProduct(String id, Map<String, Object?> changes) =>
       _send('PATCH', '/products/$id', changes, Product.fromJson);
+
+  /// Photo déjà compressée par l'app (JPEG ≤ 1024 px). Le serveur vérifie le
+  /// type sur le contenu et renvoie le produit avec sa nouvelle `imageKey`.
+  Future<Product> uploadImage(String productId, Uint8List jpeg) {
+    return guardApi(() async {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/products/$productId/image',
+        data: FormData.fromMap({
+          'image': MultipartFile.fromBytes(jpeg, filename: 'photo.jpg'),
+        }),
+      );
+      return Product.fromJson(response.data!);
+    });
+  }
+
+  Future<Product> removeImage(String productId) {
+    return guardApi(() async {
+      final response = await _dio.delete<Map<String, dynamic>>(
+        '/products/$productId/image',
+      );
+      return Product.fromJson(response.data!);
+    });
+  }
+
+  /// Octets de la photo, par la route authentifiée (le stockage est privé).
+  Future<Uint8List> imageBytes(String productId) {
+    return guardApi(() async {
+      final response = await _dio.get<List<int>>(
+        '/products/$productId/image',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data!);
+    });
+  }
 
   Future<ProductCategory> createCategory(Map<String, Object?> fields) =>
       _send('POST', '/categories', fields, ProductCategory.fromJson);

@@ -32,7 +32,9 @@ class MutationQueue {
     final clientMutationId = _uuid.v7();
     final now = deviceTimestamp ?? DateTime.now().toUtc();
 
-    await _db.into(_db.pendingMutations).insert(
+    await _db
+        .into(_db.pendingMutations)
+        .insert(
           PendingMutationsCompanion.insert(
             clientMutationId: clientMutationId,
             authorUserId: Value(authorUserId),
@@ -164,10 +166,9 @@ class MutationQueue {
 
     switch (result.status) {
       case SyncStatus.confirmee:
-        await (_db.delete(_db.pendingMutations)
-              ..where(
-                (t) => t.clientMutationId.equals(result.clientMutationId),
-              ))
+        await (_db.delete(
+              _db.pendingMutations,
+            )..where((t) => t.clientMutationId.equals(result.clientMutationId)))
             .go();
       case SyncStatus.rejetee:
         await target.write(
@@ -206,20 +207,21 @@ class MutationQueue {
   /// L'utilisateur abandonne une mutation rejetée.
   /// Corriger = créer une NOUVELLE mutation, jamais réutiliser l'identifiant rejeté.
   Future<void> discard(String clientMutationId) async {
-    await (_db.delete(_db.pendingMutations)
-          ..where((t) => t.clientMutationId.equals(clientMutationId)))
-        .go();
+    await (_db.delete(
+      _db.pendingMutations,
+    )..where((t) => t.clientMutationId.equals(clientMutationId))).go();
   }
 
   /// L'appareil est-il resté trop longtemps sans synchroniser ?
   /// Au-delà, le stock local est trop faux pour autoriser de nouvelles ventes
   /// (docs/context.md § Bornes de données offline).
   Future<bool> isTooStale({required String authorUserId}) async {
-    final oldest = await (_db.select(_db.pendingMutations)
-          ..where((t) => _pendingOf(t, authorUserId))
-          ..orderBy([(t) => OrderingTerm.asc(t.deviceTimestamp)])
-          ..limit(1))
-        .getSingleOrNull();
+    final oldest =
+        await (_db.select(_db.pendingMutations)
+              ..where((t) => _pendingOf(t, authorUserId))
+              ..orderBy([(t) => OrderingTerm.asc(t.deviceTimestamp)])
+              ..limit(1))
+            .getSingleOrNull();
     if (oldest == null) return false;
 
     final age = DateTime.now().toUtc().difference(oldest.deviceTimestamp);
