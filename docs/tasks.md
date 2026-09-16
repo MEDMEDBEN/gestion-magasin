@@ -404,7 +404,28 @@ Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
    Reste noté pour P0 #6 (Achats) : correction/annulation d'un paiement fournisseur (règle 7), historique des
    paiements consultable, tri `?sort=` figé sur les listes clients/fournisseurs.
    Preuve : backend **72** unit · **197** e2e ; app analyze propre, **+184 ~25**.
-4. ⏳ Relecture humaine (captures 24-25) → **P0 #6 Achats (commandes fournisseurs)**.
+4. ⏳ Relecture humaine (captures 24-25).
+
+### 🚧 P0 #6 ACHATS — COMMENCÉ, BACKEND PARTIEL (2026-09-16 · **MEDMEDBEN**)
+**Décisions MEDMEDBEN (2026-09-16)** :
+- **La dette fournisseur augmente à la RÉCEPTION** (quantités réellement reçues), pas à la commande.
+  Conséquence pour P0 #7 : `SuppliersService.debt` devra ajouter Σ(lignes reçues × prix) à `openingBalance`.
+- **Surlivraison REFUSÉE** : on ne réceptionne jamais plus que le reste à recevoir d'une ligne de commande
+  (le magasinier fait d'abord modifier la commande).
+1. ✅ **Backend commandes** — `src/purchases/purchase-orders.{service,controller}.ts`, `dto/purchase-order.dto.ts`,
+   `purchases.module.ts` (déclaré dans `app.module.ts`, stub 501 des commandes retiré du contrat ; les réceptions
+   restent en 501). Numéro `BC-AAAA-NNNNN` par `common/document-number.ts` (**générateur unique**, `sales.service.ts`
+   l'utilise désormais aussi pour `FA-`). Création ADMIN+MAGASINIER (BROUILLON, idempotente sur l'id, fournisseur et
+   produits actifs exigés, quantité > 0, prix et TVA figés, totaux bornés), `PATCH` tant que BROUILLON/COMMANDEE
+   (lignes remplacées), `confirm` ADMIN (idempotent, verrou de ligne), `cancel` ADMIN (refus si réception existe),
+   liste filtrée (statut, fournisseur) + détail avec reste à recevoir. Tout audité.
+   Preuve : **9 e2e** `test/purchase-orders.e2e-spec.ts` verts (`--runInBand`), `tsc` propre.
+   ⚠️ **Suite backend complète (npm test + npm run test:e2e) PAS encore relancée après ce module** — à faire en
+   reprise, avant d'aller plus loin.
+2. ⏳ **Prochaine étape PRÉCISE** : relancer `cd backend && npm test && npm run test:e2e` (`--runInBand`), puis
+   écrire l'app des achats (`app/lib/features/purchases/` : liste, formulaire de commande, confirmation/annulation,
+   destination ADMIN+MAGASINIER `purchase.create`), puis audits `reviewer` + `security-reviewer` P0 #6,
+   puis **P0 #7 Réceptions** (stock +, `lastPurchasePriceHt`, dette fournisseur, statuts PARTIELLEMENT_RECUE/RECUE).
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

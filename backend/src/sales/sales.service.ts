@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
+import { nextDocumentNumber, localYear } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
@@ -29,17 +30,6 @@ const SALE_INCLUDE = { lines: true } as const;
 /// Arrondi monétaire unique des ventes : au centime, demi vers le haut.
 function roundMoney(value: Prisma.Decimal): number {
   return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
-}
-
-/// Année civile en Algérie (Africa/Algiers) — le compteur de factures repart
-/// à 1 chaque 1er janvier local, pas UTC.
-function localYear(date: Date): number {
-  return Number(
-    new Intl.DateTimeFormat('en', {
-      timeZone: 'Africa/Algiers',
-      year: 'numeric',
-    }).format(date),
-  );
 }
 
 @Injectable()
@@ -382,16 +372,7 @@ export class SalesService {
       }
       if (sale!.invoiceNumber) return this.toDto(tx, sale!);
 
-      const year = localYear(new Date());
-      await tx.$executeRaw`
-        INSERT INTO "InvoiceCounter" ("id", "documentType", "year", "lastNumber", "updatedAt")
-        VALUES (gen_random_uuid(), 'FACTURE', ${year}, 0, now())
-        ON CONFLICT ("documentType", "year") DO NOTHING`;
-      const [counter] = await tx.$queryRaw<{ lastNumber: number }[]>`
-        UPDATE "InvoiceCounter" SET "lastNumber" = "lastNumber" + 1, "updatedAt" = now()
-        WHERE "documentType" = 'FACTURE' AND "year" = ${year}
-        RETURNING "lastNumber"`;
-      const invoiceNumber = `FA-${year}-${String(counter.lastNumber).padStart(6, '0')}`;
+      const invoiceNumber = await nextDocumentNumber(tx, 'FACTURE', 'FA', 6);
       const invoiced = await tx.sale.update({
         where: { id },
         data: { type: 'FACTURE', invoiceNumber, invoicedAt: new Date() },
