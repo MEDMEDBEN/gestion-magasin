@@ -18,7 +18,7 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsCanonicalUuid, IsOptionalNotNull } from '../../common/validation';
+import { IsCanonicalUuid, IsOptionalNotNull, booleanQuery } from '../../common/validation';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 export enum ProductUnitDto {
@@ -36,8 +36,6 @@ const trim = ({ value }: { value: unknown }) =>
 const trimOrNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 /// Query string : seul « true » vaut vrai.
-const booleanQuery = ({ value }: { value: unknown }) =>
-  value === true || value === 'true';
 
 export const SKU_MAX_LENGTH = 50;
 export const NAME_MAX_LENGTH = 150;

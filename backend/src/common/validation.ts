@@ -11,6 +11,10 @@ import { IsUUID, ValidateIf } from 'class-validator';
 export const IsOptionalNotNull = () =>
   ValidateIf((_object: object, value: unknown) => value !== undefined);
 
+/// « true » dans une query (les paramètres d'URL sont des chaînes).
+export const booleanQuery = ({ value }: { value: unknown }) =>
+  value === true || value === 'true';
+
 /// UUID reçu dans un corps ou une query : validé PUIS mis en minuscules.
 ///
 /// Même raison que `CanonicalUuidPipe` pour les routes : PostgreSQL retrouve la

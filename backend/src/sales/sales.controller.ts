@@ -32,7 +32,6 @@ import {
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { FreshAccessGuard } from '../common/fresh-access.guard';
-import { notImplemented } from '../common/not-implemented';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateSaleDto,
@@ -162,20 +161,5 @@ export class SalesController {
     @Ip() ip: string,
   ): Promise<SaleDto> {
     return this.sales.cancel(id, user, { userId: user.id, ipAddress: ip });
-  }
-}
-
-@ApiTags('Paiements')
-@ApiBearerAuth()
-@Controller('payments')
-export class SupplierPaymentsController {
-  @Roles(RoleCode.ADMIN)
-  @RequirePermissions(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
-  @Post('supplier')
-  @ApiOperation({
-    summary: 'Enregistre un paiement fournisseur (admin uniquement)',
-  })
-  createSupplierPayment(): Promise<unknown> {
-    return notImplemented('Fournisseurs / dettes');
   }
 }

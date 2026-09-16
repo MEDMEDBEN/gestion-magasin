@@ -760,6 +760,7 @@ model CashSession {
   user      User           @relation(fields: [userId], references: [id])
   location  Location       @relation(fields: [locationId], references: [id])
   sales     Sale[]
+  supplierPayments SupplierPayment[]
   movements CashMovement[]
 
   @@index([userId])
@@ -798,6 +799,9 @@ model Supplier {
   address     String?
   contactName String?
   notes       String?
+  /// Dette REPRISE à la mise en service (centimes) : ce qui était déjà dû avant
+  /// le logiciel. Fixée par l'admin ; les achats (P0 #6) s'y ajouteront.
+  openingBalance Int   @default(0)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -814,6 +818,9 @@ model SupplierPayment {
   id              String        @id @default(uuid(7)) @db.Uuid
   supplierId      String        @db.Uuid
   purchaseOrderId String?       @db.Uuid
+  /// Session de caisse d'où l'argent est sorti ; NULL = payé hors caisse
+  /// (virement, espèces hors tiroir) — la caisse n'est alors pas touchée.
+  cashSessionId   String?       @db.Uuid
   userId          String        @db.Uuid
   amount          Int
   method          PaymentMethod @default(ESPECES)
@@ -823,6 +830,7 @@ model SupplierPayment {
 
   supplier      Supplier       @relation(fields: [supplierId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  cashSession   CashSession?   @relation(fields: [cashSessionId], references: [id])
   user          User           @relation(fields: [userId], references: [id])
 
   @@index([supplierId])

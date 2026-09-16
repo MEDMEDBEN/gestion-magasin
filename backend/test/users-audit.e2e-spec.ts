@@ -393,7 +393,9 @@ describe('Gestion des comptes (e2e)', () => {
       const fresh = await login(vendeur.email, PASSWORD);
       const suppliers = await as(fresh.body.accessToken).get('/api/suppliers');
       expect(suppliers.status).toBe(403);
-      expect(suppliers.body.code).toBe('FORBIDDEN_PERMISSION');
+      // `supplier.read` posée en base ne rouvre RIEN : la route reste fermée
+      // (au rôle ici, la matrice fermant les fournisseurs au vendeur).
+      expect(suppliers.body.code).toBe('FORBIDDEN_ROLE');
     });
   });
 

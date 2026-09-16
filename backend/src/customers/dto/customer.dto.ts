@@ -15,15 +15,13 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsCanonicalUuid, IsOptionalNotNull } from '../../common/validation';
+import { IsCanonicalUuid, IsOptionalNotNull, booleanQuery } from '../../common/validation';
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 const trimOrNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
-const booleanQuery = ({ value }: { value: unknown }) =>
-  value === true || value === 'true';
 
 export class CreateCustomerDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })

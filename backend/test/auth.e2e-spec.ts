@@ -546,7 +546,7 @@ describe('Auth (e2e)', () => {
     const session = await login(adminEmail, TEMP_PASSWORD);
 
     const res = await request(server)
-      .get('/api/suppliers')
+      .get('/api/purchase-orders')
       .set('Authorization', `Bearer ${session.body.accessToken}`);
 
     expect(res.status).toBe(501);
@@ -576,7 +576,9 @@ describe('Auth (e2e)', () => {
       .set('Authorization', `Bearer ${session.body.accessToken}`);
 
     expect(res.status).toBe(403);
-    expect(res.body.code).toBe('FORBIDDEN_PERMISSION');
+    // Depuis P0 #5, la route est réservée aux rôles ADMIN/MAGASINIER : le vendeur
+    // est arrêté au rôle, avant même la permission.
+    expect(res.body.code).toBe('FORBIDDEN_ROLE');
   });
 
   it('la sonde /api/health est publique', async () => {
