@@ -15,6 +15,8 @@ import '../application/catalog_controller.dart';
 import '../../stock/application/stock_controller.dart';
 import '../../stock/presentation/stock_status.dart';
 import '../data/catalog_models.dart';
+import '../../suppliers/application/suppliers_controller.dart';
+import '../../suppliers/data/suppliers_models.dart';
 import 'product_photo.dart';
 
 /// Création, modification ou consultation d'un produit.
@@ -28,6 +30,7 @@ class ProductForm extends ConsumerStatefulWidget {
     required this.canEdit,
     required this.canDisable,
     this.canReadStock = false,
+    this.canReadSuppliers = false,
     this.canSetPrices = false,
   });
 
@@ -35,6 +38,10 @@ class ProductForm extends ConsumerStatefulWidget {
   final bool canEdit;
   final bool canDisable;
   final bool canReadStock;
+
+  /// ADMIN|MAGASINIER + `supplier.read` : le fournisseur principal est proposé.
+  /// Sans ce droit, le serveur masque déjà le champ — on ne l'affiche pas.
+  final bool canReadSuppliers;
 
   /// ADMIN + `price.manage` : les prix sont modifiables ; sinon lecture seule.
   final bool canSetPrices;
@@ -64,6 +71,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   String? _categoryId;
   String? _taxRateId;
   String? _storageLocationId;
+  String? _mainSupplierId;
   late bool _allowBackorder;
   late bool _isActive;
 
@@ -95,6 +103,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     _categoryId = p?.categoryId;
     _taxRateId = p?.taxRateId;
     _storageLocationId = p?.storageLocationId;
+    _mainSupplierId = p?.mainSupplierId;
     _allowBackorder = p?.allowBackorder ?? false;
     _isActive = p?.isActive ?? true;
   }
@@ -123,6 +132,29 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     return value.isEmpty ? null : value;
   }
 
+  /// Fournisseur principal : liste chargée EN LIGNE (pas de cache), tolérante
+  /// à une panne réseau — une fiche produit reste modifiable sans elle.
+  Widget _supplierField(InputDecoration Function(IconData) deco) {
+    final suppliers = ref.watch(supplierSearchProvider(''));
+    final items = suppliers.value ?? const <Supplier>[];
+    return DropdownButtonFormField<String?>(
+      icon: const Icon(LucideIcons.chevronDown, size: 17),
+      initialValue: items.any((s) => s.id == _mainSupplierId)
+          ? _mainSupplierId
+          : null,
+      isExpanded: true,
+      decoration: deco(LucideIcons.truck),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('Non précisé')),
+        for (final s in items)
+          DropdownMenuItem(value: s.id, child: Text(s.name)),
+      ],
+      onChanged: _locked || suppliers.isLoading
+          ? null
+          : (v) => setState(() => _mainSupplierId = v),
+    );
+  }
+
   static String _quantity(TextEditingController c) =>
       quantityToJson(parseQuantity(c.text) ?? Quantity.zero);
 
@@ -137,6 +169,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'categoryId': _categoryId,
     'taxRateId': _taxRateId,
     'storageLocationId': _storageLocationId,
+    if (widget.canReadSuppliers) 'mainSupplierId': _mainSupplierId,
     'minThreshold': _quantity(_minThreshold),
     'safetyStock': _quantity(_safetyStock),
     'allowBackorder': _allowBackorder,
@@ -153,6 +186,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'categoryId': p.categoryId,
     'taxRateId': p.taxRateId,
     'storageLocationId': p.storageLocationId,
+    'mainSupplierId': p.mainSupplierId,
     'minThreshold': quantityToJson(p.minThreshold),
     'safetyStock': quantityToJson(p.safetyStock),
     'allowBackorder': p.allowBackorder,
@@ -543,6 +577,11 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           onChanged: _locked ? null : (v) => setState(() => _taxRateId = v),
         ),
         formFieldGap,
+        if (widget.canReadSuppliers) ...[
+          const AmpereFieldLabel('Fournisseur principal'),
+          _supplierField(deco),
+          formFieldGap,
+        ],
         const AmpereFieldLabel('Emplacement au dépôt'),
         DropdownButtonFormField<String?>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),

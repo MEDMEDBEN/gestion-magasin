@@ -22,6 +22,8 @@ import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
+import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
+import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/breakpoints.dart';
@@ -106,6 +108,9 @@ const _adminPermissions = [
   'stock.read.warehouse',
   'stock.loss',
   'stock.adjust.validate',
+  'supplier.read',
+  'supplier.write',
+  'supplier.payment.create',
 ];
 
 final _categories = [
@@ -255,6 +260,48 @@ class _CaptureStockApi extends StockApi {
       ),
     ],
     meta: const PageMeta(page: 1, limit: 200, total: 2),
+  );
+}
+
+class _CaptureSuppliersApi extends SuppliersApi {
+  _CaptureSuppliersApi() : super(Dio());
+
+  @override
+  Future<SupplierPage> list({
+    String? query,
+    bool includeInactive = false,
+  }) async => const SupplierPage(
+    data: [
+      Supplier(
+        id: 'f1',
+        name: 'Sonelgaz Matériel',
+        phone: '021 55 44 33',
+        contactName: 'M. Rahmani',
+        openingBalance: 1850000,
+        paidAmount: 600000,
+        balanceDue: 1250000,
+        isActive: true,
+      ),
+      Supplier(
+        id: 'f2',
+        name: 'Câbles du Sud',
+        phone: '0661 20 30 40',
+        openingBalance: 900000,
+        paidAmount: 900000,
+        balanceDue: 0,
+        isActive: true,
+      ),
+      Supplier(
+        id: 'f3',
+        name: 'Legrand Algérie',
+        contactName: 'Mme Amrani',
+        openingBalance: 430000,
+        paidAmount: 0,
+        balanceDue: 430000,
+        isActive: true,
+      ),
+    ],
+    meta: PageMeta(page: 1, limit: 200, total: 3),
   );
 }
 
@@ -428,6 +475,7 @@ Future<void> _capture(
           ],
         ),
         salesApiProvider.overrideWithValue(_CaptureSalesApi()),
+        suppliersApiProvider.overrideWithValue(_CaptureSuppliersApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -812,6 +860,35 @@ void main() {
         await t.tap(find.text('Vente'));
         await t.pumpAndSettle();
         await t.tap(find.text('Clients'));
+      },
+    ),
+  );
+
+  testWidgets(
+    '24 fournisseurs desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '24_fournisseurs_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Fournisseurs')),
+    ),
+  );
+  testWidgets(
+    '25 paiement fournisseur mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '25_paiement_fournisseur_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Fournisseurs');
+        await t.pumpAndSettle();
+        await t.tap(find.text('Sonelgaz Matériel'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Enregistrer un paiement'));
       },
     ),
   );

@@ -6,6 +6,7 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
+import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import 'widgets/screen_state.dart';
 
@@ -59,6 +60,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.warehouse,
       label: 'Stock',
       builder: (context, user) => StockScreen(user: user),
+    ),
+  // `/suppliers` : ADMIN|MAGASINIER + supplier.read (fermé au vendeur).
+  if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+      user.can('supplier.read'))
+    AppDestination(
+      icon: LucideIcons.truck,
+      label: 'Fournisseurs',
+      builder: (context, user) => SuppliersScreen(user: user),
     ),
   // `/users` : @Roles(ADMIN) + user.manage.
   if (user.hasRole('ADMIN') && user.can('user.manage'))

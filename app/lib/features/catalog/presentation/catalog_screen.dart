@@ -25,6 +25,9 @@ class CatalogRights {
     : canWriteProducts = user.hasRole('ADMIN') && user.can('product.write'),
       canDisableProducts = user.hasRole('ADMIN') && user.can('product.disable'),
       canReadStock = user.can('stock.read.store'),
+      canReadSuppliers =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('supplier.read'),
       canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
       canManageLocations =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
@@ -34,6 +37,7 @@ class CatalogRights {
   final bool canDisableProducts;
   final bool canManageLocations;
   final bool canReadStock;
+  final bool canReadSuppliers;
   final bool canSetPrices;
 }
 
@@ -84,6 +88,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         canEdit: rights.canWriteProducts,
         canDisable: rights.canDisableProducts,
         canReadStock: rights.canReadStock,
+        canReadSuppliers: rights.canReadSuppliers,
         canSetPrices: rights.canSetPrices,
       ),
     );

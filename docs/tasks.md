@@ -374,6 +374,27 @@ Découpage (chaque tranche testée + poussée) :
    « DUPLICATA » à la réimpression, police arabe (Helvetica n'affiche pas l'arabe).
 Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
 
+### 🚧 P0 #5 FOURNISSEURS — EN COURS (2026-09-16 · **MEDMEDBEN**)
+**Décisions MEDMEDBEN (2026-09-16)** :
+- **Dette fournisseur = reprise de l'existant** : l'admin saisit `Supplier.openingBalance` (ce qui était déjà dû
+  avant le logiciel) ; dette = reprise − paiements, les achats (P0 #6) s'y ajouteront. Pas de facture fournisseur
+  ligne à ligne en P0 #5 (ce serait la feature Achats faite deux fois).
+- **Paiement fournisseur : au choix** — `fromCash: true` → SORTIE de la caisse OUVERTE (rapport Z) ;
+  `fromCash: false` → hors caisse (virement, espèces hors tiroir), la caisse n'est pas touchée.
+1. ✅ **Backend** — migrations ADDITIVES `supplier_opening_balance` et `supplier_payment_cash_session`
+   (`SupplierPayment.cashSessionId` : d'où l'argent est sorti). `src/suppliers/` : liste paginée + recherche
+   (nom/téléphone/code, inactifs masqués), fiche, création/modif ADMIN (`FreshAccessGuard`, auditées),
+   `POST /payments/supplier` (jamais au-delà du reste dû, verrou fournisseur, idempotent sur l'id, audit).
+   La reprise ne peut pas descendre sous ce qui est déjà payé. **Vendeur : aucun accès** (rôle). Stubs 501
+   fournisseurs supprimés (`parties.controller.ts`, `SupplierPaymentsController` des ventes) ; `booleanQuery`
+   factorisé dans `common/validation.ts`. Preuve : **72** unit · **195** e2e (11 fournisseurs).
+2. ✅ **App** — `features/suppliers/` : destination « Fournisseurs » (ADMIN|MAGASINIER + `supplier.read`),
+   recherche, dette par fiche, formulaire (reprise de dette, admin), paiement avec bascule « payé depuis la
+   caisse » et id stable (renvoi sans double paiement) ; **fournisseur principal dans la fiche produit**
+   (demandé par MEDMEDBEN) affiché seulement avec `supplier.read`. Captures **24** (desktop) et **25**
+   (paiement mobile). Preuve : analyze propre, **+184 ~25**.
+3. ⏳ Audits `reviewer` + `security-reviewer` P0 #5 → relecture humaine.
+
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).
 
