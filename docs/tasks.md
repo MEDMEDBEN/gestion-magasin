@@ -4,6 +4,12 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+## ⚠️ REVUE GÉNÉRALE DU 2026-09-16 — À LIRE AVANT DE CODER
+Bilan complet de toutes les couches (sécurité, BDD, backend, app) : **`docs/revue-generale-2026-09-16.md`**.
+Tests tous verts (79 unit · 212 e2e · 189 app), aucune faille critique, mais **3 bloquants** (caisse négative à
+l'annulation de vente, double paiement au réessai manuel dans l'app, catalogue local non rafraîchi hors écran
+Catalogue) et une liste de corrections à faire **AVANT P0 #7**. Reprendre par le plan §5 de ce document.
+
 ## Phase actuelle
 `Phase 0` **TERMINÉE**. **FEATURE P0 #1 — Auth + utilisateurs : CLOSE le 2026-09-14** (écrans validés par
 MEDMEDBEN ; seul le build Windows reste bloqué par un prérequis MACHINE, voir point 6).
