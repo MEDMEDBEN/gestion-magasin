@@ -419,13 +419,16 @@ Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
    produits actifs exigés, quantité > 0, prix et TVA figés, totaux bornés), `PATCH` tant que BROUILLON/COMMANDEE
    (lignes remplacées), `confirm` ADMIN (idempotent, verrou de ligne), `cancel` ADMIN (refus si réception existe),
    liste filtrée (statut, fournisseur) + détail avec reste à recevoir. Tout audité.
-   Preuve : **9 e2e** `test/purchase-orders.e2e-spec.ts` verts (`--runInBand`), `tsc` propre.
-   ⚠️ **Suite backend complète (npm test + npm run test:e2e) PAS encore relancée après ce module** — à faire en
-   reprise, avant d'aller plus loin.
-2. ⏳ **Prochaine étape PRÉCISE** : relancer `cd backend && npm test && npm run test:e2e` (`--runInBand`), puis
-   écrire l'app des achats (`app/lib/features/purchases/` : liste, formulaire de commande, confirmation/annulation,
-   destination ADMIN+MAGASINIER `purchase.create`), puis audits `reviewer` + `security-reviewer` P0 #6,
-   puis **P0 #7 Réceptions** (stock +, `lastPurchasePriceHt`, dette fournisseur, statuts PARTIELLEMENT_RECUE/RECUE).
+   Preuve : **9 e2e** `test/purchase-orders.e2e-spec.ts`. L'exemple « 501 » de `auth.e2e-spec.ts` vise désormais
+   `/api/receptions` (commandes implémentées).
+2. ✅ **App** — `features/purchases/` : destination « Achats » (ADMIN|MAGASINIER + `purchase.create`), liste avec
+   statut, formulaire (fournisseur, lignes produit/quantité/prix d'achat HT, total estimé, id stable), actions
+   « marquer envoyée », « confirmer » et « annuler » (ADMIN seul, confirmation demandée), consultation des lignes
+   (reçu / reste) une fois confirmée. Captures **26** (liste) et **27** (nouvelle commande). 5 tests widget.
+   Preuve (2026-09-16) : backend **72** unit · **206** e2e (`--runInBand`) ; app analyze propre, **+189 ~27**.
+   ⚠️ Piège machine : Docker Desktop était arrêté → e2e tous en échec (`AggregateError`). Le relancer d'abord.
+3. ⏳ Audits `reviewer` + `security-reviewer` P0 #6 → relecture humaine (captures 26-27) → **P0 #7 Réceptions**
+   (stock +, `lastPurchasePriceHt`, dette fournisseur, statuts PARTIELLEMENT_RECUE/RECUE, surlivraison refusée).
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

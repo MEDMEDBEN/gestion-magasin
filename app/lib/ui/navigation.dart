@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
+import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
@@ -60,6 +61,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.warehouse,
       label: 'Stock',
       builder: (context, user) => StockScreen(user: user),
+    ),
+  // `/purchase-orders` : ADMIN|MAGASINIER + purchase.create.
+  if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+      user.can('purchase.create'))
+    AppDestination(
+      icon: LucideIcons.clipboardList,
+      label: 'Achats',
+      builder: (context, user) => PurchasesScreen(user: user),
     ),
   // `/suppliers` : ADMIN|MAGASINIER + supplier.read (fermé au vendeur).
   if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&

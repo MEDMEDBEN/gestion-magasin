@@ -22,6 +22,8 @@ import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
+import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
+import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
@@ -111,6 +113,8 @@ const _adminPermissions = [
   'supplier.read',
   'supplier.write',
   'supplier.payment.create',
+  'purchase.create',
+  'purchase.confirm',
 ];
 
 final _categories = [
@@ -305,6 +309,52 @@ class _CaptureSuppliersApi extends SuppliersApi {
   );
 }
 
+PurchaseOrder _po(
+  String n,
+  String supplier,
+  PurchaseStatus status,
+  int ttc,
+  int lines,
+) => PurchaseOrder(
+  id: 'po$n',
+  number: 'BC-2026-0000$n',
+  supplierId: supplier,
+  status: status,
+  orderDate: DateTime(2026, 9, 10 + int.parse(n)),
+  totalHt: (ttc / 1.19).round(),
+  totalTax: ttc - (ttc / 1.19).round(),
+  totalTtc: ttc,
+  lines: [
+    for (var i = 0; i < lines; i++)
+      PurchaseLine(
+        id: 'po$n-$i',
+        productId: 'p${i + 1}',
+        orderedQuantity: Decimal.fromInt(10),
+        receivedQuantity: Decimal.zero,
+        remainingQuantity: Decimal.fromInt(10),
+        unitPriceHt: 1000,
+        taxRate: '19.00',
+        lineTotalHt: 10000,
+        lineTotalTtc: 11900,
+      ),
+  ],
+);
+
+class _CapturePurchasesApi extends PurchasesApi {
+  _CapturePurchasesApi() : super(Dio());
+
+  @override
+  Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
+    data: [
+      _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
+      _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
+      _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
+      _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
+    ],
+    meta: const PageMeta(page: 1, limit: 200, total: 4),
+  );
+}
+
 class _CaptureSalesApi extends SalesApi {
   _CaptureSalesApi() : super(Dio());
 
@@ -476,6 +526,7 @@ Future<void> _capture(
         ),
         salesApiProvider.overrideWithValue(_CaptureSalesApi()),
         suppliersApiProvider.overrideWithValue(_CaptureSuppliersApi()),
+        purchasesApiProvider.overrideWithValue(_CapturePurchasesApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -889,6 +940,33 @@ void main() {
         await t.tap(find.text('Sonelgaz Matériel'));
         await t.pumpAndSettle();
         await t.tap(find.text('Enregistrer un paiement'));
+      },
+    ),
+  );
+
+  testWidgets(
+    '26 achats desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '26_achats_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Achats')),
+    ),
+  );
+  testWidgets(
+    '27 nouvelle commande desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '27_nouvelle_commande_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Achats'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Nouvelle commande'));
       },
     ),
   );
