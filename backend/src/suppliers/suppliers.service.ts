@@ -3,6 +3,7 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { assertSameMutation, runOnce } from '../common/idempotency';
 import { Prisma, Supplier } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatDA } from '../common/pdf/pdf';
@@ -162,117 +163,92 @@ export class SuppliersService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<SupplierPaymentDto> {
-    // Renvoi du même paiement (réponse perdue) : on rend celui déjà enregistré.
-    if (dto.id) {
+    // Idempotence (common/idempotency.ts) : un renvoi ne paie jamais deux fois.
+    const replay = async () => {
       const existing = await this.prisma.supplierPayment.findUnique({
-        where: { id: dto.id },
+        where: { clientMutationId: dto.clientMutationId },
       });
-      if (existing) {
-        if (
-          existing.userId !== user.id ||
-          existing.supplierId !== dto.supplierId
-        ) {
-          throw new BusinessException(
-            ErrorCode.CONFLICT,
-            'Cet identifiant de paiement est déjà utilisé',
-            HttpStatus.CONFLICT,
-          );
-        }
-        // Même id, autre montant : ce n'est pas un renvoi, le premier paiement existe.
-        if (
-          existing.amount !== dto.amount ||
-          (existing.cashSessionId !== null) !== dto.fromCash
-        ) {
-          throw new BusinessException(
-            ErrorCode.PAYMENT_ALREADY_RECORDED,
-            `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
-            HttpStatus.CONFLICT,
-          );
-        }
-        const supplier = await this.prisma.supplier.findUniqueOrThrow({
-          where: { id: existing.supplierId },
+      if (!existing) return null;
+      assertSameMutation(
+        existing,
+        user.id,
+        existing.supplierId === dto.supplierId &&
+          existing.amount === dto.amount &&
+          (existing.cashSessionId !== null) === dto.fromCash,
+        {
+          code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+          message: `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
+        },
+      );
+      const supplier = await this.prisma.supplier.findUniqueOrThrow({
+        where: { id: existing.supplierId },
+      });
+      const { balanceDue } = await SuppliersService.debt(this.prisma, supplier);
+      return SuppliersService.paymentDto(existing, balanceDue);
+    };
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${dto.supplierId}::uuid FOR UPDATE`;
+        const supplier = await tx.supplier.findUnique({
+          where: { id: dto.supplierId },
         });
-        const { balanceDue } = await SuppliersService.debt(
-          this.prisma,
-          supplier,
-        );
-        return SuppliersService.paymentDto(existing, balanceDue);
-      }
-    }
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${dto.supplierId}::uuid FOR UPDATE`;
-      const supplier = await tx.supplier.findUnique({
-        where: { id: dto.supplierId },
-      });
-      if (!supplier) throw SuppliersService.notFound();
+        if (!supplier) throw SuppliersService.notFound();
 
-      const { balanceDue } = await SuppliersService.debt(tx, supplier);
-      if (dto.amount > balanceDue) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          `Paiement supérieur au reste dû (${balanceDue} centimes)`,
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      const session = dto.fromCash
-        ? await CashSessionsService.lockOpenSession(tx, { userId: user.id })
-        : null;
-      if (dto.fromCash && !session) {
-        throw new BusinessException(
-          ErrorCode.CASH_SESSION_REQUIRED,
-          'Ouvrez votre caisse avant de payer un fournisseur en espèces',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      if (session) {
-        const totals = await CashSessionsService.totals(tx, session.id);
-        const inDrawer = session.openingFloat + totals.cashIn - totals.cashOut;
-        if (dto.amount > inDrawer) {
+        const { balanceDue } = await SuppliersService.debt(tx, supplier);
+        if (dto.amount > balanceDue) {
           throw new BusinessException(
-            ErrorCode.CASH_INSUFFICIENT,
-            `La caisse ne contient que ${formatDA(inDrawer)}`,
+            ErrorCode.VALIDATION_FAILED,
+            `Paiement supérieur au reste dû (${balanceDue} centimes)`,
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
-      }
-      const payment = await tx.supplierPayment.create({
-        data: {
-          id: dto.id,
-          supplierId: supplier.id,
-          userId: user.id,
-          cashSessionId: session?.id ?? null,
-          amount: dto.amount,
-          method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
-          note: dto.note ?? null,
-        },
-      });
-      if (session) {
-        await tx.cashMovement.create({
+
+        const session = dto.fromCash
+          ? await CashSessionsService.lockOpenSession(tx, { userId: user.id })
+          : null;
+        if (dto.fromCash && !session) {
+          throw new BusinessException(
+            ErrorCode.CASH_SESSION_REQUIRED,
+            'Ouvrez votre caisse avant de payer un fournisseur en espèces',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+
+        const payment = await tx.supplierPayment.create({
           data: {
-            cashSessionId: session.id,
+            id: dto.id,
+            clientMutationId: dto.clientMutationId,
+            supplierId: supplier.id,
             userId: user.id,
-            type: 'SORTIE',
+            cashSessionId: session?.id ?? null,
+            amount: dto.amount,
+            method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
+            note: dto.note ?? null,
+          },
+        });
+        if (session) {
+          // Garde commun : jamais plus que le contenu du tiroir (CASH_INSUFFICIENT).
+          await CashSessionsService.withdraw(tx, session, {
+            userId: user.id,
             amount: dto.amount,
             // Rapprochement caisse ↔ paiement par l'id du paiement.
             note: `Paiement fournisseur ${payment.id} — ${supplier.name}`,
+          });
+        }
+        await writeAudit(tx, actor, {
+          action: 'CREATE',
+          entityType: 'SupplierPayment',
+          entityId: payment.id,
+          newValue: {
+            supplierId: supplier.id,
+            amount: dto.amount,
+            method: payment.method,
+            fromCash: dto.fromCash,
           },
         });
-      }
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'SupplierPayment',
-        entityId: payment.id,
-        newValue: {
-          supplierId: supplier.id,
-          amount: dto.amount,
-          method: payment.method,
-          fromCash: dto.fromCash,
-        },
-      });
-      return SuppliersService.paymentDto(payment, balanceDue - dto.amount);
-    });
+        return SuppliersService.paymentDto(payment, balanceDue - dto.amount);
+      }),
+    );
   }
 
   private static paymentDto(

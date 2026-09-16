@@ -3,6 +3,7 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatDA } from '../common/pdf/pdf';
 import { PERMISSIONS } from '../common/permissions';
 import { Customer, Prisma } from '../generated/prisma/client';
@@ -153,138 +154,134 @@ export class CustomersService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<CustomerPaymentDto> {
-    // Renvoi du même règlement (réponse perdue) : on rend celui déjà enregistré —
-    // une dette n'est jamais effacée deux fois pour un seul paiement.
-    if (dto.id) {
+    // Idempotence (common/idempotency.ts) : une dette n'est jamais effacée deux
+    // fois pour un seul règlement, même renvoyé après un délai dépassé.
+    const replay = async () => {
       const existing = await this.prisma.customerPayment.findUnique({
-        where: { id: dto.id },
+        where: { clientMutationId: dto.clientMutationId },
       });
-      if (existing) {
-        if (
-          existing.userId !== user.id ||
-          existing.customerId !== dto.customerId
-        ) {
-          throw new BusinessException(
-            ErrorCode.CONFLICT,
-            'Cet identifiant de règlement est déjà utilisé',
-            HttpStatus.CONFLICT,
-          );
-        }
-        if (existing.amount !== dto.amount) {
-          throw new BusinessException(
-            ErrorCode.PAYMENT_ALREADY_RECORDED,
-            `Règlement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
-            HttpStatus.CONFLICT,
-          );
-        }
-        return {
-          id: existing.id,
-          customerId: existing.customerId,
-          saleId: existing.saleId,
-          amount: existing.amount,
-          paidAt: existing.paidAt,
-          balanceDue: await SalesService.customerDebt(
-            this.prisma,
-            existing.customerId,
-          ),
-        };
-      }
-    }
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${dto.customerId}::uuid FOR UPDATE`;
-      const customer = await tx.customer.findUnique({
-        where: { id: dto.customerId },
-      });
-      if (!customer) throw CustomersService.notFound();
-
-      const debt = await SalesService.customerDebt(tx, customer.id);
-      if (dto.amount > debt) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          `Règlement supérieur à la dette (${debt} centimes)`,
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-      if (dto.saleId) {
-        const sale = await tx.sale.findUnique({ where: { id: dto.saleId } });
-        if (
-          !sale ||
-          sale.customerId !== customer.id ||
-          sale.status !== 'VALIDEE'
-        ) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'saleId : vente introuvable pour ce client',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-        const paidLater = await tx.customerPayment.aggregate({
-          where: { saleId: sale.id },
-          _sum: { amount: true },
-        });
-        const remaining =
-          sale.totalTtc - sale.paidAmount - (paidLater._sum.amount ?? 0);
-        if (dto.amount > remaining) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            `Règlement supérieur au reste dû de la vente (${remaining} centimes)`,
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-      }
-
-      const session = await CashSessionsService.lockOpenSession(tx, {
-        userId: user.id,
-      });
-      if (!session) {
-        throw new BusinessException(
-          ErrorCode.CASH_SESSION_REQUIRED,
-          'Ouvrez votre caisse avant d’encaisser un règlement',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      const payment = await tx.customerPayment.create({
-        data: {
-          id: dto.id,
-          customerId: customer.id,
-          saleId: dto.saleId ?? null,
-          userId: user.id,
-          amount: dto.amount,
-          method: 'ESPECES',
-          note: dto.note ?? null,
+      if (!existing) return null;
+      assertSameMutation(
+        existing,
+        user.id,
+        existing.customerId === dto.customerId &&
+          existing.amount === dto.amount &&
+          existing.saleId === (dto.saleId ?? null),
+        {
+          code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+          message: `Règlement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
         },
-      });
-      await tx.cashMovement.create({
-        data: {
-          cashSessionId: session.id,
-          userId: user.id,
-          type: 'ENTREE',
-          amount: dto.amount,
-          saleId: dto.saleId ?? null,
-          // Rapprochement caisse ↔ règlement par l'id du règlement.
-          note: `Règlement ${payment.id} — ${customer.name}`,
-        },
-      });
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'CustomerPayment',
-        entityId: payment.id,
-        newValue: {
-          customerId: customer.id,
-          amount: dto.amount,
-          saleId: dto.saleId ?? null,
-        },
-      });
+      );
       return {
-        id: payment.id,
-        customerId: customer.id,
-        saleId: payment.saleId,
-        amount: payment.amount,
-        paidAt: payment.paidAt,
-        balanceDue: debt - dto.amount,
+        id: existing.id,
+        customerId: existing.customerId,
+        saleId: existing.saleId,
+        amount: existing.amount,
+        paidAt: existing.paidAt,
+        balanceDue: await SalesService.customerDebt(
+          this.prisma,
+          existing.customerId,
+        ),
       };
-    });
+    };
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${dto.customerId}::uuid FOR UPDATE`;
+        const customer = await tx.customer.findUnique({
+          where: { id: dto.customerId },
+        });
+        if (!customer) throw CustomersService.notFound();
+
+        const debt = await SalesService.customerDebt(tx, customer.id);
+        if (dto.amount > debt) {
+          throw new BusinessException(
+            ErrorCode.VALIDATION_FAILED,
+            `Règlement supérieur à la dette (${debt} centimes)`,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+        if (dto.saleId) {
+          const sale = await tx.sale.findUnique({ where: { id: dto.saleId } });
+          if (
+            !sale ||
+            sale.customerId !== customer.id ||
+            sale.status !== 'VALIDEE'
+          ) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_FAILED,
+              'saleId : vente introuvable pour ce client',
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+          const paidLater = await tx.customerPayment.aggregate({
+            where: { saleId: sale.id },
+            _sum: { amount: true },
+          });
+          const remaining =
+            sale.totalTtc - sale.paidAmount - (paidLater._sum.amount ?? 0);
+          if (dto.amount > remaining) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_FAILED,
+              `Règlement supérieur au reste dû de la vente (${remaining} centimes)`,
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+        }
+
+        const session = await CashSessionsService.lockOpenSession(tx, {
+          userId: user.id,
+        });
+        if (!session) {
+          throw new BusinessException(
+            ErrorCode.CASH_SESSION_REQUIRED,
+            'Ouvrez votre caisse avant d’encaisser un règlement',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+
+        const payment = await tx.customerPayment.create({
+          data: {
+            id: dto.id,
+            clientMutationId: dto.clientMutationId,
+            customerId: customer.id,
+            saleId: dto.saleId ?? null,
+            userId: user.id,
+            amount: dto.amount,
+            method: 'ESPECES',
+            note: dto.note ?? null,
+          },
+        });
+        await tx.cashMovement.create({
+          data: {
+            cashSessionId: session.id,
+            userId: user.id,
+            type: 'ENTREE',
+            amount: dto.amount,
+            saleId: dto.saleId ?? null,
+            // Rapprochement caisse ↔ règlement par l'id du règlement.
+            note: `Règlement ${payment.id} — ${customer.name}`,
+          },
+        });
+        await writeAudit(tx, actor, {
+          action: 'CREATE',
+          entityType: 'CustomerPayment',
+          entityId: payment.id,
+          newValue: {
+            customerId: customer.id,
+            amount: dto.amount,
+            saleId: dto.saleId ?? null,
+          },
+        });
+        return {
+          id: payment.id,
+          customerId: customer.id,
+          saleId: payment.saleId,
+          amount: payment.amount,
+          paidAt: payment.paidAt,
+          balanceDue: debt - dto.amount,
+        };
+      }),
+    );
   }
 
   /// Tarif et plafond de crédit : conditions commerciales fixées par l'ADMIN

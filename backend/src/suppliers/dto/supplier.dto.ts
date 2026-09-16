@@ -1,3 +1,4 @@
+import { ClientMutationId } from '../../common/idempotency';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
@@ -162,6 +163,9 @@ export class SupplierListDto {
 }
 
 export class CreateSupplierPaymentDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
   @ApiPropertyOptional({ description: 'Id client (renvoi idempotent).' })
   @IsCanonicalUuid()
   @IsOptional()

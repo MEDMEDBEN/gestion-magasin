@@ -3,6 +3,8 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { assertSameMutation, runOnce } from '../common/idempotency';
+import { formatDA } from '../common/pdf/pdf';
 import { CashSession, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -24,6 +26,31 @@ export class CashSessionsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async open(
+    dto: OpenCashSessionDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<CashSessionDto> {
+    const replay = async () => {
+      const existing = await this.prisma.cashSession.findUnique({
+        where: { openMutationId: dto.clientMutationId },
+      });
+      if (!existing) return null;
+      assertSameMutation(
+        existing,
+        user.id,
+        existing.locationId === dto.locationId &&
+          existing.openingFloat === dto.openingFloat,
+        {
+          code: ErrorCode.CONFLICT,
+          message: 'Cette ouverture de caisse a déjà été enregistrée autrement',
+        },
+      );
+      return this.toDto(this.prisma, existing);
+    };
+    return runOnce(replay, () => this.openOnce(dto, user, actor));
+  }
+
+  private openOnce(
     dto: OpenCashSessionDto,
     user: AuthenticatedUser,
     actor: ActorContext,
@@ -56,6 +83,7 @@ export class CashSessionsService {
           userId: user.id,
           locationId: dto.locationId,
           openingFloat: dto.openingFloat,
+          openMutationId: dto.clientMutationId,
         },
       });
       await writeAudit(tx, actor, {
@@ -89,6 +117,20 @@ export class CashSessionsService {
         ? await tx.cashSession.findUnique({ where: { id } })
         : null;
       CashSessionsService.assertCanSee(session, user);
+      // Renvoi de la même clôture (réponse perdue) : le rapport Z déjà établi.
+      if (session!.closeMutationId === dto.clientMutationId) {
+        assertSameMutation(
+          { userId: user.id },
+          user.id,
+          session!.countedAmount === dto.countedAmount,
+          {
+            code: ErrorCode.CONFLICT,
+            message:
+              'Cette clôture a déjà été enregistrée avec un autre montant',
+          },
+        );
+        return this.toDto(tx, session!);
+      }
       if (session!.status !== 'OUVERTE') {
         throw new BusinessException(
           ErrorCode.INVALID_STATE_TRANSITION,
@@ -107,6 +149,7 @@ export class CashSessionsService {
           countedAmount: dto.countedAmount,
           difference: dto.countedAmount - expected,
           note: dto.note ?? null,
+          closeMutationId: dto.clientMutationId,
         },
       });
       await writeAudit(tx, actor, {
@@ -169,6 +212,45 @@ export class CashSessionsService {
       where: { id: rows[0].id },
     });
     return session?.status === 'OUVERTE' ? session : null;
+  }
+
+  /// Espèces présentes dans le tiroir de la session, en ce moment.
+  static async drawerAmount(
+    db: Db | PrismaService,
+    session: CashSession,
+  ): Promise<number> {
+    const totals = await CashSessionsService.totals(db, session.id);
+    return session.openingFloat + totals.cashIn - totals.cashOut;
+  }
+
+  /// SEUL chemin de sortie d'espèces d'une caisse (annulation de vente,
+  /// paiement fournisseur, remboursement d'un règlement contre-passé…) :
+  /// une sortie ne rend JAMAIS la session négative (`CASH_INSUFFICIENT`).
+  /// `session` doit avoir été obtenue par `lockOpenSession` dans la même
+  /// transaction : deux sorties simultanées ne vident pas deux fois le tiroir.
+  static async withdraw(
+    tx: Db,
+    session: CashSession,
+    movement: { userId: string; amount: number; note: string; saleId?: string },
+  ): Promise<void> {
+    const inDrawer = await CashSessionsService.drawerAmount(tx, session);
+    if (movement.amount > inDrawer) {
+      throw new BusinessException(
+        ErrorCode.CASH_INSUFFICIENT,
+        `La caisse ne contient que ${formatDA(inDrawer)} : sortie de ${formatDA(movement.amount)} impossible`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    await tx.cashMovement.create({
+      data: {
+        cashSessionId: session.id,
+        userId: movement.userId,
+        saleId: movement.saleId ?? null,
+        type: 'SORTIE',
+        amount: movement.amount,
+        note: movement.note,
+      },
+    });
   }
 
   /// Entrées (ventes espèces + apports) et sorties (retraits + prélèvements).

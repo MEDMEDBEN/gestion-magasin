@@ -1,3 +1,4 @@
+import { ClientMutationId } from '../../common/idempotency';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
@@ -171,6 +172,9 @@ export class CustomerListDto {
 
 /// Règlement d'une dette — ESPÈCES uniquement (décision 2026-09-15).
 export class CreateCustomerPaymentDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
   @IsCanonicalUuid()
   @IsOptional()

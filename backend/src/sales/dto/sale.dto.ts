@@ -1,3 +1,4 @@
+import { ClientMutationId } from '../../common/idempotency';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
@@ -62,6 +63,9 @@ export class CreateSaleLineDto {
 /// la ligne (règle 13). Paiement : ESPÈCES uniquement (décision 2026-09-15),
 /// le reste éventuel part en crédit client dans son plafond.
 export class CreateSaleDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
   @ApiPropertyOptional({
     description:
       'UUID généré par le client : un renvoi ne crée pas une seconde vente.',
@@ -175,6 +179,9 @@ export class SaleListDto {
 }
 
 export class OpenCashSessionDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
   @ApiProperty({ description: 'Le MAGASIN' })
   @IsCanonicalUuid()
   locationId!: string;
@@ -186,6 +193,9 @@ export class OpenCashSessionDto {
 }
 
 export class CloseCashSessionDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
   @ApiProperty({
     example: 1250000,
     description: 'Espèces réellement comptées, en centimes.',

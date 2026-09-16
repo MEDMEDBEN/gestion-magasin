@@ -350,7 +350,7 @@ describe('Ventes (e2e)', () => {
       const p = await product('10.000');
       const id = randomUUID();
       const body = {
-        id,
+        clientMutationId: id,
         lines: [{ productId: p, quantity: '1' }],
         paidAmount: 172550,
       };
@@ -372,7 +372,7 @@ describe('Ventes (e2e)', () => {
       await as(tokens.vendeur)
         .post('/api/sales')
         .send({
-          id,
+          clientMutationId: id,
           lines: [{ productId: p, quantity: '1' }],
           paidAmount: 172550,
         })
@@ -380,7 +380,7 @@ describe('Ventes (e2e)', () => {
       const res = await as(tokens.vendeur)
         .post('/api/sales')
         .send({
-          id,
+          clientMutationId: id,
           lines: [{ productId: p, quantity: '2' }],
           paidAmount: 345100,
         })
@@ -392,7 +392,7 @@ describe('Ventes (e2e)', () => {
       await as(tokens.vendeur)
         .post('/api/sales')
         .send({
-          id: id2,
+          clientMutationId: id2,
           lines: [
             { productId: p, quantity: '1' },
             { productId: b, quantity: '1' },
@@ -403,7 +403,7 @@ describe('Ventes (e2e)', () => {
       await as(tokens.vendeur)
         .post('/api/sales')
         .send({
-          id: id2,
+          clientMutationId: id2,
           lines: [
             { productId: p, quantity: '1' },
             { productId: p, quantity: '1' },

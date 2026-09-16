@@ -676,11 +676,16 @@ model CustomerPayment {
   paidAt     DateTime      @default(now())
   note       String?
   clientMutationId String?  @unique @db.Uuid
+  /// Contre-passation : ce règlement ANNULE le règlement référencé (montant
+  /// opposé). Jamais de suppression (règle 7) ; un règlement ne s'annule qu'une fois.
+  reversesPaymentId String? @unique @db.Uuid
   createdAt  DateTime      @default(now())
 
   customer Customer @relation(fields: [customerId], references: [id])
   sale     Sale?    @relation(fields: [saleId], references: [id])
   user     User     @relation(fields: [userId], references: [id])
+  reverses   CustomerPayment? @relation("CustomerPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+  reversedBy CustomerPayment? @relation("CustomerPaymentReversal")
 
   @@index([customerId])
   @@index([saleId])
@@ -754,6 +759,9 @@ model CashSession {
   countedAmount  Int?
   difference     Int?
   note           String?
+  /// Idempotence de l'ouverture et de la clôture (docs/context.md §3).
+  openMutationId  String?          @unique @db.Uuid
+  closeMutationId String?          @unique @db.Uuid
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
@@ -826,8 +834,14 @@ model SupplierPayment {
   method          PaymentMethod @default(ESPECES)
   paidAt          DateTime      @default(now())
   note            String?
+  /// Idempotence : clé stable de l'intention de paiement (docs/context.md §3).
+  clientMutationId String?      @unique @db.Uuid
+  /// Contre-passation du paiement référencé (montant opposé), jamais suppression.
+  reversesPaymentId String?     @unique @db.Uuid
   createdAt       DateTime      @default(now())
 
+  reverses      SupplierPayment? @relation("SupplierPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+  reversedBy    SupplierPayment? @relation("SupplierPaymentReversal")
   supplier      Supplier       @relation(fields: [supplierId], references: [id])
   purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
   cashSession   CashSession?   @relation(fields: [cashSessionId], references: [id])

@@ -5,6 +5,7 @@ import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber, localYear } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
+import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
@@ -43,229 +44,224 @@ export class SalesService {
   /// Vente validée (CLAUDE.md règle 3) : Sale + lignes + mouvements de stock +
   /// projection + encaissement de caisse, dans UNE transaction — tout ou rien.
   async create(dto: CreateSaleDto, user: AuthenticatedUser): Promise<SaleDto> {
-    // Renvoi du même panier (réponse perdue) : on rend la vente déjà créée.
-    if (dto.id) {
+    // Idempotence (common/idempotency.ts) : un renvoi du même panier rend la
+    // vente déjà créée ; même clé avec un autre panier → 409.
+    const replay = async () => {
       const existing = await this.prisma.sale.findUnique({
-        where: { id: dto.id },
+        where: { clientMutationId: dto.clientMutationId },
         include: SALE_INCLUDE,
       });
-      if (existing) {
-        if (existing.userId !== user.id) {
+      if (!existing) return null;
+      // Comparaison en multi-ensembles triés : doublons et remises comptent.
+      const key = (productId: string, quantity: string, discount: number) =>
+        `${productId}|${quantity}|${discount}`;
+      const sorted = (keys: string[]) => [...keys].sort().join(';');
+      const sameCart =
+        existing.paidAmount === dto.paidAmount &&
+        existing.customerId === (dto.customerId ?? null) &&
+        sorted(
+          existing.lines.map((l) =>
+            key(l.productId, formatQuantity(l.quantity), l.discountAmount),
+          ),
+        ) ===
+          sorted(
+            dto.lines.map((l) =>
+              key(
+                l.productId,
+                formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
+                l.discountAmount ?? 0,
+              ),
+            ),
+          );
+      assertSameMutation(existing, user.id, sameCart, {
+        code: ErrorCode.SALE_ALREADY_RECORDED,
+        message:
+          `Vente déjà enregistrée : ${existing.number} (${formatDA(existing.totalTtc)}) — ` +
+          'vérifiez-la avant de refaire une vente',
+      });
+      return this.toDto(this.prisma, existing);
+    };
+
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        const store = await tx.location.findFirst({
+          where: { type: 'MAGASIN', isActive: true },
+        });
+        if (!store) {
           throw new BusinessException(
             ErrorCode.CONFLICT,
-            'Cet identifiant de vente est déjà utilisé',
+            'Aucun magasin actif : vente impossible',
             HttpStatus.CONFLICT,
           );
         }
-        // Même id mais panier différent (modifié après coupure) : ce n'est pas un renvoi.
-        // Comparaison en multi-ensembles triés : doublons et remises comptent.
-        const key = (productId: string, quantity: string, discount: number) =>
-          `${productId}|${quantity}|${discount}`;
-        const sorted = (keys: string[]) => [...keys].sort().join(';');
-        const sameCart =
-          existing.paidAmount === dto.paidAmount &&
-          existing.customerId === (dto.customerId ?? null) &&
-          sorted(
-            existing.lines.map((l) =>
-              key(l.productId, formatQuantity(l.quantity), l.discountAmount),
-            ),
-          ) ===
-            sorted(
-              dto.lines.map((l) =>
-                key(
-                  l.productId,
-                  formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
-                  l.discountAmount ?? 0,
-                ),
-              ),
-            );
-        if (!sameCart) {
-          throw new BusinessException(
-            ErrorCode.SALE_ALREADY_RECORDED,
-            `Vente déjà enregistrée : ${existing.number} (${formatDA(existing.totalTtc)}) — ` +
-              'vérifiez-la avant de refaire une vente',
-            HttpStatus.CONFLICT,
-          );
-        }
-        return this.toDto(this.prisma, existing);
-      }
-    }
 
-    return this.prisma.$transaction(async (tx) => {
-      const store = await tx.location.findFirst({
-        where: { type: 'MAGASIN', isActive: true },
-      });
-      if (!store) {
-        throw new BusinessException(
-          ErrorCode.CONFLICT,
-          'Aucun magasin actif : vente impossible',
-          HttpStatus.CONFLICT,
-        );
-      }
-
-      const customer = dto.customerId
-        ? await SalesService.lockCustomer(tx, dto.customerId)
-        : null;
-      // Tarif du client s'il est encore actif, sinon le tarif par défaut.
-      const customerTier = customer?.priceTierId
-        ? await tx.priceTier.findFirst({
-            where: { id: customer.priceTierId, isActive: true },
-          })
-        : null;
-      const tier =
-        customerTier ??
-        (await tx.priceTier.findFirst({
-          where: { isDefault: true, isActive: true },
-        }));
-      if (!tier) {
-        throw new BusinessException(
-          ErrorCode.PRICE_NOT_DEFINED,
-          'Aucun tarif par défaut : l’administrateur doit en définir un',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      const canDiscount = user.permissions.includes(PERMISSIONS.SALE_DISCOUNT);
-      const lines = [];
-      for (const line of dto.lines) {
-        lines.push(
-          await SalesService.priceLine(tx, line, tier.id, canDiscount),
-        );
-      }
-      const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
-      const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
-      const totalTtc = totalHt + totalTax;
-      // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
-      if (
-        totalTtc > MAX_MONEY ||
-        lines.some((l) => l.lineTotalTtc > MAX_MONEY)
-      ) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'Montant de la vente trop élevé',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      if (
-        dto.expectedTotalTtc !== undefined &&
-        dto.expectedTotalTtc !== totalTtc
-      ) {
-        throw new BusinessException(
-          ErrorCode.SALE_TOTAL_CHANGED,
-          `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
-          HttpStatus.CONFLICT,
-        );
-      }
-      if (dto.paidAmount > totalTtc) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-
-      // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
-      const cashSession =
-        dto.paidAmount > 0
-          ? await CashSessionsService.lockOpenSession(tx, {
-              userId: user.id,
-              locationId: store.id,
+        const customer = dto.customerId
+          ? await SalesService.lockCustomer(tx, dto.customerId)
+          : null;
+        // Tarif du client s'il est encore actif, sinon le tarif par défaut.
+        const customerTier = customer?.priceTierId
+          ? await tx.priceTier.findFirst({
+              where: { id: customer.priceTierId, isActive: true },
             })
           : null;
-      if (dto.paidAmount > 0 && !cashSession) {
-        throw new BusinessException(
-          ErrorCode.CASH_SESSION_REQUIRED,
-          'Ouvrez votre caisse avant d’encaisser des espèces',
-          HttpStatus.UNPROCESSABLE_ENTITY,
+        const tier =
+          customerTier ??
+          (await tx.priceTier.findFirst({
+            where: { isDefault: true, isActive: true },
+          }));
+        if (!tier) {
+          throw new BusinessException(
+            ErrorCode.PRICE_NOT_DEFINED,
+            'Aucun tarif par défaut : l’administrateur doit en définir un',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+
+        const canDiscount = user.permissions.includes(
+          PERMISSIONS.SALE_DISCOUNT,
         );
-      }
-
-      // Crédit : client identifié, droit `sale.credit`, dans son plafond.
-      const credit = totalTtc - dto.paidAmount;
-      if (credit > 0) {
-        if (!customer) {
+        const lines = [];
+        for (const line of dto.lines) {
+          lines.push(
+            await SalesService.priceLine(tx, line, tier.id, canDiscount),
+          );
+        }
+        const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
+        const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
+        const totalTtc = totalHt + totalTax;
+        // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
+        if (
+          totalTtc > MAX_MONEY ||
+          lines.some((l) => l.lineTotalTtc > MAX_MONEY)
+        ) {
           throw new BusinessException(
-            ErrorCode.CREDIT_LIMIT_EXCEEDED,
-            'Vente non soldée : choisissez le client à qui accorder le crédit',
+            ErrorCode.VALIDATION_FAILED,
+            'Montant de la vente trop élevé',
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
-        if (!user.permissions.includes(PERMISSIONS.SALE_CREDIT)) {
+
+        if (
+          dto.expectedTotalTtc !== undefined &&
+          dto.expectedTotalTtc !== totalTtc
+        ) {
           throw new BusinessException(
-            ErrorCode.FORBIDDEN_PERMISSION,
-            'Permission requise pour vendre à crédit : sale.credit',
-            HttpStatus.FORBIDDEN,
+            ErrorCode.SALE_TOTAL_CHANGED,
+            `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
+            HttpStatus.CONFLICT,
           );
         }
-        const debt = await SalesService.customerDebt(tx, customer.id);
-        if (debt + credit > customer.creditLimit) {
+        if (dto.paidAmount > totalTtc) {
           throw new BusinessException(
-            ErrorCode.CREDIT_LIMIT_EXCEEDED,
-            `Plafond de crédit dépassé : dette ${debt}, crédit demandé ${credit}, ` +
-              `plafond ${customer.creditLimit} (centimes)`,
+            ErrorCode.VALIDATION_FAILED,
+            'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
-      }
 
-      const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+        // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
+        const cashSession =
+          dto.paidAmount > 0
+            ? await CashSessionsService.lockOpenSession(tx, {
+                userId: user.id,
+                locationId: store.id,
+              })
+            : null;
+        if (dto.paidAmount > 0 && !cashSession) {
+          throw new BusinessException(
+            ErrorCode.CASH_SESSION_REQUIRED,
+            'Ouvrez votre caisse avant d’encaisser des espèces',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+
+        // Crédit : client identifié, droit `sale.credit`, dans son plafond.
+        const credit = totalTtc - dto.paidAmount;
+        if (credit > 0) {
+          if (!customer) {
+            throw new BusinessException(
+              ErrorCode.CREDIT_LIMIT_EXCEEDED,
+              'Vente non soldée : choisissez le client à qui accorder le crédit',
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+          if (!user.permissions.includes(PERMISSIONS.SALE_CREDIT)) {
+            throw new BusinessException(
+              ErrorCode.FORBIDDEN_PERMISSION,
+              'Permission requise pour vendre à crédit : sale.credit',
+              HttpStatus.FORBIDDEN,
+            );
+          }
+          const debt = await SalesService.customerDebt(tx, customer.id);
+          if (debt + credit > customer.creditLimit) {
+            throw new BusinessException(
+              ErrorCode.CREDIT_LIMIT_EXCEEDED,
+              `Plafond de crédit dépassé : dette ${debt}, crédit demandé ${credit}, ` +
+                `plafond ${customer.creditLimit} (centimes)`,
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+        }
+
+        const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
         SELECT nextval('sale_ticket_seq') AS value`;
-      const soldAt = new Date();
-      const sale = await tx.sale.create({
-        data: {
-          id: dto.id,
-          number: `TK-${localYear(soldAt)}-${String(value).padStart(6, '0')}`,
-          customerId: customer?.id ?? null,
-          userId: user.id,
-          locationId: store.id,
-          cashSessionId: cashSession?.id ?? null,
-          totalHt,
-          totalTax,
-          totalTtc,
-          paidAmount: dto.paidAmount,
-          paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
-          soldAt,
-          note: dto.note ?? null,
-          lines: {
-            create: lines.map(({ productId, ...rest }) => ({
-              productId,
-              ...rest,
-            })),
-          },
-        },
-        include: SALE_INCLUDE,
-      });
-
-      // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
-      // Ordre fixe (par produit) : deux paniers A,B / B,A ne s'interbloquent pas.
-      for (const line of [...sale.lines].sort((a, b) =>
-        a.productId.localeCompare(b.productId),
-      )) {
-        await this.ledger.applyMovement(tx, {
-          productId: line.productId,
-          locationId: store.id,
-          quantity: line.quantity.negated(),
-          type: 'VENTE',
-          operationType: 'SALE',
-          operationId: sale.id,
-          userId: user.id,
-        });
-      }
-      if (cashSession) {
-        await tx.cashMovement.create({
+        const soldAt = new Date();
+        const sale = await tx.sale.create({
           data: {
-            cashSessionId: cashSession.id,
+            id: dto.id,
+            clientMutationId: dto.clientMutationId,
+            number: `TK-${localYear(soldAt)}-${String(value).padStart(6, '0')}`,
+            customerId: customer?.id ?? null,
             userId: user.id,
-            saleId: sale.id,
-            type: 'VENTE_ESPECES',
-            amount: dto.paidAmount,
+            locationId: store.id,
+            cashSessionId: cashSession?.id ?? null,
+            totalHt,
+            totalTax,
+            totalTtc,
+            paidAmount: dto.paidAmount,
+            paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
+            soldAt,
+            note: dto.note ?? null,
+            lines: {
+              create: lines.map(({ productId, ...rest }) => ({
+                productId,
+                ...rest,
+              })),
+            },
           },
+          include: SALE_INCLUDE,
         });
-      }
-      // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
-      return this.toDto(tx, sale);
-    });
+
+        // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
+        // Ordre fixe (par produit) : deux paniers A,B / B,A ne s'interbloquent pas.
+        for (const line of [...sale.lines].sort((a, b) =>
+          a.productId.localeCompare(b.productId),
+        )) {
+          await this.ledger.applyMovement(tx, {
+            productId: line.productId,
+            locationId: store.id,
+            quantity: line.quantity.negated(),
+            type: 'VENTE',
+            operationType: 'SALE',
+            operationId: sale.id,
+            userId: user.id,
+          });
+        }
+        if (cashSession) {
+          await tx.cashMovement.create({
+            data: {
+              cashSessionId: cashSession.id,
+              userId: user.id,
+              saleId: sale.id,
+              type: 'VENTE_ESPECES',
+              amount: dto.paidAmount,
+            },
+          });
+        }
+        // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
+        return this.toDto(tx, sale);
+      }),
+    );
   }
 
   async findAll(
@@ -424,9 +420,12 @@ export class SalesService {
       if (sale.customerId) {
         await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${sale.customerId}::uuid FOR UPDATE`;
       }
-      const payments = await tx.customerPayment.count({
+      const paidLater = await tx.customerPayment.aggregate({
         where: { saleId: id },
+        _sum: { amount: true },
       });
+      // Règlements NETS : un règlement contre-passé ne bloque plus l'annulation.
+      const payments = paidLater._sum.amount ?? 0;
       // Un acompte général a pu solder cette vente : l'annuler rendrait la dette
       // négative sans remboursement prévu.
       if (sale.customerId && payments === 0) {
@@ -457,15 +456,11 @@ export class SalesService {
             HttpStatus.CONFLICT,
           );
         }
-        await tx.cashMovement.create({
-          data: {
-            cashSessionId: session.id,
-            userId: user.id,
-            saleId: id,
-            type: 'SORTIE',
-            amount: sale.paidAmount,
-            note: `Annulation ${sale.number}`,
-          },
+        await CashSessionsService.withdraw(tx, session, {
+          userId: user.id,
+          amount: sale.paidAmount,
+          saleId: id,
+          note: `Annulation ${sale.number}`,
         });
       }
       for (const line of [...sale.lines].sort((a, b) =>

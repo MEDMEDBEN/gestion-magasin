@@ -240,7 +240,7 @@ describe('Clients et règlements (e2e)', () => {
       .expect(201);
   });
 
-  it('règlement renvoyé (même id, réponse perdue) : la dette n’est réduite qu’UNE fois', async () => {
+  it('règlement renvoyé (même clé d’opération, réponse perdue) : la dette n’est réduite qu’UNE fois', async () => {
     const c = (
       await createCustomer(tokens.admin, {
         name: `Client renvoi ${suffix}`,
@@ -255,7 +255,7 @@ describe('Clients et règlements (e2e)', () => {
         paidAmount: 0,
       })
       .expect(201);
-    const body = { id: randomUUID(), customerId: c.id, amount: 30000 };
+    const body = { clientMutationId: randomUUID(), customerId: c.id, amount: 30000 };
 
     const first = await as(tokens.vendeur)
       .post('/api/payments/customer')
