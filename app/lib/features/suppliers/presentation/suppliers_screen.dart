@@ -21,8 +21,8 @@ class SupplierRights {
     : canRead =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
-      canWrite = user.can('supplier.write'),
-      canPay = user.can('supplier.payment.create');
+      canWrite = user.hasRole('ADMIN') && user.can('supplier.write'),
+      canPay = user.hasRole('ADMIN') && user.can('supplier.payment.create');
 
   final bool canRead;
   final bool canWrite;

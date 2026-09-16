@@ -244,6 +244,52 @@ describe('Fournisseurs et dettes (e2e)', () => {
       ).toBe(0);
     });
 
+    it('caisse insuffisante : la sortie est refusée, le tiroir jamais négatif', async () => {
+      const supplier = await createSupplier({ openingBalance: 5000000 });
+      const cash = await as(tokens.admin)
+        .post('/api/cash-sessions')
+        .send({ locationId: magasinId, openingFloat: 100000 })
+        .expect(201);
+
+      const res = await as(tokens.admin)
+        .post('/api/payments/supplier')
+        .send({ supplierId: supplier.id, amount: 500000, fromCash: true })
+        .expect(422);
+      expect(res.body.code).toBe('CASH_INSUFFICIENT');
+
+      const report = await as(tokens.admin)
+        .get(`/api/cash-sessions/${cash.body.id}/report`)
+        .expect(200);
+      expect(report.body.currentAmount).toBe(100000);
+      expect(
+        await prisma.supplierPayment.count({
+          where: { supplierId: supplier.id },
+        }),
+      ).toBe(0);
+      await as(tokens.admin)
+        .post(`/api/cash-sessions/${cash.body.id}/close`)
+        .send({ countedAmount: 100000 })
+        .expect(200);
+    });
+
+    it('renvoi du même id avec un AUTRE montant → 409, rien de plus n’est payé', async () => {
+      const supplier = await createSupplier({ openingBalance: 200000 });
+      const id = randomUUID();
+      await as(tokens.admin)
+        .post('/api/payments/supplier')
+        .send({ id, supplierId: supplier.id, amount: 50000, fromCash: false })
+        .expect(201);
+      const res = await as(tokens.admin)
+        .post('/api/payments/supplier')
+        .send({ id, supplierId: supplier.id, amount: 90000, fromCash: false })
+        .expect(409);
+      expect(res.body.code).toBe('PAYMENT_ALREADY_RECORDED');
+      const fiche = await as(tokens.admin)
+        .get(`/api/suppliers/${supplier.id}`)
+        .expect(200);
+      expect(fiche.body.balanceDue).toBe(150000);
+    });
+
     it('jamais au-delà du reste dû', async () => {
       const supplier = await createSupplier({ openingBalance: 100000 });
       await as(tokens.admin)

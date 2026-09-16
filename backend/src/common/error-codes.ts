@@ -46,12 +46,17 @@ export enum ErrorCode {
   /// Id de vente déjà enregistré avec un AUTRE panier : la première vente EXISTE
   /// (stock sorti, espèces en caisse) — ne pas la refaire à l'aveugle.
   SALE_ALREADY_RECORDED = 'SALE_ALREADY_RECORDED',
+  /// Id de règlement/paiement déjà enregistré avec un AUTRE contenu : le
+  /// premier paiement EXISTE (dette réduite, caisse mouvementée).
+  PAYMENT_ALREADY_RECORDED = 'PAYMENT_ALREADY_RECORDED',
   /// Facture demandée sans les mentions légales du magasin (STORE_NIF, STORE_RC).
   STORE_IDENTITY_MISSING = 'STORE_IDENTITY_MISSING',
 
   // Caisse (règle 12)
   CASH_SESSION_REQUIRED = 'CASH_SESSION_REQUIRED',
   CASH_SESSION_ALREADY_OPEN = 'CASH_SESSION_ALREADY_OPEN',
+  /// Sortie de caisse supérieure aux espèces réellement dans le tiroir.
+  CASH_INSUFFICIENT = 'CASH_INSUFFICIENT',
 
   // Catalogue (règle 15)
   BARCODE_ALREADY_USED = 'BARCODE_ALREADY_USED',

@@ -5,6 +5,7 @@ import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { Prisma, Supplier } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { formatDA } from '../common/pdf/pdf';
 import { CashSessionsService } from '../sales/cash-sessions.service';
 import {
   CreateSupplierDto,
@@ -53,8 +54,16 @@ export class SuppliersService {
       }),
       this.prisma.supplier.count({ where }),
     ]);
-    const data: SupplierDto[] = [];
-    for (const row of rows) data.push(await this.toDto(this.prisma, row));
+    // Un seul agrégat pour toute la page (et non une requête par fournisseur).
+    const paid = await this.prisma.supplierPayment.groupBy({
+      by: ['supplierId'],
+      where: { supplierId: { in: rows.map((r) => r.id) } },
+      _sum: { amount: true },
+    });
+    const paidBy = new Map(paid.map((p) => [p.supplierId, p._sum.amount ?? 0]));
+    const data = rows.map((row) =>
+      SuppliersService.toDtoWith(row, paidBy.get(row.id) ?? 0),
+    );
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
 
@@ -169,6 +178,17 @@ export class SuppliersService {
             HttpStatus.CONFLICT,
           );
         }
+        // Même id, autre montant : ce n'est pas un renvoi, le premier paiement existe.
+        if (
+          existing.amount !== dto.amount ||
+          (existing.cashSessionId !== null) !== dto.fromCash
+        ) {
+          throw new BusinessException(
+            ErrorCode.PAYMENT_ALREADY_RECORDED,
+            `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
+            HttpStatus.CONFLICT,
+          );
+        }
         const supplier = await this.prisma.supplier.findUniqueOrThrow({
           where: { id: existing.supplierId },
         });
@@ -206,6 +226,17 @@ export class SuppliersService {
         );
       }
 
+      if (session) {
+        const totals = await CashSessionsService.totals(tx, session.id);
+        const inDrawer = session.openingFloat + totals.cashIn - totals.cashOut;
+        if (dto.amount > inDrawer) {
+          throw new BusinessException(
+            ErrorCode.CASH_INSUFFICIENT,
+            `La caisse ne contient que ${formatDA(inDrawer)}`,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+      }
       const payment = await tx.supplierPayment.create({
         data: {
           id: dto.id,
@@ -270,6 +301,8 @@ export class SuppliersService {
     return {
       name: s.name,
       phone: s.phone,
+      email: s.email,
+      notes: s.notes,
       address: s.address,
       contactName: s.contactName,
       openingBalance: s.openingBalance,
@@ -289,10 +322,14 @@ export class SuppliersService {
     db: Db | PrismaService,
     supplier: Supplier,
   ): Promise<SupplierDto> {
-    const { paidAmount, balanceDue } = await SuppliersService.debt(
-      db,
-      supplier,
-    );
+    const { paidAmount } = await SuppliersService.debt(db, supplier);
+    return SuppliersService.toDtoWith(supplier, paidAmount);
+  }
+
+  private static toDtoWith(
+    supplier: Supplier,
+    paidAmount: number,
+  ): SupplierDto {
     return {
       id: supplier.id,
       code: supplier.code,
@@ -304,7 +341,7 @@ export class SuppliersService {
       notes: supplier.notes,
       openingBalance: supplier.openingBalance,
       paidAmount,
-      balanceDue,
+      balanceDue: supplier.openingBalance - paidAmount,
       isActive: supplier.isActive,
     };
   }

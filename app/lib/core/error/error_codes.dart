@@ -40,6 +40,7 @@ class ErrorCodes {
   static const String creditLimitExceeded = 'CREDIT_LIMIT_EXCEEDED';
   static const String saleTotalChanged = 'SALE_TOTAL_CHANGED';
   static const String saleAlreadyRecorded = 'SALE_ALREADY_RECORDED';
+  static const String paymentAlreadyRecorded = 'PAYMENT_ALREADY_RECORDED';
 
   // Caisse
   static const String cashSessionRequired = 'CASH_SESSION_REQUIRED';

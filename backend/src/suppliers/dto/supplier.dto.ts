@@ -23,30 +23,45 @@ import {
   IsOptionalNotNull,
 } from '../../common/validation';
 
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+const trimOrNull = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() || null : value;
+
 export class CreateSupplierDto {
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() id?: string;
-  @ApiProperty() @IsString() @MinLength(2) @MaxLength(150) name!: string;
+  @ApiProperty()
+  @Transform(trim)
+  @IsString()
+  @MinLength(2)
+  @MaxLength(150)
+  name!: string;
   @ApiPropertyOptional()
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(30)
   @IsOptional()
   phone?: string;
   @ApiPropertyOptional()
+  @Transform(trimOrNull)
   @IsEmail()
   @MaxLength(150)
   @IsOptional()
   email?: string;
   @ApiPropertyOptional()
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(250)
   @IsOptional()
   address?: string;
   @ApiPropertyOptional()
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(150)
   @IsOptional()
   contactName?: string;
   @ApiPropertyOptional()
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(500)
   @IsOptional()
@@ -70,26 +85,31 @@ export class UpdateSupplierDto {
   @IsOptionalNotNull()
   name?: string;
   @ApiPropertyOptional({ nullable: true })
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(30)
   @IsOptional()
   phone?: string | null;
   @ApiPropertyOptional({ nullable: true })
+  @Transform(trimOrNull)
   @IsEmail()
   @MaxLength(150)
   @IsOptional()
   email?: string | null;
   @ApiPropertyOptional({ nullable: true })
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(250)
   @IsOptional()
   address?: string | null;
   @ApiPropertyOptional({ nullable: true })
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(150)
   @IsOptional()
   contactName?: string | null;
   @ApiPropertyOptional({ nullable: true })
+  @Transform(trimOrNull)
   @IsString()
   @MaxLength(500)
   @IsOptional()

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers.dart';
 import '../data/suppliers_api.dart';
 import '../data/suppliers_models.dart';
 
@@ -7,6 +8,9 @@ import '../data/suppliers_models.dart';
 /// et le vendeur n'y a de toute façon aucun accès).
 final supplierSearchProvider = FutureProvider.autoDispose
     .family<List<Supplier>, String>((ref, query) async {
+      // Lié au compte : au changement d'utilisateur, la liste et les dettes
+      // du précédent ne restent pas affichées.
+      ref.watch(currentUserIdProvider);
       final page = await ref
           .watch(suppliersApiProvider)
           .list(query: query.isEmpty ? null : query);

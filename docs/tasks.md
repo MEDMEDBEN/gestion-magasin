@@ -393,7 +393,18 @@ Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
    caisse » et id stable (renvoi sans double paiement) ; **fournisseur principal dans la fiche produit**
    (demandé par MEDMEDBEN) affiché seulement avec `supplier.read`. Captures **24** (desktop) et **25**
    (paiement mobile). Preuve : analyze propre, **+184 ~25**.
-3. ⏳ Audits `reviewer` + `security-reviewer` P0 #5 → relecture humaine.
+3. ✅ **Audits P0 #5** — `security-reviewer` **CONFORME** (4 mineurs) · `reviewer` **PAS OK** (1 bloquant) → corrigés :
+   - **Bloquant : la caisse pouvait passer en négatif.** Un paiement en espèces est désormais borné par ce que le
+     tiroir contient (`CASH_INSUFFICIENT`) — contre-éprouvé : garde retirée → le test échoue.
+   - Renvoi d'un paiement avec un AUTRE montant → 409 `PAYMENT_ALREADY_RECORDED` (fournisseurs ET règlements clients).
+   - Audit : `email` et `notes` tracés (fournisseurs et clients) — une modification d'email ne passait pas au journal.
+   - Liste fournisseurs : un seul `groupBy` au lieu d'un agrégat par ligne (N+1) ; champs texte trimés ;
+     `supplierSearchProvider` lié au compte connecté ; droits d'écriture de l'app alignés sur le guard (rôle + permission).
+   - Checklist P0 #5 ajoutée à `docs/plan.md`.
+   Reste noté pour P0 #6 (Achats) : correction/annulation d'un paiement fournisseur (règle 7), historique des
+   paiements consultable, tri `?sort=` figé sur les listes clients/fournisseurs.
+   Preuve : backend **72** unit · **197** e2e ; app analyze propre, **+184 ~25**.
+4. ⏳ Relecture humaine (captures 24-25) → **P0 #6 Achats (commandes fournisseurs)**.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

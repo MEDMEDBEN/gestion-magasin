@@ -15,7 +15,11 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsCanonicalUuid, IsOptionalNotNull, booleanQuery } from '../../common/validation';
+import {
+  IsCanonicalUuid,
+  IsOptionalNotNull,
+  booleanQuery,
+} from '../../common/validation';
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
 
 const trim = ({ value }: { value: unknown }) =>

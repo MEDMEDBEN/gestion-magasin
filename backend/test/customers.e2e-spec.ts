@@ -266,6 +266,13 @@ describe('Clients et règlements (e2e)', () => {
       .send(body)
       .expect(201);
 
+    // Même id, autre montant : refusé, la dette n'est pas réduite deux fois.
+    const changed = await as(tokens.vendeur)
+      .post('/api/payments/customer')
+      .send({ ...body, amount: 40000 })
+      .expect(409);
+    expect(changed.body.code).toBe('PAYMENT_ALREADY_RECORDED');
+
     expect(second.body.id).toBe(first.body.id);
     expect(
       (await as(tokens.vendeur).get(`/api/customers/${c.id}`).expect(200)).body

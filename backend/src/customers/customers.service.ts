@@ -3,6 +3,7 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
+import { formatDA } from '../common/pdf/pdf';
 import { PERMISSIONS } from '../common/permissions';
 import { Customer, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -122,7 +123,9 @@ export class CustomersService {
       const snapshot = (c: Customer) => ({
         name: c.name,
         phone: c.phone,
+        email: c.email,
         address: c.address,
+        notes: c.notes,
         isActive: c.isActive,
         priceTierId: c.priceTierId,
         creditLimit: c.creditLimit,
@@ -164,6 +167,13 @@ export class CustomersService {
           throw new BusinessException(
             ErrorCode.CONFLICT,
             'Cet identifiant de règlement est déjà utilisé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        if (existing.amount !== dto.amount) {
+          throw new BusinessException(
+            ErrorCode.PAYMENT_ALREADY_RECORDED,
+            `Règlement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
             HttpStatus.CONFLICT,
           );
         }

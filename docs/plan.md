@@ -191,6 +191,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-15 : corrigé commit 12b890a ; contre-audit **CONFORME**, 4 mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 21 à 23 + PDF ticket/facture à relire par MEDMEDBEN)_
 
+### Feature P0 n°5 : Fournisseurs + dettes fournisseurs + paiements
+- [x] Schéma DB validé _(migrations ADDITIVES `supplier_opening_balance`, `supplier_payment_cash_session`)_
+- [x] Matrice de permissions CRUD par rôle définie _(lecture ADMIN+MAGASINIER, écriture et paiement ADMIN ; vendeur fermé)_
+- [x] Endpoints API implémentés _(GET /suppliers, GET /suppliers/:id, POST, PATCH, POST /payments/supplier)_
+- [x] Validation des entrées (class-validator) en place _(montants bornés, texte trimé, UUID canoniques)_
+- [x] Tests unitaires backend passent _(72 — 2026-09-16)_
+- [x] Tests d'intégration backend passent _(197 e2e dont 13 fournisseurs — 2026-09-16)_
+- [x] UI desktop implémentée
+- [x] UI mobile implémentée
+- [x] Sync offline gérée si applicable _(non : un paiement de caisse est en ligne uniquement, règle 12)_
+- [x] Revue par subagent `reviewer` _(2026-09-16 : PAS OK — caisse négative + 4 points → corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-16 : **CONFORME**, 4 mineurs corrigés)_
+- [ ] Tests manuels effectués par un humain _(captures 24 et 25 à relire par MEDMEDBEN)_
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```
