@@ -95,12 +95,13 @@ export class UpdatePurchaseOrderDto {
   dueDate?: string | null;
 
   @ApiPropertyOptional({
-    description: 'BROUILLON → COMMANDEE (commande envoyée au fournisseur).',
-    enum: ['BROUILLON', 'COMMANDEE'],
+    description:
+      'COMMANDEE : commande envoyée au fournisseur (depuis BROUILLON seulement, jamais retour).',
+    enum: ['COMMANDEE'],
   })
-  @IsIn(['BROUILLON', 'COMMANDEE'])
+  @IsIn(['COMMANDEE'])
   @IsOptionalNotNull()
-  status?: 'BROUILLON' | 'COMMANDEE';
+  status?: 'COMMANDEE';
 
   @ApiPropertyOptional({ type: [PurchaseLineInputDto] })
   @IsArray()
@@ -112,10 +113,23 @@ export class UpdatePurchaseOrderDto {
   lines?: PurchaseLineInputDto[];
 
   @ApiPropertyOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() || null : value,
+  )
   @IsString()
   @MaxLength(500)
   @IsOptional()
   note?: string | null;
+}
+
+export class ConfirmPurchaseOrderDto {
+  @ApiProperty({
+    description:
+      '`updatedAt` de la commande AFFICHÉE à l’admin. Si elle a été modifiée ' +
+      'depuis, 409 : on ne confirme jamais une version que l’on n’a pas vue.',
+  })
+  @IsISO8601({ strict: true })
+  expectedUpdatedAt!: string;
 }
 
 export class PurchaseLineDto {
@@ -156,6 +170,8 @@ export class PurchaseOrderDto {
   @ApiProperty() totalTax!: number;
   @ApiProperty() totalTtc!: number;
   @ApiProperty({ nullable: true }) note!: string | null;
+  @ApiProperty({ description: 'Version : à renvoyer pour confirmer.' })
+  updatedAt!: Date;
   @ApiProperty({ type: [PurchaseLineDto] }) lines!: PurchaseLineDto[];
 }
 

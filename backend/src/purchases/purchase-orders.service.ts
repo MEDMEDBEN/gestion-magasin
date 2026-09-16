@@ -1,6 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
+import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
@@ -13,6 +14,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
 import {
+  ConfirmPurchaseOrderDto,
   CreatePurchaseOrderDto,
   PurchaseLineInputDto,
   PurchaseOrderDto,
@@ -53,6 +55,40 @@ export class PurchaseOrdersService {
             HttpStatus.CONFLICT,
           );
         }
+        const key = (productId: string, quantity: string, price: number) =>
+          `${productId}|${quantity}|${price}`;
+        const same =
+          existing.supplierId === dto.supplierId &&
+          [
+            ...existing.lines.map((l) =>
+              key(
+                l.productId,
+                formatQuantity(l.orderedQuantity),
+                l.unitPriceHt,
+              ),
+            ),
+          ]
+            .sort()
+            .join(';') ===
+            dto.lines
+              .map((l) =>
+                key(
+                  l.productId,
+                  formatQuantity(
+                    parseQuantity(l.orderedQuantity, 'lines.orderedQuantity'),
+                  ),
+                  l.unitPriceHt,
+                ),
+              )
+              .sort()
+              .join(';');
+        if (!same) {
+          throw new BusinessException(
+            ErrorCode.CONFLICT,
+            `Commande déjà enregistrée (${existing.number}) avec un autre contenu`,
+            HttpStatus.CONFLICT,
+          );
+        }
         return PurchaseOrdersService.toDto(existing);
       }
     }
@@ -76,8 +112,10 @@ export class PurchaseOrdersService {
           number,
           supplierId: supplier.id,
           createdById: user.id,
-          expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
-          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          expectedDate: dto.expectedDate
+            ? parseApiDate(dto.expectedDate, 'expectedDate')
+            : null,
+          dueDate: dto.dueDate ? parseApiDate(dto.dueDate, 'dueDate') : null,
           note: dto.note ?? null,
           ...PurchaseOrdersService.totals(lines),
           lines: { create: lines },
@@ -145,6 +183,20 @@ export class PurchaseOrdersService {
           HttpStatus.CONFLICT,
         );
       }
+      if (await tx.reception.count({ where: { purchaseOrderId: id } })) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Des réceptions existent sur cette commande : elle ne se modifie plus',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (dto.status === 'COMMANDEE' && before.status !== 'BROUILLON') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Seul un brouillon peut être marqué comme envoyé',
+          HttpStatus.CONFLICT,
+        );
+      }
       const lines = dto.lines
         ? await PurchaseOrdersService.buildLines(tx, dto.lines)
         : null;
@@ -156,10 +208,12 @@ export class PurchaseOrdersService {
         include: ORDER_INCLUDE,
         data: {
           ...(dto.expectedDate !== undefined && {
-            expectedDate: dto.expectedDate ? new Date(dto.expectedDate) : null,
+            expectedDate: dto.expectedDate
+              ? parseApiDate(dto.expectedDate, 'expectedDate')
+              : null,
           }),
           ...(dto.dueDate !== undefined && {
-            dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+            dueDate: dto.dueDate ? parseApiDate(dto.dueDate, 'dueDate') : null,
           }),
           ...(dto.note !== undefined && { note: dto.note }),
           ...(dto.status !== undefined && { status: dto.status }),
@@ -173,8 +227,8 @@ export class PurchaseOrdersService {
         action: 'UPDATE',
         entityType: 'PurchaseOrder',
         entityId: id,
-        oldValue: { status: before.status, totalTtc: before.totalTtc },
-        newValue: { status: order.status, totalTtc: order.totalTtc },
+        oldValue: PurchaseOrdersService.snapshot(before),
+        newValue: PurchaseOrdersService.snapshot(order),
       });
       return PurchaseOrdersService.toDto(order);
     });
@@ -184,6 +238,7 @@ export class PurchaseOrdersService {
   /// La DETTE, elle, ne bouge qu'à la RÉCEPTION (décision MEDMEDBEN 2026-09-16).
   async confirm(
     id: string,
+    dto: ConfirmPurchaseOrderDto,
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<PurchaseOrderDto> {
@@ -191,6 +246,17 @@ export class PurchaseOrdersService {
       const before = await PurchaseOrdersService.lockOrder(tx, id);
       if (before.status === 'CONFIRMEE') {
         return PurchaseOrdersService.toDto(before);
+      }
+      // Séparation « le magasinier prépare, l'admin confirme » : la version
+      // confirmée est EXACTEMENT celle que l'admin a eue sous les yeux.
+      if (
+        before.updatedAt.getTime() !== new Date(dto.expectedUpdatedAt).getTime()
+      ) {
+        throw new BusinessException(
+          ErrorCode.CONFLICT,
+          'La commande a été modifiée entre-temps : relisez-la avant de confirmer',
+          HttpStatus.CONFLICT,
+        );
       }
       if (!EDITABLE.includes(before.status)) {
         throw new BusinessException(
@@ -213,7 +279,7 @@ export class PurchaseOrdersService {
         entityType: 'PurchaseOrder',
         entityId: id,
         oldValue: { status: before.status },
-        newValue: { status: order.status, totalTtc: order.totalTtc },
+        newValue: PurchaseOrdersService.snapshot(order),
       });
       return PurchaseOrdersService.toDto(order);
     });
@@ -345,6 +411,24 @@ export class PurchaseOrdersService {
     return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
   }
 
+  /// Contenu tracé à l'audit : ce qui engage l'argent (lignes, prix) et les
+  /// dates — un échange de prix à total égal doit rester visible.
+  private static snapshot(order: OrderWithLines) {
+    return {
+      status: order.status,
+      totalTtc: order.totalTtc,
+      expectedDate: order.expectedDate,
+      dueDate: order.dueDate,
+      note: order.note,
+      lines: order.lines.map((l) => ({
+        productId: l.productId,
+        orderedQuantity: formatQuantity(l.orderedQuantity),
+        unitPriceHt: l.unitPriceHt,
+        taxRate: l.taxRate.toFixed(2),
+      })),
+    };
+  }
+
   private static notFound() {
     return new BusinessException(
       ErrorCode.NOT_FOUND,
@@ -370,6 +454,7 @@ export class PurchaseOrdersService {
       totalTax: order.totalTax,
       totalTtc: order.totalTtc,
       note: order.note,
+      updatedAt: order.updatedAt,
       lines: order.lines.map((line) => {
         const lineTotalHt = PurchaseOrdersService.lineHt(line);
         const lineTax = PurchaseOrdersService.round(

@@ -26,6 +26,7 @@ PurchaseOrder _order(PurchaseStatus status) => PurchaseOrder(
   totalHt: 12000000,
   totalTax: 2280000,
   totalTtc: 14280000,
+  updatedAt: DateTime.utc(2026, 9, 16, 10, 30),
   lines: [
     PurchaseLine(
       id: 'l1',
@@ -46,7 +47,7 @@ class _FakePurchasesApi extends PurchasesApi {
 
   final List<PurchaseOrder> orders;
   Map<String, Object?>? created;
-  String? confirmed;
+  (String, DateTime)? confirmed;
 
   @override
   Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
@@ -61,8 +62,8 @@ class _FakePurchasesApi extends PurchasesApi {
   }
 
   @override
-  Future<PurchaseOrder> confirm(String id) async {
-    confirmed = id;
+  Future<PurchaseOrder> confirm(String id, DateTime expectedUpdatedAt) async {
+    confirmed = (id, expectedUpdatedAt);
     return _order(PurchaseStatus.confirmed);
   }
 }
@@ -194,7 +195,8 @@ void main() {
     await tester.tap(find.text('Confirmer la commande'));
     await tester.pumpAndSettle();
 
-    expect(api.confirmed, 'o1');
+    // La version AFFICHÉE part avec la confirmation.
+    expect(api.confirmed, ('o1', DateTime.utc(2026, 9, 16, 10, 30)));
   });
 
   testWidgets('MAGASINIER : ni confirmation ni annulation', (tester) async {

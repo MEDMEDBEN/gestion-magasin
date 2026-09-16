@@ -3,6 +3,7 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { parseSort } from '../common/dto/pagination.dto';
+import { parseApiDate } from '../common/api-date';
 import { ErrorCode } from '../common/error-codes';
 import { PERMISSIONS } from '../common/permissions';
 import { formatQuantity, parseQuantity } from '../common/quantity';
@@ -77,9 +78,9 @@ export class StockService {
       ...((query.from || query.to) && {
         createdAt: {
           ...(query.from && {
-            gte: StockService.dateParam(query.from, 'from'),
+            gte: parseApiDate(query.from, 'from'),
           }),
-          ...(query.to && { lt: StockService.dateParam(query.to, 'to') }),
+          ...(query.to && { lt: parseApiDate(query.to, 'to') }),
         },
       }),
       ...StockService.visibleLocations(viewer),
@@ -327,20 +328,6 @@ export class StockService {
       },
     });
     return StockService.lossToDto(validated);
-  }
-
-  /// `@IsISO8601` accepte des formes (semaine, jour de l'année) que `Date` ne
-  /// sait pas lire : une date illisible est un 400, jamais une 500.
-  private static dateParam(raw: string, field: string): Date {
-    const date = new Date(raw);
-    const year = date.getUTCFullYear();
-    if (Number.isNaN(date.getTime()) || year < 2000 || year > 9999) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        `${field} : date invalide (attendu AAAA-MM-JJ ou ISO 8601 complet)`,
-      );
-    }
-    return date;
   }
 
   static visibleLocations(viewer: Pick<Viewer, 'permissions'>) {

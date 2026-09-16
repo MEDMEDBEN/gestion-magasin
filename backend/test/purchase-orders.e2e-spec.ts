@@ -251,12 +251,14 @@ describe('Commandes fournisseurs (e2e)', () => {
 
       const confirmed = await as(tokens.admin)
         .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: created.updatedAt })
         .expect(200);
       expect(confirmed.body).toMatchObject({ status: 'CONFIRMEE' });
       expect(confirmed.body.confirmedAt).toBeTruthy();
 
       const again = await as(tokens.admin)
         .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: created.updatedAt })
         .expect(200);
       expect(again.body.confirmedAt).toBe(confirmed.body.confirmedAt);
       expect(
@@ -297,8 +299,12 @@ describe('Commandes fournisseurs (e2e)', () => {
     it('deux confirmations simultanées : une seule écrit l’audit', async () => {
       const created = await order();
       const results = await Promise.all([
-        as(tokens.admin).post(`/api/purchase-orders/${created.id}/confirm`),
-        as(tokens.admin).post(`/api/purchase-orders/${created.id}/confirm`),
+        as(tokens.admin)
+          .post(`/api/purchase-orders/${created.id}/confirm`)
+          .send({ expectedUpdatedAt: created.updatedAt }),
+        as(tokens.admin)
+          .post(`/api/purchase-orders/${created.id}/confirm`)
+          .send({ expectedUpdatedAt: created.updatedAt }),
       ]);
       expect(results.map((r) => r.status)).toEqual([200, 200]);
       expect(
@@ -306,6 +312,166 @@ describe('Commandes fournisseurs (e2e)', () => {
           where: { entityId: created.id, action: 'VALIDATE' },
         }),
       ).toBe(1);
+    });
+  });
+
+  describe('contre-audits', () => {
+    it('l’admin ne confirme jamais une version modifiée depuis son affichage', async () => {
+      const created = await order();
+      // Le magasinier gonfle la commande pendant que l'admin la relit.
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({
+          lines: [{ productId, orderedQuantity: '1000', unitPriceHt: 120000 }],
+        })
+        .expect(200);
+      const stale = await as(tokens.admin)
+        .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: created.updatedAt })
+        .expect(409);
+      expect(stale.body.code).toBe('CONFLICT');
+      const fresh = await as(tokens.admin)
+        .get(`/api/purchase-orders/${created.id}`)
+        .expect(200);
+      expect(fresh.body.status).toBe('BROUILLON');
+      await as(tokens.admin)
+        .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: fresh.body.updatedAt })
+        .expect(200);
+    });
+
+    it('audit de modification : lignes et prix avant/après (échange à total égal visible)', async () => {
+      const created = await order(tokens.magasinier, {
+        lines: [
+          { productId, orderedQuantity: '1', unitPriceHt: 1000 },
+          { productId, orderedQuantity: '1', unitPriceHt: 5000 },
+        ],
+      });
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({
+          lines: [
+            { productId, orderedQuantity: '1', unitPriceHt: 5000 },
+            { productId, orderedQuantity: '2', unitPriceHt: 500 },
+          ],
+        })
+        .expect(200);
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { entityId: created.id, action: 'UPDATE' },
+      });
+      const prices = (v: unknown) =>
+        (v as { lines: { unitPriceHt: number }[] }).lines
+          .map((l) => l.unitPriceHt)
+          .sort((a, b) => a - b);
+      expect(prices(audit.oldValue)).toEqual([1000, 5000]);
+      expect(prices(audit.newValue)).toEqual([500, 5000]);
+    });
+
+    it('transitions refusées : retour en brouillon, commande annulée, commande reçue', async () => {
+      const created = await order();
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ status: 'COMMANDEE' })
+        .expect(200);
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ status: 'BROUILLON' })
+        .expect(400);
+
+      await as(tokens.admin)
+        .post(`/api/purchase-orders/${created.id}/cancel`)
+        .expect(200);
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ note: 'trop tard' })
+        .expect(409);
+      const again = await as(tokens.admin)
+        .get(`/api/purchase-orders/${created.id}`)
+        .expect(200);
+      await as(tokens.admin)
+        .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: again.body.updatedAt })
+        .expect(409);
+
+      // Réception existante : ni modification ni annulation.
+      const received = await order();
+      const magasin = await prisma.location.findFirstOrThrow({
+        where: { type: 'DEPOT' },
+      });
+      await prisma.reception.create({
+        data: {
+          number: `E2E-REC-${suffix}`,
+          purchaseOrderId: received.id,
+          supplierId,
+          locationId: magasin.id,
+          userId: userIds[1],
+        },
+      });
+      try {
+        await as(tokens.magasinier)
+          .patch(`/api/purchase-orders/${received.id}`)
+          .send({ note: 'modif' })
+          .expect(409);
+        await as(tokens.admin)
+          .post(`/api/purchase-orders/${received.id}/cancel`)
+          .expect(409);
+      } finally {
+        await prisma.reception.deleteMany({
+          where: { purchaseOrderId: received.id },
+        });
+      }
+    });
+
+    it('renvoi du même id avec un autre contenu → 409 ; id d’un autre compte → 409', async () => {
+      const id = randomUUID();
+      await as(tokens.magasinier)
+        .post('/api/purchase-orders')
+        .send({
+          id,
+          supplierId,
+          lines: [{ productId, orderedQuantity: '5', unitPriceHt: 1000 }],
+        })
+        .expect(201);
+      orderIds.push(id);
+      await as(tokens.magasinier)
+        .post('/api/purchase-orders')
+        .send({
+          id,
+          supplierId,
+          lines: [{ productId, orderedQuantity: '50', unitPriceHt: 1000 }],
+        })
+        .expect(409);
+      await as(tokens.admin)
+        .post('/api/purchase-orders')
+        .send({
+          id,
+          supplierId,
+          lines: [{ productId, orderedQuantity: '5', unitPriceHt: 1000 }],
+        })
+        .expect(409);
+    });
+
+    it('dates illisibles ou inexistantes → 400 (jamais 500, jamais une date fausse)', async () => {
+      for (const expectedDate of ['2026-W05', '2026-02-30']) {
+        await as(tokens.magasinier)
+          .post('/api/purchase-orders')
+          .send({
+            supplierId,
+            expectedDate,
+            lines: [{ productId, orderedQuantity: '1', unitPriceHt: 1000 }],
+          })
+          .expect(400);
+      }
+    });
+
+    it('arrondi : quantité décimale × prix, demi vers le haut, TVA par ligne', async () => {
+      const created = await order(tokens.magasinier, {
+        lines: [{ productId, orderedQuantity: '12.345', unitPriceHt: 999 }],
+      });
+      // 12,345 × 999 = 12 332,655 → 12 333 ; TVA 19 % = 2 343,27 → 2 343
+      expect(created.totalHt).toBe(12333);
+      expect(created.totalTax).toBe(2343);
+      expect(created.totalTtc).toBe(14676);
     });
   });
 

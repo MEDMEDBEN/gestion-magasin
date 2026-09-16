@@ -60,7 +60,9 @@ class PurchasesActions {
   Future<PurchaseOrder> markOrdered(String id) =>
       _refresh(_api.update(id, {'status': 'COMMANDEE'}));
 
-  Future<PurchaseOrder> confirm(String id) => _refresh(_api.confirm(id));
+  /// Confirme LA version affichée (`order.updatedAt`) ; modifiée entre-temps → 409.
+  Future<PurchaseOrder> confirm(PurchaseOrder order) =>
+      _refresh(_api.confirm(order.id, order.updatedAt));
 
   Future<PurchaseOrder> cancel(String id) => _refresh(_api.cancel(id));
 

@@ -28,8 +28,11 @@ class PurchasesApi {
   Future<PurchaseOrder> update(String id, Map<String, Object?> fields) =>
       _send('PATCH', '/purchase-orders/$id', fields);
 
-  Future<PurchaseOrder> confirm(String id) =>
-      _send('POST', '/purchase-orders/$id/confirm', null);
+  Future<PurchaseOrder> confirm(String id, DateTime expectedUpdatedAt) => _send(
+    'POST',
+    '/purchase-orders/$id/confirm',
+    {'expectedUpdatedAt': expectedUpdatedAt.toUtc().toIso8601String()},
+  );
 
   Future<PurchaseOrder> cancel(String id) =>
       _send('POST', '/purchase-orders/$id/cancel', null);

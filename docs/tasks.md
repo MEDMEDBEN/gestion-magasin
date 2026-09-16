@@ -406,7 +406,7 @@ Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
    Preuve : backend **72** unit · **197** e2e ; app analyze propre, **+184 ~25**.
 4. ⏳ Relecture humaine (captures 24-25).
 
-### 🚧 P0 #6 ACHATS — COMMENCÉ, BACKEND PARTIEL (2026-09-16 · **MEDMEDBEN**)
+### 🚧 P0 #6 ACHATS — CODE LIVRÉ, RELECTURE HUMAINE EN ATTENTE (2026-09-16 · **MEDMEDBEN**)
 **Décisions MEDMEDBEN (2026-09-16)** :
 - **La dette fournisseur augmente à la RÉCEPTION** (quantités réellement reçues), pas à la commande.
   Conséquence pour P0 #7 : `SuppliersService.debt` devra ajouter Σ(lignes reçues × prix) à `openingBalance`.
@@ -427,8 +427,26 @@ Hors-ligne des ventes : feature P0 #12 (prérequis N6b).
    (reçu / reste) une fois confirmée. Captures **26** (liste) et **27** (nouvelle commande). 5 tests widget.
    Preuve (2026-09-16) : backend **72** unit · **206** e2e (`--runInBand`) ; app analyze propre, **+189 ~27**.
    ⚠️ Piège machine : Docker Desktop était arrêté → e2e tous en échec (`AggregateError`). Le relancer d'abord.
-3. ⏳ Audits `reviewer` + `security-reviewer` P0 #6 → relecture humaine (captures 26-27) → **P0 #7 Réceptions**
-   (stock +, `lastPurchasePriceHt`, dette fournisseur, statuts PARTIELLEMENT_RECUE/RECUE, surlivraison refusée).
+3. ✅ **Audits P0 #6** — `security-reviewer` **NON CONFORME** (2 importants, 3 mineurs) · `reviewer` **PAS OK**
+   (5 points) → corrigés :
+   - **L'admin ne confirme que la version qu'il a vue** : `POST /purchase-orders/:id/confirm` exige
+     `expectedUpdatedAt` ; commande modifiée entre-temps → 409 (contre-éprouvé). L'app envoie l'`updatedAt` affiché.
+   - **Audit de modification complet** : lignes (produit, quantité, prix, TVA), dates et note avant/après — un échange
+     de prix à total égal reste visible.
+   - Dates strictes : `common/api-date.ts` (`parseApiDate`, utilisé aussi par le journal de stock) — `2026-W05` ou
+     `2026-02-30` → 400, plus jamais 500 ni date fausse.
+   - Transition unique BROUILLON → COMMANDEE (retour en brouillon refusé) ; modification refusée dès qu'une
+     réception existe (les lignes ne sont jamais effacées sous une réception) ; renvoi du même id avec un autre
+     contenu → 409 ; note trimée en modification ; « Annuler » n'est plus proposé sur une commande en cours de réception.
+   - Tests ajoutés : version périmée, audit des prix, transitions refusées, réception existante, renvoi modifié,
+     dates, arrondi demi-haut par ligne.
+   Preuve : backend **79** unit · **212** e2e (`--runInBand`) ; app analyze propre, **+189 ~27**.
+   Dette notée : `MAX_MONEY` à déplacer dans `common/` ; liste des commandes limitée à 200 sans pagination.
+4. ⏳ Relecture humaine (captures 26-27) → **P0 #7 Réceptions** (stock +, `lastPurchasePriceHt`, dette fournisseur =
+   reprise + Σ reçu × prix − paiements, statuts PARTIELLEMENT_RECUE/RECUE, surlivraison refusée).
+   **Obligatoire en P0 #7** (audit sécu) : la création d'une réception prend le MÊME `SELECT … FOR UPDATE` sur
+   `PurchaseOrder` que `cancel`/`update`, refuse ANNULEE (et réceptionne seulement une commande CONFIRMEE ou
+   PARTIELLEMENT_RECUE), avec un test e2e annulation ↔ réception simultanées.
 
 ### ▶️ ENSUITE
 Feature **P0 #2** — plan détaillé ci-dessous, contrat backend figé (routes 501).

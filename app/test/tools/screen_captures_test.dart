@@ -324,6 +324,7 @@ PurchaseOrder _po(
   totalHt: (ttc / 1.19).round(),
   totalTax: ttc - (ttc / 1.19).round(),
   totalTtc: ttc,
+  updatedAt: DateTime(2026, 9, 16),
   lines: [
     for (var i = 0; i < lines; i++)
       PurchaseLine(

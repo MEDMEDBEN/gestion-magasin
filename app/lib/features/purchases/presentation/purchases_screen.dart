@@ -154,8 +154,8 @@ class PurchasesScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop('confirm'),
               child: const Text('Confirmer la commande'),
             ),
-          if (order.status != PurchaseStatus.cancelled &&
-              order.status != PurchaseStatus.received &&
+          // Refusée par le serveur dès qu'une réception existe.
+          if ((editable || order.status == PurchaseStatus.confirmed) &&
               rights.canConfirm)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('cancel'),
@@ -203,13 +203,15 @@ class PurchasesScreen extends ConsumerWidget {
     try {
       final updated = await switch (action) {
         'ordered' => actions.markOrdered(order.id),
-        'confirm' => actions.confirm(order.id),
+        'confirm' => actions.confirm(order),
         _ => actions.cancel(order.id),
       };
       if (context.mounted) {
         _snack(context, '${updated.number} : ${updated.status.label}.');
       }
     } on ApiException catch (error) {
+      // Version périmée : la liste est relue pour montrer la commande actuelle.
+      if (error.statusCode == 409) ref.invalidate(purchaseOrdersProvider);
       if (context.mounted) _snack(context, error.userMessage);
     }
   }

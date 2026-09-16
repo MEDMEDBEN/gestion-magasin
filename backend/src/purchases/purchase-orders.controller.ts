@@ -31,6 +31,7 @@ import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
+  ConfirmPurchaseOrderDto,
   CreatePurchaseOrderDto,
   PurchaseOrderDto,
   PurchaseOrderListDto,
@@ -117,15 +118,21 @@ export class PurchaseOrdersController {
   @ApiOperation({
     summary: 'Confirme une commande (ADMIN SEUL)',
     description:
-      'Idempotent : une commande déjà confirmée est rendue telle quelle.',
+      'Idempotent : une commande déjà confirmée est rendue telle quelle. ' +
+      '`expectedUpdatedAt` différent de la version en base → 409 `CONFLICT`.',
   })
   @ApiOkResponse({ type: PurchaseOrderDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
   confirm(
     @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: ConfirmPurchaseOrderDto,
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<PurchaseOrderDto> {
-    return this.orders.confirm(id, user, { userId: user.id, ipAddress: ip });
+    return this.orders.confirm(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
   @Roles(RoleCode.ADMIN)

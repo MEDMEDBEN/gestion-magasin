@@ -205,6 +205,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-16 : **CONFORME**, 4 mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 24 et 25 à relire par MEDMEDBEN)_
 
+### Feature P0 n°6 : Achats (commandes fournisseurs, statuts)
+- [x] Schéma DB validé _(aucune migration : tables Phase 0 ; générateur de numéros commun `common/document-number.ts`)_
+- [x] Matrice de permissions CRUD par rôle définie _(création/modif ADMIN+MAGASINIER, confirmation/annulation ADMIN ; dette à la RÉCEPTION, surlivraison refusée — décisions 2026-09-16)_
+- [x] Endpoints API implémentés _(POST/GET/GET :id/PATCH /purchase-orders, confirm, cancel)_
+- [x] Validation des entrées (class-validator) en place _(quantités décimales > 0, montants bornés, dates strictes, version attendue)_
+- [x] Tests unitaires backend passent _(79 — 2026-09-16)_
+- [x] Tests d'intégration backend passent _(212 e2e dont 15 commandes — 2026-09-16)_
+- [x] UI desktop implémentée
+- [x] UI mobile implémentée
+- [x] Sync offline gérée si applicable _(non : commandes en ligne uniquement)_
+- [x] Revue par subagent `reviewer` _(2026-09-16 : PAS OK → 5 points corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-16 : NON CONFORME → 2 importants + mineurs corrigés)_
+- [ ] Tests manuels effectués par un humain _(captures 26 et 27 à relire par MEDMEDBEN)_
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

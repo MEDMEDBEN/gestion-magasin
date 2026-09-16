@@ -64,6 +64,10 @@ abstract class PurchaseOrder with _$PurchaseOrder {
     required int totalTax,
     required int totalTtc,
     String? note,
+
+    /// Version affichée : renvoyée à la confirmation (le serveur refuse de
+    /// confirmer une commande modifiée depuis).
+    required DateTime updatedAt,
     required List<PurchaseLine> lines,
   }) = _PurchaseOrder;
 
