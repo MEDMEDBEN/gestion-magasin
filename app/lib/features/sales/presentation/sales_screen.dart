@@ -79,6 +79,15 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   _Section _section = _Section.sale;
 
   @override
+  void initState() {
+    super.initState();
+    // Entrée en Vente : prix et produits à jour avant d'encaisser.
+    Future.microtask(() {
+      if (mounted) ref.read(catalogSyncProvider.notifier).refresh();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final rights = SalesRights(widget.user);
     final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
@@ -398,9 +407,30 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       );
     }
 
+    final sync = ref.watch(catalogSyncProvider);
     return ListView(
       padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
       children: [
+        // Catalogue local encore vide (poste neuf) : on dit pourquoi, au lieu
+        // de laisser croire qu'aucun produit n'existe.
+        if (products.isEmpty) ...[
+          AmpereInlineAlert(
+            tone: sync.hasError ? StatusTone.error : StatusTone.info,
+            message: sync.isLoading
+                ? 'Chargement du catalogue…'
+                : sync.hasError
+                ? 'Catalogue non chargé : vérifiez la connexion.'
+                : 'Le catalogue ne contient aucun produit actif.',
+            action: sync.hasError
+                ? TextButton(
+                    onPressed: () =>
+                        ref.read(catalogSyncProvider.notifier).refresh(),
+                    child: const Text('Réessayer'),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 12),
+        ],
         Autocomplete<Product>(
           displayStringForOption: (p) => p.name,
           optionsBuilder: (value) {

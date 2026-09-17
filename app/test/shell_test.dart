@@ -5,6 +5,7 @@ import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/desktop/desktop_shell.dart';
@@ -26,6 +27,7 @@ Future<void> _pumpShell(
   required AuthUser user,
   required Size size,
   bool reachable = true,
+  CatalogRepository? catalog,
 }) async {
   useScreenSize(tester, size);
   final db = AppDatabase.forTesting();
@@ -47,6 +49,8 @@ Future<void> _pumpShell(
         ),
         rejectedMutationsProvider.overrideWith((ref) => Stream.value(const [])),
         if (!reachable) serverReachableProvider.overrideWith(_Unreachable.new),
+        if (catalog != null)
+          catalogRepositoryProvider.overrideWithValue(catalog),
       ],
       child: MaterialApp(
         theme: size.width >= 768
@@ -64,7 +68,35 @@ class _Unreachable extends ServerReachability {
   bool build() => false;
 }
 
+class _CountingCatalog implements CatalogRepository {
+  int pulls = 0;
+
+  @override
+  Future<void> pull() async => pulls++;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  testWidgets(
+    'connexion : la coquille lance la synchro du catalogue sans ouvrir l’écran Catalogue',
+    (tester) async {
+      final catalog = _CountingCatalog();
+      await _pumpShell(
+        tester,
+        user: authUser(
+          roles: const ['VENDEUR'],
+          permissions: const ['sale.create'],
+        ),
+        size: const Size(400, 800),
+        catalog: catalog,
+      );
+      expect(find.text('Accueil'), findsWidgets);
+      expect(catalog.pulls, 1);
+    },
+  );
+
   group('menu dérivé des droits (miroir des guards serveur)', () {
     testWidgets('un VENDEUR ne voit pas « Utilisateurs »', (tester) async {
       await _pumpShell(

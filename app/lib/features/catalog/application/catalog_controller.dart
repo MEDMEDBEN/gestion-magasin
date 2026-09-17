@@ -3,6 +3,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/providers.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../data/catalog_repository.dart';
@@ -12,20 +13,32 @@ import '../data/catalog_repository.dart';
 /// Son échec n'empêche PAS d'afficher le catalogue déjà enregistré : l'écran
 /// lit la base locale, cet état ne dit que « à jour » ou « pas pu se mettre à
 /// jour » (lecture cache-first, docs/context.md).
+///
+/// Vit tant qu'un compte est connecté (la coquille l'écoute) et se relance à
+/// CHAQUE connexion : un poste neuf a son catalogue sans passer par l'écran
+/// Catalogue. Le serveur ne descend que le sous-ensemble visible du rôle
+/// (coût d'achat et fournisseur masqués selon les droits).
 class CatalogSyncController extends AsyncNotifier<void> {
   @override
-  Future<void> build() => ref.read(catalogRepositoryProvider).pull();
+  Future<void> build() {
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId == null) return Future.value();
+    return ref.read(catalogRepositoryProvider).pull();
+  }
 
+  /// Mise à jour à la demande (entrée en Vente, bouton « Actualiser »). Une
+  /// synchro déjà en cours n'est pas doublée.
   Future<void> refresh() async {
+    if (state.isLoading) return;
+    if (ref.read(currentUserIdProvider) == null) return;
     state = const AsyncLoading<void>();
     state = await AsyncValue.guard(ref.read(catalogRepositoryProvider).pull);
   }
 }
 
-final catalogSyncProvider =
-    AsyncNotifierProvider.autoDispose<CatalogSyncController, void>(
-      CatalogSyncController.new,
-    );
+final catalogSyncProvider = AsyncNotifierProvider<CatalogSyncController, void>(
+  CatalogSyncController.new,
+);
 
 /// Filtres de la liste des produits.
 @immutable

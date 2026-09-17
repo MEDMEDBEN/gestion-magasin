@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/catalog/application/catalog_controller.dart';
+
 import '../features/auth/application/auth_controller.dart';
 import 'breakpoints.dart';
 import 'desktop/desktop_shell.dart';
@@ -15,6 +17,9 @@ class AdaptiveShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
+    // Synchro initiale du catalogue dès la connexion, quel que soit le premier
+    // écran ouvert (revue générale B3) : la coquille la garde en vie.
+    ref.listen(catalogSyncProvider, (_, _) {});
 
     // Chargement plein écran UNIQUEMENT tant qu'aucune session n'est connue
     // (démarrage). Un rechargement ultérieur ne démonte pas la coquille : sinon
