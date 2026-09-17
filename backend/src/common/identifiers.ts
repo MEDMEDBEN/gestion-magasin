@@ -27,5 +27,7 @@ export function isEmailIdentifier(identifier: string): boolean {
 /// Identifiant saisi au login : email OU téléphone, normalisé selon sa forme.
 export function normalizeIdentifier(value: unknown): unknown {
   if (typeof value !== 'string') return value;
-  return isEmailIdentifier(value) ? normalizeEmail(value) : normalizePhone(value);
+  return isEmailIdentifier(value)
+    ? normalizeEmail(value)
+    : normalizePhone(value);
 }

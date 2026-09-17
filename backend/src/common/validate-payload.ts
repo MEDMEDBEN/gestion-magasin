@@ -23,7 +23,11 @@ export async function validatePayload<T extends object>(
   cls: Constructor<T>,
   payload: unknown,
 ): Promise<T> {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+  if (
+    typeof payload !== 'object' ||
+    payload === null ||
+    Array.isArray(payload)
+  ) {
     throw new BusinessException(
       ErrorCode.VALIDATION_FAILED,
       'Payload invalide : un objet JSON est attendu',

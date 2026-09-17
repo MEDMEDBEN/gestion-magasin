@@ -15,7 +15,9 @@ export interface E2eApp {
 /// Application de test configurée EXACTEMENT comme en production (`configureApp`) :
 /// préfixe, filtre d'erreurs, validation stricte, `trust proxy`.
 export async function createE2eApp(): Promise<E2eApp> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app);
   await app.init();
@@ -52,27 +54,31 @@ export async function createTestUser(
 /// dans cette transaction (compte modifié, sessions révoquées…) doivent alors
 /// être annulées. C'est la preuve réelle de l'atomicité (règles 3 et 7) — un
 /// refus levé AVANT la transaction ne prouverait rien.
-export function failAuditInNextTransaction(prisma: PrismaService): jest.SpyInstance {
+export function failAuditInNextTransaction(
+  prisma: PrismaService,
+): jest.SpyInstance {
   const original = prisma.$transaction.bind(prisma) as (
     fn: (tx: unknown) => Promise<unknown>,
   ) => Promise<unknown>;
 
-  return jest
-    .spyOn(prisma, '$transaction')
-    .mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
-      original((tx) =>
-        fn(
-          new Proxy(tx as object, {
-            get(target, property, receiver) {
-              if (property === 'auditLog') {
-                return {
-                  create: () =>
-                    Promise.reject(new Error('Échec simulé de l’écriture d’audit')),
-                };
-              }
-              return Reflect.get(target, property, receiver);
-            },
-          }),
-        ),
-      )) as never);
+  return jest.spyOn(prisma, '$transaction').mockImplementationOnce(((
+    fn: (tx: unknown) => Promise<unknown>,
+  ) =>
+    original((tx) =>
+      fn(
+        new Proxy(tx as object, {
+          get(target, property, receiver) {
+            if (property === 'auditLog') {
+              return {
+                create: () =>
+                  Promise.reject(
+                    new Error('Échec simulé de l’écriture d’audit'),
+                  ),
+              };
+            }
+            return Reflect.get(target, property, receiver);
+          },
+        }),
+      ),
+    )) as never);
 }

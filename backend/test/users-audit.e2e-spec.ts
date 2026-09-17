@@ -30,9 +30,12 @@ describe('Gestion des comptes (e2e)', () => {
     request(server).post('/api/auth/login').send({ identifier, password });
 
   const as = (token: string) => ({
-    get: (url: string) => request(server).get(url).set('Authorization', `Bearer ${token}`),
-    post: (url: string) => request(server).post(url).set('Authorization', `Bearer ${token}`),
-    patch: (url: string) => request(server).patch(url).set('Authorization', `Bearer ${token}`),
+    get: (url: string) =>
+      request(server).get(url).set('Authorization', `Bearer ${token}`),
+    post: (url: string) =>
+      request(server).post(url).set('Authorization', `Bearer ${token}`),
+    patch: (url: string) =>
+      request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Entrées d'audit portant sur un compte donné, la plus récente d'abord.
@@ -42,10 +45,14 @@ describe('Gestion des comptes (e2e)', () => {
       orderBy: { createdAt: 'desc' },
     });
 
-  const uniqueEmail = (label: string) => `e2e-audit-${label}-${suffix}-${++counter}@test.local`;
+  const uniqueEmail = (label: string) =>
+    `e2e-audit-${label}-${suffix}-${++counter}@test.local`;
 
   /// Crée un compte via l'API et mémorise son id pour le nettoyage.
-  const createUser = async (label: string, role: RoleCode = RoleCode.VENDEUR) => {
+  const createUser = async (
+    label: string,
+    role: RoleCode = RoleCode.VENDEUR,
+  ) => {
     const response = await as(adminToken)
       .post('/api/users')
       .send({
@@ -62,7 +69,11 @@ describe('Gestion des comptes (e2e)', () => {
   /// Compte prêt à l'emploi (mot de passe déjà changé) + son access token.
   const sessionFor = async (label: string, roles: RoleCode[]) => {
     const email = uniqueEmail(label);
-    const user = await createTestUser(prisma, { email, password: PASSWORD, roles });
+    const user = await createTestUser(prisma, {
+      email,
+      password: PASSWORD,
+      roles,
+    });
     createdIds.push(user.id);
     const session = await login(email, PASSWORD);
     return { id: user.id, email, token: session.body.accessToken as string };
@@ -70,17 +81,30 @@ describe('Gestion des comptes (e2e)', () => {
 
   /// Neutralise temporairement les AUTRES admins actifs de la base de dev, pour
   /// placer le test dans la situation « un seul admin actif ». Restaure ensuite.
-  const withOnlyTheseAdminsActive = async (keep: string[], body: () => Promise<void>) => {
+  const withOnlyTheseAdminsActive = async (
+    keep: string[],
+    body: () => Promise<void>,
+  ) => {
     const others = await prisma.user.findMany({
-      where: { isActive: true, roles: { some: { code: RoleCode.ADMIN } }, NOT: { id: { in: keep } } },
+      where: {
+        isActive: true,
+        roles: { some: { code: RoleCode.ADMIN } },
+        NOT: { id: { in: keep } },
+      },
       select: { id: true },
     });
     const ids = others.map((u) => u.id);
-    await prisma.user.updateMany({ where: { id: { in: ids } }, data: { isActive: false } });
+    await prisma.user.updateMany({
+      where: { id: { in: ids } },
+      data: { isActive: false },
+    });
     try {
       await body();
     } finally {
-      await prisma.user.updateMany({ where: { id: { in: ids } }, data: { isActive: true } });
+      await prisma.user.updateMany({
+        where: { id: { in: ids } },
+        data: { isActive: true },
+      });
     }
   };
 
@@ -102,7 +126,9 @@ describe('Gestion des comptes (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({
-      where: { OR: [{ entityId: { in: createdIds } }, { userId: { in: createdIds } }] },
+      where: {
+        OR: [{ entityId: { in: createdIds } }, { userId: { in: createdIds } }],
+      },
     });
     await prisma.user.deleteMany({ where: { id: { in: createdIds } } });
     await e2e.app.close();
@@ -152,7 +178,9 @@ describe('Gestion des comptes (e2e)', () => {
         .send({ roles: [RoleCode.MAGASINIER] })
         .expect(200);
 
-      const update = (await auditFor(created.id)).find((e) => e.action === 'UPDATE');
+      const update = (await auditFor(created.id)).find(
+        (e) => e.action === 'UPDATE',
+      );
       expect(update!.oldValue).toMatchObject({ roles: ['VENDEUR'] });
       expect(update!.newValue).toMatchObject({ roles: ['MAGASINIER'] });
     });
@@ -165,9 +193,13 @@ describe('Gestion des comptes (e2e)', () => {
         .send({ roles: [RoleCode.VENDEUR, RoleCode.MAGASINIER] })
         .expect(200);
       // Les permissions effectives sont l'union des deux rôles.
-      expect(res.body.permissions).toEqual(expect.arrayContaining(['sale.create', 'stock.loss']));
+      expect(res.body.permissions).toEqual(
+        expect.arrayContaining(['sale.create', 'stock.loss']),
+      );
 
-      const update = (await auditFor(created.id)).find((e) => e.action === 'UPDATE');
+      const update = (await auditFor(created.id)).find(
+        (e) => e.action === 'UPDATE',
+      );
       expect(update!.oldValue).toMatchObject({ roles: ['VENDEUR'] });
       expect((update!.newValue as { roles: string[] }).roles).toEqual(
         expect.arrayContaining(['VENDEUR', 'MAGASINIER']),
@@ -180,13 +212,20 @@ describe('Gestion des comptes (e2e)', () => {
     it('une désactivation est tracée et coupe les sessions', async () => {
       const target = await sessionFor('off', [RoleCode.VENDEUR]);
 
-      await as(adminToken).patch(`/api/users/${target.id}`).send({ isActive: false }).expect(200);
+      await as(adminToken)
+        .patch(`/api/users/${target.id}`)
+        .send({ isActive: false })
+        .expect(200);
 
-      const update = (await auditFor(target.id)).find((e) => e.action === 'UPDATE');
+      const update = (await auditFor(target.id)).find(
+        (e) => e.action === 'UPDATE',
+      );
       expect(update!.oldValue).toMatchObject({ isActive: true });
       expect(update!.newValue).toMatchObject({ isActive: false });
       expect(
-        await prisma.refreshToken.count({ where: { userId: target.id, revokedAt: null } }),
+        await prisma.refreshToken.count({
+          where: { userId: target.id, revokedAt: null },
+        }),
       ).toBe(0);
     });
 
@@ -199,9 +238,16 @@ describe('Gestion des comptes (e2e)', () => {
         .send({ temporaryPassword: 'NouveauTemporaire1!' })
         .expect(200);
 
-      const update = (await auditFor(target.id)).find((e) => e.action === 'UPDATE');
-      expect(update!.newValue).toMatchObject({ operation: 'PASSWORD_RESET', mustChangePassword: true });
-      expect(JSON.stringify(update!.newValue)).not.toContain('NouveauTemporaire1!');
+      const update = (await auditFor(target.id)).find(
+        (e) => e.action === 'UPDATE',
+      );
+      expect(update!.newValue).toMatchObject({
+        operation: 'PASSWORD_RESET',
+        mustChangePassword: true,
+      });
+      expect(JSON.stringify(update!.newValue)).not.toContain(
+        'NouveauTemporaire1!',
+      );
 
       expect((await login(target.email, PASSWORD)).status).toBe(401);
       const withTemporary = await login(target.email, 'NouveauTemporaire1!');
@@ -225,9 +271,14 @@ describe('Gestion des comptes (e2e)', () => {
 
       expect(response.body.revoked).toBe(2);
       const update = (await auditFor(created.id)).find(
-        (e) => (e.newValue as Record<string, unknown>)?.operation === 'REVOKE_SESSIONS',
+        (e) =>
+          (e.newValue as Record<string, unknown>)?.operation ===
+          'REVOKE_SESSIONS',
       );
-      expect(update!.newValue).toMatchObject({ operation: 'REVOKE_SESSIONS', revokedSessions: 2 });
+      expect(update!.newValue).toMatchObject({
+        operation: 'REVOKE_SESSIONS',
+        revokedSessions: 2,
+      });
     });
   });
 
@@ -242,12 +293,16 @@ describe('Gestion des comptes (e2e)', () => {
         .send({ fullName: 'Nom Jamais Écrit', isActive: false })
         .expect(500);
 
-      const user = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id: target.id },
+      });
       expect(user.fullName).not.toBe('Nom Jamais Écrit');
       expect(user.isActive).toBe(true);
       // La révocation faisait partie de la transaction : les sessions survivent.
       expect(
-        await prisma.refreshToken.count({ where: { userId: target.id, revokedAt: null } }),
+        await prisma.refreshToken.count({
+          where: { userId: target.id, revokedAt: null },
+        }),
       ).toBeGreaterThan(0);
       expect((await auditFor(target.id)).length).toBe(before);
     });
@@ -258,7 +313,12 @@ describe('Gestion des comptes (e2e)', () => {
       failAuditInNextTransaction(prisma);
       await as(adminToken)
         .post('/api/users')
-        .send({ email, fullName: 'Jamais Créé', temporaryPassword: PASSWORD, roles: [RoleCode.VENDEUR] })
+        .send({
+          email,
+          fullName: 'Jamais Créé',
+          temporaryPassword: PASSWORD,
+          roles: [RoleCode.VENDEUR],
+        })
         .expect(500);
 
       expect(await prisma.user.count({ where: { email } })).toBe(0);
@@ -273,17 +333,26 @@ describe('Gestion des comptes (e2e)', () => {
       const service = e2e.app.get(UsersService);
 
       await withOnlyTheseAdminsActive([last.id], async () => {
-        for (const change of [{ isActive: false }, { roles: [RoleCode.VENDEUR] }]) {
+        for (const change of [
+          { isActive: false },
+          { roles: [RoleCode.VENDEUR] },
+        ]) {
           await expect(
             service.update(last.id, change, { userId: adminId }),
           ).rejects.toMatchObject({ response: { code: 'LAST_ACTIVE_ADMIN' } });
         }
       });
-      expect((await prisma.user.findUniqueOrThrow({ where: { id: last.id } })).isActive).toBe(true);
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: last.id } }))
+          .isActive,
+      ).toBe(true);
     });
 
     it('deux admins qui se retirent MUTUELLEMENT en même temps : il en reste un', async () => {
-      for (const change of [{ isActive: false }, { roles: [RoleCode.VENDEUR] }]) {
+      for (const change of [
+        { isActive: false },
+        { roles: [RoleCode.VENDEUR] },
+      ]) {
         const a = await sessionFor('duel-a', [RoleCode.ADMIN]);
         const b = await sessionFor('duel-b', [RoleCode.ADMIN]);
 
@@ -302,7 +371,11 @@ describe('Gestion des comptes (e2e)', () => {
           expect(statuses.find((s) => s !== 200)).toBeOneOf([401, 403, 409]);
           expect(
             await prisma.user.count({
-              where: { id: { in: [a.id, b.id] }, isActive: true, roles: { some: { code: RoleCode.ADMIN } } },
+              where: {
+                id: { in: [a.id, b.id] },
+                isActive: true,
+                roles: { some: { code: RoleCode.ADMIN } },
+              },
             }),
           ).toBe(1);
         });
@@ -316,12 +389,17 @@ describe('Gestion des comptes (e2e)', () => {
         { roles: [RoleCode.ADMIN, RoleCode.MAGASINIER] },
         { isActive: false },
       ]) {
-        const res = await as(self.token).patch(`/api/users/${self.id}`).send(change);
+        const res = await as(self.token)
+          .patch(`/api/users/${self.id}`)
+          .send(change);
         expect(res.status).toBe(403);
         expect(res.body.code).toBe('SELF_MODIFICATION_FORBIDDEN');
       }
       // Son nom, lui, reste modifiable.
-      await as(self.token).patch(`/api/users/${self.id}`).send({ fullName: 'Nouveau Nom' }).expect(200);
+      await as(self.token)
+        .patch(`/api/users/${self.id}`)
+        .send({ fullName: 'Nouveau Nom' })
+        .expect(200);
     });
 
     it('un admin RÉTROGRADÉ perd la main tout de suite, malgré son token encore valide', async () => {
@@ -332,7 +410,9 @@ describe('Gestion des comptes (e2e)', () => {
         .expect(200);
 
       // Son access token dit encore ADMIN : l'accès est relu en base.
-      const res = await as(demoted.token).patch(`/api/users/${demoted.id}`).send({ fullName: 'x' });
+      const res = await as(demoted.token)
+        .patch(`/api/users/${demoted.id}`)
+        .send({ fullName: 'x' });
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('FORBIDDEN_ROLE');
       expect((await as(demoted.token).get('/api/users')).status).toBe(403);
@@ -340,10 +420,15 @@ describe('Gestion des comptes (e2e)', () => {
 
     it('un admin DÉSACTIVÉ ne peut pas se réactiver avec son token encore valide', async () => {
       const disabled = await sessionFor('desactive', [RoleCode.ADMIN]);
-      await as(adminToken).patch(`/api/users/${disabled.id}`).send({ isActive: false }).expect(200);
+      await as(adminToken)
+        .patch(`/api/users/${disabled.id}`)
+        .send({ isActive: false })
+        .expect(200);
 
       const other = await createUser('victime', RoleCode.MAGASINIER);
-      const res = await as(disabled.token).patch(`/api/users/${other.id}`).send({ isActive: false });
+      const res = await as(disabled.token)
+        .patch(`/api/users/${other.id}`)
+        .send({ isActive: false });
 
       expect(res.status).toBe(403);
       expect(res.body.code).toBe('ACCOUNT_DISABLED');
@@ -380,10 +465,16 @@ describe('Gestion des comptes (e2e)', () => {
       const vendeur = await sessionFor('residu', [RoleCode.VENDEUR]);
       await prisma.user.update({
         where: { id: vendeur.id },
-        data: { permissions: { connect: [{ code: 'price.manage' }, { code: 'supplier.read' }] } },
+        data: {
+          permissions: {
+            connect: [{ code: 'price.manage' }, { code: 'supplier.read' }],
+          },
+        },
       });
 
-      const res = await as(adminToken).get(`/api/users/${vendeur.id}`).expect(200);
+      const res = await as(adminToken)
+        .get(`/api/users/${vendeur.id}`)
+        .expect(200);
       expect(res.body.permissions).not.toContain('price.manage');
       expect(res.body.permissions).not.toContain('supplier.read');
       expect(res.body.extraPermissions).toBeUndefined();
@@ -405,14 +496,18 @@ describe('Gestion des comptes (e2e)', () => {
       const magasinier = await sessionFor('pas-admin-m', [RoleCode.MAGASINIER]);
 
       for (const token of [vendeur.token, magasinier.token]) {
-        const create = await as(token).post('/api/users').send({
-          email: uniqueEmail('intrus'),
-          fullName: 'Intrus',
-          temporaryPassword: PASSWORD,
-          roles: [RoleCode.ADMIN],
-        });
+        const create = await as(token)
+          .post('/api/users')
+          .send({
+            email: uniqueEmail('intrus'),
+            fullName: 'Intrus',
+            temporaryPassword: PASSWORD,
+            roles: [RoleCode.ADMIN],
+          });
         expect(create.status).toBe(403);
-        const update = await as(token).patch(`/api/users/${vendeur.id}`).send({ roles: [RoleCode.ADMIN] });
+        const update = await as(token)
+          .patch(`/api/users/${vendeur.id}`)
+          .send({ roles: [RoleCode.ADMIN] });
         expect(update.status).toBe(403);
       }
     });
@@ -420,23 +515,27 @@ describe('Gestion des comptes (e2e)', () => {
 
   describe('validation des entrées', () => {
     it('un email déjà pris (quelle que soit la casse) est refusé (409)', async () => {
-      const res = await as(adminToken).post('/api/users').send({
-        email: adminEmail.toUpperCase(),
-        fullName: 'Doublon',
-        temporaryPassword: PASSWORD,
-        roles: [RoleCode.VENDEUR],
-      });
+      const res = await as(adminToken)
+        .post('/api/users')
+        .send({
+          email: adminEmail.toUpperCase(),
+          fullName: 'Doublon',
+          temporaryPassword: PASSWORD,
+          roles: [RoleCode.VENDEUR],
+        });
 
       expect(res.status).toBe(409);
       expect(res.body.code).toBe('CONFLICT');
     });
 
     it('un compte sans aucun identifiant de connexion est refusé (400)', async () => {
-      const res = await as(adminToken).post('/api/users').send({
-        fullName: 'Sans Identifiant',
-        temporaryPassword: PASSWORD,
-        roles: [RoleCode.VENDEUR],
-      });
+      const res = await as(adminToken)
+        .post('/api/users')
+        .send({
+          fullName: 'Sans Identifiant',
+          temporaryPassword: PASSWORD,
+          roles: [RoleCode.VENDEUR],
+        });
 
       expect(res.status).toBe(400);
       expect(res.body.code).toBe('VALIDATION_FAILED');
@@ -452,7 +551,9 @@ describe('Gestion des comptes (e2e)', () => {
         { phone: 'pas-un-numero' },
         { isActive: null },
       ]) {
-        const res = await as(adminToken).patch(`/api/users/${created.id}`).send(body);
+        const res = await as(adminToken)
+          .patch(`/api/users/${created.id}`)
+          .send(body);
         expect({ body, status: res.status }).toEqual({ body, status: 400 });
         expect(res.body.code).toBe('VALIDATION_FAILED');
       }
@@ -472,10 +573,18 @@ describe('Gestion des comptes (e2e)', () => {
         createdIds.push(user.id);
       }
 
-      const asc = await as(adminToken).get(`/api/users?q=${marker}&sort=fullName:asc`).expect(200);
-      expect(asc.body.data.map((u: { fullName: string }) => u.fullName.split(' ')[0])).toEqual(['Adam', 'Zoé']);
+      const asc = await as(adminToken)
+        .get(`/api/users?q=${marker}&sort=fullName:asc`)
+        .expect(200);
+      expect(
+        asc.body.data.map(
+          (u: { fullName: string }) => u.fullName.split(' ')[0],
+        ),
+      ).toEqual(['Adam', 'Zoé']);
 
-      const refused = await as(adminToken).get(`/api/users?sort=passwordHash:asc`);
+      const refused = await as(adminToken).get(
+        `/api/users?sort=passwordHash:asc`,
+      );
       expect(refused.status).toBe(400);
       expect(refused.body.code).toBe('VALIDATION_FAILED');
     });
@@ -496,7 +605,8 @@ expect.extend({
     const pass = expected.includes(received);
     return {
       pass,
-      message: () => `attendu l'une des valeurs ${JSON.stringify(expected)}, reçu ${JSON.stringify(received)}`,
+      message: () =>
+        `attendu l'une des valeurs ${JSON.stringify(expected)}, reçu ${JSON.stringify(received)}`,
     };
   },
 });

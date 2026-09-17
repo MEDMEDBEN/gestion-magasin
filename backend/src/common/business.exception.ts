@@ -9,6 +9,9 @@ export class BusinessException extends HttpException {
     message: string,
     status: HttpStatus = HttpStatus.BAD_REQUEST,
   ) {
-    super({ statusCode: status, message, error: HttpStatus[status], code }, status);
+    super(
+      { statusCode: status, message, error: HttpStatus[status], code },
+      status,
+    );
   }
 }

@@ -255,7 +255,11 @@ describe('Clients et règlements (e2e)', () => {
         paidAmount: 0,
       })
       .expect(201);
-    const body = { clientMutationId: randomUUID(), customerId: c.id, amount: 30000 };
+    const body = {
+      clientMutationId: randomUUID(),
+      customerId: c.id,
+      amount: 30000,
+    };
 
     const first = await as(tokens.vendeur)
       .post('/api/payments/customer')

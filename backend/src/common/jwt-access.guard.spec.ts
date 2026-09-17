@@ -1,10 +1,7 @@
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import {
-  ALLOW_PASSWORD_CHANGE_KEY,
-  IS_PUBLIC_KEY,
-} from './auth.decorators';
+import { ALLOW_PASSWORD_CHANGE_KEY, IS_PUBLIC_KEY } from './auth.decorators';
 import { AccessTokenPayload, JwtAccessGuard } from './jwt-access.guard';
 
 const SECRET = 'secret-de-test-uniquement';
@@ -61,7 +58,9 @@ describe('JwtAccessGuard — émission et vérification du JWT', () => {
 
   it('refuse un token signé avec un autre secret', async () => {
     const guard = new JwtAccessGuard(jwt, reflectorReturning({}));
-    const forged = await new JwtService({ secret: 'mauvais-secret' }).signAsync(payload);
+    const forged = await new JwtService({ secret: 'mauvais-secret' }).signAsync(
+      payload,
+    );
 
     await expect(
       guard.canActivate(contextWith({ authorization: `Bearer ${forged}` })),

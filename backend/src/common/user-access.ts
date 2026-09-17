@@ -15,7 +15,9 @@ export const USER_ACCESS_INCLUDE = {
 } as const;
 
 /// Utilisateur tel que chargé avec `USER_ACCESS_INCLUDE`.
-export type UserWithAccess = UserGetPayload<{ include: typeof USER_ACCESS_INCLUDE }>;
+export type UserWithAccess = UserGetPayload<{
+  include: typeof USER_ACCESS_INCLUDE;
+}>;
 
 /// Permissions EFFECTIVES : l'union des permissions de tous les rôles du compte.
 export function resolvePermissions(user: UserWithAccess): string[] {

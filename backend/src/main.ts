@@ -23,9 +23,14 @@ async function bootstrap(): Promise<void> {
 
   // La doc expose toute la surface de l'API : jamais servie en production.
   if (process.env.NODE_ENV !== 'production') {
-    SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config), {
-      swaggerOptions: { persistAuthorization: true },
-    });
+    SwaggerModule.setup(
+      'docs',
+      app,
+      SwaggerModule.createDocument(app, config),
+      {
+        swaggerOptions: { persistAuthorization: true },
+      },
+    );
   }
 
   await app.listen(process.env.PORT ?? 3000);

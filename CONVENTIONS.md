@@ -10,6 +10,18 @@ But : garantir que le code écrit par un agent/session soit **indiscernable** de
 - **Dates** : UTC en base et en transport (ISO 8601) ; conversion au fuseau local uniquement à l'affichage.
 - **Enums** : valeurs en MAJUSCULES, identiques backend/DB/Flutter (voir machines à états dans `docs/plan.md`).
 
+## Invariants & anti-récidive — RÈGLES DURCIES (2026-09-16)
+
+> Ajoutées après que deux bugs déjà corrigés soient réapparus ailleurs (caisse qui devient négative ; idempotence non appliquée aux paiements). Le `reviewer` REFUSE tout merge qui enfreint ces six règles.
+
+1. **Un invariant corrigé devient un garde-fou PARTAGÉ.** Dès qu'un bug d'invariant argent/stock est corrigé, la règle est extraite dans une fonction/service unique (comme `StockLedgerService.applyMovement()` l'est déjà pour le stock) et appliquée à TOUS les chemins concernés, plus un test. Interdit de corriger un invariant à un seul endroit — en corrigeant un bug, cherche activement le même motif dans les modules frères (ventes ↔ fournisseurs ↔ caisse).
+   - Non négociable : **une sortie d'espèces ne peut JAMAIS rendre la session de caisse négative.** Un seul garde-fou (créer l'équivalent caisse de `StockLedgerService`), appliqué à toute sortie : remboursement d'une vente annulée, paiement fournisseur, prélèvement.
+2. **Idempotence sur TOUTE mutation d'argent ou de stock.** Ventes, caisse, règlements clients ET fournisseurs, ajustements : chacun porte un `clientMutationId` et passe par la dédup du contrat de sync (`docs/context.md`). Un rejeu (retry après délai, double clic) renvoie le même résultat, jamais un second effet. Testé par un rejeu.
+3. **Droit relu EN BASE sur toute écriture qui touche l'argent ou pose du stock.** `FreshAccessGuard` est OBLIGATOIRE (pas « rare et sensible ») sur : paiements client/fournisseur, ouverture/clôture de caisse, création/modification de produit, ajustement de stock, validation/annulation. Le token seul ne fait jamais autorité pour ces écritures. **Implémenté (2026-09-17) : `FreshAccessGuard` est un guard GLOBAL appliqué à TOUTE écriture authentifiée** (POST/PUT/PATCH/DELETE) — aucun décorateur à oublier ; une lecture sensible s'y soumet avec `@RequireFreshAccess()`.
+4. **Réversibilité robuste (règle 7 de `CLAUDE.md`).** Une annulation, un retour ou une contre-passation doit réussir même si une entité liée a été désactivée entre-temps (produit inactif…). Une annulation de paiement se fait par écriture inverse, jamais par suppression. Testé avec l'entité désactivée.
+5. **« Terminé » = lint propre + tests verts EN UN SEUL PASSAGE + audit traité.** Une tâche n'est pas finie tant que : `eslint` passe sans erreur (fins de ligne réglées une fois pour toutes via `.gitattributes` `* text=auto eol=lf`), la commande de test documentée passe **en un seul lancement** (timeout configuré + base de test dédiée, jamais la base de dev), et `npm audit` n'a aucune vulnérabilité élevée non traitée ou non tracée dans `docs/tasks.md`. Ces trois portes s'ajoutent au critère de `CLAUDE.md`.
+6. **Tests de concurrence obligatoires sur les chemins argent/stock.** Au minimum : deux règlements simultanés, clôture de caisse pendant une vente, changement d'année pendant l'attribution d'un numéro de facture, deux mutations offline concurrentes sur le même stock.
+
 ## Backend (NestJS)
 
 ### Structure d'un module (identique pour tous)
@@ -41,8 +53,10 @@ src/<feature>/
 ### Sécurité
 - Chaque route protégée par un guard de rôle explicite (`@Roles('ADMIN', ...)` + `RolesGuard`). Voir `docs/permissions.md`.
 - Aucune vérification de permission uniquement côté UI.
-- Route rare et sensible (gestion des comptes, et demain prix/validations) : ajouter
-  `@UseGuards(FreshAccessGuard)` — l'accès est relu EN BASE, pas seulement dans le token.
+- **Écriture qui touche l'argent ou pose du stock** (paiements client/fournisseur, ouverture/clôture
+  de caisse, création/modification de produit, ajustement de stock, validation/annulation, gestion
+  des comptes) : l'accès est relu EN BASE automatiquement par le guard global `FreshAccessGuard`
+  (toute écriture) ; lecture sensible : `@RequireFreshAccess()` (voir « Invariants & anti-récidive », règle 3).
 - Identifiants (email/téléphone) normalisés via `common/identifiers.ts` ; tout champ texte a un
   `@MaxLength` ; sur un PATCH, `@IsOptionalNotNull()` (jamais `@IsOptional()` qui laisse passer `null`).
 - Tri de liste : `parseSort(query.sort, CHAMPS_AUTORISÉS, défaut)` — liste blanche obligatoire.

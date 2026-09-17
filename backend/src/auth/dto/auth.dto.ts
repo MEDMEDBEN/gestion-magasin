@@ -8,7 +8,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { EMAIL_MAX_LENGTH, normalizeIdentifier } from '../../common/identifiers';
+import {
+  EMAIL_MAX_LENGTH,
+  normalizeIdentifier,
+} from '../../common/identifiers';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '../password';
 
 /// Un refresh token fait 64 caractères hexadécimaux : au-delà, ce n'en est pas un.
@@ -64,7 +67,10 @@ export class ChangePasswordDto {
   @MaxLength(PASSWORD_MAX_LENGTH)
   currentPassword!: string;
 
-  @ApiProperty({ minLength: PASSWORD_MIN_LENGTH, maxLength: PASSWORD_MAX_LENGTH })
+  @ApiProperty({
+    minLength: PASSWORD_MIN_LENGTH,
+    maxLength: PASSWORD_MAX_LENGTH,
+  })
   @IsString()
   @MinLength(PASSWORD_MIN_LENGTH, {
     message: 'Le nouveau mot de passe doit faire au moins 8 caractères',
@@ -120,7 +126,9 @@ export class AuthUserDto {
   @ApiProperty() fullName!: string;
   @ApiProperty({ type: [String] }) roles!: string[];
   @ApiProperty({ type: [String] }) permissions!: string[];
-  @ApiProperty({ description: 'Si vrai, seul /auth/change-password est accessible' })
+  @ApiProperty({
+    description: 'Si vrai, seul /auth/change-password est accessible',
+  })
   mustChangePassword!: boolean;
 }
 
@@ -128,7 +136,10 @@ export class TokensDto {
   @ApiProperty({ description: 'JWT signé, durée 15 min' }) accessToken!: string;
   @ApiProperty({ description: 'Token opaque, 90 j glissants, révocable' })
   refreshToken!: string;
-  @ApiProperty({ example: 900, description: "Durée de vie de l'access token (secondes)" })
+  @ApiProperty({
+    example: 900,
+    description: "Durée de vie de l'access token (secondes)",
+  })
   expiresIn!: number;
 }
 

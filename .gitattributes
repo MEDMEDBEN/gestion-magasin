@@ -1,0 +1,20 @@
+# Fins de ligne LF partout, quel que soit le poste (Windows compris) :
+# prettier/eslint et les diffs restent propres. Voir CONVENTIONS.md, règle 5.
+* text=auto eol=lf
+
+# Scripts Windows : CRLF obligatoire.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaires : jamais convertis.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.pdf binary
+*.jar binary
+*.keystore binary
+*.jks binary

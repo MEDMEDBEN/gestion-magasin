@@ -136,7 +136,8 @@ export class UserDto {
   @ApiProperty({ type: [String] }) roles!: string[];
   @ApiProperty({
     type: [String],
-    description: 'Permissions EFFECTIVES, déduites des rôles (cumul par rôles).',
+    description:
+      'Permissions EFFECTIVES, déduites des rôles (cumul par rôles).',
   })
   permissions!: string[];
   @ApiProperty({ nullable: true }) lastLoginAt!: Date | null;

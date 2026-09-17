@@ -18,7 +18,11 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsCanonicalUuid, IsOptionalNotNull, booleanQuery } from '../../common/validation';
+import {
+  IsCanonicalUuid,
+  IsOptionalNotNull,
+  booleanQuery,
+} from '../../common/validation';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 export enum ProductUnitDto {

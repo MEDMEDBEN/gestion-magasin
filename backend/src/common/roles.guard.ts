@@ -24,7 +24,10 @@ export function routeRequirement(
   const targets = [context.getHandler(), context.getClass()];
   return {
     roles: reflector.getAllAndOverride<RoleCode[]>(ROLES_KEY, targets),
-    permissions: reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, targets),
+    permissions: reflector.getAllAndOverride<string[]>(
+      PERMISSIONS_KEY,
+      targets,
+    ),
   };
 }
 
@@ -45,8 +48,7 @@ export class RolesGuard implements CanActivate {
     if (isPublic) return true;
 
     const user = context.switchToHttp().getRequest().user as
-      | AuthenticatedUser
-      | undefined;
+      AuthenticatedUser | undefined;
     if (!user) {
       throw new BusinessException(
         ErrorCode.FORBIDDEN_ROLE,

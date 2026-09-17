@@ -132,7 +132,9 @@ export class AuthService {
   private static dummyHash?: string;
 
   private static async equalizeTiming(): Promise<void> {
-    AuthService.dummyHash ??= await hashPassword('hash-factice-anti-enumeration');
+    AuthService.dummyHash ??= await hashPassword(
+      'hash-factice-anti-enumeration',
+    );
     await verifyPassword(AuthService.dummyHash, 'peu-importe');
   }
 
@@ -188,7 +190,10 @@ export class AuthService {
   }
 
   /// Rotation : le refresh présenté est révoqué et remplacé à chaque appel.
-  async refresh(refreshToken: string, ipAddress?: string): Promise<LoginResponseDto> {
+  async refresh(
+    refreshToken: string,
+    ipAddress?: string,
+  ): Promise<LoginResponseDto> {
     const tokenHash = AuthService.hashRefreshToken(refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -231,7 +236,11 @@ export class AuthService {
       // gagne (count === 1), l'autre voit count === 0 et est traité comme un rejeu.
       const claimed = await tx.refreshToken.updateMany({
         where: { id: stored.id, revokedAt: null },
-        data: { revokedAt: new Date(), revokedReason: 'ROTATION', lastUsedAt: new Date() },
+        data: {
+          revokedAt: new Date(),
+          revokedReason: 'ROTATION',
+          lastUsedAt: new Date(),
+        },
       });
       if (claimed.count === 0) return null;
       return this.issueTokens(tx, user, stored);
@@ -244,7 +253,10 @@ export class AuthService {
 
   /// Réaction à un refresh token rejoué : toutes les sessions tombent, et la
   /// détection est TRACÉE — l'admin doit pouvoir voir qu'un vol a été présumé.
-  private async handleReuse(userId: string, ipAddress?: string): Promise<never> {
+  private async handleReuse(
+    userId: string,
+    ipAddress?: string,
+  ): Promise<never> {
     const revoked = await this.prisma.$transaction(async (tx) => {
       const count = await this.revokeAllForUser(userId, tx);
       await writeAudit(
@@ -254,7 +266,10 @@ export class AuthService {
           action: 'UPDATE',
           entityType: 'User',
           entityId: userId,
-          newValue: { operation: 'REFRESH_TOKEN_REUSE_DETECTED', revokedSessions: count },
+          newValue: {
+            operation: 'REFRESH_TOKEN_REUSE_DETECTED',
+            revokedSessions: count,
+          },
         },
       );
       return count;
@@ -280,7 +295,13 @@ export class AuthService {
   async logout(dto: LogoutDto, ipAddress?: string): Promise<LogoutResponseDto> {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: AuthService.hashRefreshToken(dto.refreshToken) },
-      select: { id: true, userId: true, revokedAt: true, revokedReason: true, expiresAt: true },
+      select: {
+        id: true,
+        userId: true,
+        revokedAt: true,
+        revokedReason: true,
+        expiresAt: true,
+      },
     });
 
     if (!dto.allDevices) {
@@ -334,7 +355,10 @@ export class AuthService {
   /// Révoque toutes les sessions actives d'un compte. Accepte la transaction de
   /// l'appelant : une révocation qui fait partie d'une mutation plus large
   /// (désactivation, reset) doit réussir ou échouer AVEC elle.
-  async revokeAllForUser(userId: string, db: Db = this.prisma): Promise<number> {
+  async revokeAllForUser(
+    userId: string,
+    db: Db = this.prisma,
+  ): Promise<number> {
     await AuthService.lockUserSessions(db, userId);
     const result = await db.refreshToken.updateMany({
       where: { userId, revokedAt: null },
@@ -361,7 +385,8 @@ export class AuthService {
     ipAddress?: string,
   ): Promise<never> {
     const theftSignal =
-      stored.revokedReason === 'ROTATION' && stored.expiresAt.getTime() > Date.now();
+      stored.revokedReason === 'ROTATION' &&
+      stored.expiresAt.getTime() > Date.now();
     if (theftSignal) return this.handleReuse(stored.userId, ipAddress);
     throw new BusinessException(
       ErrorCode.REFRESH_TOKEN_REVOKED,

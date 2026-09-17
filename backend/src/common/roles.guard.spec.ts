@@ -37,17 +37,20 @@ const admin: AuthenticatedUser = {
   mustChangePassword: false,
 };
 
-
 /// Vérifie qu'un guard refuse avec le code métier attendu (correspondance partielle).
 function expectRefusal(fn: () => unknown, expectedCode: string): void {
   try {
     fn();
   } catch (error) {
-    const response = (error as { getResponse: () => { code?: string } }).getResponse();
+    const response = (
+      error as { getResponse: () => { code?: string } }
+    ).getResponse();
     expect(response.code).toBe(expectedCode);
     return;
   }
-  throw new Error(`Refus attendu (${expectedCode}) mais aucune exception n'a été levée`);
+  throw new Error(
+    `Refus attendu (${expectedCode}) mais aucune exception n'a été levée`,
+  );
 }
 
 describe('RolesGuard — matrice de docs/permissions.md', () => {
@@ -64,7 +67,10 @@ describe('RolesGuard — matrice de docs/permissions.md', () => {
       reflectorReturning({ [ROLES_KEY]: [RoleCode.ADMIN] }),
     );
 
-    expectRefusal(() => guard.canActivate(contextWithUser(vendeur)), 'FORBIDDEN_ROLE');
+    expectRefusal(
+      () => guard.canActivate(contextWithUser(vendeur)),
+      'FORBIDDEN_ROLE',
+    );
   });
 
   it('autorise un utilisateur cumulant plusieurs rôles', () => {
@@ -82,7 +88,10 @@ describe('RolesGuard — matrice de docs/permissions.md', () => {
   it('REFUSE une route authentifiée sans @Roles (règle 1 : pas de guard = fermé)', () => {
     const guard = new RolesGuard(reflectorReturning({}));
 
-    expectRefusal(() => guard.canActivate(contextWithUser(admin)), 'FORBIDDEN_ROLE');
+    expectRefusal(
+      () => guard.canActivate(contextWithUser(admin)),
+      'FORBIDDEN_ROLE',
+    );
   });
 
   it('laisse passer une route @Public', () => {
@@ -108,7 +117,10 @@ describe('RolesGuard — matrice de docs/permissions.md', () => {
     );
 
     // Le vendeur a le bon rôle mais PAS la permission de remise (décision figée).
-    expectRefusal(() => guard.canActivate(contextWithUser(vendeur)), 'FORBIDDEN_PERMISSION');
+    expectRefusal(
+      () => guard.canActivate(contextWithUser(vendeur)),
+      'FORBIDDEN_PERMISSION',
+    );
   });
 
   it('exige TOUTES les permissions demandées', () => {
@@ -119,7 +131,10 @@ describe('RolesGuard — matrice de docs/permissions.md', () => {
       }),
     );
 
-    expectRefusal(() => guard.canActivate(contextWithUser(admin)), 'FORBIDDEN_PERMISSION');
+    expectRefusal(
+      () => guard.canActivate(contextWithUser(admin)),
+      'FORBIDDEN_PERMISSION',
+    );
   });
 
   it('autorise quand rôle et permissions sont réunis', () => {

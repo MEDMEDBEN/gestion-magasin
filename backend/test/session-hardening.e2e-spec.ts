@@ -36,7 +36,9 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
   }
 
   const listUsers = (token: string) =>
-    request(ctx.server).get('/api/users').set('Authorization', `Bearer ${token}`);
+    request(ctx.server)
+      .get('/api/users')
+      .set('Authorization', `Bearer ${token}`);
 
   const createUserWith = (token: string, tag: string) =>
     request(ctx.server)
@@ -184,7 +186,13 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
       expect((await listUsers(rotated.body.accessToken)).status).toBe(401);
 
       const trace = await ctx.prisma.auditLog.findFirst({
-        where: { entityId: a.id, newValue: { path: ['operation'], equals: 'REFRESH_TOKEN_REUSE_DETECTED' } },
+        where: {
+          entityId: a.id,
+          newValue: {
+            path: ['operation'],
+            equals: 'REFRESH_TOKEN_REUSE_DETECTED',
+          },
+        },
       });
       expect(trace).not.toBeNull();
       // L'action n'est PAS attribuée à la victime.
@@ -206,7 +214,9 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
       // Seule la session du premier refresh expire.
       const { createHash } = await import('node:crypto');
       await ctx.prisma.refreshToken.update({
-        where: { tokenHash: createHash('sha256').update(a.refresh).digest('hex') },
+        where: {
+          tokenHash: createHash('sha256').update(a.refresh).digest('hex'),
+        },
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
 
@@ -225,9 +235,14 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
     it('mineur 3 : un token fermé par LOGOUT rejoué ne coupe PAS les autres sessions', async () => {
       const a = await newAdmin('m3-logout');
       const other = await login(a.email);
-      await request(ctx.server).post('/api/auth/logout').send({ refreshToken: a.refresh }).expect(200);
+      await request(ctx.server)
+        .post('/api/auth/logout')
+        .send({ refreshToken: a.refresh })
+        .expect(200);
 
-      const replay = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+      const replay = await request(ctx.server)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: a.refresh });
       expect(replay.status).toBe(401);
       expect(replay.body.code).toBe('REFRESH_TOKEN_REVOKED');
       // Sinon un vieux token volé déconnecterait la victime indéfiniment.
@@ -241,14 +256,21 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
 
     it('mineur 3 : un token remplacé par rotation mais EXPIRÉ ne déclenche aucune cascade', async () => {
       const a = await newAdmin('m3-expired');
-      const rotated = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh }).expect(200);
+      const rotated = await request(ctx.server)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: a.refresh })
+        .expect(200);
       const { createHash } = await import('node:crypto');
       await ctx.prisma.refreshToken.update({
-        where: { tokenHash: createHash('sha256').update(a.refresh).digest('hex') },
+        where: {
+          tokenHash: createHash('sha256').update(a.refresh).digest('hex'),
+        },
         data: { expiresAt: new Date(Date.now() - 1000) },
       });
 
-      const replay = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+      const replay = await request(ctx.server)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: a.refresh });
       expect(replay.status).toBe(401);
       expect((await listUsers(rotated.body.accessToken)).status).toBe(200);
     });
@@ -259,34 +281,47 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
       const auth = ctx.app.get(AuthService);
 
       let revoking: Promise<unknown> | undefined;
-      const original = ctx.prisma.$transaction.bind(ctx.prisma) as (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown>;
-      const spy = jest.spyOn(ctx.prisma, '$transaction').mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
-        original((tx) =>
-          fn(
-            new Proxy(tx as object, {
-              get(target, property, receiver) {
-                const value = Reflect.get(target, property, receiver);
-                if (property !== 'refreshToken') return value;
-                return new Proxy(value as object, {
-                  get(inner, key, innerReceiver) {
-                    const method = Reflect.get(inner, key, innerReceiver);
-                    if (key !== 'create') return method;
-                    return async (...args: unknown[]) => {
-                      // L'admin révoque au moment exact où la session neuve s'écrit.
-                      revoking = ctx.prisma.$transaction((other) => auth.revokeAllForUser(a.id, other));
-                      await new Promise((resolve) => setTimeout(resolve, 300));
-                      return (method as (...x: unknown[]) => unknown).apply(inner, args);
-                    };
-                  },
-                });
-              },
-            }),
-          ),
-        )) as never);
+      const original = ctx.prisma.$transaction.bind(ctx.prisma) as (
+        fn: (tx: unknown) => Promise<unknown>,
+      ) => Promise<unknown>;
+      const spy = jest
+        .spyOn(ctx.prisma, '$transaction')
+        .mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
+          original((tx) =>
+            fn(
+              new Proxy(tx as object, {
+                get(target, property, receiver) {
+                  const value = Reflect.get(target, property, receiver);
+                  if (property !== 'refreshToken') return value;
+                  return new Proxy(value as object, {
+                    get(inner, key, innerReceiver) {
+                      const method = Reflect.get(inner, key, innerReceiver);
+                      if (key !== 'create') return method;
+                      return async (...args: unknown[]) => {
+                        // L'admin révoque au moment exact où la session neuve s'écrit.
+                        revoking = ctx.prisma.$transaction((other) =>
+                          auth.revokeAllForUser(a.id, other),
+                        );
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 300),
+                        );
+                        return (method as (...x: unknown[]) => unknown).apply(
+                          inner,
+                          args,
+                        );
+                      };
+                    },
+                  });
+                },
+              }),
+            ),
+          )) as never);
 
       let rotated: request.Response;
       try {
-        rotated = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: a.refresh });
+        rotated = await request(ctx.server)
+          .post('/api/auth/refresh')
+          .send({ refreshToken: a.refresh });
       } finally {
         spy.mockRestore();
       }
@@ -294,7 +329,9 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
 
       expect(rotated.status).toBe(200);
       // Sans sérialisation, cette session neuve survivrait 90 jours à la révocation.
-      const again = await request(ctx.server).post('/api/auth/refresh').send({ refreshToken: rotated.body.refreshToken });
+      const again = await request(ctx.server)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: rotated.body.refreshToken });
       expect(again.status).toBe(401);
       expect((await listUsers(rotated.body.accessToken)).status).toBe(401);
     });
@@ -308,7 +345,9 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
 
       // Le reset de l'admin est commité juste avant la transaction du
       // changement : exactement la fenêtre de course visée.
-      const original = ctx.prisma.$transaction.bind(ctx.prisma) as (...args: unknown[]) => unknown;
+      const original = ctx.prisma.$transaction.bind(ctx.prisma) as (
+        ...args: unknown[]
+      ) => unknown;
       const spy = jest
         .spyOn(ctx.prisma, '$transaction')
         .mockImplementationOnce((async (...args: unknown[]) => {
@@ -323,7 +362,10 @@ describe('Durcissement des sessions — contre-audit (e2e)', () => {
         const res = await request(ctx.server)
           .post('/api/auth/change-password')
           .set('Authorization', `Bearer ${a.token}`)
-          .send({ currentPassword: PASSWORD, newPassword: 'MotDePasseAttaquant5!' });
+          .send({
+            currentPassword: PASSWORD,
+            newPassword: 'MotDePasseAttaquant5!',
+          });
 
         expect(res.status).toBe(409);
         expect(res.body.code).toBe('CONFLICT');

@@ -277,11 +277,21 @@ describe('Fournisseurs et dettes (e2e)', () => {
       const id = randomUUID();
       await as(tokens.admin)
         .post('/api/payments/supplier')
-        .send({ clientMutationId: id, supplierId: supplier.id, amount: 50000, fromCash: false })
+        .send({
+          clientMutationId: id,
+          supplierId: supplier.id,
+          amount: 50000,
+          fromCash: false,
+        })
         .expect(201);
       const res = await as(tokens.admin)
         .post('/api/payments/supplier')
-        .send({ clientMutationId: id, supplierId: supplier.id, amount: 90000, fromCash: false })
+        .send({
+          clientMutationId: id,
+          supplierId: supplier.id,
+          amount: 90000,
+          fromCash: false,
+        })
         .expect(409);
       expect(res.body.code).toBe('PAYMENT_ALREADY_RECORDED');
       const fiche = await as(tokens.admin)

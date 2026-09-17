@@ -30,7 +30,12 @@ type Db = Prisma.TransactionClient;
 /// « dernier admin » et le système se retrouve sans administrateur.
 const ADMIN_SET_LOCK = BigInt(0x41444d494e); // « ADMIN » — bigint, type de pg_advisory_xact_lock
 
-const SORTABLE_FIELDS = ['fullName', 'email', 'createdAt', 'lastLoginAt'] as const;
+const SORTABLE_FIELDS = [
+  'fullName',
+  'email',
+  'createdAt',
+  'lastLoginAt',
+] as const;
 
 @Injectable()
 export class UsersService {
@@ -119,7 +124,9 @@ export class UsersService {
           ],
         }
       : {};
-    const orderBy = parseSort(query.sort, SORTABLE_FIELDS, { createdAt: 'desc' });
+    const orderBy = parseSort(query.sort, SORTABLE_FIELDS, {
+      createdAt: 'desc',
+    });
 
     const [rows, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -164,8 +171,7 @@ export class UsersService {
     // activation : ces changements passent par un AUTRE administrateur. Ferme
     // aussi la voie de l'admin qu'on vient de rétrograder et qui tenterait de se
     // rétablir avant l'expiration de son token (audit I4).
-    const touchesAccess =
-      dto.roles !== undefined || dto.isActive !== undefined;
+    const touchesAccess = dto.roles !== undefined || dto.isActive !== undefined;
     // Comparaison sur la forme canonique (minuscules) : PostgreSQL retrouve la
     // même ligne quelle que soit la casse de l'UUID (contre-audit N2).
     if (actor.userId?.toLowerCase() === id.toLowerCase() && touchesAccess) {
@@ -217,7 +223,9 @@ export class UsersService {
           email: dto.email,
           phone: dto.phone,
           isActive: dto.isActive,
-          roles: dto.roles ? { set: dto.roles.map((code) => ({ code })) } : undefined,
+          roles: dto.roles
+            ? { set: dto.roles.map((code) => ({ code })) }
+            : undefined,
         },
         include: USER_ACCESS_INCLUDE,
       });
@@ -303,7 +311,9 @@ export class UsersService {
     exceptUserId?: string,
   ): Promise<void> {
     const clauses: Prisma.UserWhereInput[] = [
-      ...(email ? [{ email: { equals: email, mode: 'insensitive' as const } }] : []),
+      ...(email
+        ? [{ email: { equals: email, mode: 'insensitive' as const } }]
+        : []),
       ...(phone ? [{ phone }] : []),
     ];
     if (clauses.length === 0) return;

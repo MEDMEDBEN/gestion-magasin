@@ -51,7 +51,15 @@ describe('Durcissement HTTP (e2e)', () => {
         [adminEmail, RoleCode.ADMIN],
         [vendeurEmail, RoleCode.VENDEUR],
       ] as const) {
-        ids.push((await createTestUser(e2e.prisma, { email, password: PASSWORD, roles: [role] })).id);
+        ids.push(
+          (
+            await createTestUser(e2e.prisma, {
+              email,
+              password: PASSWORD,
+              roles: [role],
+            })
+          ).id,
+        );
       }
     });
 
@@ -83,7 +91,9 @@ describe('Durcissement HTTP (e2e)', () => {
 
     it('le quota de connexion est compté PAR client : un client bloqué n’en bloque pas un autre', async () => {
       for (let attempt = 1; attempt <= 3; attempt++) {
-        expect((await loginFrom('198.51.100.1', vendeurEmail, 'mauvais')).status).toBe(401);
+        expect(
+          (await loginFrom('198.51.100.1', vendeurEmail, 'mauvais')).status,
+        ).toBe(401);
       }
 
       const blocked = await loginFrom('198.51.100.1', vendeurEmail, 'mauvais');
@@ -91,7 +101,9 @@ describe('Durcissement HTTP (e2e)', () => {
       expect(blocked.body.code).toBe('RATE_LIMITED');
 
       // Un autre poste du magasin n'est pas puni pour l'attaquant.
-      expect((await loginFrom('198.51.100.2', vendeurEmail, PASSWORD)).status).toBe(200);
+      expect(
+        (await loginFrom('198.51.100.2', vendeurEmail, PASSWORD)).status,
+      ).toBe(200);
     });
 
     it('le changement de mot de passe a son propre quota (anti-devinette)', async () => {
@@ -101,7 +113,10 @@ describe('Durcissement HTTP (e2e)', () => {
           .post('/api/auth/change-password')
           .set('X-Forwarded-For', '192.0.2.10')
           .set('Authorization', `Bearer ${session.body.accessToken}`)
-          .send({ currentPassword: 'devinette', newPassword: 'NouveauMotDePasse1!' });
+          .send({
+            currentPassword: 'devinette',
+            newPassword: 'NouveauMotDePasse1!',
+          });
 
       expect((await attempt()).status).toBe(403);
       expect((await attempt()).status).toBe(403);
@@ -120,7 +135,13 @@ describe('Durcissement HTTP (e2e)', () => {
       delete process.env.TRUST_PROXY_HOPS;
       e2e = await createE2eApp();
       ids.push(
-        (await createTestUser(e2e.prisma, { email: adminEmail, password: PASSWORD, roles: [RoleCode.ADMIN] })).id,
+        (
+          await createTestUser(e2e.prisma, {
+            email: adminEmail,
+            password: PASSWORD,
+            roles: [RoleCode.ADMIN],
+          })
+        ).id,
       );
     });
 

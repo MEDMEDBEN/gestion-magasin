@@ -1,3 +1,9 @@
+import { testDatabaseUrl } from './test-database';
+
+/// Base DÉDIÉE aux tests (voir test-database.ts), fixée AVANT le chargement de
+/// l'application : ConfigModule ne remplace pas une variable déjà présente.
+process.env.DATABASE_URL = testDatabaseUrl();
+
 /// Les tests d'intégration enchaînent volontairement de nombreuses connexions :
 /// on desserre les limites anti-brute-force pour ne pas tester le throttler ici.
 /// (`test/http-hardening.e2e-spec.ts` les resserre pour tester le throttler lui-même.)

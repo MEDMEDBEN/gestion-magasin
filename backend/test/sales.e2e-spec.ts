@@ -698,10 +698,16 @@ describe('Ventes (e2e)', () => {
       const sale = (
         await as(tokens.admin)
           .post('/api/sales')
-          .send({ lines: [{ productId: p, quantity: '2' }], paidAmount: 345100 })
+          .send({
+            lines: [{ productId: p, quantity: '2' }],
+            paidAmount: 345100,
+          })
           .expect(201)
       ).body;
-      await prisma.product.update({ where: { id: p }, data: { isActive: false } });
+      await prisma.product.update({
+        where: { id: p },
+        data: { isActive: false },
+      });
 
       await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(200);
       expect(await stockOf(p)).toBe('10.000');
