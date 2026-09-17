@@ -693,6 +693,25 @@ describe('Ventes (e2e)', () => {
       ).toBe(1);
     });
 
+    it('produit désactivé depuis la vente : l’annulation reste possible (retour en stock)', async () => {
+      const p = await product('10.000');
+      const sale = (
+        await as(tokens.admin)
+          .post('/api/sales')
+          .send({ lines: [{ productId: p, quantity: '2' }], paidAmount: 345100 })
+          .expect(201)
+      ).body;
+      await prisma.product.update({ where: { id: p }, data: { isActive: false } });
+
+      await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(200);
+      expect(await stockOf(p)).toBe('10.000');
+      // Mais plus aucune vente (sortie) de ce produit.
+      await as(tokens.admin)
+        .post('/api/sales')
+        .send({ lines: [{ productId: p, quantity: '1' }], paidAmount: 0 })
+        .expect(422);
+    });
+
     it('une vente facturée ne s’annule pas', async () => {
       const p = await product('10.000');
       const sale = (

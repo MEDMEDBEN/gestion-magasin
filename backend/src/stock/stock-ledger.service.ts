@@ -63,10 +63,13 @@ export class StockLedgerService {
         HttpStatus.NOT_FOUND,
       );
     }
-    if (!product.isActive) {
+    // Produit désactivé : plus aucune SORTIE (on ne le vend plus). Les ENTRÉES
+    // restent possibles — annulation de vente, retour, réception, correction
+    // d'inventaire : une opération inverse ne doit jamais être bloquée (règle 7).
+    if (!product.isActive && input.quantity.isNegative()) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
-        `Produit désactivé : « ${product.name} » — aucun mouvement possible`,
+        `Produit désactivé : « ${product.name} » — aucune sortie de stock possible`,
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }

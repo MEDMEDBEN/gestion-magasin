@@ -296,6 +296,43 @@ describe('Catalogue (e2e)', () => {
         .expect(422);
     });
 
+    it('unité modifiable tant qu’aucun mouvement de stock, figée ensuite', async () => {
+      const product = await createProduct();
+      await as(tokens.admin)
+        .patch(`/api/products/${product.id}`)
+        .send({ unit: 'METRE' })
+        .expect(200);
+
+      const magasin = await prisma.location.findFirstOrThrow({
+        where: { type: 'MAGASIN' },
+      });
+      await prisma.stockMovement.create({
+        data: {
+          productId: product.id,
+          locationId: magasin.id,
+          quantity: '1',
+          type: 'AJUSTEMENT_INVENTAIRE',
+          operationType: 'MANUAL',
+        },
+      });
+      try {
+        const res = await as(tokens.admin)
+          .patch(`/api/products/${product.id}`)
+          .send({ unit: 'PIECE' })
+          .expect(409);
+        expect(res.body.code).toBe('INVALID_STATE_TRANSITION');
+        // Renvoyer la même unité (formulaire inchangé) reste accepté.
+        await as(tokens.admin)
+          .patch(`/api/products/${product.id}`)
+          .send({ unit: 'METRE', name: 'Renommé' })
+          .expect(200);
+      } finally {
+        await prisma.stockMovement.deleteMany({
+          where: { productId: product.id },
+        });
+      }
+    });
+
     it('PATCH : corrige le code-barres, retire la marque, trace avant/après', async () => {
       const product = await createProduct({ brand: 'Legrand' });
       const barcode = manufacturerEan();

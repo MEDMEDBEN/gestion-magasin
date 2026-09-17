@@ -426,7 +426,22 @@ export class ProductsService {
       if (dto.name !== undefined) data.name = dto.name;
       if (dto.description !== undefined) data.description = dto.description;
       if (dto.brand !== undefined) data.brand = dto.brand;
-      if (dto.unit !== undefined) data.unit = dto.unit;
+      if (dto.unit !== undefined && dto.unit !== before.unit) {
+        // Le journal de stock est exprimé dans l'unité du produit : passer de la
+        // pièce au mètre réinterpréterait tout l'historique.
+        const moved = await tx.stockMovement.findFirst({
+          where: { productId: id },
+          select: { id: true },
+        });
+        if (moved) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Unité figée : ce produit a déjà des mouvements de stock',
+            HttpStatus.CONFLICT,
+          );
+        }
+        data.unit = dto.unit;
+      }
       if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
       if (dto.taxRateId !== undefined) data.taxRateId = dto.taxRateId;
       if (dto.mainSupplierId !== undefined)
