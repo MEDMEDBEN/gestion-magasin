@@ -6,6 +6,9 @@ import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
 /// Ventes (P0 n°4) — priorité absolue des tests : argent + stock + droits.
 /// Règles 2, 3, 4, 9, 11, 12, 13 de CLAUDE.md.
+/// Échéance lointaine pour les ventes à crédit des tests (obligatoire).
+const DUE_DATE = '2099-12-31';
+
 describe('Ventes (e2e)', () => {
   let e2e: E2eApp;
   let prisma: PrismaService;
@@ -467,6 +470,7 @@ describe('Ventes (e2e)', () => {
           customerId: c,
           lines: [{ productId: p, quantity: '1' }],
           paidAmount: 0,
+          dueDate: DUE_DATE,
         })
         .expect(201);
       expect(credit.body.remainingAmount).toBe(172550);
@@ -477,6 +481,7 @@ describe('Ventes (e2e)', () => {
           customerId: c,
           lines: [{ productId: p, quantity: '1' }],
           paidAmount: 0,
+          dueDate: DUE_DATE,
         })
         .expect(422);
       expect(over.body.code).toBe('CREDIT_LIMIT_EXCEEDED');
@@ -511,6 +516,7 @@ describe('Ventes (e2e)', () => {
               customerId: c,
               lines: [{ productId: p, quantity: '1' }],
               paidAmount: 0,
+              dueDate: DUE_DATE,
             }),
         ),
       );
@@ -765,6 +771,7 @@ describe('Ventes (e2e)', () => {
             customerId: c,
             lines: [{ productId: p, quantity: '1' }],
             paidAmount: 0,
+            dueDate: DUE_DATE,
           })
           .expect(201)
       ).body;
@@ -785,6 +792,7 @@ describe('Ventes (e2e)', () => {
             customerId: c,
             lines: [{ productId: p, quantity: '1' }],
             paidAmount: 0,
+            dueDate: DUE_DATE,
           })
           .expect(201)
       ).body;

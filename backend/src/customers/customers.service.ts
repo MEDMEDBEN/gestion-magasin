@@ -8,6 +8,11 @@ import { formatDA } from '../common/pdf/pdf';
 import { PERMISSIONS } from '../common/permissions';
 import { Customer, Prisma } from '../generated/prisma/client';
 import { parseSort } from '../common/dto/pagination.dto';
+import {
+  PaymentHistoryDto,
+  ReversePaymentDto,
+} from '../common/dto/payment.dto';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashSessionsService } from '../sales/cash-sessions.service';
 import { SalesService } from '../sales/sales.service';
@@ -54,12 +59,15 @@ export class CustomersService {
       this.prisma.customer.count({ where }),
     ]);
     // Dettes de toute la page en 2 requêtes (jamais 2 par client).
-    const debts = await SalesService.customerDebts(
-      this.prisma,
-      rows.map((r) => r.id),
-    );
+    const ids = rows.map((r) => r.id);
+    const debts = await SalesService.customerDebts(this.prisma, ids);
+    const overdue = await SalesService.customerOverdue(this.prisma, ids, debts);
     const data = rows.map((row) =>
-      CustomersService.toDtoWith(row, debts.get(row.id) ?? 0),
+      CustomersService.toDtoWith(
+        row,
+        debts.get(row.id) ?? 0,
+        overdue.get(row.id) ?? 0,
+      ),
     );
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
@@ -191,6 +199,7 @@ export class CustomersService {
         saleId: existing.saleId,
         amount: existing.amount,
         paidAt: existing.paidAt,
+        reversesPaymentId: existing.reversesPaymentId,
         balanceDue: await SalesService.customerDebt(
           this.prisma,
           existing.customerId,
@@ -291,10 +300,157 @@ export class CustomersService {
           saleId: payment.saleId,
           amount: payment.amount,
           paidAt: payment.paidAt,
+          reversesPaymentId: null,
           balanceDue: debt - dto.amount,
         };
       }),
     );
+  }
+
+  /// Historique des règlements d'un client, contre-passations comprises.
+  async payments(
+    customerId: string,
+    query: PaginationQueryDto,
+  ): Promise<PaymentHistoryDto> {
+    const where = { customerId };
+    const [rows, total] = await Promise.all([
+      this.prisma.customerPayment.findMany({
+        where,
+        include: { reversedBy: { select: { id: true } } },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+      }),
+      this.prisma.customerPayment.count({ where }),
+    ]);
+    return {
+      data: rows.map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        method: p.method,
+        fromCash: true, // règlement client = espèces en caisse (décision 2026-09-15)
+        paidAt: p.paidAt,
+        userId: p.userId,
+        saleId: p.saleId,
+        note: p.note,
+        reversesPaymentId: p.reversesPaymentId,
+        reversedById: p.reversedBy?.id ?? null,
+      })),
+      meta: { page: query.page, limit: query.limit, total },
+    };
+  }
+
+  /// Contre-passation (ADMIN) d'un règlement saisi par erreur : écriture
+  /// OPPOSÉE (la dette revient), espèces RENDUES depuis la caisse ouverte de
+  /// l'admin — jamais plus que le tiroir (garde commun `withdraw`). Le règlement
+  /// d'origine reste intact (règle 7) et ne s'annule qu'une fois.
+  async reverse(
+    id: string,
+    dto: ReversePaymentDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<CustomerPaymentDto> {
+    const replay = async () => {
+      const existing = await this.prisma.customerPayment.findUnique({
+        where: { clientMutationId: dto.clientMutationId },
+      });
+      if (!existing) return null;
+      assertSameMutation(existing, user.id, existing.reversesPaymentId === id, {
+        code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+        message: 'Cette clé a déjà servi à une autre opération',
+      });
+      return CustomersService.paymentDto(
+        existing,
+        await SalesService.customerDebt(this.prisma, existing.customerId),
+      );
+    };
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "CustomerPayment" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        const original = await tx.customerPayment.findUnique({
+          where: { id },
+          include: { reversedBy: { select: { id: true } } },
+        });
+        if (!original) {
+          throw new BusinessException(
+            ErrorCode.NOT_FOUND,
+            'Règlement introuvable',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        if (original.reversesPaymentId || original.reversedBy) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            original.reversesPaymentId
+              ? 'Une contre-passation ne se contre-passe pas'
+              : 'Ce règlement a déjà été contre-passé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${original.customerId}::uuid FOR UPDATE`;
+        const session = await CashSessionsService.lockOpenSession(tx, {
+          userId: user.id,
+        });
+        if (!session) {
+          throw new BusinessException(
+            ErrorCode.CASH_SESSION_REQUIRED,
+            'Ouvrez votre caisse : les espèces du règlement sont rendues au client',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+        const reversal = await tx.customerPayment.create({
+          data: {
+            clientMutationId: dto.clientMutationId,
+            customerId: original.customerId,
+            saleId: original.saleId,
+            userId: user.id,
+            amount: -original.amount,
+            method: original.method,
+            note: dto.reason,
+            reversesPaymentId: original.id,
+          },
+        });
+        await CashSessionsService.withdraw(tx, session, {
+          userId: user.id,
+          amount: original.amount,
+          saleId: original.saleId ?? undefined,
+          note: `Contre-passation du règlement ${original.id}`,
+        });
+        await writeAudit(tx, actor, {
+          action: 'CANCEL',
+          entityType: 'CustomerPayment',
+          entityId: original.id,
+          oldValue: { amount: original.amount },
+          newValue: { reversalId: reversal.id, reason: dto.reason },
+        });
+        return CustomersService.paymentDto(
+          reversal,
+          await SalesService.customerDebt(tx, original.customerId),
+        );
+      }),
+    );
+  }
+
+  private static paymentDto(
+    payment: {
+      id: string;
+      customerId: string;
+      saleId: string | null;
+      amount: number;
+      paidAt: Date;
+      reversesPaymentId: string | null;
+    },
+    balanceDue: number,
+  ): CustomerPaymentDto {
+    return {
+      id: payment.id,
+      customerId: payment.customerId,
+      saleId: payment.saleId,
+      amount: payment.amount,
+      paidAt: payment.paidAt,
+      reversesPaymentId: payment.reversesPaymentId,
+      balanceDue,
+    };
   }
 
   /// Tarif et plafond de crédit : conditions commerciales fixées par l'ADMIN
@@ -339,15 +495,23 @@ export class CustomersService {
     db: Db | PrismaService,
     customer: Customer,
   ): Promise<CustomerDto> {
+    const debts = await SalesService.customerDebts(db, [customer.id]);
+    const overdue = await SalesService.customerOverdue(
+      db,
+      [customer.id],
+      debts,
+    );
     return CustomersService.toDtoWith(
       customer,
-      await SalesService.customerDebt(db, customer.id),
+      debts.get(customer.id) ?? 0,
+      overdue.get(customer.id) ?? 0,
     );
   }
 
   private static toDtoWith(
     customer: Customer,
     balanceDue: number,
+    overdueAmount: number,
   ): CustomerDto {
     return {
       id: customer.id,
@@ -360,6 +524,7 @@ export class CustomersService {
       priceTierId: customer.priceTierId,
       creditLimit: customer.creditLimit,
       balanceDue,
+      overdueAmount,
       isActive: customer.isActive,
     };
   }

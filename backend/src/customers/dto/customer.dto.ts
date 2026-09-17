@@ -162,6 +162,11 @@ export class CustomerDto {
     description: 'Dette restante en centimes, TOUJOURS recalculée.',
   })
   balanceDue!: number;
+  @ApiProperty({
+    description:
+      'Part de la dette EN RETARD (ventes à crédit dont l’échéance est passée), centimes.',
+  })
+  overdueAmount!: number;
   @ApiProperty() isActive!: boolean;
 }
 
@@ -208,6 +213,11 @@ export class CustomerPaymentDto {
   @ApiProperty({ nullable: true }) saleId!: string | null;
   @ApiProperty() amount!: number;
   @ApiProperty() paidAt!: Date;
+  @ApiProperty({
+    nullable: true,
+    description: 'Renseigné sur une contre-passation (montant négatif).',
+  })
+  reversesPaymentId!: string | null;
   @ApiProperty({ description: 'Dette restante après ce règlement.' })
   balanceDue!: number;
 }

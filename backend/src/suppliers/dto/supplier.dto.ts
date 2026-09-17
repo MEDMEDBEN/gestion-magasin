@@ -211,6 +211,11 @@ export class SupplierPaymentDto {
   @ApiProperty({ description: 'Sortie de caisse enregistrée.' })
   fromCash!: boolean;
   @ApiProperty() paidAt!: Date;
+  @ApiProperty({
+    nullable: true,
+    description: 'Renseigné sur une contre-passation (montant négatif).',
+  })
+  reversesPaymentId!: string | null;
   @ApiProperty({ description: 'Reste dû après ce paiement.' })
   balanceDue!: number;
 }

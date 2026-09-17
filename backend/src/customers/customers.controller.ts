@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Ip,
   Param,
   Patch,
@@ -23,6 +25,11 @@ import {
   Roles,
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import {
+  PaymentHistoryDto,
+  ReversePaymentDto,
+} from '../common/dto/payment.dto';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { PERMISSIONS } from '../common/permissions';
 import { CustomersService } from './customers.service';
 import {
@@ -52,6 +59,21 @@ export class CustomersController {
   @ApiOkResponse({ type: CustomerListDto })
   findAll(@Query() query: CustomerListQueryDto): Promise<CustomerListDto> {
     return this.customers.findAll(query);
+  }
+
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
+  @Get(':id/payments')
+  @ApiOperation({
+    summary:
+      'Historique des règlements d’un client (contre-passations comprises)',
+  })
+  @ApiOkResponse({ type: PaymentHistoryDto })
+  payments(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaymentHistoryDto> {
+    return this.customers.payments(id, query);
   }
 
   @Roles(...ALL_ROLES)
@@ -121,5 +143,29 @@ export class CustomerPaymentsController {
     @Ip() ip: string,
   ): Promise<CustomerPaymentDto> {
     return this.customers.pay(dto, user, { userId: user.id, ipAddress: ip });
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.CUSTOMER_PAYMENT_CREATE)
+  @Post('customer/:id/reverse')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Contre-passe un règlement client (ADMIN) — jamais de suppression',
+    description:
+      'Écriture opposée : la dette revient, les espèces sont rendues depuis la caisse ' +
+      'ouverte de l’admin (`CASH_SESSION_REQUIRED`, `CASH_INSUFFICIENT`). Une seule ' +
+      'contre-passation par règlement.',
+  })
+  @ApiCreatedResponse({ type: CustomerPaymentDto })
+  reverse(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: ReversePaymentDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<CustomerPaymentDto> {
+    return this.customers.reverse(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 }

@@ -7,6 +7,7 @@ import {
   Ip,
   Param,
   Post,
+  Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -29,6 +30,8 @@ import { PERMISSIONS } from '../common/permissions';
 import { CashSessionsService } from './cash-sessions.service';
 import {
   CashSessionDto,
+  CashSessionListDto,
+  CashSessionListQueryDto,
   CloseCashSessionDto,
   OpenCashSessionDto,
 } from './dto/sale.dto';
@@ -38,6 +41,20 @@ import {
 @Controller('cash-sessions')
 export class CashSessionsController {
   constructor(private readonly cashSessions: CashSessionsService) {}
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.CASH_REPORT_READ)
+  @Get()
+  @ApiOperation({
+    summary:
+      'Toutes les caisses (ADMIN) : statut, caissier, période, rapport Z',
+  })
+  @ApiOkResponse({ type: CashSessionListDto })
+  findAll(
+    @Query() query: CashSessionListQueryDto,
+  ): Promise<CashSessionListDto> {
+    return this.cashSessions.findAll(query);
+  }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.CASH_SESSION_MANAGE)

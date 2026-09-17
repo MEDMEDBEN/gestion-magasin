@@ -25,7 +25,7 @@ const Test = require('supertest/lib/test') as {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { randomUUID } = require('crypto') as { randomUUID: () => string };
 const MONEY_ROUTE =
-  /\/api\/(sales|payments\/(customer|supplier)|cash-sessions(\/[^/]+\/close)?)$/;
+  /\/api\/(sales|payments\/(customer|supplier)(\/[^/]+\/reverse)?|cash-sessions(\/[^/]+\/close)?)$/;
 const originalSend = Test.prototype.send;
 Test.prototype.send = function (this: { url: string }, body: unknown) {
   if (

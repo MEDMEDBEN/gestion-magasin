@@ -2,8 +2,13 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
+import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
-import { nextDocumentNumber, localYear } from '../common/document-number';
+import {
+  localDate,
+  localYear,
+  nextDocumentNumber,
+} from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
@@ -207,6 +212,9 @@ export class SalesService {
           }
         }
 
+        // Échéance vérifiée APRÈS client, droit et plafond (messages plus utiles).
+        const dueDate = SalesService.dueDate(dto.dueDate, credit);
+
         const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
         SELECT nextval('sale_ticket_seq') AS value`;
         const soldAt = new Date();
@@ -225,6 +233,7 @@ export class SalesService {
             paidAmount: dto.paidAmount,
             paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
             soldAt,
+            dueDate,
             note: dto.note ?? null,
             lines: {
               create: lines.map(({ productId, ...rest }) => ({
@@ -510,6 +519,37 @@ export class SalesService {
 
   /// Dette d'un client = ventes validées non soldées − règlements hors vente.
   /// TOUJOURS recalculée, jamais stockée.
+  /// Échéance d'une vente : obligatoire dès qu'il reste du crédit (spec §9,
+  /// décision MEDMEDBEN 2026-09-16), jamais dans le passé, interdite sinon.
+  private static dueDate(raw: string | undefined, credit: number): Date | null {
+    if (credit <= 0) {
+      if (raw !== undefined) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'dueDate : une vente soldée n’a pas d’échéance',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      return null;
+    }
+    if (raw === undefined) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'dueDate : l’échéance est obligatoire pour une vente à crédit',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const date = parseApiDate(raw, 'dueDate');
+    if (raw.length !== 10 || raw < localDate(new Date())) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'dueDate : date AAAA-MM-JJ, aujourd’hui ou plus tard',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return date;
+  }
+
   static async customerDebt(
     db: Db | PrismaService,
     customerId: string,
@@ -517,6 +557,53 @@ export class SalesService {
     return (await SalesService.customerDebts(db, [customerId])).get(
       customerId,
     )!;
+  }
+
+  /// Montant EN RETARD par client : reste dû des ventes dont l'échéance est
+  /// passée, plafonné par la dette totale (un acompte général vient d'abord
+  /// solder le plus ancien). Calculé pour toute une page en 2 requêtes.
+  static async customerOverdue(
+    db: Db | PrismaService,
+    customerIds: string[],
+    debts: Map<string, number>,
+    now = new Date(),
+  ): Promise<Map<string, number>> {
+    const [sales, payments] = await Promise.all([
+      db.sale.groupBy({
+        by: ['customerId'],
+        where: {
+          customerId: { in: customerIds },
+          status: 'VALIDEE',
+          dueDate: { lt: now },
+        },
+        _sum: { totalTtc: true, paidAmount: true },
+      }),
+      db.customerPayment.groupBy({
+        by: ['customerId'],
+        where: {
+          customerId: { in: customerIds },
+          sale: { status: 'VALIDEE', dueDate: { lt: now } },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+    const overdue = new Map(customerIds.map((id) => [id, 0]));
+    for (const row of sales) {
+      overdue.set(
+        row.customerId!,
+        (row._sum.totalTtc ?? 0) - (row._sum.paidAmount ?? 0),
+      );
+    }
+    for (const row of payments) {
+      overdue.set(
+        row.customerId,
+        (overdue.get(row.customerId) ?? 0) - (row._sum.amount ?? 0),
+      );
+    }
+    for (const [id, amount] of overdue) {
+      overdue.set(id, Math.max(0, Math.min(amount, debts.get(id) ?? 0)));
+    }
+    return overdue;
   }
 
   /// Même calcul pour une PAGE de clients en 2 requêtes (jamais une par client).
@@ -702,6 +789,7 @@ export class SalesService {
         lineTotalTtc: line.lineTotalTtc,
       })),
       soldAt: sale.soldAt,
+      dueDate: sale.dueDate,
       cancelledAt: sale.cancelledAt,
     };
   }

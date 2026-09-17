@@ -6,6 +6,11 @@ import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { Prisma, Supplier } from '../generated/prisma/client';
 import { parseSort } from '../common/dto/pagination.dto';
+import {
+  PaymentHistoryDto,
+  ReversePaymentDto,
+} from '../common/dto/payment.dto';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatDA } from '../common/pdf/pdf';
 import { CashSessionsService } from '../sales/cash-sessions.service';
@@ -258,6 +263,131 @@ export class SuppliersService {
     );
   }
 
+  async payments(
+    supplierId: string,
+    query: PaginationQueryDto,
+  ): Promise<PaymentHistoryDto> {
+    const where = { supplierId };
+    const [rows, total] = await Promise.all([
+      this.prisma.supplierPayment.findMany({
+        where,
+        include: { reversedBy: { select: { id: true } } },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+      }),
+      this.prisma.supplierPayment.count({ where }),
+    ]);
+    return {
+      data: rows.map((p) => ({
+        id: p.id,
+        amount: p.amount,
+        method: p.method,
+        fromCash: p.cashSessionId !== null,
+        paidAt: p.paidAt,
+        userId: p.userId,
+        saleId: null,
+        note: p.note,
+        reversesPaymentId: p.reversesPaymentId,
+        reversedById: p.reversedBy?.id ?? null,
+      })),
+      meta: { page: query.page, limit: query.limit, total },
+    };
+  }
+
+  /// Contre-passation (ADMIN) : écriture OPPOSÉE, la dette revient. Paiement
+  /// sorti de la caisse → les espèces y RENTRENT (caisse ouverte de l'admin) ;
+  /// payé hors caisse → la caisse n'est pas touchée. Jamais de suppression.
+  async reverse(
+    id: string,
+    dto: ReversePaymentDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<SupplierPaymentDto> {
+    const replay = async () => {
+      const existing = await this.prisma.supplierPayment.findUnique({
+        where: { clientMutationId: dto.clientMutationId },
+      });
+      if (!existing) return null;
+      assertSameMutation(existing, user.id, existing.reversesPaymentId === id, {
+        code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+        message: 'Cette clé a déjà servi à une autre opération',
+      });
+      const supplier = await this.prisma.supplier.findUniqueOrThrow({
+        where: { id: existing.supplierId },
+      });
+      const { balanceDue } = await SuppliersService.debt(this.prisma, supplier);
+      return SuppliersService.paymentDto(existing, balanceDue);
+    };
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "SupplierPayment" WHERE "id" = ${id}::uuid FOR UPDATE`;
+        const original = await tx.supplierPayment.findUnique({
+          where: { id },
+          include: { reversedBy: { select: { id: true } } },
+        });
+        if (!original) {
+          throw new BusinessException(
+            ErrorCode.NOT_FOUND,
+            'Paiement introuvable',
+            HttpStatus.NOT_FOUND,
+          );
+        }
+        if (original.reversesPaymentId || original.reversedBy) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            original.reversesPaymentId
+              ? 'Une contre-passation ne se contre-passe pas'
+              : 'Ce paiement a déjà été contre-passé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${original.supplierId}::uuid FOR UPDATE`;
+        const session = original.cashSessionId
+          ? await CashSessionsService.lockOpenSession(tx, { userId: user.id })
+          : null;
+        if (original.cashSessionId && !session) {
+          throw new BusinessException(
+            ErrorCode.CASH_SESSION_REQUIRED,
+            'Ouvrez votre caisse : les espèces du paiement y sont remises',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+        const reversal = await tx.supplierPayment.create({
+          data: {
+            clientMutationId: dto.clientMutationId,
+            supplierId: original.supplierId,
+            userId: user.id,
+            cashSessionId: session?.id ?? null,
+            amount: -original.amount,
+            method: original.method,
+            note: dto.reason,
+            reversesPaymentId: original.id,
+          },
+        });
+        if (session) {
+          await CashSessionsService.deposit(tx, session, {
+            userId: user.id,
+            amount: original.amount,
+            note: `Contre-passation du paiement fournisseur ${original.id}`,
+          });
+        }
+        await writeAudit(tx, actor, {
+          action: 'CANCEL',
+          entityType: 'SupplierPayment',
+          entityId: original.id,
+          oldValue: { amount: original.amount },
+          newValue: { reversalId: reversal.id, reason: dto.reason },
+        });
+        const supplier = await tx.supplier.findUniqueOrThrow({
+          where: { id: original.supplierId },
+        });
+        const { balanceDue } = await SuppliersService.debt(tx, supplier);
+        return SuppliersService.paymentDto(reversal, balanceDue);
+      }),
+    );
+  }
+
   private static paymentDto(
     payment: {
       id: string;
@@ -266,6 +396,7 @@ export class SuppliersService {
       method: string;
       cashSessionId: string | null;
       paidAt: Date;
+      reversesPaymentId: string | null;
     },
     balanceDue: number,
   ): SupplierPaymentDto {
@@ -276,6 +407,7 @@ export class SuppliersService {
       method: payment.method,
       fromCash: payment.cashSessionId !== null,
       paidAt: payment.paidAt,
+      reversesPaymentId: payment.reversesPaymentId,
       balanceDue,
     };
   }

@@ -7,6 +7,9 @@ import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 /// Clients et dettes (P0 n°4) : fiche créée par le vendeur, tarif et plafond
 /// fixés par l'ADMIN seul, dette TOUJOURS recalculée, règlement en espèces
 /// dans la caisse ouverte, jamais au-delà du dû.
+/// Échéance lointaine pour les ventes à crédit des tests (obligatoire).
+const DUE_DATE = '2099-12-31';
+
 describe('Clients et règlements (e2e)', () => {
   let e2e: E2eApp;
   let prisma: PrismaService;
@@ -200,6 +203,7 @@ describe('Clients et règlements (e2e)', () => {
         customerId: c.id,
         lines: [{ productId, quantity: '1' }],
         paidAmount: 0,
+        dueDate: DUE_DATE,
       })
       .expect(201);
     expect(
@@ -213,6 +217,7 @@ describe('Clients et règlements (e2e)', () => {
         customerId: c.id,
         lines: [{ productId, quantity: '1' }],
         paidAmount: 0,
+        dueDate: DUE_DATE,
       })
       .expect(422);
 
@@ -236,6 +241,7 @@ describe('Clients et règlements (e2e)', () => {
         customerId: c.id,
         lines: [{ productId, quantity: '1' }],
         paidAmount: 0,
+        dueDate: DUE_DATE,
       })
       .expect(201);
   });
@@ -253,6 +259,7 @@ describe('Clients et règlements (e2e)', () => {
         customerId: c.id,
         lines: [{ productId, quantity: '1' }],
         paidAmount: 0,
+        dueDate: DUE_DATE,
       })
       .expect(201);
     const body = {
@@ -307,6 +314,7 @@ describe('Clients et règlements (e2e)', () => {
           customerId: c.id,
           lines: [{ productId, quantity: '1' }],
           paidAmount: 0,
+          dueDate: DUE_DATE,
         })
         .expect(201)
     ).body;

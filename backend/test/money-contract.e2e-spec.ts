@@ -8,6 +8,9 @@ import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 /// 1. idempotence : TOUTE mutation d'argent exige un `clientMutationId` ; un
 ///    renvoi (même simultané) n'applique jamais un second effet ;
 /// 2. caisse : AUCUNE sortie ne rend une session négative, quel que soit le chemin.
+/// Échéance lointaine pour les ventes à crédit des tests (obligatoire).
+const DUE_DATE = '2099-12-31';
+
 describe('Contrats argent : idempotence et caisse (e2e)', () => {
   let e2e: E2eApp;
   let prisma: PrismaService;
@@ -109,6 +112,8 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
       [`/api/cash-sessions/${zero}/close`, { countedAmount: 0 }],
       ['/api/sales', { lines: [{ productId, quantity: '1' }], paidAmount: 0 }],
       ['/api/payments/customer', { customerId: zero, amount: 1 }],
+      [`/api/payments/customer/${zero}/reverse`, { reason: 'Erreur' }],
+      [`/api/payments/supplier/${zero}/reverse`, { reason: 'Erreur' }],
       [
         '/api/payments/supplier',
         { supplierId: zero, amount: 1, fromCash: false },
@@ -165,6 +170,7 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
         customerId: customer.id,
         lines: [{ productId, quantity: '1' }],
         paidAmount: 0,
+        dueDate: DUE_DATE,
       })
       .expect(201);
 

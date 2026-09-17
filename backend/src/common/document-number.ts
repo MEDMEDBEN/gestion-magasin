@@ -13,6 +13,16 @@ export function localYear(date: Date): number {
   );
 }
 
+/// Date civile en Algérie, « AAAA-MM-JJ » (échéances, jour de caisse).
+export function localDate(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Algiers',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 /// Numéro séquentiel d'un document, attribué SERVEUR dans la transaction de
 /// l'appelant (règle 11) : le compteur de l'année est verrouillé par l'UPDATE,
 /// donc deux demandes simultanées ne peuvent pas obtenir le même numéro ni

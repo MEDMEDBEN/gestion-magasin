@@ -2,6 +2,8 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
+import { parseApiDate } from '../common/api-date';
+import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatDA } from '../common/pdf/pdf';
@@ -9,6 +11,8 @@ import { CashSession, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CashSessionDto,
+  CashSessionListDto,
+  CashSessionListQueryDto,
   CloseCashSessionDto,
   OpenCashSessionDto,
 } from './dto/sale.dto';
@@ -18,6 +22,9 @@ type Db = Prisma.TransactionClient;
 /// Sérialise l'ouverture de caisse d'un même compte : deux ouvertures
 /// simultanées ne créent jamais deux sessions ouvertes.
 const CASH_SESSION_LOCK = 7401;
+
+/// Tris autorisés (liste blanche, CONVENTIONS.md).
+const CASH_SESSION_SORT_FIELDS = ['openedAt', 'closedAt', 'status'] as const;
 
 /// Caisse (CLAUDE.md règle 12) : un encaissement espèces se rattache à une
 /// session OUVERTE ; la clôture compare le compté à l'attendu (rapport Z).
@@ -94,6 +101,50 @@ export class CashSessionsService {
       });
       return this.toDto(tx, session);
     });
+  }
+
+  /// Toutes les caisses (ADMIN) : qui, quand, attendu / compté / écart. Totaux
+  /// de TOUTE la page en une requête (jamais une par session).
+  async findAll(query: CashSessionListQueryDto): Promise<CashSessionListDto> {
+    const where: Prisma.CashSessionWhereInput = {
+      ...(query.status && { status: query.status }),
+      ...(query.userId && { userId: query.userId }),
+      ...((query.from || query.to) && {
+        openedAt: {
+          ...(query.from && { gte: parseApiDate(query.from, 'from') }),
+          ...(query.to && { lt: parseApiDate(query.to, 'to') }),
+        },
+      }),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.cashSession.findMany({
+        where,
+        include: { user: { select: { fullName: true } } },
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: [
+          parseSort(query.sort, CASH_SESSION_SORT_FIELDS, { openedAt: 'desc' }),
+          { id: 'desc' },
+        ],
+      }),
+      this.prisma.cashSession.count({ where }),
+    ]);
+    const grouped = await this.prisma.cashMovement.groupBy({
+      by: ['cashSessionId', 'type'],
+      where: { cashSessionId: { in: rows.map((r) => r.id) } },
+      _sum: { amount: true },
+      _count: true,
+    });
+    const data = rows.map((row) => ({
+      ...CashSessionsService.toDtoWith(
+        row,
+        CashSessionsService.sumTotals(
+          grouped.filter((g) => g.cashSessionId === row.id),
+        ),
+      ),
+      userFullName: row.user.fullName,
+    }));
+    return { data, meta: { page: query.page, limit: query.limit, total } };
   }
 
   /// Caisse ouverte du compte connecté, ou `null`.
@@ -253,6 +304,25 @@ export class CashSessionsService {
     });
   }
 
+  /// Entrée d'espèces hors vente (règlement, remboursement d'un paiement
+  /// fournisseur contre-passé…). `session` verrouillée par `lockOpenSession`.
+  static async deposit(
+    tx: Db,
+    session: CashSession,
+    movement: { userId: string; amount: number; note: string; saleId?: string },
+  ): Promise<void> {
+    await tx.cashMovement.create({
+      data: {
+        cashSessionId: session.id,
+        userId: movement.userId,
+        saleId: movement.saleId ?? null,
+        type: 'ENTREE',
+        amount: movement.amount,
+        note: movement.note,
+      },
+    });
+  }
+
   /// Entrées (ventes espèces + apports) et sorties (retraits + prélèvements).
   static async totals(db: Db | PrismaService, cashSessionId: string) {
     const grouped = await db.cashMovement.groupBy({
@@ -261,6 +331,16 @@ export class CashSessionsService {
       _sum: { amount: true },
       _count: true,
     });
+    return CashSessionsService.sumTotals(grouped);
+  }
+
+  private static sumTotals(
+    grouped: {
+      type: string;
+      _sum: { amount: number | null };
+      _count: number;
+    }[],
+  ) {
     const sum = (type: string) =>
       grouped.find((g) => g.type === type)?._sum.amount ?? 0;
     return {
@@ -276,7 +356,16 @@ export class CashSessionsService {
     db: Db | PrismaService,
     session: CashSession,
   ): Promise<CashSessionDto> {
-    const totals = await CashSessionsService.totals(db, session.id);
+    return CashSessionsService.toDtoWith(
+      session,
+      await CashSessionsService.totals(db, session.id),
+    );
+  }
+
+  private static toDtoWith(
+    session: CashSession,
+    totals: ReturnType<typeof CashSessionsService.sumTotals>,
+  ): CashSessionDto {
     return {
       id: session.id,
       userId: session.userId,

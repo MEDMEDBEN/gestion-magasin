@@ -25,6 +25,11 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
+import {
+  PaymentHistoryDto,
+  ReversePaymentDto,
+} from '../common/dto/payment.dto';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateSupplierDto,
@@ -53,6 +58,21 @@ export class SuppliersController {
   @ApiOkResponse({ type: SupplierListDto })
   findAll(@Query() query: SupplierListQueryDto): Promise<SupplierListDto> {
     return this.suppliers.findAll(query);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.SUPPLIER_READ)
+  @Get(':id/payments')
+  @ApiOperation({
+    summary:
+      'Historique des paiements d’un fournisseur (contre-passations comprises)',
+  })
+  @ApiOkResponse({ type: PaymentHistoryDto })
+  payments(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Query() query: PaginationQueryDto,
+  ): Promise<PaymentHistoryDto> {
+    return this.suppliers.payments(id, query);
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
@@ -120,5 +140,28 @@ export class SupplierPaymentsController {
     @Ip() ip: string,
   ): Promise<SupplierPaymentDto> {
     return this.suppliers.pay(dto, user, { userId: user.id, ipAddress: ip });
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
+  @Post('supplier/:id/reverse')
+  @ApiOperation({
+    summary:
+      'Contre-passe un paiement fournisseur (ADMIN) — jamais de suppression',
+    description:
+      'Écriture opposée : la dette revient. Paiement sorti de la caisse → espèces ' +
+      'remises dans la caisse ouverte de l’admin ; hors caisse → caisse non touchée.',
+  })
+  @ApiCreatedResponse({ type: SupplierPaymentDto })
+  reverse(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: ReversePaymentDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<SupplierPaymentDto> {
+    return this.suppliers.reverse(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 }

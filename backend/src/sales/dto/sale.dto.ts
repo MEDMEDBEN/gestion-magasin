@@ -9,6 +9,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -112,6 +113,17 @@ export class CreateSaleDto {
   @IsOptional()
   expectedTotalTtc?: number;
 
+  @ApiPropertyOptional({
+    example: '2026-10-15',
+    description:
+      'Échéance du crédit (AAAA-MM-JJ, aujourd’hui ou plus tard). OBLIGATOIRE dès ' +
+      'qu’une partie reste à crédit ; refusée sur une vente soldée.',
+  })
+  @IsString()
+  @MaxLength(10)
+  @IsOptional()
+  dueDate?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @MaxLength(500)
@@ -166,6 +178,11 @@ export class SaleDto {
   remainingAmount!: number;
   @ApiProperty({ type: [SaleLineDto] }) lines!: SaleLineDto[];
   @ApiProperty() soldAt!: Date;
+  @ApiProperty({
+    nullable: true,
+    description: 'Échéance du crédit (vente à crédit uniquement).',
+  })
+  dueDate!: Date | null;
   @ApiProperty({ nullable: true }) cancelledAt!: Date | null;
 }
 
@@ -242,4 +259,37 @@ export class CashSessionDto {
   difference!: number | null;
   @ApiProperty() openedAt!: Date;
   @ApiProperty({ nullable: true }) closedAt!: Date | null;
+  @ApiPropertyOptional({ description: 'Caissier (liste admin).' })
+  userFullName?: string;
+}
+
+export class CashSessionListQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({ enum: ['OUVERTE', 'CLOTUREE'] })
+  @IsIn(['OUVERTE', 'CLOTUREE'])
+  @IsOptional()
+  status?: 'OUVERTE' | 'CLOTUREE';
+
+  @ApiPropertyOptional({ description: 'Caissier' })
+  @IsCanonicalUuid()
+  @IsOptional()
+  userId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Ouverte à partir de (AAAA-MM-JJ ou ISO 8601)',
+  })
+  @IsString()
+  @MaxLength(40)
+  @IsOptional()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'Ouverte avant (exclu)' })
+  @IsString()
+  @MaxLength(40)
+  @IsOptional()
+  to?: string;
+}
+
+export class CashSessionListDto {
+  @ApiProperty({ type: [CashSessionDto] }) data!: CashSessionDto[];
+  @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
 }
