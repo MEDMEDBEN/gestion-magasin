@@ -7,6 +7,7 @@ import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatDA } from '../common/pdf/pdf';
 import { PERMISSIONS } from '../common/permissions';
 import { Customer, Prisma } from '../generated/prisma/client';
+import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashSessionsService } from '../sales/cash-sessions.service';
 import { SalesService } from '../sales/sales.service';
@@ -21,6 +22,9 @@ import {
 } from './dto/customer.dto';
 
 type Db = Prisma.TransactionClient;
+
+/// Tris autorisés (liste blanche, CONVENTIONS.md).
+const CUSTOMER_SORT_FIELDS = ['name', 'createdAt'] as const;
 
 @Injectable()
 export class CustomersService {
@@ -42,12 +46,21 @@ export class CustomersService {
         where,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [
+          parseSort(query.sort, CUSTOMER_SORT_FIELDS, { name: 'asc' }),
+          { id: 'asc' },
+        ],
       }),
       this.prisma.customer.count({ where }),
     ]);
-    const data: CustomerDto[] = [];
-    for (const row of rows) data.push(await this.toDto(this.prisma, row));
+    // Dettes de toute la page en 2 requêtes (jamais 2 par client).
+    const debts = await SalesService.customerDebts(
+      this.prisma,
+      rows.map((r) => r.id),
+    );
+    const data = rows.map((row) =>
+      CustomersService.toDtoWith(row, debts.get(row.id) ?? 0),
+    );
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
 
@@ -326,6 +339,16 @@ export class CustomersService {
     db: Db | PrismaService,
     customer: Customer,
   ): Promise<CustomerDto> {
+    return CustomersService.toDtoWith(
+      customer,
+      await SalesService.customerDebt(db, customer.id),
+    );
+  }
+
+  private static toDtoWith(
+    customer: Customer,
+    balanceDue: number,
+  ): CustomerDto {
     return {
       id: customer.id,
       code: customer.code,
@@ -336,7 +359,7 @@ export class CustomersService {
       notes: customer.notes,
       priceTierId: customer.priceTierId,
       creditLimit: customer.creditLimit,
-      balanceDue: await SalesService.customerDebt(db, customer.id),
+      balanceDue,
       isActive: customer.isActive,
     };
   }

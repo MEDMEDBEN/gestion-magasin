@@ -10,6 +10,7 @@ import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Sale, SaleLine } from '../generated/prisma/client';
+import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
@@ -27,6 +28,9 @@ type Db = Prisma.TransactionClient;
 type SaleWithLines = Sale & { lines: SaleLine[] };
 
 const SALE_INCLUDE = { lines: true } as const;
+
+/// Tris autorisés (liste blanche, CONVENTIONS.md).
+const SALE_SORT_FIELDS = ['soldAt', 'totalTtc', 'number'] as const;
 
 /// Arrondi monétaire unique des ventes : au centime, demi vers le haut.
 function roundMoney(value: Prisma.Decimal): number {
@@ -279,12 +283,23 @@ export class SalesService {
         include: SALE_INCLUDE,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ soldAt: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          parseSort(query.sort, SALE_SORT_FIELDS, { soldAt: 'desc' }),
+          { id: 'desc' },
+        ],
       }),
       this.prisma.sale.count({ where }),
     ]);
-    const data = [];
-    for (const row of rows) data.push(await this.toDto(this.prisma, row));
+    // Règlements ultérieurs de TOUTE la page en une requête (pas une par vente).
+    const later = await this.prisma.customerPayment.groupBy({
+      by: ['saleId'],
+      where: { saleId: { in: rows.map((r) => r.id) } },
+      _sum: { amount: true },
+    });
+    const paidLater = new Map(later.map((l) => [l.saleId, l._sum.amount ?? 0]));
+    const data = rows.map((row) =>
+      SalesService.toDtoWith(row, paidLater.get(row.id) ?? 0),
+    );
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
 
@@ -499,21 +514,44 @@ export class SalesService {
     db: Db | PrismaService,
     customerId: string,
   ): Promise<number> {
+    return (await SalesService.customerDebts(db, [customerId])).get(
+      customerId,
+    )!;
+  }
+
+  /// Même calcul pour une PAGE de clients en 2 requêtes (jamais une par client).
+  static async customerDebts(
+    db: Db | PrismaService,
+    customerIds: string[],
+  ): Promise<Map<string, number>> {
     const [sales, payments] = await Promise.all([
-      db.sale.aggregate({
-        where: { customerId, status: 'VALIDEE' },
+      db.sale.groupBy({
+        by: ['customerId'],
+        where: { customerId: { in: customerIds }, status: 'VALIDEE' },
         _sum: { totalTtc: true, paidAmount: true },
       }),
-      db.customerPayment.aggregate({
-        where: { customerId },
+      db.customerPayment.groupBy({
+        by: ['customerId'],
+        where: { customerId: { in: customerIds } },
         _sum: { amount: true },
       }),
     ]);
-    return (
-      (sales._sum.totalTtc ?? 0) -
-      (sales._sum.paidAmount ?? 0) -
-      (payments._sum.amount ?? 0)
-    );
+    const debts = new Map(customerIds.map((id) => [id, 0]));
+    for (const row of sales) {
+      debts.set(
+        row.customerId!,
+        (debts.get(row.customerId!) ?? 0) +
+          (row._sum.totalTtc ?? 0) -
+          (row._sum.paidAmount ?? 0),
+      );
+    }
+    for (const row of payments) {
+      debts.set(
+        row.customerId,
+        (debts.get(row.customerId) ?? 0) - (row._sum.amount ?? 0),
+      );
+    }
+    return debts;
   }
 
   private static async priceLine(
@@ -629,6 +667,10 @@ export class SalesService {
       where: { saleId: sale.id },
       _sum: { amount: true },
     });
+    return SalesService.toDtoWith(sale, later._sum.amount ?? 0);
+  }
+
+  private static toDtoWith(sale: SaleWithLines, paidLater: number): SaleDto {
     return {
       id: sale.id,
       number: sale.number,
@@ -646,7 +688,7 @@ export class SalesService {
       remainingAmount:
         sale.status === 'ANNULEE'
           ? 0
-          : sale.totalTtc - sale.paidAmount - (later._sum.amount ?? 0),
+          : sale.totalTtc - sale.paidAmount - paidLater,
       lines: sale.lines.map((line) => ({
         id: line.id,
         productId: line.productId,

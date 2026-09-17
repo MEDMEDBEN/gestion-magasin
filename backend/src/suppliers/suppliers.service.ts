@@ -5,6 +5,7 @@ import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { Prisma, Supplier } from '../generated/prisma/client';
+import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatDA } from '../common/pdf/pdf';
 import { CashSessionsService } from '../sales/cash-sessions.service';
@@ -19,6 +20,9 @@ import {
 } from './dto/supplier.dto';
 
 type Db = Prisma.TransactionClient;
+
+/// Tris autorisés (liste blanche, CONVENTIONS.md).
+const SUPPLIER_SORT_FIELDS = ['name', 'createdAt'] as const;
 
 @Injectable()
 export class SuppliersService {
@@ -51,7 +55,10 @@ export class SuppliersService {
         where,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        orderBy: [
+          parseSort(query.sort, SUPPLIER_SORT_FIELDS, { name: 'asc' }),
+          { id: 'asc' },
+        ],
       }),
       this.prisma.supplier.count({ where }),
     ]);

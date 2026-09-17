@@ -11,6 +11,7 @@ import {
   PurchaseLine,
   PurchaseOrder,
 } from '../generated/prisma/client';
+import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
 import {
@@ -24,6 +25,14 @@ import {
 } from './dto/purchase-order.dto';
 
 type Db = Prisma.TransactionClient;
+
+/// Tris autorisés (liste blanche, CONVENTIONS.md).
+const ORDER_SORT_FIELDS = [
+  'orderDate',
+  'totalTtc',
+  'number',
+  'status',
+] as const;
 type OrderWithLines = PurchaseOrder & { lines: PurchaseLine[] };
 
 const ORDER_INCLUDE = { lines: { orderBy: { id: 'asc' } } } as const;
@@ -148,7 +157,10 @@ export class PurchaseOrdersService {
         include: ORDER_INCLUDE,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ orderDate: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          parseSort(query.sort, ORDER_SORT_FIELDS, { orderDate: 'desc' }),
+          { id: 'desc' },
+        ],
       }),
       this.prisma.purchaseOrder.count({ where }),
     ]);
