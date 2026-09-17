@@ -8,6 +8,7 @@ import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../payments/data/payment_models.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 
@@ -188,6 +189,20 @@ final printPdfProvider =
               Printing.layoutPdf(onLayout: (_) async => bytes, name: name),
     );
 
+/// Toutes les caisses (ADMIN), les plus récentes d'abord.
+final cashSessionsProvider = FutureProvider.autoDispose<List<CashSession>>((
+  ref,
+) async {
+  ref.watch(currentUserIdProvider);
+  return (await ref.watch(salesApiProvider).cashSessions()).data;
+});
+
+/// Date civile `AAAA-MM-JJ` (échéance saisie au calendrier, sans heure).
+String isoDay(DateTime day) =>
+    '${day.year.toString().padLeft(4, '0')}-'
+    '${day.month.toString().padLeft(2, '0')}-'
+    '${day.day.toString().padLeft(2, '0')}';
+
 /// Écritures Caisse / Ventes / Clients — toujours validées par le serveur.
 class SalesActions {
   SalesActions(this._ref);
@@ -228,7 +243,12 @@ class SalesActions {
   /// part en crédit client. Le panier n'est vidé qu'après succès.
   /// `expectedTotalTtc` : le total annoncé au client ; le serveur refuse (409)
   /// s'il a changé, pour ne jamais encaisser ou rendre la monnaie sur un faux total.
-  Future<Sale> checkout(int paidAmount, {required int expectedTotalTtc}) async {
+  /// `dueDate` : échéance OBLIGATOIRE dès qu'une partie reste à crédit.
+  Future<Sale> checkout(
+    int paidAmount, {
+    required int expectedTotalTtc,
+    DateTime? dueDate,
+  }) async {
     final cart = _ref.read(cartProvider);
     // L'intention « valider CE panier » garde sa clé jusqu'au succès.
     final sale = await runMoneyMutation(
@@ -246,6 +266,7 @@ class SalesActions {
         ],
         paidAmount: paidAmount,
         expectedTotalTtc: expectedTotalTtc,
+        dueDate: dueDate == null ? null : isoDay(dueDate),
       ),
     );
     _ref.read(cartProvider.notifier).clear();
@@ -286,6 +307,26 @@ class SalesActions {
         clientMutationId: key,
         customerId: customerId,
         amount: amount,
+      ),
+    );
+    _ref.invalidate(customerSearchProvider);
+    _ref.invalidate(currentCashSessionProvider);
+  }
+}
+
+extension CustomerPaymentsActions on SalesActions {
+  Future<List<PaymentHistoryItem>> customerPayments(String customerId) async =>
+      (await _api.customerPayments(customerId)).data;
+
+  /// Contre-passation (ADMIN) : écriture opposée, espèces rendues par la caisse.
+  Future<void> reverseCustomerPayment(String paymentId, String reason) async {
+    await runMoneyMutation(
+      _ref,
+      'reverse:customer-payment:$paymentId',
+      (key) => _api.reverseCustomerPayment(
+        paymentId,
+        clientMutationId: key,
+        reason: reason,
       ),
     );
     _ref.invalidate(customerSearchProvider);

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/providers.dart';
+import '../../payments/data/payment_models.dart';
 import 'suppliers_models.dart';
 
 /// Accès réseau Fournisseurs / dettes. Aucune règle ici : le serveur contrôle
@@ -40,6 +41,29 @@ class SuppliersApi {
         data: fields,
       );
       return SupplierPayment.fromJson(response.data!);
+    });
+  }
+
+  Future<PaymentHistoryPage> payments(String supplierId) {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/suppliers/$supplierId/payments',
+        queryParameters: {'limit': 200},
+      );
+      return PaymentHistoryPage.fromJson(response.data!);
+    });
+  }
+
+  Future<void> reversePayment(
+    String paymentId, {
+    required String clientMutationId,
+    required String reason,
+  }) {
+    return guardApi(() async {
+      await _dio.post<Object?>(
+        '/payments/supplier/$paymentId/reverse',
+        data: {'clientMutationId': clientMutationId, 'reason': reason},
+      );
     });
   }
 

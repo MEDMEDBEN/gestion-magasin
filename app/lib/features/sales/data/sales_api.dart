@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/providers.dart';
+import '../../payments/data/payment_models.dart';
 import 'sales_models.dart';
 
 /// Accès réseau Caisse / Ventes / Clients. Aucune règle ici : le serveur fixe
@@ -59,9 +60,11 @@ class SalesApi {
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
     int? expectedTotalTtc,
+    String? dueDate,
   }) {
     return _post('/sales', {
       'expectedTotalTtc': ?expectedTotalTtc,
+      'dueDate': ?dueDate,
       'clientMutationId': clientMutationId,
       'customerId': ?customerId,
       'lines': [
@@ -127,6 +130,41 @@ class SalesApi {
           'customerId': customerId,
           'amount': amount,
         },
+      );
+    });
+  }
+
+  // ── Caisses (ADMIN) ─────────────────────────────────────────────────────
+  Future<CashSessionPage> cashSessions({int limit = 100}) {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/cash-sessions',
+        queryParameters: {'limit': limit},
+      );
+      return CashSessionPage.fromJson(response.data!);
+    });
+  }
+
+  // ── Historique et contre-passation des règlements ──────────────────────
+  Future<PaymentHistoryPage> customerPayments(String customerId) {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/customers/$customerId/payments',
+        queryParameters: {'limit': 200},
+      );
+      return PaymentHistoryPage.fromJson(response.data!);
+    });
+  }
+
+  Future<void> reverseCustomerPayment(
+    String paymentId, {
+    required String clientMutationId,
+    required String reason,
+  }) {
+    return guardApi(() async {
+      await _dio.post<Object?>(
+        '/payments/customer/$paymentId/reverse',
+        data: {'clientMutationId': clientMutationId, 'reason': reason},
       );
     });
   }

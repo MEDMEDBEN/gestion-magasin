@@ -40,8 +40,10 @@ class _FakeSalesApi extends SalesApi {
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
     int? expectedTotalTtc,
+    String? dueDate,
   }) async {
     sent = {
+      'dueDate': dueDate,
       'expectedTotalTtc': expectedTotalTtc,
       'id': clientMutationId,
       'customerId': customerId,

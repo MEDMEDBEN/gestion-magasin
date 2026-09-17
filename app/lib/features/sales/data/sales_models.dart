@@ -11,6 +11,8 @@ part 'sales_models.g.dart';
 @freezed
 abstract class CashSession with _$CashSession {
   const factory CashSession({
+    /// Caissier (liste admin des caisses).
+    String? userFullName,
     required String id,
     required String status,
     required int openingFloat,
@@ -66,9 +68,23 @@ abstract class Sale with _$Sale {
     required int remainingAmount,
     required List<SaleLine> lines,
     required DateTime soldAt,
+
+    /// Échéance d'une vente à crédit.
+    DateTime? dueDate,
   }) = _Sale;
 
   factory Sale.fromJson(Map<String, dynamic> json) => _$SaleFromJson(json);
+}
+
+@freezed
+abstract class CashSessionPage with _$CashSessionPage {
+  const factory CashSessionPage({
+    required List<CashSession> data,
+    required PageMeta meta,
+  }) = _CashSessionPage;
+
+  factory CashSessionPage.fromJson(Map<String, dynamic> json) =>
+      _$CashSessionPageFromJson(json);
 }
 
 @freezed
@@ -91,6 +107,9 @@ abstract class Customer with _$Customer {
     String? priceTierId,
     required int creditLimit,
     required int balanceDue,
+
+    /// Part de la dette dont l'échéance est dépassée.
+    @Default(0) int overdueAmount,
     required bool isActive,
   }) = _Customer;
 

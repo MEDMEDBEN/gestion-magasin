@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
+import '../../payments/data/payment_models.dart';
 import '../data/suppliers_api.dart';
 import '../data/suppliers_models.dart';
 
@@ -68,6 +69,22 @@ class SuppliersActions {
     );
     _ref.invalidate(supplierSearchProvider);
     return payment;
+  }
+}
+
+extension SupplierPaymentsActions on SuppliersActions {
+  Future<List<PaymentHistoryItem>> payments(String supplierId) async =>
+      (await _api.payments(supplierId)).data;
+
+  /// Contre-passation (ADMIN) : écriture opposée, la dette revient.
+  Future<void> reversePayment(String paymentId, String reason) async {
+    await runMoneyMutation(
+      _ref,
+      'reverse:supplier-payment:$paymentId',
+      (key) =>
+          _api.reversePayment(paymentId, clientMutationId: key, reason: reason),
+    );
+    _ref.invalidate(supplierSearchProvider);
   }
 }
 

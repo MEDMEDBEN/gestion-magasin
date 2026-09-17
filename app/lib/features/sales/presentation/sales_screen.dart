@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
 import '../../../core/money.dart';
@@ -14,6 +15,7 @@ import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../../catalog/data/catalog_repository.dart';
+import '../../payments/presentation/payment_history_dialog.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_models.dart';
 
@@ -26,16 +28,25 @@ class SalesRights {
       canInvoice = user.can('invoice.issue'),
       canManageCash = user.can('cash.session.manage'),
       canWriteCustomers = user.can('customer.write'),
-      canTakePayments = user.can('customer.payment.create');
+      canTakePayments = user.can('customer.payment.create'),
+      canReversePayments =
+          user.hasRole('ADMIN') && user.can('customer.payment.create'),
+      canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read');
 
   final bool canSell;
   final bool canInvoice;
   final bool canManageCash;
   final bool canWriteCustomers;
   final bool canTakePayments;
+
+  /// Contre-passation d'un règlement : ADMIN (miroir du guard serveur).
+  final bool canReversePayments;
+
+  /// Liste de toutes les caisses : ADMIN + cash.report.read.
+  final bool canSeeAllCash;
 }
 
-enum _Section { sale, customers }
+enum _Section { sale, customers, cashSessions }
 
 void _snack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
@@ -107,12 +118,20 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             children: [
               SegmentedButton<_Section>(
                 showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(value: _Section.sale, label: Text('Vente')),
-                  ButtonSegment(
+                segments: [
+                  const ButtonSegment(
+                    value: _Section.sale,
+                    label: Text('Vente'),
+                  ),
+                  const ButtonSegment(
                     value: _Section.customers,
                     label: Text('Clients'),
                   ),
+                  if (rights.canSeeAllCash)
+                    const ButtonSegment(
+                      value: _Section.cashSessions,
+                      label: Text('Caisses'),
+                    ),
                 ],
                 selected: {_section},
                 onSelectionChanged: (s) => setState(() => _section = s.first),
@@ -122,9 +141,14 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
           ),
         ),
         Expanded(
-          child: _section == _Section.sale
-              ? _SaleSection(margin: margin, rights: rights)
-              : _CustomersSection(margin: margin, rights: rights),
+          child: switch (_section) {
+            _Section.sale => _SaleSection(margin: margin, rights: rights),
+            _Section.customers => _CustomersSection(
+              margin: margin,
+              rights: rights,
+            ),
+            _Section.cashSessions => _CashSessionsSection(margin: margin),
+          },
         ),
       ],
     );
@@ -213,41 +237,110 @@ class _CashBar extends ConsumerWidget {
           .read(salesActionsProvider)
           .closeCash(cash.id, counted);
       if (!context.mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Rapport Z'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Fond : ${formatDA(report.openingFloat)}'),
-              Text(
-                'Ventes espèces : ${formatDA(report.cashSalesAmount)} '
-                '(${report.cashSalesCount})',
-              ),
-              Text('Entrées totales : ${formatDA(report.cashInAmount)}'),
-              Text('Sorties : ${formatDA(report.cashOutAmount)}'),
-              Text('Attendu : ${formatDA(report.expectedAmount ?? 0)}'),
-              Text('Compté : ${formatDA(report.countedAmount ?? 0)}'),
-              const SizedBox(height: 6),
-              Text(
-                'Écart : ${formatDA(report.difference ?? 0)}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        ),
-      );
+      await _showZReport(context, report);
     } on ApiException catch (error) {
       if (context.mounted) _snack(context, error.userMessage);
     }
+  }
+}
+
+/// Rapport Z d'une session (clôture ou consultation admin).
+Future<void> _showZReport(BuildContext context, CashSession report) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(
+        report.userFullName == null
+            ? 'Rapport Z'
+            : 'Rapport Z — ${report.userFullName}',
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Fond : ${formatDA(report.openingFloat)}'),
+          Text(
+            'Ventes espèces : ${formatDA(report.cashSalesAmount)} '
+            '(${report.cashSalesCount})',
+          ),
+          Text('Entrées totales : ${formatDA(report.cashInAmount)}'),
+          Text('Sorties : ${formatDA(report.cashOutAmount)}'),
+          Text('Attendu : ${formatDA(report.expectedAmount ?? 0)}'),
+          Text('Compté : ${formatDA(report.countedAmount ?? 0)}'),
+          const SizedBox(height: 6),
+          Text(
+            'Écart : ${formatDA(report.difference ?? 0)}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fermer'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Toutes les caisses (ADMIN) : qui, quand, attendu / compté / écart.
+class _CashSessionsSection extends ConsumerWidget {
+  const _CashSessionsSection({required this.margin});
+
+  final double margin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessions = ref.watch(cashSessionsProvider);
+    return sessions.when(
+      loading: () => const AmpereSkeletonList(rows: 5),
+      error: (error, _) => ScreenStateView(
+        status: error is ApiException && error.isOffline
+            ? ScreenStatus.offline
+            : ScreenStatus.error,
+        message: error is ApiException ? error.userMessage : '$error',
+        onRetry: () => ref.invalidate(cashSessionsProvider),
+      ),
+      data: (items) => items.isEmpty
+          ? const ScreenStateView(
+              status: ScreenStatus.empty,
+              title: 'Aucune caisse ouverte pour l’instant',
+            )
+          : ListView(
+              padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+              children: [
+                for (final s in items)
+                  Card(
+                    child: ListTile(
+                      title: Text(
+                        '${s.userFullName ?? 'Caissier'} · '
+                        '${formatDateTime(s.openedAt)}',
+                      ),
+                      subtitle: Text(
+                        s.status == 'OUVERTE'
+                            ? 'En cours · ${formatDA(s.currentAmount)} dans le tiroir'
+                            : 'Attendu ${formatDA(s.expectedAmount ?? 0)} · '
+                                  'compté ${formatDA(s.countedAmount ?? 0)}',
+                      ),
+                      trailing: AmpereBadge(
+                        label: s.status == 'OUVERTE'
+                            ? 'Ouverte'
+                            : (s.difference ?? 0) == 0
+                            ? 'Juste'
+                            : 'Écart ${formatDA(s.difference!)}',
+                        tone: s.status == 'OUVERTE'
+                            ? StatusTone.info
+                            : (s.difference ?? 0) == 0
+                            ? StatusTone.ok
+                            : StatusTone.warn,
+                      ),
+                      onTap: () => _showZReport(context, s),
+                    ),
+                  ),
+              ],
+            ),
+    );
   }
 }
 
@@ -356,11 +449,28 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     );
     if (received == null || !mounted) return;
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
+    // Crédit : l'échéance est obligatoire (le serveur la refuse sinon).
+    DateTime? dueDate;
+    if (kept < estimate.totalTtc && cart.customer != null) {
+      final today = DateUtils.dateOnly(DateTime.now());
+      dueDate = await showDatePicker(
+        context: context,
+        helpText: 'Échéance du crédit de ${formatDA(estimate.totalTtc - kept)}',
+        initialDate: today.add(const Duration(days: 30)),
+        firstDate: today,
+        lastDate: today.add(const Duration(days: 730)),
+      );
+      if (dueDate == null || !mounted) return;
+    }
     setState(() => _busy = true);
     try {
       final sale = await ref
           .read(salesActionsProvider)
-          .checkout(kept, expectedTotalTtc: estimate.totalTtc);
+          .checkout(
+            kept,
+            expectedTotalTtc: estimate.totalTtc,
+            dueDate: dueDate,
+          );
       if (!mounted) return;
       final change = received - kept;
       await _showTicket(sale, change: change);
@@ -926,6 +1036,39 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     }
   }
 
+  Future<void> _openCustomer(Customer customer) async {
+    final rights = widget.rights;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(customer.name),
+        children: [
+          if (rights.canTakePayments && customer.balanceDue > 0)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('pay'),
+              child: const Text('Encaisser un règlement'),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('history'),
+            child: const Text('Historique des règlements'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'pay') return _pay(customer);
+    final actions = ref.read(salesActionsProvider);
+    await showPaymentHistory(
+      context,
+      title: 'Règlements — ${customer.name}',
+      load: () => actions.customerPayments(customer.id),
+      onReverse: rights.canReversePayments
+          ? (payment, reason) =>
+                actions.reverseCustomerPayment(payment.id, reason)
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -997,20 +1140,20 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 AmpereBadge(
-                                  label: c.balanceDue > 0
+                                  label: c.overdueAmount > 0
+                                      ? 'En retard ${formatDA(c.overdueAmount)}'
+                                      : c.balanceDue > 0
                                       ? 'Dette ${formatDA(c.balanceDue)}'
                                       : 'À jour',
-                                  tone: c.balanceDue > 0
+                                  tone: c.overdueAmount > 0
+                                      ? StatusTone.error
+                                      : c.balanceDue > 0
                                       ? StatusTone.warn
                                       : StatusTone.ok,
                                 ),
                               ],
                             ),
-                            onTap:
-                                widget.rights.canTakePayments &&
-                                    c.balanceDue > 0
-                                ? () => _pay(c)
-                                : null,
+                            onTap: () => _openCustomer(c),
                           ),
                         ),
                     ],

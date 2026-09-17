@@ -10,6 +10,7 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
+import '../../payments/presentation/payment_history_dialog.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
 
@@ -22,6 +23,8 @@ class SupplierRights {
           user.can('supplier.read'),
       canWrite = user.hasRole('ADMIN') && user.can('supplier.write'),
       canPay = user.hasRole('ADMIN') && user.can('supplier.payment.create');
+
+  /// Contre-passation : même droit que le paiement (ADMIN).
 
   final bool canRead;
   final bool canWrite;
@@ -132,9 +135,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                                   ? StatusTone.warn
                                   : StatusTone.ok,
                             ),
-                            onTap: rights.canWrite || rights.canPay
-                                ? () => _openActions(s, rights)
-                                : null,
+                            onTap: () => _openActions(s, rights),
                           ),
                         ),
                     ],
@@ -162,6 +163,11 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 title: const Text('Enregistrer un paiement'),
                 onTap: () => Navigator.of(context).pop('pay'),
               ),
+            ListTile(
+              leading: const Icon(LucideIcons.history, size: 18),
+              title: const Text('Historique des paiements'),
+              onTap: () => Navigator.of(context).pop('history'),
+            ),
             if (rights.canWrite)
               ListTile(
                 leading: const Icon(LucideIcons.pencil, size: 18),
@@ -173,8 +179,19 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
       ),
     );
     if (!mounted) return;
-    if (action == 'pay') await _pay(supplier);
-    if (action == 'edit') await _openForm(supplier);
+    if (action == 'pay') return _pay(supplier);
+    if (action == 'edit') return _openForm(supplier);
+    if (action == 'history') {
+      final actions = ref.read(suppliersActionsProvider);
+      await showPaymentHistory(
+        context,
+        title: 'Paiements — ${supplier.name}',
+        load: () => actions.payments(supplier.id),
+        onReverse: rights.canPay
+            ? (payment, reason) => actions.reversePayment(payment.id, reason)
+            : null,
+      );
+    }
   }
 
   Future<void> _openForm(Supplier? existing) =>

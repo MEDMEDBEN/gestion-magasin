@@ -4,11 +4,52 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
-## ⚠️ REVUE GÉNÉRALE DU 2026-09-16 — À LIRE AVANT DE CODER
-Bilan complet de toutes les couches (sécurité, BDD, backend, app) : **`docs/revue-generale-2026-09-16.md`**.
-Tests tous verts (79 unit · 212 e2e · 189 app), aucune faille critique, mais **3 bloquants** (caisse négative à
-l'annulation de vente, double paiement au réessai manuel dans l'app, catalogue local non rafraîchi hors écran
-Catalogue) et une liste de corrections à faire **AVANT P0 #7**. Reprendre par le plan §5 de ce document.
+## ✅ CORRECTIONS DE LA REVUE GÉNÉRALE — 2026-09-17 · **MEDMEDBEN** (à lire avant de coder)
+Bilan de départ : `docs/revue-generale-2026-09-16.md`. Règles durcies ajoutées dans `CONVENTIONS.md` (« Invariants &
+anti-récidive », 6 règles). Tout ce qui suit est poussé sur `develop`, **non mergé sur `main`** (re-revue d'abord).
+
+**Bloquants — corrigés de façon GÉNÉRALISÉE**
+1. **Caisse jamais négative** : `CashSessionsService.withdraw` = SEUL chemin de sortie d'espèces (annulation de vente,
+   paiement fournisseur, contre-passation d'un règlement) → `CASH_INSUFFICIENT`. `deposit` pour les entrées hors vente.
+2. **Idempotence de toutes les mutations d'argent** : `common/idempotency.ts` (`clientMutationId` OBLIGATOIRE, renvoi
+   identique = même résultat, autre contenu = 409, envois simultanés relus) sur ventes, règlements clients, paiements
+   fournisseurs, ouverture ET clôture de caisse, contre-passations. Migration additive `money_idempotency_and_reversals`.
+   App : `core/mutation_keys.dart` garde la clé PAR INTENTION jusqu'au succès (fin du double paiement au réessai).
+3. **Catalogue local** : synchro lancée par la coquille à chaque connexion + à l'entrée en Vente ; état affiché si vide.
+
+**Stabilité**
+- **Guard unique** : `FreshAccessGuard` GLOBAL sur toute écriture authentifiée (plus aucun `@UseGuards` à oublier) ;
+  lecture sensible : `@RequireFreshAccess()` (comptes).
+- Annulation/retour possibles sur produit désactivé (seules les SORTIES sont refusées) ; **unité figée** après mouvement.
+- Tri en liste blanche + fin des N+1 (ventes, clients, fournisseurs, commandes).
+- **Lint à zéro** (`.gitattributes` eol=lf, `argsIgnorePattern '^_'`) ; **e2e en un seul passage** sur une **base de test
+  dédiée** `<base>_test` (créée, migrée et seedée par `test/global-setup.ts`, timeout 30 s) — la base de dev n'est plus touchée.
+- Facture : numéro et date calculés sur le MÊME instant (plus de `FA-2026` daté 2027).
+- **Tests de concurrence** (règle 6) : règlements simultanés, clôture pendant des ventes, changement d'année de
+  numérotation, mutations offline concurrentes sur le même stock (`test/concurrency.e2e-spec.ts`).
+
+**Décisions MEDMEDBEN 2026-09-16 — implémentées (serveur + app)**
+- **Liste des caisses (ADMIN)** : `GET /cash-sessions` (filtres statut/caissier/période) ; app : onglet « Caisses » → rapport Z.
+- **Échéance** : `dueDate` OBLIGATOIRE sur toute vente à crédit (aujourd'hui ou plus tard, interdite si soldée) ;
+  `overdueAmount` sur la fiche client ; app : calendrier à l'encaissement à crédit, badge « En retard ».
+- **Annulation de paiement par CONTRE-PASSATION** (jamais suppression) : `POST /payments/customer/:id/reverse` et
+  `/payments/supplier/:id/reverse` (ADMIN, motif obligatoire, une seule fois, rejouable) + historiques
+  `GET /customers/:id/payments`, `GET /suppliers/:id/payments` ; app : dialogue d'historique commun avec « Contre-passer ».
+
+**Preuves (2026-09-17)** : backend `eslint` 0 erreur · **81** unit · **232** e2e (17 suites, un seul passage) ;
+app `flutter analyze` propre · **+203 ~27**. Protections contre-éprouvées (garde retiré → test en échec) : caisse,
+relecture concurrente, clé gardée, synchro coquille/Vente, guard global, produit désactivé, unité figée.
+
+**Reste à faire (dans l'ordre)**
+1. **Re-revue `reviewer` + `security-reviewer`** de ces corrections → merge `develop`→`main` seulement si verte.
+2. Mettre à jour `docs/permissions.md` (contre-passation = ADMIN, liste des caisses = ADMIN + `cash.report.read`).
+3. Relecture humaine des captures 21-27 (une nouvelle capture « Caisses » / historique serait utile).
+4. Puis **P0 #7 Réceptions** (verrou `FOR UPDATE` commun avec l'annulation de commande, surlivraison refusée, dette
+   fournisseur = reprise + reçu − paiements).
+- **Avant production (tracé, non fait)** : NestJS 11 (vulnérabilités `npm audit`), `backend/Dockerfile` + `.dockerignore`,
+  MinIO non exposé + utilisateur dédié, signature Android release.
+- Autres points de la revue encore ouverts : quantité décimale au panier (vente au mètre), note de commande effacée en
+  modification, méthode « VIREMENT » forcée hors caisse, listes app limitées à une page, localisation FR des widgets.
 
 ## Phase actuelle
 `Phase 0` **TERMINÉE**. **FEATURE P0 #1 — Auth + utilisateurs : CLOSE le 2026-09-14** (écrans validés par
