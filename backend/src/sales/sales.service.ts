@@ -392,10 +392,19 @@ export class SalesService {
       }
       if (sale!.invoiceNumber) return this.toDto(tx, sale!);
 
-      const invoiceNumber = await nextDocumentNumber(tx, 'FACTURE', 'FA', 6);
+      // UN seul instant pour l'année du numéro ET la date de facture : à minuit
+      // le 31/12, jamais « FA-2026-… » daté de 2027.
+      const invoicedAt = new Date();
+      const invoiceNumber = await nextDocumentNumber(
+        tx,
+        'FACTURE',
+        'FA',
+        6,
+        localYear(invoicedAt),
+      );
       const invoiced = await tx.sale.update({
         where: { id },
-        data: { type: 'FACTURE', invoiceNumber, invoicedAt: new Date() },
+        data: { type: 'FACTURE', invoiceNumber, invoicedAt },
         include: SALE_INCLUDE,
       });
       await writeAudit(tx, actor, {
