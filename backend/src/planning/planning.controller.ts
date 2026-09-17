@@ -7,7 +7,13 @@ import {
   ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 import { RequirePermissions, RoleCode, Roles } from '../common/auth.decorators';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { notImplemented } from '../common/not-implemented';
@@ -26,10 +32,16 @@ export enum PlanningTaskTypeDto {
 
 export class CreatePlanningTaskDto {
   @ApiProperty() @IsString() @MinLength(2) title!: string;
-  @ApiProperty({ enum: PlanningTaskTypeDto }) @IsEnum(PlanningTaskTypeDto) type!: PlanningTaskTypeDto;
+  @ApiProperty({ enum: PlanningTaskTypeDto })
+  @IsEnum(PlanningTaskTypeDto)
+  type!: PlanningTaskTypeDto;
   @ApiProperty() @IsUUID() assignedToId!: string;
-  @ApiProperty({ description: 'Date prévue (ISO 8601).' }) @IsString() scheduledFor!: string;
-  @ApiProperty({ description: 'Échéance (ISO 8601).' }) @IsString() dueDate!: string;
+  @ApiProperty({ description: 'Date prévue (ISO 8601).' })
+  @IsString()
+  scheduledFor!: string;
+  @ApiProperty({ description: 'Échéance (ISO 8601).' })
+  @IsString()
+  dueDate!: string;
   @ApiPropertyOptional() @IsUUID() @IsOptional() locationId?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() zone?: string;
   @ApiPropertyOptional() @IsString() @IsOptional() description?: string;
@@ -39,10 +51,14 @@ export class PlanningTaskDto {
   @ApiProperty() id!: string;
   @ApiProperty() title!: string;
   @ApiProperty({ enum: PlanningTaskTypeDto }) type!: PlanningTaskTypeDto;
-  @ApiProperty({ example: 'A_FAIRE', description: 'A_FAIRE → EN_COURS → TERMINEE' })
+  @ApiProperty({
+    example: 'A_FAIRE',
+    description: 'A_FAIRE → EN_COURS → TERMINEE',
+  })
   status!: string;
   @ApiProperty({
-    description: 'CALCULÉ : échéance dépassée et tâche non terminée. Jamais stocké.',
+    description:
+      'CALCULÉ : échéance dépassée et tâche non terminée. Jamais stocké.',
   })
   isLate!: boolean;
   @ApiProperty() dueDate!: Date;
@@ -51,7 +67,10 @@ export class PlanningTaskDto {
 export class AuditLogDto {
   @ApiProperty() id!: string;
   @ApiProperty({ nullable: true }) userId!: string | null;
-  @ApiProperty({ example: 'UPDATE', description: 'CREATE | UPDATE | CANCEL | VALIDATE | ADJUST' })
+  @ApiProperty({
+    example: 'UPDATE',
+    description: 'CREATE | UPDATE | CANCEL | VALIDATE | ADJUST',
+  })
   action!: string;
   @ApiProperty() entityType!: string;
   @ApiProperty() entityId!: string;

@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuthenticatedUser } from './auth.decorators';
+import {
+  ALLOW_PASSWORD_CHANGE_KEY,
+  AuthenticatedUser,
+  FRESH_READ_KEY,
+  IS_PUBLIC_KEY,
+} from './auth.decorators';
 import { BusinessException } from './business.exception';
 import { ErrorCode } from './error-codes';
 import { routeRequirement } from './roles.guard';
@@ -17,8 +22,10 @@ import {
 } from './user-access';
 
 /// Revérifie l'accès contre l'état COURANT du compte en base, et non contre le
-/// token. S'ajoute (`@UseGuards`) aux guards globaux, sur les routes rares et
-/// sensibles uniquement.
+/// token. Guard GLOBAL unique (après JWT et rôles) : il s'applique à TOUTE
+/// écriture authentifiée (POST, PUT, PATCH, DELETE) — argent, stock, catalogue,
+/// comptes, sync — sans décorateur à ne pas oublier sur une nouvelle route.
+/// Une lecture sensible s'y soumet avec `@RequireFreshAccess()`.
 ///
 /// Pourquoi : l'access token dénormalise rôles et permissions pour 15 min. Sur la
 /// gestion des comptes, cette fenêtre permettrait à un admin qu'on vient de
@@ -36,7 +43,20 @@ export class FreshAccessGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<{ user?: AuthenticatedUser }>();
+    const handlers = [context.getHandler(), context.getClass()];
+    const request = context
+      .switchToHttp()
+      .getRequest<{ user?: AuthenticatedUser; method: string }>();
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, handlers)) {
+      return true;
+    }
+    const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
+    const freshRead = this.reflector.getAllAndOverride<boolean>(
+      FRESH_READ_KEY,
+      handlers,
+    );
+    if (!isWrite && !freshRead) return true;
+
     const tokenUser = request.user;
     if (!tokenUser) {
       throw new BusinessException(
@@ -84,7 +104,13 @@ export class FreshAccessGuard implements CanActivate {
 
     // Un reset par l'admin pose `mustChangePassword` en base : il s'applique
     // sans attendre le prochain token.
-    if (current.mustChangePassword) {
+    if (
+      current.mustChangePassword &&
+      !this.reflector.getAllAndOverride<boolean>(
+        ALLOW_PASSWORD_CHANGE_KEY,
+        handlers,
+      )
+    ) {
       throw new BusinessException(
         ErrorCode.PASSWORD_CHANGE_REQUIRED,
         'Changement de mot de passe obligatoire avant toute autre action',

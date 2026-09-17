@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,6 +23,7 @@ import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RequirePermissions,
   RoleCode,
   Roles,
@@ -31,7 +31,6 @@ import {
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
-import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateUserDto,
@@ -52,7 +51,7 @@ import { UsersService } from './users.service';
 @ApiForbiddenResponse({ type: ErrorResponseDto })
 @Roles(RoleCode.ADMIN)
 @RequirePermissions(PERMISSIONS.USER_MANAGE)
-@UseGuards(FreshAccessGuard)
+@RequireFreshAccess()
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -96,7 +95,10 @@ export class UsersController {
       'modifie ni ses propres rôles ni sa propre activation.',
   })
   @ApiOkResponse({ type: UserDto })
-  @ApiConflictResponse({ type: ErrorResponseDto, description: '`LAST_ACTIVE_ADMIN`' })
+  @ApiConflictResponse({
+    type: ErrorResponseDto,
+    description: '`LAST_ACTIVE_ADMIN`',
+  })
   @ApiForbiddenResponse({
     type: ErrorResponseDto,
     description:
@@ -109,14 +111,19 @@ export class UsersController {
     @CurrentUser() actor: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<UserDto> {
-    return this.usersService.update(id, dto, UsersController.actorOf(actor, ip));
+    return this.usersService.update(
+      id,
+      dto,
+      UsersController.actorOf(actor, ip),
+    );
   }
 
   @Post(':id/reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Réinitialise le mot de passe',
-    description: 'Repose un mot de passe temporaire et coupe toutes les sessions.',
+    description:
+      'Repose un mot de passe temporaire et coupe toutes les sessions.',
   })
   @ApiOkResponse({ type: UserDto })
   resetPassword(

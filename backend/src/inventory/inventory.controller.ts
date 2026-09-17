@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -34,7 +42,9 @@ export class CreateInventoryDto {
   @ApiProperty({ enum: InventoryTypeDto, default: InventoryTypeDto.COMPLET })
   @IsEnum(InventoryTypeDto)
   type!: InventoryTypeDto;
-  @ApiPropertyOptional({ description: 'Zone comptée pour un inventaire tournant.' })
+  @ApiPropertyOptional({
+    description: 'Zone comptée pour un inventaire tournant.',
+  })
   @IsString()
   @IsOptional()
   zone?: string;
@@ -43,7 +53,10 @@ export class CreateInventoryDto {
 
 export class CountLineDto {
   @ApiProperty() @IsUUID() productId!: string;
-  @ApiProperty({ example: '47.500', description: 'Quantité physiquement comptée.' })
+  @ApiProperty({
+    example: '47.500',
+    description: 'Quantité physiquement comptée.',
+  })
   @IsNumberString()
   countedQuantity!: string;
 }
@@ -60,7 +73,8 @@ export class SubmitCountDto {
 export class InventoryDto {
   @ApiProperty() id!: string;
   @ApiProperty() number!: string;
-  @ApiProperty({ example: 'EN_COURS', description: 'EN_COURS → TERMINE' }) status!: string;
+  @ApiProperty({ example: 'EN_COURS', description: 'EN_COURS → TERMINE' })
+  status!: string;
   @ApiProperty({ enum: InventoryTypeDto }) type!: InventoryTypeDto;
   @ApiProperty({ nullable: true }) validatedAt!: Date | null;
 }
@@ -68,9 +82,12 @@ export class InventoryDto {
 export class InventoryLineDto {
   @ApiProperty() productId!: string;
   @ApiProperty({ example: '50.000' }) theoreticalQuantity!: string;
-  @ApiProperty({ example: '47.500', nullable: true }) countedQuantity!: string | null;
-  @ApiProperty({ example: '-2.500', description: 'compté − théorique' }) difference!: string;
-  @ApiProperty({ example: 'ECART', description: 'CONFORME | ECART' }) state!: string;
+  @ApiProperty({ example: '47.500', nullable: true }) countedQuantity!:
+    string | null;
+  @ApiProperty({ example: '-2.500', description: 'compté − théorique' })
+  difference!: string;
+  @ApiProperty({ example: 'ECART', description: 'CONFORME | ECART' })
+  state!: string;
 }
 
 /// CONTRAT FIGÉ — implémentation avec la feature P0 n°9 « Inventaire ».
@@ -104,7 +121,8 @@ export class InventoryController {
   @Post(':id/count')
   @ApiOperation({
     summary: 'Saisit le comptage physique',
-    description: 'Calcule l’écart par ligne. AUCUN mouvement de stock à cette étape.',
+    description:
+      'Calcule l’écart par ligne. AUCUN mouvement de stock à cette étape.',
   })
   @ApiOkResponse({ type: [InventoryLineDto] })
   submitCount(

@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,7 +27,6 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
-import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   ConfirmPurchaseOrderDto,
@@ -48,7 +46,6 @@ export class PurchaseOrdersController {
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
-  @UseGuards(FreshAccessGuard)
   @Post()
   @ApiOperation({
     summary: 'Crée une commande fournisseur (admin ou magasinier)',
@@ -91,7 +88,6 @@ export class PurchaseOrdersController {
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
-  @UseGuards(FreshAccessGuard)
   @Patch(':id')
   @ApiOperation({
     summary: 'Modifie une commande non confirmée (lignes remplacées)',
@@ -112,7 +108,6 @@ export class PurchaseOrdersController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.PURCHASE_CONFIRM)
-  @UseGuards(FreshAccessGuard)
   @Post(':id/confirm')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -137,7 +132,6 @@ export class PurchaseOrdersController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.PURCHASE_CONFIRM)
-  @UseGuards(FreshAccessGuard)
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

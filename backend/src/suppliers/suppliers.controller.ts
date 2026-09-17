@@ -7,7 +7,6 @@ import {
   Patch,
   Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -26,7 +25,6 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
-import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateSupplierDto,
@@ -68,7 +66,6 @@ export class SuppliersController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SUPPLIER_WRITE)
-  @UseGuards(FreshAccessGuard)
   @Post()
   @ApiOperation({
     summary: 'Crée un fournisseur (admin uniquement)',
@@ -86,7 +83,6 @@ export class SuppliersController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SUPPLIER_WRITE)
-  @UseGuards(FreshAccessGuard)
   @Patch(':id')
   @ApiOperation({ summary: 'Modifie un fournisseur (admin uniquement)' })
   @ApiOkResponse({ type: SupplierDto })
@@ -108,7 +104,6 @@ export class SupplierPaymentsController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
-  @UseGuards(FreshAccessGuard)
   @Post('supplier')
   @ApiOperation({
     summary: 'Enregistre un paiement fournisseur (admin uniquement)',

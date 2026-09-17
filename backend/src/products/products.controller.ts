@@ -12,7 +12,6 @@ import {
   Query,
   Res,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -39,7 +38,6 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
-import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import { CatalogService } from './catalog.service';
 import { CatalogChangesDto, CatalogChangesQueryDto } from './dto/catalog.dto';
@@ -231,7 +229,6 @@ export class ProductsController {
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
   // Route sensible (prix) : accès relu en base (CONVENTIONS.md § Sécurité, audit M5).
-  @UseGuards(FreshAccessGuard)
   @Post(':id/prices')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

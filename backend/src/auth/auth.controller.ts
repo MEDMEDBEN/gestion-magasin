@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Post,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -45,13 +53,19 @@ const changePasswordLimit = () => intFromEnv('AUTH_CHANGE_PASSWORD_LIMIT', 5);
 /// magasin sortent par la même IP — compté par IP seule, un employé malveillant
 /// bloquerait les connexions de TOUT le magasin en échouant 10 fois (contre-audit
 /// N10). Un attaquant reste limité à 10 essais / 15 min par compte et par IP.
-const loginTracker = (req: { ip?: string; body?: { identifier?: unknown } }): string => {
+const loginTracker = (req: {
+  ip?: string;
+  body?: { identifier?: unknown };
+}): string => {
   const identifier = normalizeIdentifier(req.body?.identifier);
   return `${req.ip}|${typeof identifier === 'string' ? identifier : ''}`;
 };
 
 @ApiTags('Auth')
-@ApiTooManyRequestsResponse({ type: ErrorResponseDto, description: '`RATE_LIMITED`' })
+@ApiTooManyRequestsResponse({
+  type: ErrorResponseDto,
+  description: '`RATE_LIMITED`',
+})
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -59,7 +73,11 @@ export class AuthController {
   @Public()
   // Anti-brute-force : 10 tentatives / 15 min par IP réelle (`configureApp`) et par compte.
   @Throttle({
-    default: { ttl: RATE_WINDOW_MS, limit: loginLimit, getTracker: loginTracker },
+    default: {
+      ttl: RATE_WINDOW_MS,
+      limit: loginLimit,
+      getTracker: loginTracker,
+    },
   })
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -87,7 +105,10 @@ export class AuthController {
   })
   @ApiOkResponse({ type: LoginResponseDto })
   @ApiUnauthorizedResponse({ type: ErrorResponseDto })
-  refresh(@Body() dto: RefreshDto, @Ip() ip: string): Promise<LoginResponseDto> {
+  refresh(
+    @Body() dto: RefreshDto,
+    @Ip() ip: string,
+  ): Promise<LoginResponseDto> {
     return this.authService.refresh(dto.refreshToken, ip);
   }
 

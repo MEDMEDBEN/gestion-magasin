@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -61,7 +69,8 @@ export class PrepareTransferLineDto {
   @ApiProperty() @IsUUID() productId!: string;
   @ApiProperty({
     example: '18.000',
-    description: 'Préparation PARTIELLE autorisée : quantité réellement préparée.',
+    description:
+      'Préparation PARTIELLE autorisée : quantité réellement préparée.',
   })
   @IsNumberString()
   preparedQuantity!: string;
@@ -99,7 +108,8 @@ export class TransfersController {
   @Post()
   @ApiOperation({
     summary: 'Crée une demande magasin → dépôt',
-    description: 'Une demande est un vrai transfert suivi, jamais un simple message.',
+    description:
+      'Une demande est un vrai transfert suivi, jamais un simple message.',
   })
   @ApiOkResponse({ type: TransferDto })
   request(@Body() _dto: CreateTransferDto): Promise<TransferDto> {
@@ -118,7 +128,9 @@ export class TransfersController {
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.TRANSFER_PREPARE)
   @Post(':id/prepare')
-  @ApiOperation({ summary: 'Prépare la demande (préparation partielle autorisée)' })
+  @ApiOperation({
+    summary: 'Prépare la demande (préparation partielle autorisée)',
+  })
   @ApiOkResponse({ type: TransferDto })
   prepare(
     @Param('id', ParseUUIDPipe) _id: string,
@@ -132,7 +144,8 @@ export class TransfersController {
   @Post(':id/ship')
   @ApiOperation({
     summary: 'Expédie le transfert',
-    description: 'Sort le stock du dépôt vers TRANSIT (mouvement TRANSFERT_SORTIE).',
+    description:
+      'Sort le stock du dépôt vers TRANSIT (mouvement TRANSFERT_SORTIE).',
   })
   @ApiOkResponse({ type: TransferDto })
   ship(@Param('id', ParseUUIDPipe) _id: string): Promise<TransferDto> {

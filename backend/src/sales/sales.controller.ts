@@ -9,7 +9,6 @@ import {
   Post,
   Query,
   StreamableFile,
-  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -31,7 +30,6 @@ import {
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
-import { FreshAccessGuard } from '../common/fresh-access.guard';
 import { PERMISSIONS } from '../common/permissions';
 import {
   CreateSaleDto,
@@ -50,7 +48,6 @@ export class SalesController {
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.SALE_CREATE)
   // Remise et crédit se décident sur les droits : relus en base, pas dans le token.
-  @UseGuards(FreshAccessGuard)
   @Post()
   @ApiOperation({
     summary: 'Valide une vente au comptoir du magasin',
@@ -121,7 +118,6 @@ export class SalesController {
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.INVOICE_ISSUE)
-  @UseGuards(FreshAccessGuard)
   @Post(':id/invoice')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -144,7 +140,6 @@ export class SalesController {
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.SALE_CANCEL)
-  @UseGuards(FreshAccessGuard)
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

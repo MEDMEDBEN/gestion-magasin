@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { FreshAccessGuard } from './common/fresh-access.guard';
 import { AppController } from './app.controller';
 
 import { AuthModule } from './auth/auth.module';
@@ -55,6 +56,8 @@ import { UsersModule } from './users/users.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAccessGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Toute écriture relit compte, session et droits EN BASE (jamais le token seul).
+    { provide: APP_GUARD, useClass: FreshAccessGuard },
   ],
 })
 export class AppModule {}
