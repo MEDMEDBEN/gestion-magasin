@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
+import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -196,18 +197,28 @@ class SalesActions {
   SalesApi get _api => _ref.read(salesApiProvider);
 
   Future<CashSession> openCash(String storeId, int openingFloat) async {
-    final session = await _api.openCashSession(
-      locationId: storeId,
-      openingFloat: openingFloat,
+    final session = await runMoneyMutation(
+      _ref,
+      'cash-open',
+      (key) => _api.openCashSession(
+        clientMutationId: key,
+        locationId: storeId,
+        openingFloat: openingFloat,
+      ),
     );
     _ref.invalidate(currentCashSessionProvider);
     return session;
   }
 
   Future<CashSession> closeCash(String sessionId, int countedAmount) async {
-    final report = await _api.closeCashSession(
-      sessionId,
-      countedAmount: countedAmount,
+    final report = await runMoneyMutation(
+      _ref,
+      'cash-close:$sessionId',
+      (key) => _api.closeCashSession(
+        sessionId,
+        clientMutationId: key,
+        countedAmount: countedAmount,
+      ),
     );
     _ref.invalidate(currentCashSessionProvider);
     return report;
@@ -219,15 +230,23 @@ class SalesActions {
   /// s'il a changé, pour ne jamais encaisser ou rendre la monnaie sur un faux total.
   Future<Sale> checkout(int paidAmount, {required int expectedTotalTtc}) async {
     final cart = _ref.read(cartProvider);
-    final sale = await _api.createSale(
-      id: cart.saleId,
-      customerId: cart.customer?.id,
-      lines: [
-        for (final line in cart.lines)
-          (productId: line.product.id, quantity: quantityToJson(line.quantity)),
-      ],
-      paidAmount: paidAmount,
-      expectedTotalTtc: expectedTotalTtc,
+    // L'intention « valider CE panier » garde sa clé jusqu'au succès.
+    final sale = await runMoneyMutation(
+      _ref,
+      'sale:${cart.saleId}',
+      (key) => _api.createSale(
+        clientMutationId: key,
+        customerId: cart.customer?.id,
+        lines: [
+          for (final line in cart.lines)
+            (
+              productId: line.product.id,
+              quantity: quantityToJson(line.quantity),
+            ),
+        ],
+        paidAmount: paidAmount,
+        expectedTotalTtc: expectedTotalTtc,
+      ),
     );
     _ref.read(cartProvider.notifier).clear();
     _ref.invalidate(currentCashSessionProvider);
@@ -256,17 +275,18 @@ class SalesActions {
     return customer;
   }
 
-  /// `paymentId` : généré UNE fois par saisie — un renvoi après coupure
+  /// Clé d'idempotence gardée par intention (`core/mutation_keys.dart`) : un
+  /// nouvel essai après coupure ou délai dépassé
   /// réutilise le même id et le serveur n'efface pas la dette deux fois.
-  Future<void> payCustomer(
-    String customerId,
-    int amount, {
-    required String paymentId,
-  }) async {
-    await _api.payCustomer(
-      id: paymentId,
-      customerId: customerId,
-      amount: amount,
+  Future<void> payCustomer(String customerId, int amount) async {
+    await runMoneyMutation(
+      _ref,
+      'customer-payment:$customerId',
+      (key) => _api.payCustomer(
+        clientMutationId: key,
+        customerId: customerId,
+        amount: amount,
+      ),
     );
     _ref.invalidate(customerSearchProvider);
     _ref.invalidate(currentCashSessionProvider);

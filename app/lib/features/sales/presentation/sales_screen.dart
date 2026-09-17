@@ -5,7 +5,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
 import '../../../core/money.dart';
-import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -875,7 +874,6 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
   }
 
   Future<void> _pay(Customer customer) async {
-    final paymentId = ref.read(uuidProvider).v7();
     final amount = await _askAmount(
       context,
       title: 'Règlement de ${customer.name}',
@@ -886,11 +884,9 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (amount == null || amount == 0 || !mounted) return;
     try {
-      // Même id à chaque nouvel essai de CE règlement.
+      // Même clé à chaque essai de ce règlement, dialogue rouvert compris.
       await _retryable(
-        () => ref
-            .read(salesActionsProvider)
-            .payCustomer(customer.id, amount, paymentId: paymentId),
+        () => ref.read(salesActionsProvider).payCustomer(customer.id, amount),
       );
       if (mounted) {
         _snack(context, 'Règlement de ${formatDA(amount)} encaissé.');

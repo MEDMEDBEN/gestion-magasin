@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
@@ -17,6 +18,10 @@ class _FakeSuppliersApi extends SuppliersApi {
   _FakeSuppliersApi() : super(Dio());
 
   Map<String, Object?>? payment;
+  final List<String> keys = [];
+
+  /// Nombre d'échecs réseau à simuler avant d'accepter le paiement.
+  int failuresBeforeSuccess = 0;
   Map<String, Object?>? saved;
 
   final _suppliers = [
@@ -59,9 +64,15 @@ class _FakeSuppliersApi extends SuppliersApi {
   @override
   Future<SupplierPayment> pay(Map<String, Object?> fields) async {
     payment = fields;
+    keys.add(fields['clientMutationId']! as String);
+    if (failuresBeforeSuccess > 0) {
+      failuresBeforeSuccess--;
+      // Délai dépassé : on ne sait pas si le serveur a appliqué le paiement.
+      throw const ApiException(statusCode: 0, message: 'Délai dépassé');
+    }
     final amount = fields['amount']! as int;
     return SupplierPayment(
-      id: fields['id']! as String,
+      id: fields['clientMutationId']! as String,
       supplierId: fields['supplierId']! as String,
       amount: amount,
       method: fields['fromCash'] == true ? 'ESPECES' : 'VIREMENT',
@@ -139,6 +150,32 @@ void main() {
     expect(api.payment, containsPair('supplierId', 's1'));
     expect(find.textContaining('reste dû'), findsOneWidget);
   });
+
+  testWidgets(
+    'délai dépassé puis nouvel essai (dialogue rouvert) : MÊME clé, jamais un second paiement',
+    (tester) async {
+      final api = await _pump(tester, _admin());
+      api.failuresBeforeSuccess = 1;
+
+      Future<void> payOnce() async {
+        await tester.tap(find.text('Sonelec'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Enregistrer un paiement'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, '1000');
+        await tester.tap(find.text('Enregistrer'));
+        await tester.pumpAndSettle();
+      }
+
+      await payOnce(); // échoue (réseau)
+      await payOnce(); // l'utilisateur réessaie
+      expect(api.keys, hasLength(2));
+      expect(api.keys.toSet(), hasLength(1));
+
+      await payOnce(); // paiement suivant, confirmé : NOUVELLE opération
+      expect(api.keys.last, isNot(api.keys.first));
+    },
+  );
 
   testWidgets('paiement refusé au-delà du reste dû (avant tout appel)', (
     tester,

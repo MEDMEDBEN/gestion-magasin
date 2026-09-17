@@ -4,7 +4,6 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
-import '../../../core/providers.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -182,7 +181,6 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
       openFormPanel<void>(context, _SupplierForm(existing: existing));
 
   Future<void> _pay(Supplier supplier) async {
-    final paymentId = ref.read(uuidProvider).v7();
     final result = await showDialog<({int amount, bool fromCash})>(
       context: context,
       builder: (context) => _PaymentDialog(supplier: supplier),
@@ -191,12 +189,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     try {
       final payment = await ref
           .read(suppliersActionsProvider)
-          .pay(
-            supplier.id,
-            result.amount,
-            fromCash: result.fromCash,
-            paymentId: paymentId,
-          );
+          .pay(supplier.id, result.amount, fromCash: result.fromCash);
       if (mounted) {
         _snack(
           context,

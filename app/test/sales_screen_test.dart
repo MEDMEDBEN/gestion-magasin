@@ -35,7 +35,7 @@ class _FakeSalesApi extends SalesApi {
 
   @override
   Future<Sale> createSale({
-    required String id,
+    required String clientMutationId,
     String? customerId,
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
@@ -43,14 +43,14 @@ class _FakeSalesApi extends SalesApi {
   }) async {
     sent = {
       'expectedTotalTtc': expectedTotalTtc,
-      'id': id,
+      'id': clientMutationId,
       'customerId': customerId,
       'lines': lines,
       'paidAmount': paidAmount,
     };
     if (failure != null) throw failure!;
     return Sale(
-      id: id,
+      id: clientMutationId,
       number: 'TK-2026-000042',
       type: 'TICKET',
       status: 'VALIDEE',

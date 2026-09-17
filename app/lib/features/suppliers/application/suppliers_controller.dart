@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
 import '../data/suppliers_api.dart';
 import '../data/suppliers_models.dart';
@@ -47,20 +48,24 @@ class SuppliersActions {
     return supplier;
   }
 
-  /// `paymentId` stable : un renvoi après coupure ne paie pas deux fois.
+  /// Clé d'idempotence gardée par intention (`core/mutation_keys.dart`) : un
+  /// nouvel essai après coupure ou délai dépassé ne paie jamais deux fois.
   Future<SupplierPayment> pay(
     String supplierId,
     int amount, {
     required bool fromCash,
-    required String paymentId,
   }) async {
-    final payment = await _api.pay({
-      'id': paymentId,
-      'supplierId': supplierId,
-      'amount': amount,
-      'fromCash': fromCash,
-      if (!fromCash) 'method': 'VIREMENT',
-    });
+    final payment = await runMoneyMutation(
+      _ref,
+      'supplier-payment:$supplierId',
+      (key) => _api.pay({
+        'clientMutationId': key,
+        'supplierId': supplierId,
+        'amount': amount,
+        'fromCash': fromCash,
+        if (!fromCash) 'method': 'VIREMENT',
+      }),
+    );
     _ref.invalidate(supplierSearchProvider);
     return payment;
   }

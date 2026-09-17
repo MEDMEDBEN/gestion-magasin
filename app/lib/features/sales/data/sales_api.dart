@@ -27,10 +27,12 @@ class SalesApi {
   }
 
   Future<CashSession> openCashSession({
+    required String clientMutationId,
     required String locationId,
     required int openingFloat,
   }) {
     return _post('/cash-sessions', {
+      'clientMutationId': clientMutationId,
       'locationId': locationId,
       'openingFloat': openingFloat,
     }, CashSession.fromJson);
@@ -38,10 +40,12 @@ class SalesApi {
 
   Future<CashSession> closeCashSession(
     String id, {
+    required String clientMutationId,
     required int countedAmount,
     String? note,
   }) {
     return _post('/cash-sessions/$id/close', {
+      'clientMutationId': clientMutationId,
       'countedAmount': countedAmount,
       'note': ?note,
     }, CashSession.fromJson);
@@ -50,7 +54,7 @@ class SalesApi {
   // ── Ventes ──────────────────────────────────────────────────────────────
   /// Le client n'envoie JAMAIS de prix : produit + quantité (+ remise ADMIN).
   Future<Sale> createSale({
-    required String id,
+    required String clientMutationId,
     String? customerId,
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
@@ -58,7 +62,7 @@ class SalesApi {
   }) {
     return _post('/sales', {
       'expectedTotalTtc': ?expectedTotalTtc,
-      'id': id,
+      'clientMutationId': clientMutationId,
       'customerId': ?customerId,
       'lines': [
         for (final line in lines)
@@ -111,14 +115,18 @@ class SalesApi {
   }
 
   Future<void> payCustomer({
-    required String id,
+    required String clientMutationId,
     required String customerId,
     required int amount,
   }) {
     return guardApi(() async {
       await _dio.post<Object?>(
         '/payments/customer',
-        data: {'id': id, 'customerId': customerId, 'amount': amount},
+        data: {
+          'clientMutationId': clientMutationId,
+          'customerId': customerId,
+          'amount': amount,
+        },
       );
     });
   }
