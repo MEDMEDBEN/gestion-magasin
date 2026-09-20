@@ -776,9 +776,9 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | **Auth + utilisateurs (P0 #1)** | 🟢 **Close** (build Windows : prérequis ATL machine) | 🟢 Complet, durci (3 tours d'audit) | 🟢 Validé par MEDMEDBEN | 🟢 55 unit + 89 e2e · 147 app | 🟢 CONFORME |
 | Produits + catégories + emplacements | 🟡 **~95 %** — relecture humaine des écrans | 🟡 Contrat figé (501) | — | — | — |
 | Stock + mouvements | 🟡 **~95 %** — relecture humaine | 🟢 Lecture, journal, pertes + validation | 🟢 Niveaux, pertes, « Plus » mobile | 🟢 141 e2e · 170 app | 🟢 corrigé |
-| Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🟡 **Code livré**, relecture humaine en attente | 🟢 Panier, TVA, ticket/facture PDF, caisse, crédit + échéance | 🟢 Vente, caisse, rapport Z, clients | 🟢 e2e + widget | 🟢 CONFORME |
+| Fournisseurs + clients + dettes fournisseurs | 🟡 **Code livré**, relecture humaine en attente | 🟢 Fiches, reprise de dette, paiements, contre-passation | 🟢 Fournisseurs, clients, historiques | 🟢 e2e + widget | 🟢 CONFORME |
+| Achats | 🟡 **Code livré**, relecture humaine en attente | 🟢 Commandes, statuts, confirmation ADMIN, annulation | 🟢 Liste, formulaire, actions | 🟢 15 e2e · 5 widget | 🟢 corrigé |
 | Réceptions (dont partielles) | 🟡 **Code livré**, relecture humaine en attente | 🟢 Partielles, surlivraison refusée, dette | 🟢 Réception depuis la commande | 🟢 11 e2e · 6 widget | 🟢 corrigé (2 importants) |
 | Transferts magasin↔dépôt | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
