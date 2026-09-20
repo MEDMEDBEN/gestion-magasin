@@ -323,6 +323,25 @@ export class CashSessionsService {
     });
   }
 
+  /// Encaissement d'une VENTE en espèces : seul producteur de `VENTE_ESPECES`.
+  /// Comme `withdraw` et `deposit`, il garde les écritures de caisse dans un
+  /// seul module (CONVENTIONS.md, règle 1).
+  static async recordCashSale(
+    tx: Db,
+    session: CashSession,
+    sale: { userId: string; saleId: string; amount: number },
+  ): Promise<void> {
+    await tx.cashMovement.create({
+      data: {
+        cashSessionId: session.id,
+        userId: sale.userId,
+        saleId: sale.saleId,
+        type: 'VENTE_ESPECES',
+        amount: sale.amount,
+      },
+    });
+  }
+
   /// Entrées (ventes espèces + apports) et sorties (retraits + prélèvements).
   static async totals(db: Db | PrismaService, cashSessionId: string) {
     const grouped = await db.cashMovement.groupBy({

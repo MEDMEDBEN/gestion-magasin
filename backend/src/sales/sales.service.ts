@@ -205,8 +205,8 @@ export class SalesService {
           if (debt + credit > customer.creditLimit) {
             throw new BusinessException(
               ErrorCode.CREDIT_LIMIT_EXCEEDED,
-              `Plafond de crédit dépassé : dette ${debt}, crédit demandé ${credit}, ` +
-                `plafond ${customer.creditLimit} (centimes)`,
+              `Plafond de crédit dépassé : dette ${formatDA(debt)}, crédit demandé ` +
+                `${formatDA(credit)}, plafond ${formatDA(customer.creditLimit)}`,
               HttpStatus.UNPROCESSABLE_ENTITY,
             );
           }
@@ -261,14 +261,10 @@ export class SalesService {
           });
         }
         if (cashSession) {
-          await tx.cashMovement.create({
-            data: {
-              cashSessionId: cashSession.id,
-              userId: user.id,
-              saleId: sale.id,
-              type: 'VENTE_ESPECES',
-              amount: dto.paidAmount,
-            },
+          await CashSessionsService.recordCashSale(tx, cashSession, {
+            userId: user.id,
+            saleId: sale.id,
+            amount: dto.paidAmount,
           });
         }
         // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
@@ -577,13 +573,16 @@ export class SalesService {
     debts: Map<string, number>,
     now = new Date(),
   ): Promise<Map<string, number>> {
+    // Une échéance est enregistrée à minuit : on compare au DÉBUT du jour local,
+    // sinon une vente due aujourd'hui passerait « en retard » dès 01 h à Alger.
+    const startOfToday = parseApiDate(localDate(now), 'dueDate');
     const [sales, payments] = await Promise.all([
       db.sale.groupBy({
         by: ['customerId'],
         where: {
           customerId: { in: customerIds },
           status: 'VALIDEE',
-          dueDate: { lt: now },
+          dueDate: { lt: startOfToday },
         },
         _sum: { totalTtc: true, paidAmount: true },
       }),
@@ -591,7 +590,7 @@ export class SalesService {
         by: ['customerId'],
         where: {
           customerId: { in: customerIds },
-          sale: { status: 'VALIDEE', dueDate: { lt: now } },
+          sale: { status: 'VALIDEE', dueDate: { lt: startOfToday } },
         },
         _sum: { amount: true },
       }),

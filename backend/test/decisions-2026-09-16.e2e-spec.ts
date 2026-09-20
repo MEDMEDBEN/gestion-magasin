@@ -214,6 +214,26 @@ describe('Caisses admin, échéances, contre-passations (e2e)', () => {
       await closeCash(tokens.admin, cash.id, 0);
     });
 
+    it('échéance AUJOURD’HUI : pas encore en retard', async () => {
+      const customerId = await creditCustomer();
+      await as(tokens.admin)
+        .post('/api/sales')
+        .send({
+          customerId,
+          lines: [{ productId, quantity: '1' }],
+          paidAmount: 0,
+          dueDate: today(),
+        })
+        .expect(201);
+      const fiche = await as(tokens.admin)
+        .get(`/api/customers/${customerId}`)
+        .expect(200);
+      expect(fiche.body).toMatchObject({
+        balanceDue: 100000,
+        overdueAmount: 0,
+      });
+    });
+
     it('fiche client : montant EN RETARD = reste dû des ventes échues', async () => {
       const customerId = await creditCustomer();
       await as(tokens.admin)

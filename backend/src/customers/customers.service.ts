@@ -218,7 +218,7 @@ export class CustomersService {
         if (dto.amount > debt) {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
-            `Règlement supérieur à la dette (${debt} centimes)`,
+            `Règlement supérieur à la dette (${formatDA(debt)})`,
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
@@ -244,7 +244,7 @@ export class CustomersService {
           if (dto.amount > remaining) {
             throw new BusinessException(
               ErrorCode.VALIDATION_FAILED,
-              `Règlement supérieur au reste dû de la vente (${remaining} centimes)`,
+              `Règlement supérieur au reste dû de la vente (${formatDA(remaining)})`,
               HttpStatus.UNPROCESSABLE_ENTITY,
             );
           }
@@ -273,16 +273,13 @@ export class CustomersService {
             note: dto.note ?? null,
           },
         });
-        await tx.cashMovement.create({
-          data: {
-            cashSessionId: session.id,
-            userId: user.id,
-            type: 'ENTREE',
-            amount: dto.amount,
-            saleId: dto.saleId ?? null,
-            // Rapprochement caisse ↔ règlement par l'id du règlement.
-            note: `Règlement ${payment.id} — ${customer.name}`,
-          },
+        // Point d'entrée COMMUN des espèces (comme `withdraw` pour les sorties).
+        await CashSessionsService.deposit(tx, session, {
+          userId: user.id,
+          amount: dto.amount,
+          saleId: dto.saleId ?? undefined,
+          // Rapprochement caisse ↔ règlement par l'id du règlement.
+          note: `Règlement ${payment.id} — ${customer.name}`,
         });
         await writeAudit(tx, actor, {
           action: 'CREATE',

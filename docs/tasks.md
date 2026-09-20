@@ -40,10 +40,17 @@ anti-récidive », 6 règles). Tout ce qui suit est poussé sur `develop`, **non
 app `flutter analyze` propre · **+203 ~27**. Protections contre-éprouvées (garde retiré → test en échec) : caisse,
 relecture concurrente, clé gardée, synchro coquille/Vente, guard global, produit désactivé, unité figée.
 
+**Re-revue du 2026-09-20** — `reviewer` : **MERGE POSSIBLE** (preuves relancées par lui : 81 unit, 232 e2e en un
+passage, app +203 ~27). Corrigé dans la foulée : `docs/permissions.md` commité (contre-passation, caisses, échéance) ;
+« en retard » compté à partir du LENDEMAIN de l'échéance (une vente due aujourd'hui n'est plus en retard) ; toutes les
+écritures de caisse passent par `CashSessionsService` (`withdraw`/`deposit`/`recordCashSale`) ; montants des messages
+d'erreur en DA et non en centimes ; `npm run lint:check` (vérifie sans modifier, utilisable en CI) ; tests ajoutés :
+échéance du jour, deux contre-passations simultanées, clôture pendant une contre-passation. Preuve : **81** unit ·
+**235** e2e. L'audit `security-reviewer` a échoué (coupure du service) : **à relancer avant le merge**.
+
 **Reste à faire (dans l'ordre)**
 1. **Re-revue `reviewer` + `security-reviewer`** de ces corrections → merge `develop`→`main` seulement si verte.
-2. Mettre à jour `docs/permissions.md` (contre-passation = ADMIN, liste des caisses = ADMIN + `cash.report.read`).
-3. Relecture humaine des captures 21-27 (une nouvelle capture « Caisses » / historique serait utile).
+2. Relecture humaine des captures 21-27 (une nouvelle capture « Caisses » / historique serait utile).
 4. Puis **P0 #7 Réceptions** (verrou `FOR UPDATE` commun avec l'annulation de commande, surlivraison refusée, dette
    fournisseur = reprise + reçu − paiements).
 - **Avant production (tracé, non fait)** : NestJS 11 (vulnérabilités `npm audit`), `backend/Dockerfile` + `.dockerignore`,

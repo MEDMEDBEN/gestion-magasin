@@ -128,7 +128,7 @@ export class SuppliersService {
         if (dto.openingBalance < paidAmount) {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
-            `Déjà payé ${paidAmount} centimes à ce fournisseur : la reprise ne peut pas être inférieure`,
+            `Déjà payé ${formatDA(paidAmount)} à ce fournisseur : la reprise ne peut pas être inférieure`,
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
@@ -210,7 +210,7 @@ export class SuppliersService {
         if (dto.amount > balanceDue) {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
-            `Paiement supérieur au reste dû (${balanceDue} centimes)`,
+            `Paiement supérieur au reste dû (${formatDA(balanceDue)})`,
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }

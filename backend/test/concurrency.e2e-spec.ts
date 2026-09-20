@@ -166,6 +166,109 @@ describe('Concurrence argent et stock (e2e)', () => {
     expect(late).toBe(0);
   });
 
+  it('deux contre-passations simultanées du MÊME règlement : une seule écriture opposée', async () => {
+    const p = await product('10');
+    const customer = await prisma.customer.create({
+      data: {
+        name: `Client double annulation ${suffix}`,
+        creditLimit: 1_000_000,
+      },
+    });
+    customerIds.push(customer.id);
+    await post('/api/sales')
+      .send({
+        customerId: customer.id,
+        lines: [{ productId: p, quantity: '1' }],
+        paidAmount: 0,
+        dueDate: '2099-01-01',
+      })
+      .expect(201);
+    const cash = await post('/api/cash-sessions')
+      .send({ locationId: magasinId, openingFloat: 100000 })
+      .expect(201);
+    const payment = (
+      await post('/api/payments/customer')
+        .send({ customerId: customer.id, amount: 50000 })
+        .expect(201)
+    ).body;
+
+    // Deux clics simultanés, DEUX clés différentes : le verrou tranche.
+    const reverse = () =>
+      post(`/api/payments/customer/${payment.id}/reverse`).send({
+        reason: 'Erreur de saisie',
+      });
+    const results = await Promise.all([reverse(), reverse()]);
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(
+      await prisma.customerPayment.count({
+        where: { reversesPaymentId: payment.id },
+      }),
+    ).toBe(1);
+
+    const fiche = await post('/api/payments/customer')
+      .send({ customerId: customer.id, amount: 1 })
+      .expect(201);
+    expect(fiche.body.balanceDue).toBe(99999);
+    await post(`/api/cash-sessions/${cash.body.id}/close`)
+      .send({ countedAmount: 100001 })
+      .expect(200);
+  });
+
+  it('clôture de caisse PENDANT une contre-passation : l’une des deux attend, le rapport Z reste juste', async () => {
+    const p = await product('10');
+    const customer = await prisma.customer.create({
+      data: { name: `Client clôture ${suffix}`, creditLimit: 1_000_000 },
+    });
+    customerIds.push(customer.id);
+    await post('/api/sales')
+      .send({
+        customerId: customer.id,
+        lines: [{ productId: p, quantity: '1' }],
+        paidAmount: 0,
+        dueDate: '2099-01-01',
+      })
+      .expect(201);
+    const cash = await post('/api/cash-sessions')
+      .send({ locationId: magasinId, openingFloat: 0 })
+      .expect(201);
+    const payment = (
+      await post('/api/payments/customer')
+        .send({ customerId: customer.id, amount: 60000 })
+        .expect(201)
+    ).body;
+
+    const [z, reversal] = await Promise.all([
+      post(`/api/cash-sessions/${cash.body.id}/close`).send({
+        countedAmount: 60000,
+      }),
+      post(`/api/payments/customer/${payment.id}/reverse`).send({
+        reason: 'Client remboursé',
+      }),
+    ]);
+    expect(z.status).toBe(200);
+    // Soit la sortie est passée avant la clôture, soit elle est refusée faute
+    // de caisse ouverte : jamais une sortie rattachée à une caisse close.
+    expect([201, 422]).toContain(reversal.status);
+    const movements = await prisma.cashMovement.aggregate({
+      where: { cashSessionId: cash.body.id },
+      _sum: { amount: true },
+    });
+    const out = await prisma.cashMovement.aggregate({
+      where: { cashSessionId: cash.body.id, type: 'SORTIE' },
+      _sum: { amount: true },
+    });
+    expect(z.body.expectedAmount).toBe(
+      (movements._sum.amount ?? 0) - 2 * (out._sum.amount ?? 0),
+    );
+    const late = await prisma.cashMovement.count({
+      where: {
+        cashSessionId: cash.body.id,
+        createdAt: { gt: new Date(z.body.closedAt) },
+      },
+    });
+    expect(late).toBe(0);
+  });
+
   it('changement d’année pendant la numérotation : compteurs indépendants, sans trou ni doublon', async () => {
     // Années fictives : aucun conflit avec les vrais compteurs.
     const numberFor = (year: number) =>
