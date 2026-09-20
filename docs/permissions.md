@@ -61,10 +61,23 @@ aucune migration destructive sans confirmation).
 | Créer une vente | ✅ | ✅ | ❌ |
 | Appliquer une remise sur ligne | ✅ | ❌ | ❌ |
 | Vendre à crédit | ✅ | ✅ (dans la limite du client fixée par l'admin) | ❌ |
+| Fixer l'échéance d'une vente à crédit | ✅ | ✅ (obligatoire, aujourd'hui ou plus tard) | ❌ |
 | Émettre une facture (n° légal) | ✅ | ✅ | ❌ |
 | Annuler une vente validée | ✅ | ❌ | ❌ |
 | Ouvrir / clôturer une caisse | ✅ | ✅ (sa caisse) | ❌ |
 | Voir le rapport Z | ✅ | 👁️ (sa session) | ❌ |
+| Lister TOUTES les caisses (`GET /cash-sessions`) | ✅ (`cash.report.read`) | ❌ | ❌ |
+
+> **Décisions MEDMEDBEN du 2026-09-16 (appliquées le 2026-09-17)**
+> - **Annulation d'un paiement = CONTRE-PASSATION, jamais suppression** (règle 7) : ADMIN seul, motif obligatoire,
+>   une seule fois par paiement, et une contre-passation ne se contre-passe pas. Les espèces repassent par la caisse
+>   OUVERTE de l'admin (sortie pour un règlement client rendu, entrée pour un paiement fournisseur récupéré) ; un
+>   paiement fournisseur fait hors caisse ne touche pas la caisse. Aucune permission nouvelle : `customer.payment.create`
+>   / `supplier.payment.create` + rôle ADMIN.
+> - **Liste des caisses** : réservée à l'ADMIN (`cash.report.read`). Le vendeur ne voit toujours que SA session.
+> - **Échéance** : obligatoire dès qu'une vente laisse du crédit ; la fiche client expose le montant EN RETARD.
+> - **Toute écriture** (argent, stock, catalogue, comptes) relit les droits EN BASE via le guard global
+>   `FreshAccessGuard` — un compte désactivé ou rétrogradé perd l'accès immédiatement, sans attendre l'expiration du token.
 
 ## Clients / Fournisseurs / Dettes
 | Action | Admin | Vendeur/Caissier | Magasinier |
@@ -72,9 +85,13 @@ aucune migration destructive sans confirmation).
 | Consulter clients | ✅ | ✅ | 👁️ |
 | Créer / modifier client | ✅ | ✅ | ❌ |
 | Enregistrer paiement client | ✅ | ✅ | ❌ |
+| Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |
+| Contre-passer un règlement client | ✅ | ❌ | ❌ |
 | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Gérer fournisseurs | ✅ | ❌ | ❌ |
 | Enregistrer paiement fournisseur | ✅ | ❌ | ❌ |
+| Consulter l'historique des paiements fournisseur | ✅ | ❌ | 👁️ (`supplier.read`) |
+| Contre-passer un paiement fournisseur | ✅ | ❌ | ❌ |
 
 ## Achats / Réceptions
 | Action | Admin | Vendeur/Caissier | Magasinier |
