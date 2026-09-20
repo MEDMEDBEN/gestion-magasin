@@ -64,6 +64,13 @@ class _FakePurchasesApi extends PurchasesApi {
   _FakePurchasesApi(this.orders) : super(Dio());
 
   final List<PurchaseOrder> orders;
+  (String, String)? closed;
+
+  @override
+  Future<PurchaseOrder> close(String id, String reason) async {
+    closed = (id, reason);
+    return _order(PurchaseStatus.closed);
+  }
 
   @override
   Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
@@ -130,6 +137,8 @@ AuthUser _magasinier({
   ],
 }) => authUser(id: 'm', roles: const ['MAGASINIER'], permissions: permissions);
 
+late _FakePurchasesApi _lastPurchases;
+
 Future<_FakeReceptionsApi> _pump(
   WidgetTester tester,
   AuthUser user, {
@@ -138,10 +147,11 @@ Future<_FakeReceptionsApi> _pump(
 }) async {
   useScreenSize(tester, const Size(500, 1400));
   final receptions = _FakeReceptionsApi(existing: receptionsDone);
+  _lastPurchases = _FakePurchasesApi(orders);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        purchasesApiProvider.overrideWithValue(_FakePurchasesApi(orders)),
+        purchasesApiProvider.overrideWithValue(_lastPurchases),
         receptionsApiProvider.overrideWithValue(receptions),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
         activeProductsProvider.overrideWith(
@@ -295,6 +305,55 @@ void main() {
     expect(find.textContaining('960,00 DA TTC'), findsOneWidget);
     expect(find.textContaining('ligne(s)'), findsNWidgets(2));
     expect(find.textContaining(r'${'), findsNothing);
+  });
+
+  testWidgets('clôture du reliquat : ADMIN seul, motif obligatoire', (
+    tester,
+  ) async {
+    // Le magasinier ne voit pas l'action.
+    await _pump(
+      tester,
+      _magasinier(),
+      orders: [_order(PurchaseStatus.partiallyReceived, remaining: '70')],
+    );
+    await tester.tap(find.textContaining('BC-2026-00007'));
+    await tester.pumpAndSettle();
+    expect(find.text('Clôturer le reliquat'), findsNothing);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    await _pump(
+      tester,
+      authUser(
+        id: 'a',
+        roles: const ['ADMIN'],
+        permissions: const [
+          'purchase.create',
+          'purchase.confirm',
+          'reception.create',
+          'supplier.read',
+        ],
+      ),
+      orders: [_order(PurchaseStatus.partiallyReceived, remaining: '70')],
+    );
+    await tester.tap(find.textContaining('BC-2026-00007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clôturer le reliquat'));
+    await tester.pumpAndSettle();
+
+    // Sans motif, rien ne part.
+    await tester.tap(find.widgetWithText(FilledButton, 'Clôturer'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Indiquez le motif (3 caractères minimum)'),
+      findsOneWidget,
+    );
+    expect(_lastPurchases.closed, isNull);
+
+    await tester.enterText(find.byType(TextField), 'Rupture définitive');
+    await tester.tap(find.widgetWithText(FilledButton, 'Clôturer'));
+    await tester.pumpAndSettle();
+    expect(_lastPurchases.closed, ('o1', 'Rupture définitive'));
   });
 
   testWidgets('commande brouillon : aucune réception proposée', (tester) async {

@@ -123,6 +123,10 @@ enum PurchaseOrderStatus {
   CONFIRMEE
   PARTIELLEMENT_RECUE
   RECUE
+  /// Partiellement reçue, reliquat abandonné : le fournisseur ne livrera pas le
+  /// reste. Clôturée par l'admin avec un motif — la commande sort des en-cours
+  /// sans mentir sur ce qui est réellement arrivé.
+  CLOTUREE
   ANNULEE
 }
 
@@ -866,6 +870,9 @@ model PurchaseOrder {
   dueDate       DateTime?
   confirmedAt   DateTime?
   cancelledAt   DateTime?
+  closedAt      DateTime?
+  /// Motif d'abandon du reliquat (obligatoire à la clôture).
+  closedReason  String?
   totalHt       Int                 @default(0)
   totalTax      Int                 @default(0)
   totalTtc      Int                 @default(0)

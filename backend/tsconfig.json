@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "module": "commonjs",
+    // Le client Prisma généré s'importe avec l'extension `.ts` explicite ; sans
+    // cette option, le JS COMPILÉ garde `require('./internal/class.ts')` et
+    // l'application ne démarre qu'en TypeScript — jamais en production.
+    "rewriteRelativeImportExtensions": true,
     "declaration": true,
     "removeComments": true,
     "emitDecoratorMetadata": true,

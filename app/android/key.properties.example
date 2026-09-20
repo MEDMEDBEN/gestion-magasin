@@ -1,0 +1,13 @@
+# ─────────────────────────────────────────────────────────
+# Signature de l'APK/AAB de PRODUCTION.
+# Copier en `android/key.properties` sur la machine de build — jamais commité.
+#
+# Créer le magasin de clés une seule fois, et le SAUVEGARDER : perdu, plus
+# aucune mise à jour de l'application n'est possible.
+#   keytool -genkey -v -keystore gestion-magasin.jks -storetype JKS \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias gestion-magasin
+# ─────────────────────────────────────────────────────────
+storeFile=C:/chemin/vers/gestion-magasin.jks
+storePassword=CHANGER_CE_MOT_DE_PASSE
+keyAlias=gestion-magasin
+keyPassword=CHANGER_CE_MOT_DE_PASSE

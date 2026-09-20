@@ -32,7 +32,13 @@ class CatalogSyncController extends AsyncNotifier<void> {
     if (state.isLoading) return;
     if (ref.read(currentUserIdProvider) == null) return;
     state = const AsyncLoading<void>();
-    state = await AsyncValue.guard(ref.read(catalogRepositoryProvider).pull);
+    final result = await AsyncValue.guard(
+      ref.read(catalogRepositoryProvider).pull,
+    );
+    // L'utilisateur a pu se déconnecter (ou l'application se fermer) pendant la
+    // synchro : écrire l'état d'un provider détruit lève une exception.
+    if (!ref.mounted) return;
+    state = result;
   }
 }
 

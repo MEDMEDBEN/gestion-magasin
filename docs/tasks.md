@@ -107,10 +107,54 @@ Le stub 501 des réceptions est remplacé par la vraie feature (`backend/src/rec
 **Preuve (2026-09-20, après corrections)** : backend `lint:check` 0 · **81** unit · **246** e2e (18 suites, un seul
 passage) ; app `flutter analyze` propre · **+209 ~27**.
 
+### 🧹 REMISE À NIVEAU AVANT DE CONTINUER (2026-09-20 · **MEDMEDBEN**)
+Demande : « je ne veux plus d'erreurs de base ». Quatre points traités.
+
+**1. Commande partiellement reçue sans reliquat à venir** (trou trouvé la veille) :
+nouveau statut `CLOTUREE` + `POST /purchase-orders/:id/close` (ADMIN, motif obligatoire, même verrou
+`lockOrder` que la réception, audité). Refusé sur une commande sans réception (elle s'annule) et sur une
+commande déjà soldée ; plus aucune réception après clôture ; ce qui est reçu reste reçu (règle 7).
+Côté app : action « Clôturer le reliquat » (ADMIN), motif obligatoire. Preuve : 2 e2e + 1 test widget.
+
+**2. Le projet est déployable.**
+- `backend/Dockerfile` (deux étages, utilisateur non-root, `migrate deploy` au démarrage) et
+  `.dockerignore` (ni `.env`, ni tests, ni `.git`). **Image construite ET démarrée** : `/api/health` → 200,
+  route protégée → 401, en-têtes de sécurité présents, migrations appliquées.
+- **Défaut trouvé au passage : l'application ne démarrait pas en production.** Le client Prisma généré
+  s'importe avec l'extension `.ts` explicite ; le JS compilé gardait `require('./internal/class.ts')`.
+  `rewriteRelativeImportExtensions` dans `tsconfig.json` corrige — personne n'avait jamais exécuté le build.
+- `prisma` et `dotenv` passent en dépendances de PRODUCTION (la CLI sert au démarrage du conteneur) ;
+  `prisma7.config.ts` renommé `prisma.config.ts` (nom que la CLI attend).
+- **NestJS 10 → 11** + `overrides` npm (`multer`, `deepmerge-ts`, `mysql2`) : `npm audit` passe de
+  **21 vulnérabilités (8 hautes)** à **3 modérées**, toutes dans l'arbre de `minio`. Elles ne sont PAS
+  corrigeables : les versions corrigées de `decode-uri-component` et `stream-json` sont ESM pur et
+  casseraient minio à l'exécution (projet CommonJS). À revoir à la prochaine version de `minio`.
+- **MinIO n'est plus exposé** : route Traefik supprimée (le backend sert les fichiers lui-même, aucune URL
+  pré-signée). Service `minio-init` : crée le bucket et un **compte de service limité à ce seul bucket** ;
+  le compte root vit dans `.env.minio-root`, chargé par MinIO seul — le backend ne l'a jamais.
+- **Signature Android** : la release n'est plus signée avec la clé de debug. `key.properties` (jamais
+  versionné, `*.jks` ignorés) + `isMinifyEnabled`. ⚠️ **Non prouvé sur ce poste** : le build APK échoue sur
+  un NDK Android corrompu (dossier vide dans le SDK) — problème de machine, à refaire après réinstallation.
+
+**3. Relecture humaine : de quoi relire enfin.** L'outil de capture couvre maintenant **31 écrans**
+(réception desktop et mobile, clôture du reliquat, liste des caisses ajoutés) et **tourne vert**. Deux vrais
+défauts trouvés en le remettant en marche :
+- `CatalogSyncController.refresh()` écrivait l'état d'un provider **détruit** (déconnexion ou fermeture
+  pendant une synchro) → garde `ref.mounted`.
+- Les droits ADMIN du jeu de test ne reflétaient plus `ROLE_PERMISSIONS` : l'admin de capture ne voyait ni
+  « Vente » ni les réceptions. Complétés.
+  Captures écrites dans le dossier passé à `--dart-define=CAPTURE_OUT=…`.
+
+**4. `develop` fusionnée dans `main`** après les deux audits verts.
+
+**Preuve (2026-09-20)** : backend `lint:check` 0 · **81** unit · **248** e2e (18 suites, un seul passage) ·
+image Docker démarrée et interrogée ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
+
 **Reste à faire (dans l'ordre)**
-1. Merge `develop`→`main` (en attente du feu vert de MEDMEDBEN ; audits P0 #7 corrigés, re-revue du 2026-09-20 verte).
-2. Relecture humaine des captures 21-27 (une capture « Caisses » et une « Réception » seraient utiles).
-3. Puis **P0 #8 Transferts magasin↔dépôt**.
+1. **Relecture humaine des 31 captures** par MEDMEDBEN (seul point qu'aucun agent ne peut faire à sa place).
+2. Rejouer le build APK release une fois le NDK Android réinstallé sur le poste.
+3. Puis **P0 #8 Transferts magasin↔dépôt**, ensuite #9 Inventaire, #10 Planning, #11 Historique,
+   #12 raccordement hors-ligne des opérations (aujourd'hui un seul handler de sync sur douze).
 - **Avant production (tracé, non fait)** : NestJS 11 (vulnérabilités `npm audit`), `backend/Dockerfile` + `.dockerignore`,
   MinIO non exposé + utilisateur dédié, signature Android release.
 - Autres points de la revue encore ouverts : quantité décimale au panier (vente au mètre), note de commande effacée en

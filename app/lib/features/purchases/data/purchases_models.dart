@@ -19,6 +19,8 @@ enum PurchaseStatus {
   partiallyReceived('Reçue en partie'),
   @JsonValue('RECUE')
   received('Reçue'),
+  @JsonValue('CLOTUREE')
+  closed('Clôturée'),
   @JsonValue('ANNULEE')
   cancelled('Annulée');
 
@@ -60,6 +62,8 @@ abstract class PurchaseOrder with _$PurchaseOrder {
     required DateTime orderDate,
     DateTime? expectedDate,
     DateTime? confirmedAt,
+    DateTime? closedAt,
+    String? closedReason,
     required int totalHt,
     required int totalTax,
     required int totalTtc,

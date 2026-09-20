@@ -15,6 +15,7 @@ import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
 import {
+  ClosePurchaseOrderDto,
   ConfirmPurchaseOrderDto,
   CreatePurchaseOrderDto,
   PurchaseLineInputDto,
@@ -335,6 +336,53 @@ export class PurchaseOrdersService {
     });
   }
 
+  /// Clôture du reliquat (ADMIN seul) : le fournisseur ne livrera pas le reste.
+  /// Sans elle, une commande partiellement reçue reste ouverte à vie — elle ne
+  /// se modifie plus (des réceptions existent), ne s'annule plus (la
+  /// marchandise est entrée) et n'atteindra jamais RECUE.
+  async close(
+    id: string,
+    dto: ClosePurchaseOrderDto,
+    actor: ActorContext,
+  ): Promise<PurchaseOrderDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const before = await PurchaseOrdersService.lockOrder(tx, id);
+      if (before.status !== 'PARTIELLEMENT_RECUE') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Seule une commande partiellement reçue se clôture : une commande ' +
+            'sans réception s’annule, une commande soldée est déjà close',
+          HttpStatus.CONFLICT,
+        );
+      }
+      const order = await tx.purchaseOrder.update({
+        where: { id },
+        include: ORDER_INCLUDE,
+        data: {
+          status: 'CLOTUREE',
+          closedAt: new Date(),
+          closedReason: dto.reason,
+        },
+      });
+      await writeAudit(tx, actor, {
+        action: 'CANCEL',
+        entityType: 'PurchaseOrder',
+        entityId: id,
+        oldValue: {
+          status: before.status,
+          reliquat: before.lines.map((l) => ({
+            productId: l.productId,
+            remaining: formatQuantity(
+              l.orderedQuantity.sub(l.receivedQuantity),
+            ),
+          })),
+        },
+        newValue: { status: 'CLOTUREE', closedReason: dto.reason },
+      });
+      return PurchaseOrdersService.toDto(order);
+    });
+  }
+
   /// Verrou de ligne : deux écritures simultanées sur la MÊME commande
   /// (confirmation, annulation, modification, réception) s'exécutent l'une après
   /// l'autre, jamais en parallèle. Point d'entrée unique, partagé avec les
@@ -465,6 +513,8 @@ export class PurchaseOrdersService {
       dueDate: order.dueDate,
       confirmedAt: order.confirmedAt,
       cancelledAt: order.cancelledAt,
+      closedAt: order.closedAt,
+      closedReason: order.closedReason,
       totalHt: order.totalHt,
       totalTax: order.totalTax,
       totalTtc: order.totalTtc,

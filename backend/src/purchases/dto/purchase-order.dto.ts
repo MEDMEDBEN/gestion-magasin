@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,
   Max,
   Min,
   ValidateNested,
@@ -27,6 +28,7 @@ export const PURCHASE_STATUSES = [
   'CONFIRMEE',
   'PARTIELLEMENT_RECUE',
   'RECUE',
+  'CLOTUREE',
   'ANNULEE',
 ] as const;
 
@@ -132,6 +134,23 @@ export class ConfirmPurchaseOrderDto {
   expectedUpdatedAt!: string;
 }
 
+export class ClosePurchaseOrderDto {
+  @ApiProperty({
+    description:
+      'Pourquoi le reliquat est abandonné (rupture chez le fournisseur, ' +
+      'commande soldée à l’amiable…). Tracé au journal d’audit.',
+    minLength: 3,
+    maxLength: 500,
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class PurchaseLineDto {
   @ApiProperty() id!: string;
   @ApiProperty() productId!: string;
@@ -166,6 +185,8 @@ export class PurchaseOrderDto {
   @ApiProperty({ nullable: true }) dueDate!: Date | null;
   @ApiProperty({ nullable: true }) confirmedAt!: Date | null;
   @ApiProperty({ nullable: true }) cancelledAt!: Date | null;
+  @ApiProperty({ nullable: true }) closedAt!: Date | null;
+  @ApiProperty({ nullable: true }) closedReason!: string | null;
   @ApiProperty() totalHt!: number;
   @ApiProperty() totalTax!: number;
   @ApiProperty() totalTtc!: number;

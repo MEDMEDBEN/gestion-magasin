@@ -1,0 +1,22 @@
+# Ce qui ne doit JAMAIS entrer dans l'image : secrets, dépendances locales,
+# artefacts de build et tout ce qui n'est pas nécessaire à l'exécution.
+.env
+.env.*
+node_modules
+dist
+src/generated
+test
+coverage
+*.log
+.git
+.gitignore
+.vscode
+Dockerfile
+.dockerignore
+
+# Outils d'agents : symlinks Windows que Docker ne sait pas archiver, et sans
+# aucun intérêt dans l'image.
+.claude
+.windsurf
+.cursor
+.idea

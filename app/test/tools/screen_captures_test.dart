@@ -24,6 +24,8 @@ import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
+import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
+import 'package:gestion_magasin/features/receptions/data/receptions_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
@@ -100,21 +102,40 @@ class _IdleSync extends CatalogSyncController {
   Future<void> build() async {}
 }
 
+/// Droits de l'ADMIN — miroir de `ROLE_PERMISSIONS` côté serveur. Incomplet,
+/// l'admin de capture ne voit pas les écrans réellement livrés.
 const _adminPermissions = [
   'user.manage',
+  'settings.manage',
+  'audit.read',
   'product.read',
   'product.write',
   'product.disable',
+  'price.manage',
+  'price.read',
+  'cost.read',
   'location.manage',
   'stock.read.store',
   'stock.read.warehouse',
-  'stock.loss',
+  'stock.adjust',
   'stock.adjust.validate',
+  'stock.loss',
+  'sale.create',
+  'sale.discount',
+  'sale.credit',
+  'sale.cancel',
+  'invoice.issue',
+  'cash.session.manage',
+  'cash.report.read',
+  'customer.read',
+  'customer.write',
+  'customer.payment.create',
   'supplier.read',
   'supplier.write',
   'supplier.payment.create',
   'purchase.create',
   'purchase.confirm',
+  'reception.create',
 ];
 
 final _categories = [
@@ -314,8 +335,9 @@ PurchaseOrder _po(
   String supplier,
   PurchaseStatus status,
   int ttc,
-  int lines,
-) => PurchaseOrder(
+  int lines, {
+  int received = 0,
+}) => PurchaseOrder(
   id: 'po$n',
   number: 'BC-2026-0000$n',
   supplierId: supplier,
@@ -331,8 +353,8 @@ PurchaseOrder _po(
         id: 'po$n-$i',
         productId: 'p${i + 1}',
         orderedQuantity: Decimal.fromInt(10),
-        receivedQuantity: Decimal.zero,
-        remainingQuantity: Decimal.fromInt(10),
+        receivedQuantity: Decimal.fromInt(received),
+        remainingQuantity: Decimal.fromInt(10 - received),
         unitPriceHt: 1000,
         taxRate: '19.00',
         lineTotalHt: 10000,
@@ -349,11 +371,50 @@ class _CapturePurchasesApi extends PurchasesApi {
     data: [
       _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
       _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
+      _po(
+        '5',
+        'f1',
+        PurchaseStatus.partiallyReceived,
+        11900000,
+        2,
+        received: 4,
+      ),
       _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
       _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
     ],
-    meta: const PageMeta(page: 1, limit: 200, total: 4),
+    meta: const PageMeta(page: 1, limit: 200, total: 5),
   );
+}
+
+class _CaptureReceptionsApi extends ReceptionsApi {
+  _CaptureReceptionsApi() : super(Dio());
+
+  @override
+  Future<List<Reception>> list({
+    String? purchaseOrderId,
+    int limit = 50,
+  }) async => [
+    Reception(
+      id: 'r1',
+      number: 'BR-2026-00001',
+      purchaseOrderId: 'po5',
+      supplierId: 'f1',
+      locationId: 'depot',
+      receivedAt: DateTime(2026, 9, 18, 10, 30),
+      totalTtc: 4284000,
+      lines: [
+        ReceptionLine(
+          id: 'rl1',
+          productId: 'p1',
+          purchaseLineId: 'po5-0',
+          receivedQuantity: Decimal.fromInt(6),
+          unitPriceHt: 1000,
+          lineTotalHt: 6000,
+          lineTotalTtc: 7140,
+        ),
+      ],
+    ),
+  ];
 }
 
 class _CaptureSalesApi extends SalesApi {
@@ -369,6 +430,39 @@ class _CaptureSalesApi extends SalesApi {
     currentAmount: 2345000,
     openedAt: DateTime(2026, 9, 15, 8, 2),
   );
+
+  @override
+  Future<CashSessionPage> cashSessions({int limit = 100}) async =>
+      CashSessionPage(
+        data: [
+          CashSession(
+            id: 'cash',
+            userFullName: 'Nadia Cherif',
+            status: 'OUVERTE',
+            openingFloat: 500000,
+            cashSalesAmount: 1845000,
+            cashSalesCount: 7,
+            currentAmount: 2345000,
+            openedAt: DateTime(2026, 9, 15, 8, 2),
+          ),
+          CashSession(
+            id: 'cash-2',
+            userFullName: 'Amine Benali',
+            status: 'CLOTUREE',
+            openingFloat: 500000,
+            cashSalesAmount: 3120000,
+            cashSalesCount: 14,
+            currentAmount: 0,
+            cashOutAmount: 250000,
+            expectedAmount: 3370000,
+            countedAmount: 3368000,
+            difference: -2000,
+            openedAt: DateTime(2026, 9, 14, 8, 10),
+            closedAt: DateTime(2026, 9, 14, 18, 35),
+          ),
+        ],
+        meta: const PageMeta(page: 1, limit: 100, total: 2),
+      );
 
   @override
   Future<CustomerPage> customers({String? query, int limit = 50}) async =>
@@ -528,6 +622,7 @@ Future<void> _capture(
         salesApiProvider.overrideWithValue(_CaptureSalesApi()),
         suppliersApiProvider.overrideWithValue(_CaptureSuppliersApi()),
         purchasesApiProvider.overrideWithValue(_CapturePurchasesApi()),
+        receptionsApiProvider.overrideWithValue(_CaptureReceptionsApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -567,7 +662,14 @@ Future<void> _capture(
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     File('$out/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
   });
+  // Un champ de saisie FOCALISÉ fait clignoter son curseur : c'est une
+  // minuterie qui survit au démontage et fait échouer le test après coup. On
+  // rend le focus avant de démonter, puis on laisse expirer le reste
+  // (bandeaux, infobulles, animations de dialogue).
+  tester.binding.focusManager.primaryFocus?.unfocus();
+  await tester.pump();
   await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(seconds: 10));
   await tester.runAsync(db.close);
 }
 
@@ -836,7 +938,7 @@ void main() {
       size: const Size(390, 844),
       home: const AdaptiveShell(),
       interact: (t) async {
-        await t.tap(find.text('Stock'));
+        await _viaMore(t, 'Stock');
         await t.pumpAndSettle();
         await t.tap(find.text('Pertes'));
       },
@@ -968,6 +1070,73 @@ void main() {
         await t.tap(find.text('Achats'));
         await t.pumpAndSettle();
         await t.tap(find.text('Nouvelle commande'));
+      },
+    ),
+  );
+
+  testWidgets(
+    '28 réception d’une commande desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '28_reception_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Achats'));
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('BC-2026-00005'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Réceptionner la marchandise'));
+      },
+    ),
+  );
+  testWidgets(
+    '29 réception mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '29_reception_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Achats');
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('BC-2026-00005'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Réceptionner la marchandise'));
+      },
+    ),
+  );
+  testWidgets(
+    '30 clôture du reliquat desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '30_cloture_reliquat_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Achats'));
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('BC-2026-00005'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Clôturer le reliquat'));
+      },
+    ),
+  );
+  testWidgets(
+    '31 caisses (admin) desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '31_caisses_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Vente'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Caisses'));
       },
     ),
   );

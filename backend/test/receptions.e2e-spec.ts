@@ -535,6 +535,67 @@ describe('Réceptions (e2e)', () => {
     expect(updated.lastPurchasePriceHt).toBe(120000);
   });
 
+  it('reliquat clôturé : la commande sort des en-cours, plus rien n’entre', async () => {
+    const order = await confirmedOrder('10');
+    const receive = (quantity: string) =>
+      as(tokens.magasinier)
+        .post('/api/receptions')
+        .send({
+          purchaseOrderId: order.id,
+          supplierId,
+          locationId: depotId,
+          lines: [
+            {
+              productId: order.productId,
+              purchaseLineId: order.lineId,
+              receivedQuantity: quantity,
+              unitPriceHt: 120000,
+            },
+          ],
+        });
+    await receive('4').expect(201);
+
+    // Sans motif : refusé.
+    await as(tokens.admin)
+      .post(`/api/purchase-orders/${order.id}/close`)
+      .send({ reason: 'x' })
+      .expect(400);
+    // Le magasinier ne clôture pas.
+    await as(tokens.magasinier)
+      .post(`/api/purchase-orders/${order.id}/close`)
+      .send({ reason: 'Rupture définitive chez le fournisseur' })
+      .expect(403);
+
+    const closed = (
+      await as(tokens.admin)
+        .post(`/api/purchase-orders/${order.id}/close`)
+        .send({ reason: 'Rupture définitive chez le fournisseur' })
+        .expect(200)
+    ).body;
+    expect(closed.status).toBe('CLOTUREE');
+    expect(closed.closedReason).toBe('Rupture définitive chez le fournisseur');
+    // Ce qui est reçu reste reçu (règle 7).
+    expect(closed.lines[0].receivedQuantity).toBe('4.000');
+    expect(await stockOf(order.productId)).toBe('4.000');
+
+    // Plus aucune réception, et pas de seconde clôture.
+    const refused = await receive('1').expect(409);
+    expect(refused.body.code).toBe('INVALID_STATE_TRANSITION');
+    await as(tokens.admin)
+      .post(`/api/purchase-orders/${order.id}/close`)
+      .send({ reason: 'Rupture définitive chez le fournisseur' })
+      .expect(409);
+  });
+
+  it('une commande sans réception ne se clôture pas : elle s’annule', async () => {
+    const order = await confirmedOrder('5');
+    const refused = await as(tokens.admin)
+      .post(`/api/purchase-orders/${order.id}/close`)
+      .send({ reason: 'Le fournisseur ne répond plus' })
+      .expect(409);
+    expect(refused.body.code).toBe('INVALID_STATE_TRANSITION');
+  });
+
   it('quantité mal formée : refusée par le contrat, rien n’entre', async () => {
     const order = await confirmedOrder('5');
     await as(tokens.magasinier)

@@ -37,6 +37,9 @@ class PurchasesApi {
   Future<PurchaseOrder> cancel(String id) =>
       _send('POST', '/purchase-orders/$id/cancel', null);
 
+  Future<PurchaseOrder> close(String id, String reason) =>
+      _send('POST', '/purchase-orders/$id/close', {'reason': reason});
+
   Future<PurchaseOrder> _send(
     String method,
     String path,

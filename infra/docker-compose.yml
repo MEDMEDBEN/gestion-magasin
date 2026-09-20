@@ -35,6 +35,7 @@ services:
       - postgres
       - redis
       - minio
+      - minio-init
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`)"
@@ -60,21 +61,53 @@ services:
     volumes:
       - redis_data:/data
 
+  # MinIO n'est JAMAIS exposé publiquement : le backend lit et écrit les fichiers
+  # et les sert lui-même (aucune URL pré-signée n'est distribuée). Ni port publié,
+  # ni route Traefik — accessible seulement depuis le réseau Docker interne.
   minio:
     image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    env_file: .env.minio-root
     volumes:
       - minio_data:/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.minio.rule=Host(`${STORAGE_DOMAIN}`)"
-      - "traefik.http.routers.minio.entrypoints=websecure"
-      - "traefik.http.routers.minio.tls.certresolver=le"
-      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Provisionnement à usage unique : crée le bucket et un compte de service
+  # DÉDIÉ au backend, limité à ce seul bucket. Le compte root ne sert qu'ici —
+  # le backend ne l'a jamais.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    env_file:
+      - .env
+      - .env.minio-root
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET}
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      mc alias set root http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\";
+      mc mb --ignore-existing root/$$MINIO_BUCKET;
+      mc anonymous set none root/$$MINIO_BUCKET;
+      printf '%s' '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::'$$MINIO_BUCKET'\",\"arn:aws:s3:::'$$MINIO_BUCKET'/*\"]}]}' > /tmp/policy.json;
+      mc admin policy create root backend-bucket /tmp/policy.json || true;
+      mc admin user add root \"$$MINIO_ACCESS_KEY\" \"$$MINIO_SECRET_KEY\" || true;
+      mc admin policy attach root backend-bucket --user \"$$MINIO_ACCESS_KEY\" || true;
+      echo 'MinIO provisionne : bucket + compte de service limite a ce bucket.';
+      "
+    restart: "no"
 
 volumes:
   postgres_data:

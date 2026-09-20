@@ -29,6 +29,7 @@ import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PERMISSIONS } from '../common/permissions';
 import {
+  ClosePurchaseOrderDto,
   ConfirmPurchaseOrderDto,
   CreatePurchaseOrderDto,
   PurchaseOrderDto,
@@ -128,6 +129,29 @@ export class PurchaseOrdersController {
       userId: user.id,
       ipAddress: ip,
     });
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PURCHASE_CONFIRM)
+  @Post(':id/close')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Clôture le reliquat d’une commande partiellement reçue (ADMIN SEUL)',
+    description:
+      'Le fournisseur ne livrera pas le reste : la commande passe CLOTUREE avec ' +
+      'un motif obligatoire. Ce qui est déjà reçu reste reçu (règle 7) ; plus ' +
+      'aucune réception n’est acceptée ensuite.',
+  })
+  @ApiOkResponse({ type: PurchaseOrderDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  close(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: ClosePurchaseOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PurchaseOrderDto> {
+    return this.orders.close(id, dto, { userId: user.id, ipAddress: ip });
   }
 
   @Roles(RoleCode.ADMIN)

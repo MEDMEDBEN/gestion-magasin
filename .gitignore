@@ -30,3 +30,8 @@ app/android/local.properties
 # `dart run build_runner build`, comme le client Prisma côté backend.
 app/lib/**/*.g.dart
 app/lib/**/*.freezed.dart
+
+# Signature Android de production — jamais dans Git (perdu = plus aucune mise à jour possible)
+app/android/key.properties
+*.jks
+*.keystore

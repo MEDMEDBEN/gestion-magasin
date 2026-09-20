@@ -66,6 +66,10 @@ class PurchasesActions {
 
   Future<PurchaseOrder> cancel(String id) => _refresh(_api.cancel(id));
 
+  /// Reliquat abandonné : la commande sort des en-cours, ce qui est reçu reste reçu.
+  Future<PurchaseOrder> close(String id, String reason) =>
+      _refresh(_api.close(id, reason));
+
   Future<PurchaseOrder> _refresh(Future<PurchaseOrder> call) async {
     final order = await call;
     _ref.invalidate(purchaseOrdersProvider);

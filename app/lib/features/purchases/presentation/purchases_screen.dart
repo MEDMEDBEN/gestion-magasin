@@ -51,6 +51,7 @@ StatusTone _tone(PurchaseStatus status) => switch (status) {
   PurchaseStatus.confirmed => StatusTone.info,
   PurchaseStatus.partiallyReceived => StatusTone.warn,
   PurchaseStatus.received => StatusTone.ok,
+  PurchaseStatus.closed => StatusTone.neutral,
   PurchaseStatus.cancelled => StatusTone.error,
 };
 
@@ -171,6 +172,12 @@ class PurchasesScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop('cancel'),
               child: const Text('Annuler la commande'),
             ),
+          if (order.status == PurchaseStatus.partiallyReceived &&
+              rights.canConfirm)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('close'),
+              child: const Text('Clôturer le reliquat'),
+            ),
           if (receivable && rights.canReceive)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('receive'),
@@ -192,6 +199,10 @@ class PurchasesScreen extends ConsumerWidget {
     if (action == null || !context.mounted) return;
     if (action == 'receive') {
       await openFormPanel<void>(context, ReceptionForm(order: order));
+      return;
+    }
+    if (action == 'close') {
+      await _closeRemainder(context, ref, order);
       return;
     }
     if (action == 'receptions') {
@@ -244,6 +255,30 @@ class PurchasesScreen extends ConsumerWidget {
     }
   }
 
+  /// Reliquat abandonné : motif obligatoire, ce qui est reçu reste reçu.
+  Future<void> _closeRemainder(
+    BuildContext context,
+    WidgetRef ref,
+    PurchaseOrder order,
+  ) async {
+    final confirmed = await showDialog<String>(
+      context: context,
+      builder: (context) => _CloseRemainderDialog(number: order.number),
+    );
+    if (confirmed == null || !context.mounted) return;
+    try {
+      final updated = await ref
+          .read(purchasesActionsProvider)
+          .close(order.id, confirmed);
+      if (context.mounted) {
+        _snack(context, '${updated.number} : ${updated.status.label}.');
+      }
+    } on ApiException catch (error) {
+      if (error.statusCode == 409) ref.invalidate(purchaseOrdersProvider);
+      if (context.mounted) _snack(context, error.userMessage);
+    }
+  }
+
   /// Historique : une commande peut avoir plusieurs réceptions partielles.
   Future<void> _showReceptions(
     BuildContext context,
@@ -289,6 +324,73 @@ class PurchasesScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Clôture du reliquat : motif obligatoire. Dialogue à état pour que le
+/// contrôleur de texte vive jusqu'à la fin de l'animation de fermeture.
+class _CloseRemainderDialog extends StatefulWidget {
+  const _CloseRemainderDialog({required this.number});
+
+  final String number;
+
+  @override
+  State<_CloseRemainderDialog> createState() => _CloseRemainderDialogState();
+}
+
+class _CloseRemainderDialogState extends State<_CloseRemainderDialog> {
+  final _reason = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final reason = _reason.text.trim();
+    if (reason.length < 3) {
+      setState(() => _error = 'Indiquez le motif (3 caractères minimum)');
+      return;
+    }
+    Navigator.of(context).pop(reason);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Clôturer le reliquat de ${widget.number} ?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Ce qui est déjà reçu reste reçu. La commande sort des en-cours et '
+            'n’accepte plus aucune réception.',
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _reason,
+            autofocus: true,
+            maxLength: 500,
+            decoration: InputDecoration(
+              labelText: 'Motif',
+              hintText: 'Rupture définitive chez le fournisseur',
+              errorText: _error,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Garder ouverte'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Clôturer')),
+      ],
     );
   }
 }
