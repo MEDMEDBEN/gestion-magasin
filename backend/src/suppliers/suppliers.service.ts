@@ -35,14 +35,27 @@ export class SuppliersService {
   constructor(private readonly prisma: PrismaService) {}
 
   /// Dette fournisseur (règle : jamais stockée, toujours recalculée) :
-  /// reprise de l'existant − paiements. Les achats (P0 #6) s'y ajouteront.
+  /// reprise de l'existant + marchandise RÉELLEMENT reçue (TTC figé à la
+  /// réception) − paiements. La commande seule n'endette pas : la dette naît à
+  /// la réception (décision MEDMEDBEN 2026-09-16).
   static async debt(db: Db | PrismaService, supplier: Supplier) {
-    const paid = await db.supplierPayment.aggregate({
-      where: { supplierId: supplier.id },
-      _sum: { amount: true },
-    });
+    const [paid, received] = await Promise.all([
+      db.supplierPayment.aggregate({
+        where: { supplierId: supplier.id },
+        _sum: { amount: true },
+      }),
+      db.receptionLine.aggregate({
+        where: { reception: { supplierId: supplier.id } },
+        _sum: { lineTotalTtc: true },
+      }),
+    ]);
     const paidAmount = paid._sum.amount ?? 0;
-    return { paidAmount, balanceDue: supplier.openingBalance - paidAmount };
+    const receivedAmount = received._sum.lineTotalTtc ?? 0;
+    return {
+      paidAmount,
+      receivedAmount,
+      balanceDue: supplier.openingBalance + receivedAmount - paidAmount,
+    };
   }
 
   async findAll(query: SupplierListQueryDto): Promise<SupplierListDto> {
@@ -68,15 +81,34 @@ export class SuppliersService {
       }),
       this.prisma.supplier.count({ where }),
     ]);
-    // Un seul agrégat pour toute la page (et non une requête par fournisseur).
-    const paid = await this.prisma.supplierPayment.groupBy({
-      by: ['supplierId'],
-      where: { supplierId: { in: rows.map((r) => r.id) } },
-      _sum: { amount: true },
-    });
+    // Deux agrégats pour toute la page (et non une requête par fournisseur).
+    const ids = rows.map((r) => r.id);
+    const [paid, received] = await Promise.all([
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: ids } },
+        _sum: { amount: true },
+      }),
+      this.prisma.reception.findMany({
+        where: { supplierId: { in: ids } },
+        select: { supplierId: true, lines: { select: { lineTotalTtc: true } } },
+      }),
+    ]);
     const paidBy = new Map(paid.map((p) => [p.supplierId, p._sum.amount ?? 0]));
+    const receivedBy = new Map<string, number>();
+    for (const reception of received) {
+      const sum = reception.lines.reduce((t, l) => t + l.lineTotalTtc, 0);
+      receivedBy.set(
+        reception.supplierId,
+        (receivedBy.get(reception.supplierId) ?? 0) + sum,
+      );
+    }
     const data = rows.map((row) =>
-      SuppliersService.toDtoWith(row, paidBy.get(row.id) ?? 0),
+      SuppliersService.toDtoWith(
+        row,
+        paidBy.get(row.id) ?? 0,
+        receivedBy.get(row.id) ?? 0,
+      ),
     );
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
@@ -125,11 +157,17 @@ export class SuppliersService {
       const before = await tx.supplier.findUnique({ where: { id } });
       if (!before) throw SuppliersService.notFound();
       if (dto.openingBalance !== undefined) {
-        const { paidAmount } = await SuppliersService.debt(tx, before);
-        if (dto.openingBalance < paidAmount) {
+        // La reprise révisée ne doit pas rendre la dette négative : ce qui est
+        // déjà payé, moins la marchandise reçue depuis, reste un plancher.
+        const { paidAmount, receivedAmount } = await SuppliersService.debt(
+          tx,
+          before,
+        );
+        const floor = Math.max(0, paidAmount - receivedAmount);
+        if (dto.openingBalance < floor) {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
-            `Déjà payé ${formatDA(paidAmount)} à ce fournisseur : la reprise ne peut pas être inférieure`,
+            `Déjà payé ${formatDA(paidAmount)} à ce fournisseur (dont ${formatDA(receivedAmount)} de marchandise reçue) : la reprise ne peut pas descendre sous ${formatDA(floor)}`,
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
@@ -441,13 +479,17 @@ export class SuppliersService {
     db: Db | PrismaService,
     supplier: Supplier,
   ): Promise<SupplierDto> {
-    const { paidAmount } = await SuppliersService.debt(db, supplier);
-    return SuppliersService.toDtoWith(supplier, paidAmount);
+    const { paidAmount, receivedAmount } = await SuppliersService.debt(
+      db,
+      supplier,
+    );
+    return SuppliersService.toDtoWith(supplier, paidAmount, receivedAmount);
   }
 
   private static toDtoWith(
     supplier: Supplier,
     paidAmount: number,
+    receivedAmount: number,
   ): SupplierDto {
     return {
       id: supplier.id,
@@ -460,7 +502,8 @@ export class SuppliersService {
       notes: supplier.notes,
       openingBalance: supplier.openingBalance,
       paidAmount,
-      balanceDue: supplier.openingBalance - paidAmount,
+      receivedAmount,
+      balanceDue: supplier.openingBalance + receivedAmount - paidAmount,
       isActive: supplier.isActive,
     };
   }

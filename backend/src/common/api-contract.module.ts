@@ -4,7 +4,6 @@ import {
   AuditController,
   PlanningController,
 } from '../planning/planning.controller';
-import { ReceptionsController } from '../purchases/purchases.controller';
 import { TransfersController } from '../transfers/transfers.controller';
 
 /// Contrat OpenAPI des endpoints P0 : routes, DTO et guards FIGÉS,
@@ -12,7 +11,6 @@ import { TransfersController } from '../transfers/transfers.controller';
 /// Chaque route répond 501 + `NOT_IMPLEMENTED` tant que sa feature n'est pas faite.
 @Module({
   controllers: [
-    ReceptionsController,
     TransfersController,
     InventoryController,
     PlanningController,

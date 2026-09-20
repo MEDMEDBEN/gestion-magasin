@@ -335,9 +335,12 @@ export class PurchaseOrdersService {
     });
   }
 
-  /// Verrou de ligne : deux confirmations (ou confirmation + annulation)
-  /// simultanées s'exécutent l'une après l'autre, jamais en parallèle.
-  private static async lockOrder(tx: Db, id: string): Promise<OrderWithLines> {
+  /// Verrou de ligne : deux écritures simultanées sur la MÊME commande
+  /// (confirmation, annulation, modification, réception) s'exécutent l'une après
+  /// l'autre, jamais en parallèle. Point d'entrée unique, partagé avec les
+  /// réceptions — c'est lui qui empêche « annuler » et « réceptionner » de
+  /// passer tous les deux.
+  static async lockOrder(tx: Db, id: string): Promise<OrderWithLines> {
     await tx.$queryRaw`SELECT "id" FROM "PurchaseOrder" WHERE "id" = ${id}::uuid FOR UPDATE`;
     const order = await tx.purchaseOrder.findUnique({
       where: { id },

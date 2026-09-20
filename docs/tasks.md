@@ -57,11 +57,33 @@ de l'admin, pas par la session d'origine du caissier (décision du 2026-09-16, �
 Preuve finale : backend **81** unit · **235** e2e (un passage) · lint 0 ; app analyze propre · **+203 ~27**.
 **`develop` est prêt à être mergé sur `main`** (en attente du feu vert de MEDMEDBEN).
 
+### P0 #7 RÉCEPTIONS — CODE LIVRÉ (2026-09-20 · **MEDMEDBEN**)
+Le stub 501 des réceptions est remplacé par la vraie feature (`backend/src/receptions/`, `app/lib/features/receptions/`).
+- **La dette fournisseur naît à la RÉCEPTION** : `ReceptionLine.lineTotalTtc` fige le TTC (TVA prise sur la ligne de
+  COMMANDE quand la réception y est rattachée, sinon celle du produit) et `SuppliersService.debt` vaut désormais
+  **reprise + marchandise reçue − paiements**. Une reprise révisée ne peut plus descendre sous `payé − reçu`.
+- **Surlivraison refusée** : jamais plus que le reste à recevoir d'une ligne, y compris en CUMULANT deux lignes du même
+  bon. Contre-épreuve : garde retirée → le test échoue.
+- **Même verrou que l'annulation** : `PurchaseOrdersService.lockOrder` (le `SELECT … FOR UPDATE`) est devenu le point
+  d'entrée UNIQUE, partagé par modification, confirmation, annulation et réception. Contre-épreuve : verrou remplacé par
+  une simple lecture → le test « annulation et réception simultanées » laisse commande annulée ET stock entré.
+- Réceptions partielles : une commande en accepte plusieurs, son statut suit le cumul (PARTIELLEMENT_RECUE puis RECUE) ;
+  une commande soldée, annulée, brouillon ou seulement envoyée n'en accepte aucune.
+- Le stock n'entre que par `StockLedgerService` (règle 2), `Product.lastPurchasePriceHt` suit le dernier prix reçu
+  (règle 5), tout est audité, et la réception porte un `clientMutationId` obligatoire (elle est dans `MONEY_ROUTES`).
+- Numéro `BR-AAAA-NNNNN` par le générateur unique (`DocumentType.RECEPTION`, migration additive).
+- **App** : action « Réceptionner la marchandise » sur une commande engagée (ADMIN|MAGASINIER + `reception.create`),
+  reste à recevoir pré-rempli, emplacement obligatoire, surlivraison bloquée avant l'envoi, clé d'idempotence stable
+  par formulaire ; « Réceptions enregistrées » liste les bons d'une commande.
+- `src/generated/` est sorti du périmètre eslint : `prisma generate` rendait le lint rouge sans raison.
+
+**Preuve (2026-09-20)** : backend `lint:check` 0 · **81** unit · **244** e2e (18 suites, un seul passage) ;
+app `flutter analyze` propre · **+208 ~27**.
+
 **Reste à faire (dans l'ordre)**
-1. **Re-revue `reviewer` + `security-reviewer`** de ces corrections → merge `develop`→`main` seulement si verte.
-2. Relecture humaine des captures 21-27 (une nouvelle capture « Caisses » / historique serait utile).
-4. Puis **P0 #7 Réceptions** (verrou `FOR UPDATE` commun avec l'annulation de commande, surlivraison refusée, dette
-   fournisseur = reprise + reçu − paiements).
+1. Audits `reviewer` + `security-reviewer` de P0 #7, puis merge `develop`→`main` (re-revue du 2026-09-20 déjà verte).
+2. Relecture humaine des captures 21-27 (une capture « Caisses » et une « Réception » seraient utiles).
+3. Puis **P0 #8 Transferts magasin↔dépôt**.
 - **Avant production (tracé, non fait)** : NestJS 11 (vulnérabilités `npm audit`), `backend/Dockerfile` + `.dockerignore`,
   MinIO non exposé + utilisateur dédié, signature Android release.
 - Autres points de la revue encore ouverts : quantité décimale au panier (vente au mètre), note de commande effacée en
@@ -730,7 +752,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Réceptions (dont partielles) | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
+| Réceptions (dont partielles) | 🟡 **Code livré**, relecture humaine en attente | 🟢 Partielles, surlivraison refusée, dette | 🟢 Réception depuis la commande | 🟢 9 e2e · 5 widget | 🟡 audit en cours |
 | Transferts magasin↔dépôt | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Planning hebdomadaire | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |

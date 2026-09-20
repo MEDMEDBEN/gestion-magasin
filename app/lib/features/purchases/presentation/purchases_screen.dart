@@ -10,6 +10,8 @@ import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
+import '../../receptions/application/receptions_controller.dart';
+import '../../receptions/presentation/reception_form.dart';
 import '../application/purchases_controller.dart';
 import '../data/purchases_models.dart';
 import 'purchase_order_form.dart';
@@ -22,10 +24,14 @@ class PurchaseRights {
     : canWrite =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('purchase.create'),
-      canConfirm = user.hasRole('ADMIN') && user.can('purchase.confirm');
+      canConfirm = user.hasRole('ADMIN') && user.can('purchase.confirm'),
+      canReceive =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('reception.create');
 
   final bool canWrite;
   final bool canConfirm;
+  final bool canReceive;
 }
 
 void _snack(BuildContext context, String message) {
@@ -134,6 +140,10 @@ class PurchasesScreen extends ConsumerWidget {
     PurchaseRights rights,
   ) async {
     final editable = order.status.isEditable;
+    // Miroir du serveur : on ne réceptionne qu'une commande engagée.
+    final receivable =
+        order.status == PurchaseStatus.confirmed ||
+        order.status == PurchaseStatus.partiallyReceived;
     final action = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
@@ -161,6 +171,16 @@ class PurchasesScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop('cancel'),
               child: const Text('Annuler la commande'),
             ),
+          if (receivable && rights.canReceive)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('receive'),
+              child: const Text('Réceptionner la marchandise'),
+            ),
+          if (!editable && rights.canReceive)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('receptions'),
+              child: const Text('Réceptions enregistrées'),
+            ),
           if (!editable)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('view'),
@@ -170,6 +190,14 @@ class PurchasesScreen extends ConsumerWidget {
       ),
     );
     if (action == null || !context.mounted) return;
+    if (action == 'receive') {
+      await openFormPanel<void>(context, ReceptionForm(order: order));
+      return;
+    }
+    if (action == 'receptions') {
+      await _showReceptions(context, ref, order);
+      return;
+    }
     if (action == 'edit' || action == 'view') {
       await openFormPanel<void>(
         context,
@@ -214,5 +242,52 @@ class PurchasesScreen extends ConsumerWidget {
       if (error.statusCode == 409) ref.invalidate(purchaseOrdersProvider);
       if (context.mounted) _snack(context, error.userMessage);
     }
+  }
+
+  /// Historique : une commande peut avoir plusieurs réceptions partielles.
+  Future<void> _showReceptions(
+    BuildContext context,
+    WidgetRef ref,
+    PurchaseOrder order,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Réceptions de ${order.number}'),
+        content: SizedBox(
+          width: 420,
+          child: Consumer(
+            builder: (context, ref, _) =>
+                ref.watch(orderReceptionsProvider(order.id)).when(
+                  loading: () => const AmpereSkeletonList(rows: 2),
+                  error: (error, _) => Text(
+                    error is ApiException ? error.userMessage : '\$error',
+                  ),
+                  data: (items) => items.isEmpty
+                      ? const Text('Aucune réception pour cette commande.')
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final r in items)
+                              ListTile(
+                                title: Text(r.number),
+                                subtitle: Text(
+                                  '\${r.lines.length} ligne(s) · '
+                                  '\${formatDA(r.totalTtc)} TTC',
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
   }
 }

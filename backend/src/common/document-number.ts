@@ -29,7 +29,8 @@ export function localDate(date: Date): string {
 /// laisser de trou.
 export async function nextDocumentNumber(
   tx: Db,
-  documentType: 'FACTURE' | 'DEVIS' | 'BON_COMMANDE' | 'TRANSFERT',
+  documentType:
+    'FACTURE' | 'DEVIS' | 'BON_COMMANDE' | 'TRANSFERT' | 'RECEPTION',
   prefix: string,
   digits: number,
   year = localYear(new Date()),

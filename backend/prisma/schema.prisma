@@ -102,6 +102,7 @@ enum DocumentType {
   DEVIS
   BON_COMMANDE
   TRANSFERT
+  RECEPTION
 }
 
 enum CashSessionStatus {
@@ -935,6 +936,9 @@ model ReceptionLine {
   receivedQuantity Decimal @db.Decimal(14, 3)
   /// Prix unitaire réceptionné (centimes) — alimente Product.lastPurchasePriceHt.
   unitPriceHt      Int
+  /// Montant TTC figé à la réception (centimes) : c'est CE montant qui s'ajoute
+  /// à la dette fournisseur. Le taux de TVA d'un produit peut changer ensuite.
+  lineTotalTtc     Int     @default(0)
   note             String?
 
   reception    Reception     @relation(fields: [receptionId], references: [id], onDelete: Cascade)

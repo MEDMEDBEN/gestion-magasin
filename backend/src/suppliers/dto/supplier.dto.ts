@@ -141,11 +141,16 @@ export class SupplierDto {
   })
   openingBalance!: number;
   @ApiProperty({
-    description: 'Reste dû, TOUJOURS recalculé : reprise − paiements.',
+    description:
+      'Reste dû, TOUJOURS recalculé : reprise + marchandise reçue − paiements.',
   })
   balanceDue!: number;
   @ApiProperty({ description: 'Total déjà payé à ce fournisseur (centimes).' })
   paidAmount!: number;
+  @ApiProperty({
+    description: 'Total TTC de la marchandise RÉELLEMENT reçue (centimes).',
+  })
+  receivedAmount!: number;
   @ApiProperty() isActive!: boolean;
 }
 

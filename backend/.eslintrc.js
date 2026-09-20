@@ -15,7 +15,9 @@ module.exports = {
     node: true,
     jest: true,
   },
-  ignorePatterns: ['.eslintrc.js'],
+  // `src/generated/prisma` est REGÉNÉRÉ par Prisma (et ignoré par git) : le
+  // formater n'a aucun sens, et `prisma generate` rendait le lint rouge.
+  ignorePatterns: ['.eslintrc.js', 'src/generated/'],
   rules: {
     '@typescript-eslint/interface-name-prefix': 'off',
     '@typescript-eslint/explicit-function-return-type': 'off',

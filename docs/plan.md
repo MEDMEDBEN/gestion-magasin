@@ -219,6 +219,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-16 : NON CONFORME → 2 importants + mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 26 et 27 à relire par MEDMEDBEN)_
 
+### Feature P0 n°7 : Réceptions fournisseurs (y compris partielles)
+- [x] Schéma DB validé _(migration ADDITIVE `20260920100000_receptions` : `DocumentType.RECEPTION`, `ReceptionLine.lineTotalTtc`)_
+- [x] Matrice de permissions CRUD par rôle définie _(ADMIN + MAGASINIER avec `reception.create` ; vendeur fermé)_
+- [x] Endpoints API implémentés _(POST /receptions, GET /receptions, GET /receptions/:id ; stub 501 retiré)_
+- [x] Validation des entrées (class-validator) en place _(quantités décimales > 0, prix bornés, `clientMutationId` obligatoire)_
+- [x] Tests unitaires backend passent _(81 — 2026-09-20)_
+- [x] Tests d'intégration backend passent _(244 e2e dont 9 réceptions — 2026-09-20)_
+- [x] UI desktop implémentée
+- [x] UI mobile implémentée
+- [x] Sync offline gérée si applicable _(non : la réception endette le fournisseur, elle reste en ligne)_
+- [ ] Revue par subagent `reviewer`
+- [ ] Audit par subagent `security-reviewer`
+- [ ] Tests manuels effectués par un humain
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```
