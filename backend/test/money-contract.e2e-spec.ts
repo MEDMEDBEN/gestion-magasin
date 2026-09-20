@@ -3,6 +3,7 @@ import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
+import { MONEY_ROUTES } from './money-routes';
 
 /// Contrats TRANSVERSAUX des mutations d'argent (revue générale 2026-09-16) :
 /// 1. idempotence : TOUTE mutation d'argent exige un `clientMutationId` ; un
@@ -107,20 +108,36 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
         .set('Content-Type', 'application/json')
         .send(JSON.stringify(body));
     const zero = '00000000-0000-4000-8000-000000000000';
-    for (const [url, body] of [
-      ['/api/cash-sessions', { locationId: magasinId, openingFloat: 0 }],
-      [`/api/cash-sessions/${zero}/close`, { countedAmount: 0 }],
-      ['/api/sales', { lines: [{ productId, quantity: '1' }], paidAmount: 0 }],
-      ['/api/payments/customer', { customerId: zero, amount: 1 }],
-      [`/api/payments/customer/${zero}/reverse`, { reason: 'Erreur' }],
-      [`/api/payments/supplier/${zero}/reverse`, { reason: 'Erreur' }],
-      [
-        '/api/payments/supplier',
-        { supplierId: zero, amount: 1, fromCash: false },
-      ],
-    ] as const) {
-      const res = await raw(url, body).expect(400);
-      expect(JSON.stringify(res.body.message)).toContain('clientMutationId');
+    // Corps par route, pour CHAQUE route d'argent de la liste partagée : en
+    // ajouter une sans corps ici fait échouer le test (aucune ne peut être oubliée).
+    const bodies: Record<(typeof MONEY_ROUTES)[number], object> = {
+      '/api/sales': { lines: [{ productId, quantity: '1' }], paidAmount: 0 },
+      '/api/cash-sessions': { locationId: magasinId, openingFloat: 0 },
+      '/api/cash-sessions/:id/close': { countedAmount: 0 },
+      '/api/payments/customer': { customerId: zero, amount: 1 },
+      '/api/payments/customer/:id/reverse': { reason: 'Erreur' },
+      '/api/payments/supplier': {
+        supplierId: zero,
+        amount: 1,
+        fromCash: false,
+      },
+      '/api/payments/supplier/:id/reverse': { reason: 'Erreur' },
+    };
+    for (const route of MONEY_ROUTES) {
+      const url = route.replace(/:[^/]+/g, zero);
+      const body = bodies[route];
+      {
+        const res = await raw(url, body).expect(400);
+        expect({
+          url,
+          message: JSON.stringify(res.body.message),
+        }).toMatchObject({
+          url,
+          message: expect.stringContaining(
+            'clientMutationId',
+          ) as unknown as string,
+        });
+      }
     }
   });
 

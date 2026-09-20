@@ -1,3 +1,4 @@
+import { json } from 'express';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { intFromEnv } from './env';
@@ -12,6 +13,23 @@ export function configureApp(app: NestExpressApplication): void {
   // Un NOMBRE de sauts de confiance, jamais `true` : sinon un client pourrait
   // choisir son IP en forgeant `X-Forwarded-For`. 0 (défaut) = pas de proxy.
   app.set('trust proxy', intFromEnv('TRUST_PROXY_HOPS', 0, 0));
+
+  // Rien ne doit annoncer la pile technique, et le corps JSON est borné
+  // EXPLICITEMENT (ne pas dépendre du défaut d'Express).
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
+  app.use(json({ limit: '128kb' }));
+  app.use(
+    (
+      _req: unknown,
+      res: { setHeader: (k: string, v: string) => void },
+      next: () => void,
+    ) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-Frame-Options', 'DENY');
+      next();
+    },
+  );
 
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new HttpExceptionFilter());

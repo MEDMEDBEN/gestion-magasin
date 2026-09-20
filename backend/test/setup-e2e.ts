@@ -1,3 +1,4 @@
+import { isMoneyRoute } from './money-routes';
 import { testDatabaseUrl } from './test-database';
 
 /// Base DÉDIÉE aux tests (voir test-database.ts), fixée AVANT le chargement de
@@ -24,12 +25,10 @@ const Test = require('supertest/lib/test') as {
 };
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { randomUUID } = require('crypto') as { randomUUID: () => string };
-const MONEY_ROUTE =
-  /\/api\/(sales|payments\/(customer|supplier)(\/[^/]+\/reverse)?|cash-sessions(\/[^/]+\/close)?)$/;
 const originalSend = Test.prototype.send;
 Test.prototype.send = function (this: { url: string }, body: unknown) {
   if (
-    MONEY_ROUTE.test(new URL(this.url).pathname) &&
+    isMoneyRoute(new URL(this.url).pathname) &&
     body !== null &&
     typeof body === 'object' &&
     !('clientMutationId' in body)

@@ -28,6 +28,7 @@ type Db = Prisma.TransactionClient;
 
 /// Tris autorisés (liste blanche, CONVENTIONS.md).
 const SUPPLIER_SORT_FIELDS = ['name', 'createdAt'] as const;
+const PAYMENT_SORT_FIELDS = ['paidAt', 'amount'] as const;
 
 @Injectable()
 export class SuppliersService {
@@ -274,7 +275,10 @@ export class SuppliersService {
         include: { reversedBy: { select: { id: true } } },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ paidAt: 'desc' }, { id: 'desc' }],
+        orderBy: [
+          parseSort(query.sort, PAYMENT_SORT_FIELDS, { paidAt: 'desc' }),
+          { id: 'desc' },
+        ],
       }),
       this.prisma.supplierPayment.count({ where }),
     ]);
