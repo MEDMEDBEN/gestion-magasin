@@ -365,7 +365,7 @@ export class PurchaseOrdersService {
         },
       });
       await writeAudit(tx, actor, {
-        action: 'CANCEL',
+        action: 'CLOSE',
         entityType: 'PurchaseOrder',
         entityId: id,
         oldValue: {

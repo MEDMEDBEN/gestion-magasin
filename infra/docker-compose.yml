@@ -32,10 +32,14 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - postgres
-      - redis
-      - minio
-      - minio-init
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      # Le bucket et le compte de service doivent EXISTER avant le backend : son
+      # compte est limité au bucket, il n'a pas le droit de le créer lui-même.
+      minio-init:
+        condition: service_completed_successfully
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`)"
@@ -68,9 +72,10 @@ services:
     image: quay.io/minio/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    # Identifiants root fournis UNIQUEMENT par ce fichier. Surtout pas de bloc
+    # `environment:` ici : `${MINIO_ROOT_USER}` s'interpole depuis `.env` (où la
+    # variable n'existe plus) et `environment` prime sur `env_file` — MinIO
+    # démarrerait avec des identifiants VIDES.
     env_file: .env.minio-root
     volumes:
       - minio_data:/data
@@ -103,7 +108,10 @@ services:
       mc anonymous set none root/$$MINIO_BUCKET;
       printf '%s' '{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::'$$MINIO_BUCKET'\",\"arn:aws:s3:::'$$MINIO_BUCKET'/*\"]}]}' > /tmp/policy.json;
       mc admin policy create root backend-bucket /tmp/policy.json || true;
-      mc admin user add root \"$$MINIO_ACCESS_KEY\" \"$$MINIO_SECRET_KEY\" || true;
+      mc admin user add root \"$$MINIO_ACCESS_KEY\" \"$$MINIO_SECRET_KEY\"
+      || mc admin user svcacct edit --secret-key \"$$MINIO_SECRET_KEY\" root \"$$MINIO_ACCESS_KEY\"
+      || mc admin user add root \"$$MINIO_ACCESS_KEY\" \"$$MINIO_SECRET_KEY\" --force 2>/dev/null
+      || true;
       mc admin policy attach root backend-bucket --user \"$$MINIO_ACCESS_KEY\" || true;
       echo 'MinIO provisionne : bucket + compte de service limite a ce bucket.';
       "

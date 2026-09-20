@@ -102,8 +102,10 @@ class _IdleSync extends CatalogSyncController {
   Future<void> build() async {}
 }
 
-/// Droits de l'ADMIN — miroir de `ROLE_PERMISSIONS` côté serveur. Incomplet,
-/// l'admin de capture ne voit pas les écrans réellement livrés.
+/// Droits de l'ADMIN — côté serveur, `ROLE_PERMISSIONS[ADMIN]` vaut TOUTES les
+/// permissions : cette liste les reprend intégralement, y compris celles des
+/// features encore à livrer, pour qu'elle ne redevienne pas incomplète en
+/// silence (un admin de capture amputé ne voit pas les écrans livrés).
 const _adminPermissions = [
   'user.manage',
   'settings.manage',
@@ -136,6 +138,14 @@ const _adminPermissions = [
   'purchase.create',
   'purchase.confirm',
   'reception.create',
+  'transfer.request',
+  'transfer.prepare',
+  'transfer.receive',
+  'transfer.cancel',
+  'inventory.create',
+  'inventory.validate',
+  'planning.manage',
+  'planning.task.read',
 ];
 
 final _categories = [

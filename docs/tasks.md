@@ -121,8 +121,11 @@ Côté app : action « Clôturer le reliquat » (ADMIN), motif obligatoire. Preu
   `.dockerignore` (ni `.env`, ni tests, ni `.git`). **Image construite ET démarrée** : `/api/health` → 200,
   route protégée → 401, en-têtes de sécurité présents, migrations appliquées.
 - **Défaut trouvé au passage : l'application ne démarrait pas en production.** Le client Prisma généré
-  s'importe avec l'extension `.ts` explicite ; le JS compilé gardait `require('./internal/class.ts')`.
-  `rewriteRelativeImportExtensions` dans `tsconfig.json` corrige — personne n'avait jamais exécuté le build.
+  s'importait avec l'extension `.ts` explicite ; le JS compilé gardait `require('./internal/class.ts')`.
+  Corrigé à la source : `importFileExtension = ""` sur le générateur Prisma — sans extension, `tsc`,
+  `ts-node` et `jest` résolvent tous le `.ts` à la compilation et le `.js` à l'exécution. (Premier essai,
+  `rewriteRelativeImportExtensions`, réglait le build mais cassait `ts-node` : seed et tests d'intégration.)
+  Personne n'avait jamais exécuté le build compilé.
 - `prisma` et `dotenv` passent en dépendances de PRODUCTION (la CLI sert au démarrage du conteneur) ;
   `prisma7.config.ts` renommé `prisma.config.ts` (nom que la CLI attend).
 - **NestJS 10 → 11** + `overrides` npm (`multer`, `deepmerge-ts`, `mysql2`) : `npm audit` passe de
@@ -145,7 +148,20 @@ défauts trouvés en le remettant en marche :
   « Vente » ni les réceptions. Complétés.
   Captures écrites dans le dossier passé à `--dart-define=CAPTURE_OUT=…`.
 
-**4. `develop` fusionnée dans `main`** après les deux audits verts.
+**4. `develop` fusionnée dans `main`** après les deux audits verts. À noter : `main` n'avait **jamais
+existé** dans le dépôt — `develop` était la branche par défaut.
+
+**Corrections de l'audit sécurité du 2026-09-20** : le bloc `environment:` du service `minio` **vidait**
+`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (`${...}` s'interpole depuis `.env`, jamais depuis un `env_file`, et
+`environment` prime) — MinIO aurait démarré sans identifiants et le provisionnement aurait échoué. Bloc
+supprimé, rendu vérifié. Aussi : rotation du secret du compte de service prise en compte, `minio-init` attendu
+en `service_completed_successfully` (le backend n'a pas le droit de créer le bucket), action d'audit `CLOSE`
+distincte de `CANCEL` (migration additive), droits ADMIN du jeu de captures alignés sur les 39 permissions.
+
+⚠️ **Incident machine du 2026-09-21** : les conteneurs ET les volumes Docker de `gestion-magasin`
+(`infra-postgres-1`, `infra-minio-1`) avaient disparu — base de développement locale perdue (données de seed
+uniquement, aucune perte réelle). Recréés depuis `infra/docker-compose.dev.yml` puis migrés et re-seedés.
+Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433, 9002-9003) : aucun conflit.
 
 **Preuve (2026-09-20)** : backend `lint:check` 0 · **81** unit · **248** e2e (18 suites, un seul passage) ·
 image Docker démarrée et interrogée ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.

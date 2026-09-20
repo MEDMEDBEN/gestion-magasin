@@ -14,6 +14,11 @@ generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
   moduleFormat = "cjs"
+  // Imports SANS extension : le client généré s'importait en `./internal/class.ts`,
+  // extension que le JS compilé gardait telle quelle — l'application ne démarrait
+  // donc pas en production. Sans extension, tsc, ts-node et jest résolvent tous
+  // le `.ts` à la compilation et le `.js` à l'exécution.
+  importFileExtension = ""
 }
 
 datasource db {
@@ -204,6 +209,9 @@ enum AuditAction {
   CANCEL
   VALIDATE
   ADJUST
+  /// Clôture d'un reliquat : ce qui est reçu reste acquis, seul le reste est
+  /// abandonné. À distinguer d'une ANNULATION dans le journal.
+  CLOSE
 }
 
 /// Motif de fermeture d'une session (voir `RefreshToken.revokedReason`).
