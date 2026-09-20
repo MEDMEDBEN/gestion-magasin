@@ -32,9 +32,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Client Prisma généré (adaptateur `pg` : aucun moteur binaire à embarquer) et
-# schéma — les migrations sont appliquées au démarrage.
-COPY --from=build /app/src/generated ./src/generated
+# Schéma et configuration Prisma : les migrations et le seed tournent au
+# démarrage. Le client généré est déjà compilé dans `dist/generated`.
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/dist ./dist
@@ -44,7 +43,10 @@ USER node
 
 EXPOSE 3000
 
-# Migrations puis démarrage : la base est toujours au niveau du code déployé.
-# `migrate deploy` n'applique que des migrations déjà écrites, jamais de
-# modification destructive improvisée.
-CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+# Migrations, seed, puis démarrage. La base est toujours au niveau du code
+# déployé ; `migrate deploy` n'applique que des migrations déjà écrites, jamais
+# de modification destructive improvisée. Le seed est IDEMPOTENT et fait
+# autorité sur les rôles et permissions — il crée aussi le PREMIER compte
+# administrateur, sans quoi personne ne pourrait se connecter (règle 14 :
+# aucune inscription publique).
+CMD ["dumb-init", "sh", "-c", "npx prisma migrate deploy && node dist/seed.js && node dist/main.js"]

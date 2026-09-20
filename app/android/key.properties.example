@@ -4,7 +4,7 @@
 #
 # Créer le magasin de clés une seule fois, et le SAUVEGARDER : perdu, plus
 # aucune mise à jour de l'application n'est possible.
-#   keytool -genkey -v -keystore gestion-magasin.jks -storetype JKS \
+#   keytool -genkeypair -v -keystore gestion-magasin.jks -storetype PKCS12 \
 #     -keyalg RSA -keysize 2048 -validity 10000 -alias gestion-magasin
 # ─────────────────────────────────────────────────────────
 storeFile=C:/chemin/vers/gestion-magasin.jks

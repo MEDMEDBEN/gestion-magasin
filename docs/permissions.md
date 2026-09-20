@@ -23,6 +23,7 @@
 | Vente à crédit plafonnée | `sale.credit` | ADMIN, VENDEUR |
 | Commande fournisseur | `purchase.create` | ADMIN, MAGASINIER |
 | Confirmation commande | `purchase.confirm` | ADMIN |
+| Clôture du reliquat d'une commande partiellement reçue | `purchase.confirm` | ADMIN |
 
 Le plafond `Customer.creditLimit` est un **entier en centimes**, `@default(0)` dans le schéma Prisma :
 un client neuf ne peut donc pas acheter à crédit tant que l'admin n'a rien fixé.

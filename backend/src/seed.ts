@@ -1,14 +1,14 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from '../src/generated/prisma/client';
-import { hashPassword } from '../src/auth/password';
-import { RoleCode } from '../src/common/auth.decorators';
+import { PrismaClient } from './generated/prisma/client';
+import { hashPassword } from './auth/password';
+import { RoleCode } from './common/auth.decorators';
 import {
   PERMISSION_DESCRIPTIONS,
   PERMISSIONS,
   ROLE_LABELS,
   ROLE_PERMISSIONS,
-} from '../src/common/permissions';
+} from './common/permissions';
 
 /// Seed IDEMPOTENT : chaque exécution converge vers le même état, sans doublon.
 /// Ne crée QUE des données de référence — aucune donnée métier fictive.
@@ -16,7 +16,9 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error('DATABASE_URL est absent — impossible de seeder.');
 }
-const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString }),
+});
 
 async function seedPermissions(): Promise<void> {
   for (const code of Object.values(PERMISSIONS)) {
@@ -85,7 +87,11 @@ async function seedPricingReferences(): Promise<void> {
   for (const taxRate of taxRates) {
     await prisma.taxRate.upsert({
       where: { code: taxRate.code },
-      update: { name: taxRate.name, rate: taxRate.rate, isDefault: taxRate.isDefault },
+      update: {
+        name: taxRate.name,
+        rate: taxRate.rate,
+        isDefault: taxRate.isDefault,
+      },
       create: taxRate,
     });
   }

@@ -81,7 +81,8 @@ Traçabilité / système
 - Paiements : `CustomerPayment`, `SupplierPayment`
 
 ### Machines à états (figées)
-- **PurchaseOrder** : `BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE` (+ `ANNULEE`)
+- **PurchaseOrder** : `BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE` (+ `ANNULEE`,
+  et `CLOTUREE` depuis `PARTIELLEMENT_RECUE` : reliquat abandonné, ce qui est reçu reste reçu)
 - **Transfer** : `DEMANDEE → ACCEPTEE → EN_PREPARATION → PREPAREE → EN_TRANSIT → RECUE` (+ `REFUSEE`, `ANNULEE`; préparation partielle gérée par les quantités de `TransferLine`)
 - **Sale** : `VALIDEE` (+ `ANNULEE`) — pas de brouillon serveur ; le panier vit côté client jusqu'à validation. `Sale.type` : `TICKET` / `FACTURE` (la facture reçoit un numéro légal séquentiel serveur, voir CLAUDE.md règle 11)
 - **CashSession** : `OUVERTE → CLOTUREE` ; `CashMovement.type` : `VENTE_ESPECES, ENTREE, SORTIE, PRELEVEMENT`

@@ -866,6 +866,7 @@ model SupplierPayment {
 }
 
 /// BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE (+ ANNULEE).
+/// Depuis PARTIELLEMENT_RECUE, l'admin peut aussi CLOTURER le reliquat.
 model PurchaseOrder {
   id            String              @id @default(uuid(7)) @db.Uuid
   number        String              @unique

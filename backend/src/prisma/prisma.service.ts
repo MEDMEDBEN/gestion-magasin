@@ -10,7 +10,7 @@ import { PrismaClient } from '../generated/prisma/client';
 
 /// Prisma 7 n'ouvre plus la connexion à partir du `datasource` du schéma :
 /// il faut lui passer un driver adapter avec la chaîne de connexion.
-/// `DATABASE_URL` est donc lu ICI pour le runtime, et dans `prisma7.config.ts` pour la CLI.
+/// `DATABASE_URL` est donc lu ICI pour le runtime, et dans `prisma.config.ts` pour la CLI.
 @Injectable()
 export class PrismaService
   extends PrismaClient

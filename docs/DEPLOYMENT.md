@@ -63,10 +63,12 @@ surface d'attaque en moins.
    que le nombre réel de proxys.
 5. `cd infra && docker compose up -d --build`
 6. Vérifier que `https://api.tondomaine.com` répond (Traefik doit avoir généré le certificat automatiquement en quelques secondes)
-7. Les migrations Prisma sont appliquées **au démarrage du conteneur** (`migrate deploy` dans l'image) ;
-   il reste **le seed à chaque déploiement** : `docker compose exec backend npm run seed` — il est idempotent et fait
-   autorité sur les permissions des rôles (ex. `cost.read` ajoutée le 2026-09-14 : sans re-seed, le magasinier
-   ne voit pas le coût d'achat).
+7. **Rien à lancer à la main** : au démarrage, le conteneur applique les migrations (`prisma migrate deploy`)
+   PUIS le seed (`node dist/seed.js`). Le seed est idempotent, fait autorité sur les permissions des rôles
+   (ex. `cost.read` ajoutée le 2026-09-14 : sans re-seed, le magasinier ne voit pas le coût d'achat) et crée
+   le **premier compte administrateur** (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`) — sans lui personne ne
+   pourrait se connecter, il n'y a pas d'inscription publique. Vérifié sur une base vierge : le conteneur
+   démarre, migre, seede, et l'admin se connecte.
 
 ## Gestion des sessions / authentification
 

@@ -96,9 +96,7 @@ Le stub 501 des réceptions est remplacé par la vraie feature (`backend/src/rec
   côté app (sans quoi chaque nouvel essai rejouait le même conflit).
 
 **Tracé, non fait** (à traiter avant la mise en service) :
-- **Commande partiellement reçue sans reliquat à venir** : elle n'est ni modifiable, ni annulable, ni clôturable — elle
-  reste ouverte à vie. Il manque une action « clôturer le reliquat » (ADMIN). En attendant, le surplus ou le reliquat
-  passe par une réception hors commande.
+- ~~Commande partiellement reçue sans reliquat à venir~~ → **fait le 2026-09-20** (statut `CLOTUREE`, voir plus bas).
 - `ReceptionLine.note` (colonne du schéma Phase 0) n'est alimentée par rien.
 - `$transaction` sans `timeout` explicite avec jusqu'à 200 lignes : plafond Prisma par défaut à 5 s, comme partout
   ailleurs dans le projet.
@@ -129,7 +127,7 @@ Côté app : action « Clôturer le reliquat » (ADMIN), motif obligatoire. Preu
 - `prisma` et `dotenv` passent en dépendances de PRODUCTION (la CLI sert au démarrage du conteneur) ;
   `prisma7.config.ts` renommé `prisma.config.ts` (nom que la CLI attend).
 - **NestJS 10 → 11** + `overrides` npm (`multer`, `deepmerge-ts`, `mysql2`) : `npm audit` passe de
-  **21 vulnérabilités (8 hautes)** à **3 modérées**, toutes dans l'arbre de `minio`. Elles ne sont PAS
+  **21 vulnérabilités (8 hautes)** à **4 modérées**, toutes dans l'arbre de `minio`. Elles ne sont PAS
   corrigeables : les versions corrigées de `decode-uri-component` et `stream-json` sont ESM pur et
   casseraient minio à l'exécution (projet CommonJS). À revoir à la prochaine version de `minio`.
 - **MinIO n'est plus exposé** : route Traefik supprimée (le backend sert les fichiers lui-même, aucune URL
@@ -163,8 +161,31 @@ distincte de `CANCEL` (migration additive), droits ADMIN du jeu de captures alig
 uniquement, aucune perte réelle). Recréés depuis `infra/docker-compose.dev.yml` puis migrés et re-seedés.
 Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433, 9002-9003) : aucun conflit.
 
-**Preuve (2026-09-20)** : backend `lint:check` 0 · **81** unit · **248** e2e (18 suites, un seul passage) ·
-image Docker démarrée et interrogée ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
+**Corrections de la revue du 2026-09-21** (elle avait conclu **PAS OK**, 2 bloquants) :
+- **Bloquant : sur un serveur neuf, personne n'aurait pu se connecter.** Le seed — seule voie d'existence du
+  premier compte (règle 14, aucune inscription publique) — utilisait `ts-node` et `tsconfig.seed.json`, tous
+  deux absents de l'image de production. Le script est passé en `src/seed.ts`, donc **compilé** avec le reste,
+  et le conteneur enchaîne désormais migrations → seed → démarrage. **Prouvé sur une base VIERGE** : le
+  conteneur démarre, migre, seede, et l'admin se connecte (HTTP 200 sur `/api/auth/login`).
+- **Bloquant : `.env.minio-root` n'était pas ignoré par Git** — `.env` ne couvre que ce nom exact. Corrigé par
+  `.env.*` + `!.env.*.example`, vérifié avec `git check-ignore`.
+- **Le durcissement MinIO n'avait jamais été exercé** : la preuve Docker tournait avec le compte ROOT de la
+  base de développement. Refait avec un compte de service **réellement limité au bucket** : le backend démarre,
+  et `StorageService` ne tente plus de créer le bucket (droit qu'il n'a pas) — il exige qu'il existe et, si ce
+  n'est pas le cas, refuse de démarrer avec un message exploitable au lieu de « Valid and authorized
+  credentials required ».
+- `minio-init` ne reçoit plus tout `.env` (JWT, mot de passe PostgreSQL, `DATABASE_URL`…) : moindre privilège.
+- `postgres` a une sonde de santé et le backend l'attend : le `migrate deploy` du démarrage ne peut plus tomber
+  au tout premier lancement.
+- Ménage : chaîne `mc admin` ramenée à une ligne (les deux branches de repli ne s'appliquaient jamais), copie
+  morte de `src/generated` retirée de l'image (4,2 Mo), `tsconfig.build.json` et deux commentaires purgés du
+  nom `prisma7.config.ts`, `CLOTUREE` ajouté à la machine à états (`docs/plan.md`, `schema.prisma`), clôture
+  inscrite dans `docs/permissions.md`, dette obsolète barrée ci-dessus, magasin de clés en PKCS12 des deux
+  côtés, et `npm audit` annoncé à sa vraie valeur (**4** modérées, pas 3).
+
+**Preuve (2026-09-21)** : backend `lint:check` 0 · **81** unit · **248** e2e (18 suites, un seul passage) ·
+image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
+connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
 **Reste à faire (dans l'ordre)**
 1. **Relecture humaine des 31 captures** par MEDMEDBEN (seul point qu'aucun agent ne peut faire à sa place).
@@ -786,7 +807,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 
 ### Pièges d'infrastructure — ne pas les re-découvrir
 - **Node ≥ 22.12 obligatoire** (Prisma 7 refuse Node 23.x). Validé sur 22.14 et 22.23.2.
-- **`DATABASE_URL` est câblé à DEUX endroits** : `prisma7.config.ts` = **CLI**,
+- **`DATABASE_URL` est câblé à DEUX endroits** : `prisma.config.ts` = **CLI**,
   `PrismaService` = **runtime** (Prisma 7 exige un *driver adapter* `PrismaPg`).
 - **Client Prisma généré dans `src/generated/`** : ailleurs, il décale la sortie du build.
 - **`incremental` retiré de `tsconfig.json`** : avec le `deleteOutDir` de Nest, tsc croyait le
