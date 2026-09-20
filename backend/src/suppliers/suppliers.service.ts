@@ -44,13 +44,13 @@ export class SuppliersService {
         where: { supplierId: supplier.id },
         _sum: { amount: true },
       }),
-      db.receptionLine.aggregate({
-        where: { reception: { supplierId: supplier.id } },
-        _sum: { lineTotalTtc: true },
+      db.reception.aggregate({
+        where: { supplierId: supplier.id },
+        _sum: { totalTtc: true },
       }),
     ]);
     const paidAmount = paid._sum.amount ?? 0;
-    const receivedAmount = received._sum.lineTotalTtc ?? 0;
+    const receivedAmount = received._sum.totalTtc ?? 0;
     return {
       paidAmount,
       receivedAmount,
@@ -81,7 +81,8 @@ export class SuppliersService {
       }),
       this.prisma.supplier.count({ where }),
     ]);
-    // Deux agrégats pour toute la page (et non une requête par fournisseur).
+    // Deux agrégats groupés pour toute la page (jamais une requête, ni un
+    // chargement de lignes, par fournisseur).
     const ids = rows.map((r) => r.id);
     const [paid, received] = await Promise.all([
       this.prisma.supplierPayment.groupBy({
@@ -89,20 +90,16 @@ export class SuppliersService {
         where: { supplierId: { in: ids } },
         _sum: { amount: true },
       }),
-      this.prisma.reception.findMany({
+      this.prisma.reception.groupBy({
+        by: ['supplierId'],
         where: { supplierId: { in: ids } },
-        select: { supplierId: true, lines: { select: { lineTotalTtc: true } } },
+        _sum: { totalTtc: true },
       }),
     ]);
     const paidBy = new Map(paid.map((p) => [p.supplierId, p._sum.amount ?? 0]));
-    const receivedBy = new Map<string, number>();
-    for (const reception of received) {
-      const sum = reception.lines.reduce((t, l) => t + l.lineTotalTtc, 0);
-      receivedBy.set(
-        reception.supplierId,
-        (receivedBy.get(reception.supplierId) ?? 0) + sum,
-      );
-    }
+    const receivedBy = new Map(
+      received.map((r) => [r.supplierId, r._sum.totalTtc ?? 0]),
+    );
     const data = rows.map((row) =>
       SuppliersService.toDtoWith(
         row,

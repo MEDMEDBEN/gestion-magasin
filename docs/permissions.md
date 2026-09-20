@@ -98,7 +98,18 @@ aucune migration destructive sans confirmation).
 |---|---|---|---|
 | Créer / modifier commande fournisseur | ✅ | ❌ | ✅ |
 | Confirmer / annuler commande | ✅ | ❌ | ❌ |
-| Réceptionner (partielle incluse) | ✅ | ❌ | ✅ |
+| Réceptionner (partielle incluse) sur une commande confirmée | ✅ | ❌ | ✅ |
+| Réceptionner **hors commande** | ✅ | ❌ | ❌ |
+
+**Décisions du 2026-09-20 (audit sécurité de P0 #7)**
+- **Le prix d'achat vient de la commande confirmée**, jamais du bon de réception : l'admin engage le prix en
+  confirmant, le magasinier constate les quantités. Le prix envoyé sur une ligne rattachée à une commande est
+  ignoré. Il ne sert que sur une réception hors commande.
+- **La réception hors commande est réservée à l'ADMIN** : sans commande, elle crée du stock, de la dette
+  fournisseur et un coût d'achat sans qu'aucun administrateur n'ait rien engagé — c'est un achat complet.
+  Le magasinier crée d'abord la commande, l'admin la confirme, puis la réception suit le chemin normal.
+- Les lectures de réceptions (`GET /receptions`) portent la permission `reception.create` : la matrice
+  n'accorde « Réceptionner » qu'à l'admin et au magasinier et ne prévoit pas de droit de lecture distinct.
 
 ## Transferts magasin ↔ dépôt
 | Action | Admin | Vendeur/Caissier | Magasinier |

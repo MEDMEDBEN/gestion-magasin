@@ -55,6 +55,9 @@ export class ReceptionsController {
     });
   }
 
+  // Lectures gardées par `reception.create` : `docs/permissions.md` n'accorde
+  // « Réceptionner » qu'à l'admin et au magasinier et ne prévoit PAS de droit de
+  // lecture distinct. En inventer un ici dépasserait la matrice validée.
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.RECEPTION_CREATE)
   @Get()

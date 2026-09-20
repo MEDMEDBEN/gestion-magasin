@@ -225,12 +225,12 @@ Traçabilité / système
 - [x] Endpoints API implémentés _(POST /receptions, GET /receptions, GET /receptions/:id ; stub 501 retiré)_
 - [x] Validation des entrées (class-validator) en place _(quantités décimales > 0, prix bornés, `clientMutationId` obligatoire)_
 - [x] Tests unitaires backend passent _(81 — 2026-09-20)_
-- [x] Tests d'intégration backend passent _(244 e2e dont 9 réceptions — 2026-09-20)_
+- [x] Tests d'intégration backend passent _(246 e2e dont 11 réceptions — 2026-09-20)_
 - [x] UI desktop implémentée
 - [x] UI mobile implémentée
 - [x] Sync offline gérée si applicable _(non : la réception endette le fournisseur, elle reste en ligne)_
-- [ ] Revue par subagent `reviewer`
-- [ ] Audit par subagent `security-reviewer`
+- [x] Revue par subagent `reviewer` _(2026-09-20 : PAS OK — écran jamais exécuté → corrigé + test)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-20 : NON CONFORME — prix d'achat et réception hors commande → corrigés)_
 - [ ] Tests manuels effectués par un humain
 
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)

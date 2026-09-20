@@ -416,12 +416,24 @@ describe('Réceptions (e2e)', () => {
     expect(conflict.body.code).toBe('CONFLICT');
   });
 
-  it('réception hors commande : autorisée, elle endette quand même le fournisseur', async () => {
+  it('réception hors commande : ADMIN seul, elle endette quand même le fournisseur', async () => {
     const productId = await product();
     const before = await debt();
 
+    // Hors commande, la réception EST un achat : le magasinier ne la fait pas.
+    const refused = await as(tokens.magasinier)
+      .post('/api/receptions')
+      .send({
+        supplierId,
+        locationId: depotId,
+        lines: [{ productId, receivedQuantity: '3', unitPriceHt: 100000 }],
+      })
+      .expect(403);
+    expect(refused.body.code).toBe('FORBIDDEN_ROLE');
+    expect(await stockOf(productId)).toBe('0.000');
+
     const reception = (
-      await as(tokens.magasinier)
+      await as(tokens.admin)
         .post('/api/receptions')
         .send({
           supplierId,
@@ -486,5 +498,61 @@ describe('Réceptions (e2e)', () => {
     expect(list.body.data[0].purchaseOrderId).toBe(order.id);
 
     await as(tokens.vendeur).get('/api/receptions').expect(403);
+  });
+
+  it('le prix vient de la COMMANDE confirmée, pas du magasinier', async () => {
+    const order = await confirmedOrder('10');
+    const before = await debt();
+
+    // Le bon annonce 1 centime l'unité ; la commande confirmée dit 1 200,00 HT.
+    const reception = (
+      await as(tokens.magasinier)
+        .post('/api/receptions')
+        .send({
+          purchaseOrderId: order.id,
+          supplierId,
+          locationId: depotId,
+          lines: [
+            {
+              productId: order.productId,
+              purchaseLineId: order.lineId,
+              receivedQuantity: '10',
+              unitPriceHt: 1,
+            },
+          ],
+        })
+        .expect(201)
+    ).body;
+
+    // 10 × 1 200,00 = 12 000,00 HT ; TVA 19 % = 2 280,00 ; TTC = 14 280,00
+    expect(reception.lines[0].unitPriceHt).toBe(120000);
+    expect(reception.totalTtc).toBe(1428000);
+    expect(await debt()).toBe(before + 1428000);
+
+    const updated = await prisma.product.findUniqueOrThrow({
+      where: { id: order.productId },
+    });
+    expect(updated.lastPurchasePriceHt).toBe(120000);
+  });
+
+  it('quantité mal formée : refusée par le contrat, rien n’entre', async () => {
+    const order = await confirmedOrder('5');
+    await as(tokens.magasinier)
+      .post('/api/receptions')
+      .send({
+        purchaseOrderId: order.id,
+        supplierId,
+        locationId: depotId,
+        lines: [
+          {
+            productId: order.productId,
+            purchaseLineId: order.lineId,
+            receivedQuantity: '1,5',
+            unitPriceHt: 120000,
+          },
+        ],
+      })
+      .expect(400);
+    expect(await stockOf(order.productId)).toBe('0.000');
   });
 });

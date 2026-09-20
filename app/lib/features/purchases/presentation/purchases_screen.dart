@@ -257,11 +257,12 @@ class PurchasesScreen extends ConsumerWidget {
         content: SizedBox(
           width: 420,
           child: Consumer(
-            builder: (context, ref, _) =>
-                ref.watch(orderReceptionsProvider(order.id)).when(
+            builder: (context, ref, _) => ref
+                .watch(orderReceptionsProvider(order.id))
+                .when(
                   loading: () => const AmpereSkeletonList(rows: 2),
                   error: (error, _) => Text(
-                    error is ApiException ? error.userMessage : '\$error',
+                    error is ApiException ? error.userMessage : '$error',
                   ),
                   data: (items) => items.isEmpty
                       ? const Text('Aucune réception pour cette commande.')
@@ -272,8 +273,8 @@ class PurchasesScreen extends ConsumerWidget {
                               ListTile(
                                 title: Text(r.number),
                                 subtitle: Text(
-                                  '\${r.lines.length} ligne(s) · '
-                                  '\${formatDA(r.totalTtc)} TTC',
+                                  '${r.lines.length} ligne(s) · '
+                                  '${formatDA(r.totalTtc)} TTC',
                                 ),
                               ),
                           ],

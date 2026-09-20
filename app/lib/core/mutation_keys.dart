@@ -43,9 +43,13 @@ final mutationKeysProvider =
 
 /// Codes par lesquels le serveur dit « cette clé a DÉJÀ servi à une autre
 /// opération » : l'intention en cours est close, l'utilisateur vérifie.
+/// `CONFLICT` en fait partie — c'est la réponse d'`assertSameMutation` quand la
+/// clé désigne un autre contenu ou un autre compte. Sans lui, chaque nouvel
+/// essai rejouerait éternellement le même 409.
 const _alreadyApplied = {
   ErrorCodes.saleAlreadyRecorded,
   ErrorCodes.paymentAlreadyRecorded,
+  ErrorCodes.conflict,
 };
 
 /// Exécute une mutation d'argent sous la clé stable de son intention.

@@ -69,6 +69,17 @@ export class ReceptionsService {
           const order = dto.purchaseOrderId
             ? await PurchaseOrdersService.lockOrder(tx, dto.purchaseOrderId)
             : null;
+          // Hors commande, la réception EST un achat : elle crée du stock, de
+          // la dette et un coût d'achat sans qu'aucun admin ait engagé quoi que
+          // ce soit. Réservée à l'ADMIN (audit sécurité du 2026-09-20).
+          if (!order && !user.roles.includes('ADMIN')) {
+            throw new BusinessException(
+              ErrorCode.FORBIDDEN_ROLE,
+              'Réception hors commande réservée à l’administrateur : ' +
+                'créez la commande, faites-la confirmer, puis réceptionnez',
+              HttpStatus.FORBIDDEN,
+            );
+          }
           if (order) {
             if (order.supplierId !== supplier.id) {
               throw new BusinessException(
@@ -87,6 +98,7 @@ export class ReceptionsService {
           }
 
           const lines = await this.buildLines(tx, dto, order);
+          const totalTtc = ReceptionsService.totalTtc(lines);
           const number = await nextDocumentNumber(tx, 'RECEPTION', 'BR', 5);
           const reception = await tx.reception.create({
             include: RECEPTION_INCLUDE,
@@ -99,6 +111,7 @@ export class ReceptionsService {
               locationId: dto.locationId,
               userId: user.id,
               note: dto.note ?? null,
+              totalTtc,
               lines: { create: lines },
             },
           });
@@ -118,7 +131,11 @@ export class ReceptionsService {
               userId: user.id,
               comment: reception.number,
             });
-            // Règle 5 : le coût du produit = DERNIER prix d'achat réceptionné.
+          }
+          // Règle 5 : le coût = DERNIER prix réceptionné. Parcouru dans l'ordre
+          // DU BON (et non dans l'ordre de verrouillage) : si un produit revient
+          // sur deux lignes, c'est la dernière qui fixe le coût, pas le hasard.
+          for (const line of reception.lines) {
             await tx.product.update({
               where: { id: line.productId },
               data: { lastPurchasePriceHt: line.unitPriceHt },
@@ -136,7 +153,7 @@ export class ReceptionsService {
               purchaseOrderId: reception.purchaseOrderId,
               supplierId: reception.supplierId,
               locationId: reception.locationId,
-              totalTtc: ReceptionsService.totalTtc(reception.lines),
+              totalTtc: reception.totalTtc,
               lines: reception.lines.map((l) => ({
                 productId: l.productId,
                 receivedQuantity: formatQuantity(l.receivedQuantity),
@@ -248,6 +265,7 @@ export class ReceptionsService {
         );
       }
       let taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+      let unitPriceHt = line.unitPriceHt;
       if (line.purchaseLineId) {
         const ordered = order?.lines.find((l) => l.id === line.purchaseLineId);
         if (!ordered) {
@@ -264,8 +282,11 @@ export class ReceptionsService {
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
-        // TVA figée à la COMMANDE : c'est le taux négocié, pas celui du jour.
+        // Prix ET TVA figés à la COMMANDE : c'est ce que l'admin a engagé en
+        // la confirmant. Le magasinier constate ce qui arrive, il ne rouvre pas
+        // la négociation (audit sécurité du 2026-09-20).
         taxRate = ordered.taxRate;
+        unitPriceHt = ordered.unitPriceHt;
         const cumulated = (asked.get(ordered.id) ?? new Prisma.Decimal(0)).add(
           quantity,
         );
@@ -274,7 +295,8 @@ export class ReceptionsService {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
             `Surlivraison refusée : reste à recevoir ${formatQuantity(remaining)}, ` +
-              `reçu annoncé ${formatQuantity(cumulated)} — faites modifier la commande`,
+              `reçu annoncé ${formatQuantity(cumulated)} — le surplus fait l’objet ` +
+              'd’une réception hors commande (administrateur)',
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
@@ -286,9 +308,7 @@ export class ReceptionsService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      const lineTotalHt = ReceptionsService.round(
-        quantity.mul(line.unitPriceHt),
-      );
+      const lineTotalHt = ReceptionsService.round(quantity.mul(unitPriceHt));
       const lineTotalTtc =
         lineTotalHt +
         ReceptionsService.round(
@@ -298,7 +318,7 @@ export class ReceptionsService {
         productId: product.id,
         purchaseLineId: line.purchaseLineId ?? null,
         receivedQuantity: quantity,
-        unitPriceHt: line.unitPriceHt,
+        unitPriceHt,
         lineTotalTtc,
       };
     });
@@ -349,46 +369,60 @@ export class ReceptionsService {
     return lines.reduce((sum, l) => sum + l.lineTotalTtc, 0);
   }
 
-  private static contentKey(reception: ReceptionWithLines): string {
-    return ReceptionsService.key(
+  /// Empreinte du CONTENU d'une réception : deux envois de même empreinte sont
+  /// le même bon. Le prix n'y figure pas — il vient de la commande, pas du
+  /// client. La ligne de commande visée, elle, y figure : deux bons identiques
+  /// sur des lignes différentes ne sont pas le même bon.
+  private static key(reception: {
+    supplierId: string;
+    locationId: string;
+    purchaseOrderId: string | null;
+    note: string | null;
+    lines: {
+      productId: string;
+      purchaseLineId: string | null;
+      quantity: string;
+    }[];
+  }): string {
+    return [
       reception.supplierId,
       reception.locationId,
-      reception.purchaseOrderId,
-      reception.lines.map((l) => [
-        l.productId,
-        formatQuantity(l.receivedQuantity),
-        l.unitPriceHt,
-      ]),
-    );
+      reception.purchaseOrderId ?? '',
+      reception.note ?? '',
+      ...reception.lines
+        .map((l) => `${l.productId}|${l.purchaseLineId ?? ''}|${l.quantity}`)
+        .sort(),
+    ].join(';');
+  }
+
+  private static contentKey(reception: ReceptionWithLines): string {
+    return ReceptionsService.key({
+      supplierId: reception.supplierId,
+      locationId: reception.locationId,
+      purchaseOrderId: reception.purchaseOrderId,
+      note: reception.note,
+      lines: reception.lines.map((l) => ({
+        productId: l.productId,
+        purchaseLineId: l.purchaseLineId,
+        quantity: formatQuantity(l.receivedQuantity),
+      })),
+    });
   }
 
   private static dtoKey(dto: CreateReceptionDto): string {
-    return ReceptionsService.key(
-      dto.supplierId,
-      dto.locationId,
-      dto.purchaseOrderId ?? null,
-      dto.lines.map((l) => [
-        l.productId,
-        formatQuantity(
+    return ReceptionsService.key({
+      supplierId: dto.supplierId,
+      locationId: dto.locationId,
+      purchaseOrderId: dto.purchaseOrderId ?? null,
+      note: dto.note ?? null,
+      lines: dto.lines.map((l) => ({
+        productId: l.productId,
+        purchaseLineId: l.purchaseLineId ?? null,
+        quantity: formatQuantity(
           parseQuantity(l.receivedQuantity, 'lines.receivedQuantity'),
         ),
-        l.unitPriceHt,
-      ]),
-    );
-  }
-
-  private static key(
-    supplierId: string,
-    locationId: string,
-    purchaseOrderId: string | null,
-    lines: [string, string, number][],
-  ): string {
-    return [
-      supplierId,
-      locationId,
-      purchaseOrderId ?? '',
-      ...lines.map((l) => l.join('|')).sort(),
-    ].join(';');
+      })),
+    });
   }
 
   private static toDto(reception: ReceptionWithLines): ReceptionDto {
@@ -401,7 +435,7 @@ export class ReceptionsService {
       userId: reception.userId,
       receivedAt: reception.receivedAt,
       note: reception.note,
-      totalTtc: ReceptionsService.totalTtc(reception.lines),
+      totalTtc: reception.totalTtc,
       lines: reception.lines.map((line) => ({
         id: line.id,
         productId: line.productId,

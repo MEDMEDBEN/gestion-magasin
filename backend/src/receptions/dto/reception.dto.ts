@@ -7,6 +7,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -32,14 +33,23 @@ export class ReceptionLineInputDto {
   @IsOptional()
   purchaseLineId?: string;
 
-  @ApiProperty({ example: '70.000', description: 'Quantité RÉELLEMENT reçue.' })
+  @ApiProperty({
+    example: '70.000',
+    description: 'Quantité RÉELLEMENT reçue (décimale, 3 décimales au plus).',
+    pattern: '^\d{1,11}(\.\d{1,3})?$',
+  })
   @IsString()
   @MaxLength(20)
+  @Matches(/^\d{1,11}(\.\d{1,3})?$/, {
+    message: 'receivedQuantity : décimale à 3 décimales au plus attendue',
+  })
   receivedQuantity!: string;
 
   @ApiProperty({
     example: 120000,
-    description: 'Prix d’achat HT en centimes — alimente le coût du produit.',
+    description:
+      'Prix d’achat HT en centimes. IGNORÉ quand la ligne est rattachée à une ' +
+      'commande : c’est le prix confirmé par l’administrateur qui fait foi.',
   })
   @IsInt()
   @Min(0)

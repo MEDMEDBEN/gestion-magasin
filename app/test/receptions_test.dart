@@ -73,15 +73,16 @@ class _FakePurchasesApi extends PurchasesApi {
 }
 
 class _FakeReceptionsApi extends ReceptionsApi {
-  _FakeReceptionsApi() : super(Dio());
+  _FakeReceptionsApi({this.existing = const []}) : super(Dio());
 
+  final List<Reception> existing;
   final List<Map<String, Object?>> sent = [];
 
   @override
   Future<List<Reception>> list({
     String? purchaseOrderId,
     int limit = 50,
-  }) async => const [];
+  }) async => existing;
 
   @override
   Future<Reception> create(Map<String, Object?> fields) async {
@@ -133,9 +134,10 @@ Future<_FakeReceptionsApi> _pump(
   WidgetTester tester,
   AuthUser user, {
   required List<PurchaseOrder> orders,
+  List<Reception> receptionsDone = const [],
 }) async {
   useScreenSize(tester, const Size(500, 1400));
-  final receptions = _FakeReceptionsApi();
+  final receptions = _FakeReceptionsApi(existing: receptionsDone);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -250,6 +252,49 @@ void main() {
 
     expect(find.text('Choisissez un emplacement'), findsOneWidget);
     expect(api.sent, isEmpty);
+  });
+
+  testWidgets('la liste des réceptions d’une commande s’affiche vraiment', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _magasinier(),
+      orders: [_order(PurchaseStatus.partiallyReceived, remaining: '70')],
+      receptionsDone: [
+        Reception(
+          id: 'r1',
+          number: 'BR-2026-00001',
+          purchaseOrderId: 'o1',
+          supplierId: 's1',
+          locationId: 'depot',
+          receivedAt: DateTime.utc(2026, 9, 20),
+          totalTtc: 9996000,
+          lines: [
+            ReceptionLine(
+              id: 'rl1',
+              productId: 'p1',
+              purchaseLineId: 'l1',
+              receivedQuantity: Decimal.fromInt(30),
+              unitPriceHt: 120000,
+              lineTotalHt: 3600000,
+              lineTotalTtc: 4284000,
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.tap(find.textContaining('BC-2026-00007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Réceptions enregistrées'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('BR-2026-00001'), findsOneWidget);
+    // Le montant est bien FORMATÉ, pas affiché comme du code.
+    // Le bon de réception, pas seulement la commande derrière le dialogue.
+    expect(find.textContaining('960,00 DA TTC'), findsOneWidget);
+    expect(find.textContaining('ligne(s)'), findsNWidgets(2));
+    expect(find.textContaining(r'${'), findsNothing);
   });
 
   testWidgets('commande brouillon : aucune réception proposée', (tester) async {

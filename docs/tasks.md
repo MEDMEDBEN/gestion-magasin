@@ -77,11 +77,38 @@ Le stub 501 des réceptions est remplacé par la vraie feature (`backend/src/rec
   par formulaire ; « Réceptions enregistrées » liste les bons d'une commande.
 - `src/generated/` est sorti du périmètre eslint : `prisma generate` rendait le lint rouge sans raison.
 
-**Preuve (2026-09-20)** : backend `lint:check` 0 · **81** unit · **244** e2e (18 suites, un seul passage) ;
-app `flutter analyze` propre · **+208 ~27**.
+**Audits P0 #7** — `reviewer` **PAS OK** (1 bloquant) · `security-reviewer` **NON CONFORME** (2 importants) → corrigés :
+- **Bloquant : le dialogue « Réceptions enregistrées » affichait son propre code.** Trois interpolations Dart étaient
+  échappées ; Dart compile, `flutter analyze` ne dit rien, et aucun test n'ouvrait cet écran. Corrigé, et un test
+  ouvre désormais réellement le dialogue et vérifie que le montant est FORMATÉ (il échoue si le code réapparaît).
+- **Important : le prix d'achat venait du bon de réception.** Un magasinier pouvait donc réécrire le prix confirmé par
+  l'admin, donc la dette fournisseur ET le coût de marge (règle 5). Désormais, sur une ligne rattachée à une commande,
+  le prix (comme la TVA) vient de la COMMANDE ; celui du bon est ignoré. Test : bon à 1 centime sur une commande à
+  1 200,00 → dette et coût à 1 200,00.
+- **Important : la réception hors commande était ouverte au magasinier.** Sans commande, c'est un achat complet (stock,
+  dette, coût) sans engagement d'un admin. Réservée à l'ADMIN, décision écrite dans `docs/permissions.md`.
+- `Reception.totalTtc` figé (migration additive avec backfill) : la dette fournisseur se somme par `groupBy` au lieu de
+  charger toutes les lignes de tous les bons de la page.
+- Un produit présent sur deux lignes d'un même bon : le coût retenu est celui de la DERNIÈRE ligne du bon, plus celui
+  que l'ordre de verrouillage désignait au hasard.
+- Clé d'idempotence complétée (ligne de commande et note comprises), motif décimal des quantités inscrit au contrat
+  OpenAPI (400 au lieu d'un 422 tardif), lecture des réceptions commentée, clé d'intention libérée sur 409 `CONFLICT`
+  côté app (sans quoi chaque nouvel essai rejouait le même conflit).
+
+**Tracé, non fait** (à traiter avant la mise en service) :
+- **Commande partiellement reçue sans reliquat à venir** : elle n'est ni modifiable, ni annulable, ni clôturable — elle
+  reste ouverte à vie. Il manque une action « clôturer le reliquat » (ADMIN). En attendant, le surplus ou le reliquat
+  passe par une réception hors commande.
+- `ReceptionLine.note` (colonne du schéma Phase 0) n'est alimentée par rien.
+- `$transaction` sans `timeout` explicite avec jusqu'à 200 lignes : plafond Prisma par défaut à 5 s, comme partout
+  ailleurs dans le projet.
+- La réception est **en ligne uniquement** : `MutationType.RECEPTION` n'a pas de handler de synchronisation.
+
+**Preuve (2026-09-20, après corrections)** : backend `lint:check` 0 · **81** unit · **246** e2e (18 suites, un seul
+passage) ; app `flutter analyze` propre · **+209 ~27**.
 
 **Reste à faire (dans l'ordre)**
-1. Audits `reviewer` + `security-reviewer` de P0 #7, puis merge `develop`→`main` (re-revue du 2026-09-20 déjà verte).
+1. Merge `develop`→`main` (en attente du feu vert de MEDMEDBEN ; audits P0 #7 corrigés, re-revue du 2026-09-20 verte).
 2. Relecture humaine des captures 21-27 (une capture « Caisses » et une « Réception » seraient utiles).
 3. Puis **P0 #8 Transferts magasin↔dépôt**.
 - **Avant production (tracé, non fait)** : NestJS 11 (vulnérabilités `npm audit`), `backend/Dockerfile` + `.dockerignore`,
@@ -752,7 +779,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Ventes (tarifs, TVA/facture, caisse) + dettes clients | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Fournisseurs + clients + dettes fournisseurs | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Achats | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Réceptions (dont partielles) | 🟡 **Code livré**, relecture humaine en attente | 🟢 Partielles, surlivraison refusée, dette | 🟢 Réception depuis la commande | 🟢 9 e2e · 5 widget | 🟡 audit en cours |
+| Réceptions (dont partielles) | 🟡 **Code livré**, relecture humaine en attente | 🟢 Partielles, surlivraison refusée, dette | 🟢 Réception depuis la commande | 🟢 11 e2e · 6 widget | 🟢 corrigé (2 importants) |
 | Transferts magasin↔dépôt | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
 | Planning hebdomadaire | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
