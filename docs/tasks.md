@@ -46,7 +46,16 @@ passage, app +203 ~27). Corrigé dans la foulée : `docs/permissions.md` commit�
 écritures de caisse passent par `CashSessionsService` (`withdraw`/`deposit`/`recordCashSale`) ; montants des messages
 d'erreur en DA et non en centimes ; `npm run lint:check` (vérifie sans modifier, utilisable en CI) ; tests ajoutés :
 échéance du jour, deux contre-passations simultanées, clôture pendant une contre-passation. Preuve : **81** unit ·
-**235** e2e. L'audit `security-reviewer` a échoué (coupure du service) : **à relancer avant le merge**.
+**235** e2e. `security-reviewer` (relancé le 2026-09-20) : **MERGE POSSIBLE**, aucun problème critique ni important, 5 mineurs
+dont 4 corrigés dans la foulée : tri en liste blanche sur les historiques de paiements, en-têtes HTTP (`nosniff`,
+`DENY`, `no-referrer`, `x-powered-by` retiré) et corps JSON borné à 128 ko, liste UNIQUE des routes d'argent
+(`backend/test/money-routes.ts`) partagée entre l'aide de test et le test « sans clé → 400 » (une future route ne peut
+plus y échapper), exemption des transitions d'état documentée dans `CONVENTIONS.md`. Non fait, tracé : passer
+`SupplierPayment.clientMutationId` et `CashSession.openMutationId` en NOT NULL (migration additive, après stabilisation
+des données) ; `helmet` si `/docs` est un jour exposé. Point assumé : une contre-passation passe par la caisse OUVERTE
+de l'admin, pas par la session d'origine du caissier (décision du 2026-09-16, écrite dans `docs/permissions.md`).
+Preuve finale : backend **81** unit · **235** e2e (un passage) · lint 0 ; app analyze propre · **+203 ~27**.
+**`develop` est prêt à être mergé sur `main`** (en attente du feu vert de MEDMEDBEN).
 
 **Reste à faire (dans l'ordre)**
 1. **Re-revue `reviewer` + `security-reviewer`** de ces corrections → merge `develop`→`main` seulement si verte.
