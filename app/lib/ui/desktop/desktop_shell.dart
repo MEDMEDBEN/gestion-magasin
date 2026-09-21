@@ -11,6 +11,7 @@ import '../theme/ampere_typography.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/ampere_controls.dart';
 import '../widgets/screen_state.dart';
+import '../widgets/sync_panel.dart';
 
 /// Coquille desktop : sidebar fixe 246 px (ou rail d'icônes 64 px sur
 /// tablette, §9), barre supérieure 56 px, densité assumée (AMPÈRE §6 et §9).
@@ -268,6 +269,7 @@ class _TopBar extends ConsumerWidget {
             pendingCount: pending.value ?? 0,
             rejectedCount: rejected.value?.length ?? 0,
             isOffline: !reachable,
+            onTap: () => showSyncPanel(context),
           ),
           const SizedBox(width: 10),
           IconButton(

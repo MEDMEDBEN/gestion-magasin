@@ -77,6 +77,29 @@ export class SyncService {
             b.mutation.deviceTimestamp.getTime() || a.index - b.index,
       );
 
+    // Prérequis N6b : les mutations d'un AUTRE compte ne sont jamais traitées
+    // avec cette session — elles lui seraient attribuées (et jugées selon SES
+    // droits). Rien n'est mémorisé : elles repartiront avec la bonne session.
+    if (dto.authorUserId !== user.id) {
+      // Normal après un changement de compte ; répété sur un appareil, c'est un
+      // client trafiqué. Jamais le contenu des mutations dans le journal.
+      this.logger.warn(
+        `Lot refusé (auteur) : session ${user.id}, auteur déclaré ${dto.authorUserId}, ` +
+          `appareil ${ordered[0]?.mutation.deviceId}, ${ordered.length} mutation(s)`,
+      );
+      return {
+        serverTime: new Date(),
+        results: ordered.map(({ mutation }) =>
+          this.pending(
+            mutation,
+            ErrorCode.SYNC_AUTHOR_MISMATCH,
+            'Non traitée : ces opérations appartiennent à un autre compte que celui ' +
+              'connecté — elles partiront avec la session de leur auteur',
+          ),
+        ),
+      };
+    }
+
     const results: SyncMutationResultDto[] = [];
     let halted = false;
 

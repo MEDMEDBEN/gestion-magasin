@@ -7,6 +7,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { Prisma } from '../src/generated/prisma/client';
 import { StockLedgerService } from '../src/stock/stock-ledger.service';
 import { createE2eApp } from './helpers/e2e-app';
+import { authorOf } from './helpers/sync-author';
 
 /// Contrat de synchronisation offline (docs/context.md §3-§5) vérifié de bout en bout
 /// sur la VRAIE base : idempotence, anti-stock-négatif, absence d'effet de bord.
@@ -38,6 +39,8 @@ describe('Sync (e2e)', () => {
   let backorderProductId: string;
   /// Produit dédié au test d'ordre du lot : 7.000 en stock.
   let orderedProductId: string;
+  /// Produit dédié au test d'auteur du lot (N6b) : n'entame pas celui des autres.
+  let authorProductId: string;
   /// Produit sur-réservé (0 en stock, 5 réservés) : disponible NÉGATIF au départ.
   let overReservedProductId: string;
   let ledger: StockLedgerService;
@@ -62,7 +65,7 @@ describe('Sync (e2e)', () => {
     request(server)
       .post('/api/sync')
       .set('Authorization', `Bearer ${token}`)
-      .send({ mutations });
+      .send({ authorUserId: authorOf(token), mutations });
 
   const stockOf = async (id: string): Promise<string> => {
     const stock = await prisma.stock.findFirst({
@@ -147,6 +150,7 @@ describe('Sync (e2e)', () => {
     backorderProductId = await makeProduct('B', '0.000', true);
     orderedProductId = await makeProduct('C', '7.000');
     overReservedProductId = await makeProduct('D', '0.000', false, '5.000');
+    authorProductId = await makeProduct('E', '10.000');
   });
 
   afterAll(async () => {
@@ -155,6 +159,7 @@ describe('Sync (e2e)', () => {
       backorderProductId,
       orderedProductId,
       overReservedProductId,
+      authorProductId,
     ];
     const users = await prisma.user.findMany({
       where: {
@@ -216,6 +221,50 @@ describe('Sync (e2e)', () => {
       },
     });
     expect(audit?.action).toBe('CREATE');
+  });
+
+  it('lot déclaré par un AUTRE compte : rien appliqué, rien mémorisé (N6b)', async () => {
+    // Poste partagé : les opérations de l'admin ne partent JAMAIS avec la
+    // session du magasinier — elles lui seraient attribuées.
+    const before = await stockOf(authorProductId);
+    const mutation = lossMutation({ payload: { productId: authorProductId } });
+    const res = await request(server)
+      .post('/api/sync')
+      .set('Authorization', `Bearer ${magasinierToken}`)
+      .send({ authorUserId: authorOf(adminToken), mutations: [mutation] })
+      .expect(200);
+    expect(res.body.results[0]).toMatchObject({
+      status: 'NON_TRAITEE',
+      code: 'SYNC_AUTHOR_MISMATCH',
+    });
+    expect(await stockOf(authorProductId)).toBe(before);
+    expect(
+      await prisma.syncMutation.count({
+        where: { clientMutationId: mutation.clientMutationId },
+      }),
+    ).toBe(0);
+
+    // Renvoyée avec la bonne session, elle passe normalement.
+    const ok = await sync(adminToken, [mutation]);
+    expect(ok.body.results[0].status).toBe('CONFIRMEE');
+  });
+
+  it.each([
+    ['absent', {}],
+    ['qui n’est pas un UUID', { authorUserId: 'admin' }],
+  ])('auteur du lot %s → 400, rien traité', async (_label, author) => {
+    const mutation = lossMutation({ payload: { productId: authorProductId } });
+    const res = await request(server)
+      .post('/api/sync')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ ...author, mutations: [mutation] })
+      .expect(400);
+    expect(res.body.code).toBe('VALIDATION_FAILED');
+    expect(
+      await prisma.syncMutation.count({
+        where: { clientMutationId: mutation.clientMutationId },
+      }),
+    ).toBe(0);
   });
 
   it('la perte hors-ligne du MAGASINIER reste EN ATTENTE : le stock ne bouge pas', async () => {

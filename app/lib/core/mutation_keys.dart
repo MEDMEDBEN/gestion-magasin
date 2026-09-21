@@ -46,7 +46,7 @@ final mutationKeysProvider =
 /// `CONFLICT` en fait partie — c'est la réponse d'`assertSameMutation` quand la
 /// clé désigne un autre contenu ou un autre compte. Sans lui, chaque nouvel
 /// essai rejouerait éternellement le même 409.
-const _alreadyApplied = {
+const alreadyAppliedCodes = {
   ErrorCodes.saleAlreadyRecorded,
   ErrorCodes.paymentAlreadyRecorded,
   ErrorCodes.conflict,
@@ -69,7 +69,7 @@ Future<T> runMoneyMutation<T>(
     keys.release(intent);
     return result;
   } on ApiException catch (error) {
-    if (_alreadyApplied.contains(error.code)) keys.release(intent);
+    if (alreadyAppliedCodes.contains(error.code)) keys.release(intent);
     rethrow;
   }
 }

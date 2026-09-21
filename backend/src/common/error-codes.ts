@@ -75,4 +75,7 @@ export enum ErrorCode {
   /// Échec TEMPORAIRE côté serveur : la mutation n'est pas mémorisée, le client
   /// la garde en file et la renverra telle quelle (contrat de sync § idempotence).
   SYNC_RETRY_LATER = 'SYNC_RETRY_LATER',
+  /// Le lot déclare un auteur qui n'est pas le porteur de la session : rien
+  /// n'est traité ni mémorisé, les mutations restent en file côté appareil.
+  SYNC_AUTHOR_MISMATCH = 'SYNC_AUTHOR_MISMATCH',
 }

@@ -42,6 +42,13 @@ describe('SyncService', () => {
   let prisma: any;
   let service: SyncService;
 
+  /// Le lot déclare son auteur (prérequis N6b) : ici, toujours le porteur de la
+  /// session — le cas contraire a son propre test.
+  const push = (
+    dto: { mutations: SyncMutationDto[] },
+    user: AuthenticatedUser,
+  ) => service.processBatch({ authorUserId: user.id, ...dto }, user);
+
   beforeEach(() => {
     handler = {
       operationType: OperationType.MANUAL,
@@ -69,10 +76,7 @@ describe('SyncService', () => {
   });
 
   it('applique une mutation valide et trace l’audit dans la même transaction', async () => {
-    const result = await service.processBatch(
-      { mutations: [mutation()] },
-      magasinier,
-    );
+    const result = await push({ mutations: [mutation()] }, magasinier);
 
     expect(result.results[0]).toMatchObject({
       status: SyncResultStatusDto.CONFIRMEE,
@@ -99,10 +103,7 @@ describe('SyncService', () => {
       rejectionReason: null,
     });
 
-    const result = await service.processBatch(
-      { mutations: [mutation()] },
-      magasinier,
-    );
+    const result = await push({ mutations: [mutation()] }, magasinier);
 
     expect(result.results[0]).toMatchObject({
       status: SyncResultStatusDto.CONFIRMEE,
@@ -123,9 +124,8 @@ describe('SyncService', () => {
       rejectionReason: 'Stock insuffisant pour « Câble 3G2.5 »',
     });
 
-    const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, magasinier)
-    ).results;
+    const [result] = (await push({ mutations: [mutation()] }, magasinier))
+      .results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.STOCK_NEGATIVE);
@@ -139,9 +139,8 @@ describe('SyncService', () => {
       permissions: [],
     };
 
-    const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, sansPermission)
-    ).results;
+    const [result] = (await push({ mutations: [mutation()] }, sansPermission))
+      .results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.FORBIDDEN_PERMISSION);
@@ -164,10 +163,7 @@ describe('SyncService', () => {
     };
 
     const [result] = (
-      await service.processBatch(
-        { mutations: [mutation()] },
-        vendeurAvecPermission,
-      )
+      await push({ mutations: [mutation()] }, vendeurAvecPermission)
     ).results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
@@ -185,9 +181,8 @@ describe('SyncService', () => {
       rejectionReason: null,
     });
 
-    const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, magasinier)
-    ).results;
+    const [result] = (await push({ mutations: [mutation()] }, magasinier))
+      .results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.CONFLICT);
@@ -207,7 +202,7 @@ describe('SyncService', () => {
       }),
     );
 
-    const { results } = await service.processBatch(
+    const { results } = await push(
       {
         mutations: [
           mutation({
@@ -240,9 +235,8 @@ describe('SyncService', () => {
       ),
     );
 
-    const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, magasinier)
-    ).results;
+    const [result] = (await push({ mutations: [mutation()] }, magasinier))
+      .results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.VALIDATION_FAILED);
@@ -259,9 +253,8 @@ describe('SyncService', () => {
       ),
     );
 
-    const [result] = (
-      await service.processBatch({ mutations: [mutation()] }, magasinier)
-    ).results;
+    const [result] = (await push({ mutations: [mutation()] }, magasinier))
+      .results;
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.STOCK_NEGATIVE);
@@ -273,7 +266,7 @@ describe('SyncService', () => {
 
   it('garde en file une opération dont le handler n’existe pas encore', async () => {
     const [result] = (
-      await service.processBatch(
+      await push(
         { mutations: [mutation({ operationType: SyncOperationTypeDto.SALE })] },
         magasinier,
       )
@@ -282,6 +275,20 @@ describe('SyncService', () => {
     expect(result.status).toBe(SyncResultStatusDto.NON_TRAITEE);
     expect(result.code).toBe(ErrorCode.NOT_IMPLEMENTED);
     // Rien de mémorisé : la mutation sera acceptée quand la feature sortira.
+    expect(prisma.syncMutation.create).not.toHaveBeenCalled();
+  });
+
+  it('lot d’un AUTRE compte que la session : rien traité, rien mémorisé (N6b)', async () => {
+    const { results } = await service.processBatch(
+      {
+        authorUserId: '99999999-9999-4999-8999-999999999999',
+        mutations: [mutation()],
+      },
+      magasinier,
+    );
+    expect(results[0].status).toBe(SyncResultStatusDto.NON_TRAITEE);
+    expect(results[0].code).toBe(ErrorCode.SYNC_AUTHOR_MISMATCH);
+    expect(handler.apply).not.toHaveBeenCalled();
     expect(prisma.syncMutation.create).not.toHaveBeenCalled();
   });
 
@@ -295,7 +302,7 @@ describe('SyncService', () => {
       };
     });
 
-    await service.processBatch(
+    await push(
       {
         mutations: [
           mutation({
@@ -325,7 +332,7 @@ describe('SyncService', () => {
     jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     handler.apply.mockRejectedValueOnce(new Error('connexion base perdue'));
 
-    const { results } = await service.processBatch(
+    const { results } = await push(
       {
         mutations: [
           mutation({

@@ -41,17 +41,21 @@ class SyncEngine {
   final SyncApi _api;
   final MutationQueue _queue;
 
-  /// Empêche deux cycles concurrents : ils enverraient les mêmes mutations
-  /// deux fois. Le serveur est idempotent, mais autant ne pas l'éprouver.
-  Future<SyncOutcome>? _inFlight;
+  /// Un cycle en cours PAR AUTEUR : deux cycles du même compte enverraient les
+  /// mêmes mutations deux fois ; mais le cycle d'un compte ne doit jamais être
+  /// rendu à un AUTRE compte qui se connecte entre-temps (prérequis N6b).
+  final Map<String, Future<SyncOutcome>> _inFlight = {};
 
   /// Pousse les mutations de `authorUserId` — le compte dont la session porte
   /// l'envoi. Celles d'un autre compte ne partent jamais avec cette session : le
   /// serveur les attribuerait (et les jugerait) au mauvais utilisateur.
   Future<SyncOutcome> synchronize({required String authorUserId}) {
-    return _inFlight ??= _run(
-      authorUserId,
-    ).whenComplete(() => _inFlight = null);
+    // Bloc `{}` et non flèche : `remove` renvoie la future retirée — c'est-à-dire
+    // CELLE-CI. Renvoyée par le rappel, `whenComplete` l'attendrait : la future
+    // s'attendrait elle-même, pour toujours.
+    return _inFlight[authorUserId] ??= _run(authorUserId).whenComplete(() {
+      _inFlight.remove(authorUserId);
+    });
   }
 
   Future<SyncOutcome> _run(String authorUserId) async {
@@ -80,7 +84,7 @@ class SyncEngine {
 
     final SyncBatchResult batch;
     try {
-      batch = await _api.push(inputs);
+      batch = await _api.push(inputs, authorUserId: authorUserId);
     } on ApiException catch (error) {
       // Rien n'est perdu : les mutations restent en attente et repartiront.
       // Ne JAMAIS les marquer rejetées ici — l'échec est transport, pas métier.

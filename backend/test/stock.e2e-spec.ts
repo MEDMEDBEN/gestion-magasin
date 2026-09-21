@@ -3,6 +3,7 @@ import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
+import { authorOf } from './helpers/sync-author';
 
 /// Feature P0 n°3 « Stock » : lecture de la projection et du journal, pertes /
 /// casse avec validation admin pour le magasinier (docs/permissions.md ⚠️,
@@ -348,6 +349,7 @@ describe('Stock (e2e)', () => {
         .post('/api/sync')
         .set('Authorization', `Bearer ${token}`)
         .send({
+          authorUserId: authorOf(token),
           mutations: [
             {
               clientMutationId: randomUUID(),

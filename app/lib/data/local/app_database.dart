@@ -25,8 +25,8 @@ class PendingMutations extends Table {
   /// au fichier SQLite peut la réécrire (contre-audit N6a). Elle sert à n'envoyer,
   /// sur un poste partagé, que les lignes du compte connecté — le serveur, lui,
   /// attribue toujours une mutation au porteur du token et revérifie ses droits.
-  /// Avant de brancher réellement la sync, voir N6b dans `docs/tasks.md` : le lot
-  /// devra porter `authorUserId` et le serveur le comparer au token.
+  /// Le lot envoyé porte `authorUserId` et le serveur le compare au token
+  /// (N6b) : un lot étiqueté pour un autre compte n'est pas traité.
   /// `null` = ligne antérieure à la v2 : auteur inconnu, jamais envoyée.
   TextColumn get authorUserId => text().nullable()();
 

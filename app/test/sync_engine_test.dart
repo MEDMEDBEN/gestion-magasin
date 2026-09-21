@@ -12,11 +12,16 @@ class _FakeSyncApi implements SyncApi {
 
   final SyncBatchResult Function(List<SyncMutationInput>) _respond;
   final List<List<SyncMutationInput>> calls = [];
+  final List<String> authors = [];
   ApiException? failure;
 
   @override
-  Future<SyncBatchResult> push(List<SyncMutationInput> mutations) async {
+  Future<SyncBatchResult> push(
+    List<SyncMutationInput> mutations, {
+    required String authorUserId,
+  }) async {
     calls.add(mutations);
+    authors.add(authorUserId);
     if (failure != null) throw failure!;
     return _respond(mutations);
   }
@@ -200,6 +205,45 @@ void main() {
 
     expect(outcome.hasFailure, isTrue);
     expect(api.calls, hasLength(1));
+  });
+
+  test('le lot déclare son AUTEUR au serveur (prérequis N6b)', () async {
+    await enqueue();
+    final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
+    await SyncEngine(api: api, queue: queue).synchronize(authorUserId: author);
+    expect(api.authors, [author]);
+  });
+
+  test('la synchro d’un compte n’est JAMAIS rendue à un autre compte', () async {
+    // Le compte A synchronise ; B se connecte pendant l'envoi et lance la
+    // sienne. B ne doit pas recevoir le résultat de A : il a SON propre envoi.
+    await enqueue();
+    await enqueue(null, 'compte-b');
+    final api = _FakeSyncApi((m) => _allWith(m, SyncStatus.confirmee));
+    final engine = SyncEngine(api: api, queue: queue);
+
+    await Future.wait([
+      engine.synchronize(authorUserId: author),
+      engine.synchronize(authorUserId: 'compte-b'),
+    ]);
+
+    expect(api.authors..sort(), [author, 'compte-b']);
+    expect(await queue.pendingCount(authorUserId: 'compte-b'), 0);
+  });
+
+  test('la clé de l’INTENTION est conservée à la mise en file', () async {
+    // Une vente tentée en ligne puis mise en file garde SA clé : si la
+    // tentative était arrivée au serveur, il la reconnaîtra.
+    final key = await queue.enqueue(
+      authorUserId: author,
+      deviceId: 'appareil-test',
+      operationType: 'SALE',
+      payload: const {'x': 1},
+      clientMutationId: '0192a0b2-7c1d-7e3f-8a4b-5c6d7e8f9a0b',
+    );
+    expect(key, '0192a0b2-7c1d-7e3f-8a4b-5c6d7e8f9a0b');
+    final rows = await queue.nextBatch(authorUserId: author);
+    expect(rows.single.clientMutationId, key);
   });
 
   test(

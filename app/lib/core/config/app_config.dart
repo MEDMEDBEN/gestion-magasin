@@ -20,6 +20,11 @@ class AppConfig {
   static const int maxPendingMutations = 200;
   static const Duration maxOfflineDuration = Duration(hours: 72);
 
+  /// Battement de la synchronisation : la file est poussée à cet intervalle tant
+  /// qu'une session est ouverte (une file vide ne coûte aucun appel réseau —
+  /// elle ne sonde donc pas le serveur).
+  static const Duration syncInterval = Duration(seconds: 30);
+
   /// Historique conservé en local ; au-delà, consultable en ligne uniquement.
   static const int localHistoryDays = 30;
 

@@ -204,11 +204,15 @@ class SyncIndicator extends StatelessWidget {
     required this.pendingCount,
     this.rejectedCount = 0,
     this.isOffline = false,
+    this.onTap,
   });
 
   final int pendingCount;
   final int rejectedCount;
   final bool isOffline;
+
+  /// Ouvre le détail (file, rejets) — c'est le seul chemin vers un rejet.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +231,7 @@ class SyncIndicator extends StatelessWidget {
         ? (LucideIcons.refreshCw, StatusTone.warn, '$pendingCount en attente')
         : (LucideIcons.check, StatusTone.ok, 'Synchronisé');
 
-    return Container(
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: tone.background(colors),
@@ -251,6 +255,15 @@ class SyncIndicator extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return pill;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AmpereGeometry.pillRadius),
+        child: pill,
       ),
     );
   }

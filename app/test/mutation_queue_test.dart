@@ -155,9 +155,17 @@ void main() {
       SyncResult(clientMutationId: id, status: SyncStatus.rejetee),
     );
 
-    await queue.discard(id);
+    await queue.discard(id, authorUserId: 'autre-compte');
+    expect(await queue.byStatus(LocalMutationStatus.rejetee), hasLength(1));
 
+    await queue.discard(id, authorUserId: author);
     expect(await queue.byStatus(LocalMutationStatus.rejetee), isEmpty);
+  });
+
+  test('discard ne supprime JAMAIS une mutation en attente', () async {
+    final id = await enqueueAt(DateTime.utc(2026, 9, 9, 10));
+    await queue.discard(id, authorUserId: author);
+    expect(await queue.pendingCount(authorUserId: author), 1);
   });
 
   test('toInputs produit exactement le corps attendu par POST /sync', () async {

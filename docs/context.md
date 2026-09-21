@@ -157,4 +157,18 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
   la matrice validée. Plus simple, aucune case morte à l'écran. `_UserPermissions` conservée en base
   (plus lue ni écrite) — suppression = migration destructive à confirmer explicitement.
 
+- **2026-09-21** — **Raccordement hors-ligne, tranche A** (MEDMEDBEN, P0 #12). Décisions :
+  1. **Le lot déclare son auteur** : `POST /api/sync` exige `authorUserId` (UUID). S'il diffère du
+     porteur du token, TOUT le lot revient `NON_TRAITEE` / `SYNC_AUTHOR_MISMATCH`, rien n'est traité ni
+     mémorisé. Raison : sur un poste partagé, les mutations d'un compte ne doivent jamais être jugées
+     (ni attribuées) sous les droits du compte connecté ; `NON_TRAITEE` et non `REJETEE` car le serveur
+     n'a rien jugé — elles repartiront avec la session de leur auteur. Un client antérieur reçoit 400.
+  2. **Chemin hybride** : une écriture tente EN LIGNE, et seulement faute de réponse (réseau coupé ou
+     délai dépassé) part dans la file sous la MÊME clé que l'intention en ligne. **Précondition pour
+     chaque handler de sync** : reconnaître l'entité déjà créée par la route en ligne avec cette clé et
+     rendre `CONFIRMEE` sans la réappliquer (l'idempotence du moteur ne lit que `SyncMutation`). Corps
+     REST et payload de sync ont la même forme. Une facture ne passe jamais par ce chemin (règle 11).
+  3. **Déclenchement** : à la connexion, au retour du réseau, et toutes les 30 s tant qu'une session
+     est ouverte (file vide = aucun appel réseau).
+
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->

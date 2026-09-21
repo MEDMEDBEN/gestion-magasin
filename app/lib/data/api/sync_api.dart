@@ -10,11 +10,19 @@ class SyncApi {
 
   /// Même traduction d'erreurs que les autres API (`guardApi`) : une seule
   /// façon de convertir un échec réseau en `ApiException` (contre-revue S9).
-  Future<SyncBatchResult> push(List<SyncMutationInput> mutations) {
+  /// `authorUserId` : le compte AUTEUR des mutations. Le serveur refuse de
+  /// traiter un lot dont l'auteur n'est pas le porteur de la session (N6b).
+  Future<SyncBatchResult> push(
+    List<SyncMutationInput> mutations, {
+    required String authorUserId,
+  }) {
     return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(
         '/sync',
-        data: {'mutations': mutations.map((m) => m.toJson()).toList()},
+        data: {
+          'authorUserId': authorUserId,
+          'mutations': mutations.map((m) => m.toJson()).toList(),
+        },
       );
       return SyncBatchResult.fromJson(response.data!);
     });

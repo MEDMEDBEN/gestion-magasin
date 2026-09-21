@@ -14,6 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ErrorCode } from '../../common/error-codes';
+import { IsCanonicalUuid } from '../../common/validation';
 
 /// Aligné sur l'enum Prisma `OperationType` (mêmes valeurs backend / DB / Flutter).
 export enum SyncOperationTypeDto {
@@ -90,6 +91,16 @@ export class SyncMutationDto {
 }
 
 export class SyncBatchDto {
+  @ApiProperty({
+    description:
+      'Compte AUTEUR des mutations du lot, tel que l’appareil l’a enregistré. Il doit ' +
+      'être le porteur de la session qui envoie : sinon RIEN n’est traité (tout repart ' +
+      '`NON_TRAITEE`), pour qu’aucune opération ne soit attribuée au mauvais compte ' +
+      'sur un poste partagé (changement de compte pendant un envoi).',
+  })
+  @IsCanonicalUuid()
+  authorUserId!: string;
+
   @ApiProperty({ type: [SyncMutationDto], maxItems: SYNC_BATCH_MAX })
   @IsArray()
   @ArrayNotEmpty()

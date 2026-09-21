@@ -8,6 +8,7 @@ import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../widgets/screen_state.dart';
+import '../widgets/sync_panel.dart';
 
 /// Coquille mobile : navigation basse, une action principale par écran, grandes
 /// cibles tactiles (spec §29). Ce n'est PAS le desktop en miniature.
@@ -51,6 +52,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                 pendingCount: pending.value ?? 0,
                 rejectedCount: rejected.value?.length ?? 0,
                 isOffline: !reachable,
+                onTap: () => showSyncPanel(context),
               ),
             ),
           ),

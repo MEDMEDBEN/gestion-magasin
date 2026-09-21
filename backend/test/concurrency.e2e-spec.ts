@@ -4,6 +4,7 @@ import { RoleCode } from '../src/common/auth.decorators';
 import { nextDocumentNumber } from '../src/common/document-number';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
+import { authorOf } from './helpers/sync-author';
 
 /// Concurrence sur les chemins argent/stock (CONVENTIONS.md, règle 6).
 describe('Concurrence argent et stock (e2e)', () => {
@@ -305,7 +306,11 @@ describe('Concurrence argent et stock (e2e)', () => {
         type: 'PERTE_CASSE',
       },
     });
-    const push = () => post('/api/sync').send({ mutations: [loss()] });
+    const push = () =>
+      post('/api/sync').send({
+        authorUserId: authorOf(token),
+        mutations: [loss()],
+      });
     const [a, b] = await Promise.all([push(), push()]);
     const statuses = [
       a.body.results[0].status,

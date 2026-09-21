@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
@@ -11,6 +12,7 @@ import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/desktop/desktop_shell.dart';
 import 'package:gestion_magasin/ui/mobile/mobile_shell.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
+import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 
 import 'support/fakes.dart';
 
@@ -28,6 +30,8 @@ Future<void> _pumpShell(
   required Size size,
   bool reachable = true,
   CatalogRepository? catalog,
+  List<PendingMutation> rejected = const [],
+  MutationQueue? queue,
 }) async {
   useScreenSize(tester, size);
   final db = AppDatabase.forTesting();
@@ -47,7 +51,8 @@ Future<void> _pumpShell(
         foreignPendingMutationsCountProvider.overrideWith(
           (ref) => Stream.value(0),
         ),
-        rejectedMutationsProvider.overrideWith((ref) => Stream.value(const [])),
+        rejectedMutationsProvider.overrideWith((ref) => Stream.value(rejected)),
+        if (queue != null) mutationQueueProvider.overrideWithValue(queue),
         if (!reachable) serverReachableProvider.overrideWith(_Unreachable.new),
         if (catalog != null)
           catalogRepositoryProvider.overrideWithValue(catalog),
@@ -66,6 +71,26 @@ Future<void> _pumpShell(
 class _Unreachable extends ServerReachability {
   @override
   bool build() => false;
+}
+
+class _RecordingQueue implements MutationQueue {
+  final discarded = <String>[];
+
+  @override
+  Future<void> discard(
+    String clientMutationId, {
+    required String authorUserId,
+  }) async => discarded.add('$authorUserId:$clientMutationId');
+
+  // La coquille pousse la file à la connexion : file vide.
+  @override
+  Future<List<PendingMutation>> nextBatch({
+    required String authorUserId,
+    int limit = 0,
+  }) async => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 class _CountingCatalog implements CatalogRepository {
@@ -259,4 +284,46 @@ void main() {
 
     expect(find.text('Hors ligne'), findsOneWidget);
   });
+
+  testWidgets(
+    'rejet : l’indicateur ouvre le motif, « Abandonner » retire la mutation '
+    'après confirmation',
+    (tester) async {
+      final queue = _RecordingQueue();
+      final now = DateTime.utc(2026, 9, 21, 9, 30);
+      await _pumpShell(
+        tester,
+        user: authUser(),
+        size: const Size(1300, 900),
+        queue: queue,
+        rejected: [
+          PendingMutation(
+            clientMutationId: 'm-1',
+            authorUserId: 'u1',
+            deviceId: 'd1',
+            operationType: 'SALE',
+            payload: '{}',
+            deviceTimestamp: now,
+            status: LocalMutationStatus.rejetee,
+            rejectionCode: 'STOCK_INSUFFICIENT',
+            rejectionReason: 'Stock insuffisant pour Câble 2,5 mm²',
+            attemptCount: 1,
+            createdAt: now,
+          ),
+        ],
+      );
+
+      await tester.tap(find.text('1 échouée'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Vente ·'), findsOneWidget);
+      expect(find.text('Stock insuffisant pour Câble 2,5 mm²'), findsOneWidget);
+
+      await tester.tap(find.text('Abandonner'));
+      await tester.pumpAndSettle();
+      expect(queue.discarded, isEmpty, reason: 'pas avant confirmation');
+      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Abandonner'));
+      await tester.pumpAndSettle();
+      expect(queue.discarded, ['${authUser().id}:m-1']);
+    },
+  );
 }

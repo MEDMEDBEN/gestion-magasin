@@ -188,6 +188,65 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P0 #12 RACCORDEMENT HORS-LIGNE — EN COURS (2026-09-21 · **MEDMEDBEN**)
+
+**État de départ constaté** : le moteur de sync existe (serveur `POST /api/sync` + file Drift + `SyncEngine`),
+mais **rien dans l'app ne met en file ni ne déclenche la synchronisation** — toute écriture passe en ligne.
+Un seul handler serveur (`MANUAL`, perte/casse), et même lui n'est appelé par aucun écran.
+
+**Principe retenu (chemin hybride)** : chaque écriture tente d'abord EN LIGNE ; si le réseau manque
+(`ApiException.isOffline`), elle part dans la file **avec la MÊME clé que l'intention en ligne**. Raison : si la
+requête en ligne est arrivée au serveur mais que la réponse s'est perdue, la mutation mise en file sera
+RECONNUE (même `clientMutationId` que l'entité) au lieu d'être appliquée une seconde fois. Chaque handler de
+sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle « déjà enregistrée ».
+
+**Tranches (chacune testée, contre-éprouvée et poussée avant la suivante)** :
+- [x] **A — Socle app** (livrée, auditée) — voir le détail juste après la liste.
+- [ ] **B — Vente hors-ligne** (TICKET uniquement — une facture exige un numéro légal serveur, règle 11).
+  Y brancher la garde « trop longtemps hors-ligne » (`MutationQueue.isTooStale`, déjà écrite) qui bloque
+  les nouvelles ventes ; handler `SALE` qui **reconnaît une vente déjà créée en ligne sous la même clé**
+  (précondition M1, voir ci-dessous) + e2e « en ligne puis même clé par /sync → CONFIRMEE, sans doublon ».
+- [ ] **C — Caisse hors-ligne** (ouverture, clôture) : une vente en espèces exige une caisse ouverte (règle 12).
+- [ ] **D — Réception hors-ligne** (spec §15 : « fonctionne hors-ligne »).
+- [ ] **E — Transferts, inventaire (comptage), règlements clients** hors-ligne.
+- Restent EN LIGNE, volontairement : facturation (numéro légal), validation d'inventaire et de pertes (geste
+  admin), commandes et paiements fournisseurs, fiches produits/clients/fournisseurs, planning, comptes —
+  gestes de bureau, faits au poste fixe, où un « dernier écrivain gagne » masquerait des conflits.
+
+**Tranche A — livrée (2026-09-21)**
+- **Serveur (N6b)** : le lot `POST /api/sync` porte `authorUserId` (obligatoire, 400 sinon). Différent du porteur
+  du token → tout le lot `NON_TRAITEE` / `SYNC_AUTHOR_MISMATCH`, rien traité ni mémorisé, trace `warn` sans
+  contenu. Décision écrite dans `docs/context.md` (2026-09-21).
+- **App** : `SyncCoordinator` (`data/sync/sync_coordinator.dart`, écouté par `AdaptiveShell`) pousse la file à la
+  connexion, au retour du réseau et toutes les 30 s ; le cycle d'un compte ne s'affiche jamais au suivant.
+  `SyncEngine` : un cycle en cours PAR AUTEUR. `writeOnlineOrQueue` (`core/offline_write.dart`) : essai en ligne,
+  sinon mise en file sous la MÊME clé et le MÊME corps ; l'auteur est lu AVANT l'attente réseau et rien n'est mis
+  en file si le compte a changé entre-temps. L'indicateur d'en-tête ouvre le **panneau de synchronisation**
+  (`ui/widgets/sync_panel.dart`) : attente, « Synchroniser maintenant », rejets avec motif et « Abandonner »
+  confirmé — `discard` ne supprime qu'une mutation REJETÉE du compte connecté.
+- **Audits** : `reviewer` OK (3 importants corrigés : contrat de sync documenté, précondition écrite, `kick`
+  sans exception ni fuite d'état entre comptes) ; `security-reviewer` : 1 élevé corrigé (**E1** : l'auteur était
+  lu après l'`await`, une opération de A pouvait partir étiquetée B — contre-éprouvé), faibles F1-F3 corrigés
+  (log réduit au type d'erreur en debug, `discard` borné, e2e auteur absent/mal formé).
+- **Exigences reportées sur B-E** : **M1** chaque handler reconnaît l'entité déjà créée en ligne sous la clé
+  (sinon doublon ou faux rejet) ; **M2** une intention nomme UNE opération (`sale:<idPanier>`), jamais un geste
+  générique. `writeOnlineOrQueue` n'a pas encore d'appelant : la tranche B la branche.
+- **Preuve (2026-09-21)** : backend `lint:check` 0 · **82** unit · **317** e2e (23 suites, un seul passage) ;
+  app `flutter analyze` propre · **+291 ~43**. Contre-épreuves : déclenchement au retour du réseau retiré → test
+  en échec ; garde E1 retirée → test en échec.
+- **Prochaine étape précise** : tranche B — handler de sync `SALE` (`backend/src/sync/handlers/`) qui appelle le
+  cœur de `SalesService` (TICKET seulement, prix recalculé serveur, `SALE_TOTAL_CHANGED` si écart) et reconnaît une
+  vente déjà créée sous la clé ; côté app, l'encaissement passe par `writeOnlineOrQueue` + `isTooStale`.
+
+**Décision que je prends seul et que je te signale (à confirmer)** — **prix d'une vente hors-ligne** :
+`docs/context.md` §7 (2026-09-08) dit que le serveur accepte les prix saisis sur l'appareil. Mais la décision
+du 2026-09-09 (« prix gérés par l'admin, pas de remise libre ») et la route en ligne (le client n'envoie JAMAIS
+de prix) disent l'inverse — et accepter un prix venu de l'appareil permettrait à n'importe qui de forger un
+prix en fabriquant une requête de sync. Retenu : le serveur recalcule au tarif COURANT et compare au total que
+l'appareil a encaissé ; s'ils diffèrent (l'admin a changé un prix pendant la coupure), la vente est **REJETÉE**
+(`SALE_TOTAL_CHANGED`) et apparaît dans l'écran des rejets pour décision. Rare dans un magasin (il faut un
+changement de prix PENDANT une coupure), sûr, et identique au comportement en ligne.
+
 ### ✅ P0 #11 HISTORIQUE / AUDIT — LIVRÉ ET AUDITÉ (2026-09-21 · **MEDMEDBEN**)
 Spec §24. Chaque feature écrit déjà son journal DANS sa propre transaction (`writeAudit`) ; P0 #11 livre la
 **lecture**, réservée à l'ADMIN. **Aucune migration** : `AuditLog` et ses index étaient complets.

@@ -21,22 +21,31 @@ class MutationQueue {
   /// Enregistre une opération faite hors-ligne (ou en ligne : le chemin est le même).
   /// `authorUserId` : le compte connecté qui la saisit — elle ne partira
   /// qu'avec SA session (audit I2).
+  ///
+  /// `clientMutationId` : la clé de l'INTENTION quand l'opération a d'abord été
+  /// tentée en ligne. Si cette tentative est arrivée au serveur mais que la
+  /// réponse s'est perdue, la mutation portera la MÊME clé que l'entité déjà
+  /// créée : le serveur la reconnaîtra au lieu de l'appliquer une seconde fois.
   Future<String> enqueue({
     required String authorUserId,
     required String deviceId,
     required String operationType,
     required Map<String, dynamic> payload,
+    String? clientMutationId,
     DateTime? deviceTimestamp,
   }) async {
     // UUID v7 : trié dans le temps, donc l'ordre d'insertion reste lisible en base.
-    final clientMutationId = _uuid.v7();
+    final key = clientMutationId ?? _uuid.v7();
     final now = deviceTimestamp ?? DateTime.now().toUtc();
 
+    // Clé d'intention déjà en file (deux envois simultanés du même geste) :
+    // c'est la même opération, on ne la duplique pas et on ne casse pas.
     await _db
         .into(_db.pendingMutations)
         .insert(
+          mode: InsertMode.insertOrIgnore,
           PendingMutationsCompanion.insert(
-            clientMutationId: clientMutationId,
+            clientMutationId: key,
             authorUserId: Value(authorUserId),
             deviceId: deviceId,
             operationType: operationType,
@@ -45,7 +54,7 @@ class MutationQueue {
             createdAt: DateTime.now().toUtc(),
           ),
         );
-    return clientMutationId;
+    return key;
   }
 
   /// Mutations en attente d'UN auteur.
@@ -206,10 +215,19 @@ class MutationQueue {
 
   /// L'utilisateur abandonne une mutation rejetée.
   /// Corriger = créer une NOUVELLE mutation, jamais réutiliser l'identifiant rejeté.
-  Future<void> discard(String clientMutationId) async {
-    await (_db.delete(
-      _db.pendingMutations,
-    )..where((t) => t.clientMutationId.equals(clientMutationId))).go();
+  /// Seule une mutation REJETÉE de ce compte s'abandonne : une mutation en
+  /// attente supprimée serait une opération perdue que l'utilisateur croit faite.
+  Future<void> discard(
+    String clientMutationId, {
+    required String authorUserId,
+  }) async {
+    await (_db.delete(_db.pendingMutations)..where(
+          (t) =>
+              t.clientMutationId.equals(clientMutationId) &
+              t.status.equalsValue(LocalMutationStatus.rejetee) &
+              t.authorUserId.equals(authorUserId),
+        ))
+        .go();
   }
 
   /// L'appareil est-il resté trop longtemps sans synchroniser ?
