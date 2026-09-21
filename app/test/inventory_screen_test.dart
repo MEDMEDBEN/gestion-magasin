@@ -69,13 +69,12 @@ class _BrokenInventoryApi extends InventoryApi {
   _BrokenInventoryApi() : super(Dio());
 
   @override
-  Future<InventoryPage> list({String? status, int limit = 100}) =>
-      Future.error(
-        const ApiException(
-          statusCode: 503,
-          message: 'Serveur injoignable. Réessayez.',
-        ),
-      );
+  Future<InventoryPage> list({String? status, int limit = 100}) => Future.error(
+    const ApiException(
+      statusCode: 503,
+      message: 'Serveur injoignable. Réessayez.',
+    ),
+  );
 }
 
 class _FakeInventoryApi extends InventoryApi {
@@ -170,36 +169,37 @@ Future<_FakeInventoryApi> _pump(
 }
 
 void main() {
-  testWidgets('lancer un inventaire TOURNANT : type, zone et produits partent', (
-    tester,
-  ) async {
-    final api = await _pump(tester, _magasinier());
+  testWidgets(
+    'lancer un inventaire TOURNANT : type, zone et produits partent',
+    (tester) async {
+      final api = await _pump(tester, _magasinier());
 
-    await tester.tap(find.text('Lancer un inventaire'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Lancer un inventaire'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dépôt').last);
-    await tester.pumpAndSettle();
+      await tester.tap(find.byType(DropdownButtonFormField<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dépôt').last);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Tournant'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Zone A, rayon câbles…'),
-      'Zone A',
-    );
-    await tester.tap(find.byType(CheckboxListTile).first);
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Tournant'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Zone A, rayon câbles…'),
+        'Zone A',
+      );
+      await tester.tap(find.byType(CheckboxListTile).first);
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Lancer le comptage'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.text('Lancer le comptage'));
+      await tester.pumpAndSettle();
 
-    expect(api.created, containsPair('type', 'TOURNANT'));
-    expect(api.created, containsPair('zone', 'Zone A'));
-    expect(api.created!['productIds'], ['p1']);
-    expect(api.created!['clientMutationId'], isA<String>());
-  });
+      expect(api.created, containsPair('type', 'TOURNANT'));
+      expect(api.created, containsPair('zone', 'Zone A'));
+      expect(api.created!['productIds'], ['p1']);
+      expect(api.created!['clientMutationId'], isA<String>());
+    },
+  );
 
   testWidgets('un tournant sans produit coché ne part pas', (tester) async {
     final api = await _pump(tester, _magasinier());
@@ -222,11 +222,7 @@ void main() {
   testWidgets('le comptage part au serveur, et n’annonce AUCUN ajustement', (
     tester,
   ) async {
-    final api = await _pump(
-      tester,
-      _magasinier(),
-      inventories: [_inventory()],
-    );
+    final api = await _pump(tester, _magasinier(), inventories: [_inventory()]);
     expect(find.textContaining('0 sur 1 produit(s) comptés'), findsOneWidget);
 
     await tester.tap(find.text('INV-2026-00003'));
@@ -252,38 +248,42 @@ void main() {
     ]);
   });
 
-  testWidgets('comptage incomplet : « Terminer » est refusé, « en cours » passe', (
-    tester,
-  ) async {
-    final api = await _pump(
-      tester,
-      _magasinier(),
-      inventories: [
-        _inventory(
-          lines: [_line(productId: 'p1'), _line(productId: 'p2')],
-        ),
-      ],
-    );
-    await tester.tap(find.text('INV-2026-00003'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Saisir le comptage'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'comptage incomplet : « Terminer » est refusé, « en cours » passe',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _magasinier(),
+        inventories: [
+          _inventory(
+            lines: [
+              _line(productId: 'p1'),
+              _line(productId: 'p2'),
+            ],
+          ),
+        ],
+      );
+      await tester.tap(find.text('INV-2026-00003'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Saisir le comptage'));
+      await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Quantité comptée').first,
-      '10',
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Terminer le comptage'));
-    await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Quantité comptée').first,
+        '10',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Terminer le comptage'));
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('Comptage incomplet'), findsOneWidget);
-    expect(api.countedFields, isNull);
+      expect(find.textContaining('Comptage incomplet'), findsOneWidget);
+      expect(api.countedFields, isNull);
 
-    await tester.tap(find.text('Enregistrer en cours'));
-    await tester.pumpAndSettle();
-    expect(api.countedFields, containsPair('done', false));
-  });
+      await tester.tap(find.text('Enregistrer en cours'));
+      await tester.pumpAndSettle();
+      expect(api.countedFields, containsPair('done', false));
+    },
+  );
 
   testWidgets('le magasinier ne valide JAMAIS les ajustements', (tester) async {
     await _pump(
@@ -401,28 +401,29 @@ void main() {
     expect(find.textContaining('faites valider les écarts'), findsOneWidget);
   });
 
-  testWidgets('serveur injoignable : l’écran affiche l’erreur et propose de réessayer', (
-    tester,
-  ) async {
-    useScreenSize(tester, const Size(500, 1400));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          inventoryApiProvider.overrideWithValue(_BrokenInventoryApi()),
-          activeProductsProvider.overrideWith(
-            (ref) => Stream.value([product(id: 'p1')]),
+  testWidgets(
+    'serveur injoignable : l’écran affiche l’erreur et propose de réessayer',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            inventoryApiProvider.overrideWithValue(_BrokenInventoryApi()),
+            activeProductsProvider.overrideWith(
+              (ref) => Stream.value([product(id: 'p1')]),
+            ),
+            locationsProvider.overrideWith((ref) => Stream.value(const [])),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.mobile(dark: true),
+            home: Scaffold(body: InventoryScreen(user: _magasinier())),
           ),
-          locationsProvider.overrideWith((ref) => Stream.value(const [])),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.mobile(dark: true),
-          home: Scaffold(body: InventoryScreen(user: _magasinier())),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Serveur injoignable'), findsOneWidget);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Serveur injoignable'), findsOneWidget);
+    },
+  );
 
   testWidgets('un comptage déjà entamé propose de le REPRENDRE', (
     tester,
@@ -431,7 +432,9 @@ void main() {
       tester,
       _magasinier(),
       inventories: [
-        _inventory(lines: [_line(counted: '12', difference: '0')]),
+        _inventory(
+          lines: [_line(counted: '12', difference: '0')],
+        ),
       ],
     );
     expect(find.textContaining('1 sur 1 produit(s) comptés'), findsOneWidget);
@@ -459,10 +462,7 @@ void main() {
 
   test('menu : « Inventaire » pour ADMIN et MAGASINIER, jamais le vendeur', () {
     for (final user in [_admin(), _magasinier()]) {
-      expect(
-        destinationsFor(user).map((d) => d.label),
-        contains('Inventaire'),
-      );
+      expect(destinationsFor(user).map((d) => d.label), contains('Inventaire'));
     }
     expect(
       destinationsFor(

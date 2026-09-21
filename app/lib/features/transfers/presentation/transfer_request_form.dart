@@ -196,8 +196,7 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
             validator: (v) {
               if (v == null) return 'Choisissez un produit';
               // Miroir du serveur : un produit ne figure qu'une fois.
-              final twice =
-                  _lines.where((l) => l.productId == v).length > 1;
+              final twice = _lines.where((l) => l.productId == v).length > 1;
               return twice ? 'Ce produit est déjà demandé' : null;
             },
           ),

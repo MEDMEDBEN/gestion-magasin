@@ -329,7 +329,10 @@ void main() {
         _transfer(TransferStatus.inTransit, prepared: '18', shipped: '18'),
       ],
     );
-    expect(find.textContaining('en transit 18 sur 20 demandés'), findsOneWidget);
+    expect(
+      find.textContaining('en transit 18 sur 20 demandés'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.textContaining('TRF-2026-00004'));
     await tester.pumpAndSettle();
@@ -457,7 +460,10 @@ void main() {
       ],
     );
     expect(find.text('Reçue · écart'), findsOneWidget);
-    expect(find.textContaining('le manquant est rentré au dépôt'), findsOneWidget);
+    expect(
+      find.textContaining('le manquant est rentré au dépôt'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('un transfert reçu en ENTIER reste un simple « Reçue »', (
@@ -481,10 +487,7 @@ void main() {
 
   test('menu : « Transferts » pour qui tient un bout du flux', () {
     for (final user in [_vendeur(), _magasinier()]) {
-      expect(
-        destinationsFor(user).map((d) => d.label),
-        contains('Transferts'),
-      );
+      expect(destinationsFor(user).map((d) => d.label), contains('Transferts'));
     }
     // Un compte sans aucun droit de transfert ne voit pas l'entrée.
     expect(

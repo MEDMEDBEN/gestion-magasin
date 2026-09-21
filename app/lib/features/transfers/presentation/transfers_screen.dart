@@ -43,8 +43,7 @@ class TransferRights {
 
   /// L'ANNULATION vient de l'auteur de la demande — ou d'un administrateur.
   bool canCancelRequest(Transfer transfer) =>
-      canCancel &&
-      (user.hasRole('ADMIN') || transfer.requestedById == user.id);
+      canCancel && (user.hasRole('ADMIN') || transfer.requestedById == user.id);
 }
 
 void _snack(BuildContext context, String message) {
@@ -90,10 +89,8 @@ String _progress(Transfer transfer) {
     TransferStatus.received =>
       '${done('reçu', (l) => l.receivedQuantity)}'
           '${_hasShortfall(transfer) ? ' · ÉCART, le manquant est rentré au dépôt' : ''}',
-    TransferStatus.preparing || TransferStatus.prepared => done(
-      'préparé',
-      (l) => l.preparedQuantity,
-    ),
+    TransferStatus.preparing ||
+    TransferStatus.prepared => done('préparé', (l) => l.preparedQuantity),
     _ => '$asked demandés',
   };
 }

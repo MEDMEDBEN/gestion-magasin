@@ -77,19 +77,21 @@ class TransfersActions {
   Future<Transfer> ship(String id) => _refresh(_api.ship(id), stockMoved: true);
 
   /// Le stock entre au magasin ; l'écart éventuel retourne au dépôt.
-  Future<Transfer> receive(String id, Map<String, Quantity> receivedByProduct) =>
-      _refresh(
-        _api.receive(id, {
-          'lines': [
-            for (final entry in receivedByProduct.entries)
-              {
-                'productId': entry.key,
-                'receivedQuantity': quantityToJson(entry.value),
-              },
-          ],
-        }),
-        stockMoved: true,
-      );
+  Future<Transfer> receive(
+    String id,
+    Map<String, Quantity> receivedByProduct,
+  ) => _refresh(
+    _api.receive(id, {
+      'lines': [
+        for (final entry in receivedByProduct.entries)
+          {
+            'productId': entry.key,
+            'receivedQuantity': quantityToJson(entry.value),
+          },
+      ],
+    }),
+    stockMoved: true,
+  );
 
   Future<Transfer> cancel(String id, {required bool refuse}) =>
       _refresh(_api.cancel(id, refuse ? 'REFUSEE' : 'ANNULEE'));

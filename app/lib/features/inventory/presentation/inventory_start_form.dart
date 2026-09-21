@@ -148,7 +148,9 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
             controller: _zone,
             enabled: !_saving,
             maxLength: 100,
-            decoration: const InputDecoration(hintText: 'Zone A, rayon câbles…'),
+            decoration: const InputDecoration(
+              hintText: 'Zone A, rayon câbles…',
+            ),
           ),
           const AmpereFieldLabel('Produits à compter'),
           for (final p in products)

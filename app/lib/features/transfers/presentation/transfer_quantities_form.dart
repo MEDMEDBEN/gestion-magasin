@@ -112,8 +112,7 @@ class _TransferQuantitiesFormState
   Future<void> _submit({bool done = true}) async {
     if (!_formKey.currentState!.validate()) return;
     final quantities = {
-      for (final l in _lines)
-        l.line.productId: parseQuantity(l.quantity.text)!,
+      for (final l in _lines) l.line.productId: parseQuantity(l.quantity.text)!,
     };
     setState(() {
       _saving = true;
