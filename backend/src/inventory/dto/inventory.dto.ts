@@ -17,7 +17,7 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import { ClientMutationId } from '../../common/idempotency';
-import { IsCanonicalUuid } from '../../common/validation';
+import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 
 /// Quantités comptées : décimales à 3 décimales au plus (règle 10), en CHAÎNE.
 /// Motif PROPRE à ce DTO, volontairement plus strict que `parseQuantity` : il
@@ -34,8 +34,7 @@ export enum InventoryTypeDto {
 
 export class CreateInventoryDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty({ description: 'Lieu compté : MAGASIN ou DEPOT.' })

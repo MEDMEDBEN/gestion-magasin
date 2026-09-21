@@ -20,6 +20,14 @@ export const booleanQuery = ({ value }: { value: unknown }) =>
 /// Même raison que `CanonicalUuidPipe` pour les routes : PostgreSQL retrouve la
 /// ligne quelle que soit la casse, pas une comparaison de chaînes côté service —
 /// `parentId` en majuscules faisait d'une catégorie son propre parent.
+/// Identifiant généré par le CLIENT à la création (contrat de sync §1) :
+/// facultatif, mais JAMAIS `null`. `@IsOptional()` laisse passer `null` sans
+/// rien valider ; `{ "id": null }` atteignait alors Prisma et finissait en 500
+/// sur toutes les routes de création (audit sécurité du 2026-09-21). Un seul
+/// décorateur pour tous les DTO : la correction ne peut plus manquer à l'un.
+export const ClientGeneratedId = () =>
+  applyDecorators(IsOptionalNotNull(), IsCanonicalUuid());
+
 /// `{ each: true }` couvre un TABLEAU d'UUID : chaque élément est mis en
 /// minuscules puis validé, comme un champ simple.
 export const IsCanonicalUuid = (options?: ValidationOptions) =>

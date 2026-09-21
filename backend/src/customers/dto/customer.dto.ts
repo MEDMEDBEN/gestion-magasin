@@ -17,9 +17,10 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import {
+  booleanQuery,
+  ClientGeneratedId,
   IsCanonicalUuid,
   IsOptionalNotNull,
-  booleanQuery,
 } from '../../common/validation';
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
 
@@ -30,8 +31,7 @@ const trimOrNull = ({ value }: { value: unknown }) =>
 
 export class CreateCustomerDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty({ example: 'Électricité Benali' })
@@ -181,8 +181,7 @@ export class CreateCustomerPaymentDto {
   clientMutationId!: string;
 
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty() @IsCanonicalUuid() customerId!: string;

@@ -9,7 +9,11 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { IsCanonicalUuid, IsOptionalNotNull } from '../../common/validation';
+import {
+  ClientGeneratedId,
+  IsCanonicalUuid,
+  IsOptionalNotNull,
+} from '../../common/validation';
 
 /// Aligné sur l'enum `LocationType` du schéma Prisma.
 export enum LocationTypeDto {
@@ -32,8 +36,7 @@ export class CreateLocationDto {
   @ApiPropertyOptional({
     description: 'UUID généré par le client. Absent → généré serveur.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiPropertyOptional({

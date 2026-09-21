@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
@@ -196,12 +197,6 @@ final cashSessionsProvider = FutureProvider.autoDispose<List<CashSession>>((
   ref.watch(currentUserIdProvider);
   return (await ref.watch(salesApiProvider).cashSessions()).data;
 });
-
-/// Date civile `AAAA-MM-JJ` (échéance saisie au calendrier, sans heure).
-String isoDay(DateTime day) =>
-    '${day.year.toString().padLeft(4, '0')}-'
-    '${day.month.toString().padLeft(2, '0')}-'
-    '${day.day.toString().padLeft(2, '0')}';
 
 /// Écritures Caisse / Ventes / Clients — toujours validées par le serveur.
 class SalesActions {

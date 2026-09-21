@@ -139,6 +139,14 @@ aucune migration destructive sans confirmation).
 | Créer un planning hebdomadaire | ✅ | ❌ | ❌ |
 | Voir / exécuter ses tâches planifiées | ✅ | ✅ | ✅ |
 
+**Décisions du 2026-09-21 (implémentation de P0 #10)** :
+- Chaque membre ne voit et n'exécute **que SES tâches** — le serveur cloisonne, quel que soit le filtre
+  envoyé ; une tâche d'autrui répond 404. L'ADMIN voit tout et filtre par membre.
+- Démarrer / terminer : le membre **assigné** ou l'ADMIN. Terminer exige un **résultat**.
+- Modifier / réassigner : ADMIN, tant que la tâche n'est pas terminée. Supprimer : ADMIN, **tant que personne
+  ne l'a commencée**. Une tâche close ne se réécrit plus.
+- Audit : seuls les gestes de l'ADMIN y figurent ; le travail courant du membre reste dans la tâche.
+
 ## Administration
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

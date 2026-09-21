@@ -262,6 +262,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-21 : CONFORME en sécurité ; 2 importants hors sécurité — impasse + produit désactivé non régularisable → corrigés)_
 - [ ] Tests manuels effectués par un humain
 
+### Feature P0 n°10 : Planning hebdomadaire
+- [x] Schéma DB validé _(AUCUNE migration : `PlanningTask` complet depuis la Phase 0)_
+- [x] Matrice de permissions CRUD par rôle définie _(planifier/modifier/supprimer : ADMIN `planning.manage` ; voir et exécuter SES tâches : 3 rôles `planning.task.read`, cloisonné serveur)_
+- [x] Endpoints API implémentés _(GET liste + détail, POST, PATCH, DELETE, POST /:id/start, POST /:id/complete ; stub 501 retiré)_
+- [x] Validation des entrées (class-validator) en place _(jours `AAAA-MM-JJ` stricts, échéance jamais passée, fenêtre cohérente, textes bornés, résultat obligatoire à la fin)_
+- [x] Tests unitaires backend passent _(81 — 2026-09-21)_
+- [x] Tests d'intégration backend passent _(306 e2e dont 21 planning + 3 id client, un seul passage — 2026-09-21)_
+- [x] UI desktop implémentée _(captures 39, 40)_
+- [x] UI mobile implémentée _(capture 41)_
+- [x] Sync offline gérée si applicable _(non : en ligne, P0 #12)_
+- [x] Revue par subagent `reviewer` _(2026-09-21 : PAS OK, 4 bloquants — tâche en retard non réassignable, tâches récentes perdues, message faux, trou de cloisonnement → tous corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `id: null` → 500 sur TOUTES les créations → décorateur partagé sur 12 DTO)_
+- [ ] Tests manuels effectués par un humain
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

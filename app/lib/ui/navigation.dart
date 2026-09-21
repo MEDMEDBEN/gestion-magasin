@@ -5,6 +5,7 @@ import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
+import '../features/planning/presentation/planning_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
@@ -63,6 +64,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.warehouse,
       label: 'Stock',
       builder: (context, user) => StockScreen(user: user),
+    ),
+  // `/planning-tasks` : 3 rôles + planning.task.read ; chacun n'y voit que
+  // SES tâches (le serveur cloisonne), l'admin voit tout et planifie.
+  if (user.can('planning.task.read'))
+    AppDestination(
+      icon: LucideIcons.calendarCheck,
+      label: 'Tâches',
+      builder: (context, user) => PlanningScreen(user: user),
     ),
   // `/transfers` : les 3 rôles lisent la liste (guard de rôle seul) ; l'entrée
   // n'est proposée qu'à qui tient un bout du flux (demander, préparer, recevoir).

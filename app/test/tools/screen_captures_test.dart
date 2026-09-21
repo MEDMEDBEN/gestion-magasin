@@ -24,6 +24,8 @@ import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/inventory/data/inventory_api.dart';
 import 'package:gestion_magasin/features/inventory/data/inventory_models.dart';
+import 'package:gestion_magasin/features/planning/data/planning_api.dart';
+import 'package:gestion_magasin/features/planning/data/planning_models.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
@@ -579,6 +581,99 @@ class _CaptureInventoryApi extends InventoryApi {
       );
 }
 
+/// Une semaine de planning : du retard, du travail en cours, du travail fait.
+class _CapturePlanningApi extends PlanningApi {
+  _CapturePlanningApi() : super(Dio());
+
+  static PlanningTask _t(
+    String id,
+    String title,
+    PlanningTaskType type,
+    PlanningTaskStatus status,
+    String assignedToId,
+    String due, {
+    bool late = false,
+    String? zone,
+    String? result,
+  }) => PlanningTask(
+    id: id,
+    title: title,
+    type: type,
+    status: status,
+    isLate: late,
+    assignedToId: assignedToId,
+    createdById: 'me',
+    zone: zone,
+    scheduledFor: '2026-09-21',
+    dueDate: due,
+    result: result,
+    completedAt: status == PlanningTaskStatus.done
+        ? DateTime(2026, 9, 21, 11, 40)
+        : null,
+    updatedAt: DateTime(2026, 9, 21, 8, 0),
+  );
+
+  @override
+  Future<PlanningTaskPage> list({
+    String? assignedToId,
+    PlanningView view = PlanningView.open,
+    int limit = 200,
+  }) async {
+    // Comme le serveur : chaque vue ne montre que ce qui lui appartient.
+    final data = [
+      for (final t in _all)
+        if (switch (view) {
+          PlanningView.open => t.status != PlanningTaskStatus.done,
+          PlanningView.late => t.isLate,
+          PlanningView.done => t.status == PlanningTaskStatus.done,
+        })
+          t,
+    ];
+    return PlanningTaskPage(
+      data: data,
+      meta: PageMeta(page: 1, limit: 200, total: data.length),
+    );
+  }
+
+  static final _all = [
+    _t(
+      'p1',
+      'Réceptionner la commande Sonelec',
+      PlanningTaskType.reception,
+      PlanningTaskStatus.todo,
+      'u3',
+      '2026-09-20',
+      late: true,
+    ),
+    _t(
+      'p2',
+      'Compter les câbles souples',
+      PlanningTaskType.count,
+      PlanningTaskStatus.inProgress,
+      'u3',
+      '2026-09-23',
+      zone: 'Zone A',
+    ),
+    _t(
+      'p3',
+      'Réviser les prix des disjoncteurs',
+      PlanningTaskType.review,
+      PlanningTaskStatus.todo,
+      'u2',
+      '2026-09-25',
+    ),
+    _t(
+      'p4',
+      'Saisir les nouveautés Legrand',
+      PlanningTaskType.entry,
+      PlanningTaskStatus.done,
+      'u4',
+      '2026-09-22',
+      result: '14 références créées, photos jointes',
+    ),
+  ];
+}
+
 class _CaptureSalesApi extends SalesApi {
   _CaptureSalesApi() : super(Dio());
 
@@ -787,6 +882,7 @@ Future<void> _capture(
         receptionsApiProvider.overrideWithValue(_CaptureReceptionsApi()),
         transfersApiProvider.overrideWithValue(_CaptureTransfersApi()),
         inventoryApiProvider.overrideWithValue(_CaptureInventoryApi()),
+        planningApiProvider.overrideWithValue(_CapturePlanningApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -1389,6 +1485,49 @@ void main() {
         await t.tap(find.text('INV-2026-00002'));
         await t.pumpAndSettle();
         await t.tap(find.text('Voir les écarts'));
+      },
+    ),
+  );
+  testWidgets(
+    '39 planning de l’équipe desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '39_planning_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Tâches')),
+    ),
+  );
+  testWidgets(
+    '40 nouvelle tâche desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '40_nouvelle_tache_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Tâches'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Nouvelle tâche'));
+      },
+    ),
+  );
+  testWidgets(
+    '41 fin de tâche mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '41_fin_de_tache_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Tâches');
+        await t.pumpAndSettle();
+        await t.tap(find.text('Compter les câbles souples'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Terminer et donner le résultat'));
       },
     ),
   );

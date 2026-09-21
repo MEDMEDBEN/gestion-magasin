@@ -1,124 +1,169 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Ip,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiProperty,
-  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
 import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsUUID,
-  MinLength,
-} from 'class-validator';
-import { RequirePermissions, RoleCode, Roles } from '../common/auth.decorators';
-import { PaginationQueryDto } from '../common/dto/pagination.dto';
-import { notImplemented } from '../common/not-implemented';
+  AuthenticatedUser,
+  CurrentUser,
+  RequirePermissions,
+  RoleCode,
+  Roles,
+} from '../common/auth.decorators';
+import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PERMISSIONS } from '../common/permissions';
+import {
+  CompletePlanningTaskDto,
+  CreatePlanningTaskDto,
+  PlanningTaskDto,
+  PlanningTaskListDto,
+  PlanningTaskListQueryDto,
+  UpdatePlanningTaskDto,
+} from './dto/planning.dto';
+import { PlanningService } from './planning.service';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
-export enum PlanningTaskTypeDto {
-  SAISIE = 'SAISIE',
-  COMPTAGE = 'COMPTAGE',
-  REVISION = 'REVISION',
-  RECEPTION = 'RECEPTION',
-  PREPARATION = 'PREPARATION',
-  AUTRE = 'AUTRE',
-}
-
-export class CreatePlanningTaskDto {
-  @ApiProperty() @IsString() @MinLength(2) title!: string;
-  @ApiProperty({ enum: PlanningTaskTypeDto })
-  @IsEnum(PlanningTaskTypeDto)
-  type!: PlanningTaskTypeDto;
-  @ApiProperty() @IsUUID() assignedToId!: string;
-  @ApiProperty({ description: 'Date prévue (ISO 8601).' })
-  @IsString()
-  scheduledFor!: string;
-  @ApiProperty({ description: 'Échéance (ISO 8601).' })
-  @IsString()
-  dueDate!: string;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() locationId?: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() zone?: string;
-  @ApiPropertyOptional() @IsString() @IsOptional() description?: string;
-}
-
-export class PlanningTaskDto {
-  @ApiProperty() id!: string;
-  @ApiProperty() title!: string;
-  @ApiProperty({ enum: PlanningTaskTypeDto }) type!: PlanningTaskTypeDto;
-  @ApiProperty({
-    example: 'A_FAIRE',
-    description: 'A_FAIRE → EN_COURS → TERMINEE',
-  })
-  status!: string;
-  @ApiProperty({
-    description:
-      'CALCULÉ : échéance dépassée et tâche non terminée. Jamais stocké.',
-  })
-  isLate!: boolean;
-  @ApiProperty() dueDate!: Date;
-}
-
-export class AuditLogDto {
-  @ApiProperty() id!: string;
-  @ApiProperty({ nullable: true }) userId!: string | null;
-  @ApiProperty({
-    example: 'UPDATE',
-    description: 'CREATE | UPDATE | CANCEL | VALIDATE | ADJUST',
-  })
-  action!: string;
-  @ApiProperty() entityType!: string;
-  @ApiProperty() entityId!: string;
-  @ApiProperty({ nullable: true }) oldValue!: Record<string, unknown> | null;
-  @ApiProperty({ nullable: true }) newValue!: Record<string, unknown> | null;
-  @ApiProperty() createdAt!: Date;
-}
-
-/// CONTRAT FIGÉ — implémentation avec la feature P0 n°10 « Planning ».
 @ApiTags('Planning')
 @ApiBearerAuth()
 @Controller('planning-tasks')
 export class PlanningController {
+  constructor(private readonly planning: PlanningService) {}
+
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PLANNING_TASK_READ)
   @Get()
-  @ApiOperation({ summary: 'Mes tâches / toutes les tâches selon le rôle' })
-  @ApiOkResponse({ type: [PlanningTaskDto] })
-  findAll(@Query() _query: PaginationQueryDto): Promise<PlanningTaskDto[]> {
-    return notImplemented('Planning');
+  @ApiOperation({
+    summary: 'Mes tâches / toutes les tâches selon le rôle',
+    description:
+      'L’ADMIN voit tout (filtre `assignedToId` pour le travail d’un membre) ; ' +
+      'chaque autre membre ne voit QUE ses propres tâches. `late=true` : en ' +
+      'retard (calculé, jamais stocké). `from`/`to` : la semaine affichée.',
+  })
+  @ApiOkResponse({ type: PlanningTaskListDto })
+  findAll(
+    @Query() query: PlanningTaskListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PlanningTaskListDto> {
+    return this.planning.findAll(query, user);
+  }
+
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PLANNING_TASK_READ)
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Détail d’une tâche (la sienne, ou toutes : admin)',
+  })
+  @ApiOkResponse({ type: PlanningTaskDto })
+  findOne(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PlanningTaskDto> {
+    return this.planning.findOne(id, user);
   }
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.PLANNING_MANAGE)
   @Post()
   @ApiOperation({ summary: 'Crée une tâche planifiée (admin uniquement)' })
-  @ApiOkResponse({ type: PlanningTaskDto })
-  create(@Body() _dto: CreatePlanningTaskDto): Promise<PlanningTaskDto> {
-    return notImplemented('Planning');
+  @ApiCreatedResponse({ type: PlanningTaskDto })
+  create(
+    @Body() dto: CreatePlanningTaskDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PlanningTaskDto> {
+    return this.planning.create(dto, user, { userId: user.id, ipAddress: ip });
   }
-}
 
-/// CONTRAT FIGÉ — implémentation avec la feature P0 n°11 « Historique / audit ».
-@ApiTags('Audit')
-@ApiBearerAuth()
-@Controller('audit-logs')
-export class AuditController {
   @Roles(RoleCode.ADMIN)
-  @RequirePermissions(PERMISSIONS.AUDIT_READ)
-  @Get()
+  @RequirePermissions(PERMISSIONS.PLANNING_MANAGE)
+  @Patch(':id')
   @ApiOperation({
-    summary: 'Journal des actions sensibles (admin uniquement)',
+    summary: 'Modifie une tâche non terminée (admin uniquement)',
     description:
-      'Prix, ajustements, validations, annulations, permissions. ' +
-      'Les ventes courantes n’y figurent pas — elles vivent dans le module Ventes.',
+      'Réassigner, décaler, préciser. Une tâche close ne se réécrit pas.',
   })
-  @ApiOkResponse({ type: [AuditLogDto] })
-  findAll(@Query() _query: PaginationQueryDto): Promise<AuditLogDto[]> {
-    return notImplemented('Historique / audit');
+  @ApiOkResponse({ type: PlanningTaskDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  update(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: UpdatePlanningTaskDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PlanningTaskDto> {
+    return this.planning.update(id, dto, { userId: user.id, ipAddress: ip });
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PLANNING_MANAGE)
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Supprime une tâche créée par erreur (admin, tant que À FAIRE)',
+  })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  remove(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<void> {
+    return this.planning.remove(id, { userId: user.id, ipAddress: ip });
+  }
+
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PLANNING_TASK_READ)
+  @Post(':id/start')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Démarre SA tâche : À FAIRE → EN COURS' })
+  @ApiOkResponse({ type: PlanningTaskDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  start(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PlanningTaskDto> {
+    return this.planning.start(id, user, { userId: user.id, ipAddress: ip });
+  }
+
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PLANNING_TASK_READ)
+  @Post(':id/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Termine SA tâche avec son résultat',
+    description:
+      'Possible depuis À FAIRE ou EN COURS. Le résultat est obligatoire.',
+  })
+  @ApiOkResponse({ type: PlanningTaskDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  complete(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: CompletePlanningTaskDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PlanningTaskDto> {
+    return this.planning.complete(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 }

@@ -20,7 +20,11 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
-import { IsCanonicalUuid, IsOptionalNotNull } from '../../common/validation';
+import {
+  ClientGeneratedId,
+  IsCanonicalUuid,
+  IsOptionalNotNull,
+} from '../../common/validation';
 
 export const PURCHASE_STATUSES = [
   'BROUILLON',
@@ -49,8 +53,7 @@ export class PurchaseLineInputDto {
 
 export class CreatePurchaseOrderDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty() @IsCanonicalUuid() supplierId!: string;

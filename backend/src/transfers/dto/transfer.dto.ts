@@ -17,7 +17,11 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import { ClientMutationId } from '../../common/idempotency';
-import { booleanQuery, IsCanonicalUuid } from '../../common/validation';
+import {
+  booleanQuery,
+  ClientGeneratedId,
+  IsCanonicalUuid,
+} from '../../common/validation';
 
 /// Quantités : décimales à 3 décimales au plus (règle 10), transportées en
 /// CHAÎNE pour ne jamais passer par un flottant.
@@ -54,8 +58,7 @@ export class TransferLineInputDto {
 
 export class CreateTransferDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiPropertyOptional({

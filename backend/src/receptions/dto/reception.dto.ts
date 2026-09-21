@@ -18,7 +18,7 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import { ClientMutationId } from '../../common/idempotency';
-import { IsCanonicalUuid } from '../../common/validation';
+import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
 
 export class ReceptionLineInputDto {
@@ -59,8 +59,7 @@ export class ReceptionLineInputDto {
 
 export class CreateReceptionDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiPropertyOptional({ description: 'Absent = réception hors commande.' })

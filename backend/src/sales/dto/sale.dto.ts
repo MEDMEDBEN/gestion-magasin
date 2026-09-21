@@ -18,7 +18,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { IsCanonicalUuid } from '../../common/validation';
+import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 
 /// Borne des montants en centimes : colonnes `Int` PostgreSQL (≈ 21 M DA).
 export const MAX_MONEY = 2_000_000_000;
@@ -71,8 +71,7 @@ export class CreateSaleDto {
     description:
       'UUID généré par le client : un renvoi ne crée pas une seconde vente.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiPropertyOptional({

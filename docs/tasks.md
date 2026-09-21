@@ -188,6 +188,105 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### ✅ P0 #10 PLANNING HEBDOMADAIRE — LIVRÉ ET AUDITÉ (2026-09-21 · **MEDMEDBEN**)
+Le stub 501 des tâches est remplacé par la vraie feature (`backend/src/planning/`,
+`app/lib/features/planning/`). Spec §23. **Aucune migration** : `PlanningTask` était complet depuis la Phase 0.
+Le stub de l'audit (P0 #11) partageait le fichier du planning : il vit désormais dans `src/audit/audit.controller.ts`.
+
+**Qui fait quoi** (`docs/permissions.md`) : l'ADMIN planifie, modifie, réassigne et supprime ; chaque membre ne
+voit et n'exécute **QUE ses tâches** — le serveur cloisonne, quel que soit le filtre envoyé. Une tâche d'un
+collègue répond **404**, pas 403 : on ne confirme même pas qu'elle existe.
+
+**Machine à états** `A_FAIRE → EN_COURS → TERMINEE`. `EN_RETARD` n'est **jamais stocké** : il est calculé
+(`isLate`) à partir du **LENDEMAIN** de l'échéance — exactement la règle des ventes à crédit, sinon une tâche
+due aujourd'hui passerait en retard dès 1 h du matin à Alger. Les jours (`scheduledFor`, `dueDate`) sont des
+jours civils `AAAA-MM-JJ`, jamais des instants ; côté app ils restent des chaînes et ne passent par aucun
+`DateTime` (un jour civil n'a pas de fuseau — le convertir le ferait glisser).
+
+**Choix assumés** :
+- **Résultat OBLIGATOIRE pour terminer** (spec §23 : « résultat ») — une tâche close sans résultat ne dit rien
+  à qui l'a planifiée. On peut terminer sans avoir « commencé » : une tâche de cinq minutes n'a pas besoin
+  de deux clics.
+- **Suppression** par l'admin **seulement tant que personne n'a commencé** (une tâche entamée ou close a une
+  histoire). Sans cette porte, une tâche créée par erreur restait visible par l'employé pour toujours.
+- **Une tâche close ne se réécrit plus** (ni modification, ni seconde fin qui écraserait le résultat).
+- **Aucune tâche confiée à un compte désactivé** : personne ne la verrait.
+- **Transitions en COMPARE-AND-SWAP** (une requête conditionnée par le statut attendu) plutôt qu'un quatrième
+  verrou `FOR UPDATE` copié-collé : même garantie (l'admin qui supprime pendant que le membre termine → un seul
+  passe), une requête, rien à maintenir. Même motif que le changement de mot de passe.
+- **Audit** : seuls les gestes de l'ADMIN (créer, modifier, supprimer). Démarrer et terminer sont le travail
+  courant du membre, tracés dans la tâche elle-même (`completedAt`, `result`) — ils ne polluent pas la vue
+  d'audit (spec §24, comme les ventes courantes). Testé.
+- **Filtres qui se cumulent** : `status=A_FAIRE&late=true` = pas commencées ET en retard ; `status=TERMINEE&late=true`
+  est refusé (contradictoire). Défaut que je me suis repris AVANT les tests : dans ma première version, `late`
+  écrasait `status` en silence — exactement ce que la revue m'avait reproché sur l'inventaire.
+
+**Routes** : `GET /planning-tasks` (filtres `status`, `open`, `late`, `assignedToId` — admin seul) ·
+`GET /planning-tasks/:id` · `POST /planning-tasks` · `PATCH /planning-tasks/:id` · `DELETE /planning-tasks/:id` ·
+`POST /:id/start` · `POST /:id/complete`. Écarts au contrat figé (qui n'avait que GET liste et POST) : tout le
+reste est ajouté — le contrat ne permettait ni d'exécuter une tâche, ni de la corriger.
+
+**Audits P0 #10 (2026-09-21)** — `reviewer` : **PAS OK** (4 bloquants) · `security-reviewer` : **NON CONFORME**
+(1 important, 5 mineurs). Tout ce qui comptait est corrigé :
+- **B1 — une tâche EN RETARD ne se réassignait pas.** L'app renvoyait tous les champs, dont l'échéance passée
+  inchangée, que le serveur refusait. Et le sélecteur de date **plantait** (date initiale avant la première date
+  permise). L'app n'envoie plus que les champs RÉELLEMENT modifiés (`planningChanges`, testé) et le sélecteur part
+  d'aujourd'hui. **Contre-épreuve : bornage retiré → le test reproduit exactement le plantage.**
+- **B2 — la liste perdait les tâches RÉCENTES.** Plafond de 200, tri du plus ancien au plus récent, tâches closes
+  jamais retirées : en ~13 semaines, les nouvelles disparaissaient en silence. L'écran a désormais trois vues —
+  **À faire** (ouvertes, le plus urgent d'abord), **En retard**, **Terminées** (la plus récente d'abord, nouveau tri
+  `completedAt`) — et dit « N tâches affichées sur M » si une page est tronquée. Filtre serveur `open` ajouté.
+- **B3 — test instable et message faux.** Suppression et fin simultanées pouvaient répondre « déjà terminée » pour
+  une tâche supprimée. Quand le compare-and-swap ne touche rien, on RELIT pour dire la vraie raison : disparue ou
+  passée à un autre → 404, sinon → 409.
+- **B4 — un vrai trou dans le cloisonnement.** Entre la lecture et l'écriture, si l'admin réassignait la tâche,
+  l'ancien titulaire pouvait encore la terminer (son résultat restait sur la tâche du nouveau). Le compare-and-swap
+  d'un membre porte désormais aussi le PROPRIÉTAIRE (`assignedToId`).
+- **Important (sécurité) — `"id": null` rendait 500, et PAS SEULEMENT ICI.** `@IsOptional()` laisse passer `null`
+  sans rien valider ; l'id client atteignait Prisma sur **toutes** les routes de création. Corrigé une fois pour
+  toutes (CONVENTIONS règle 1) par un décorateur PARTAGÉ `ClientGeneratedId` (`common/validation.ts`), appliqué
+  aux **15 occurrences dans 12 DTO** : clients, fournisseurs, produits, emplacements, stock, ventes, achats,
+  réceptions, transferts, inventaire, planning et **charges utiles de synchronisation**. Nouveau test
+  `client-id.e2e-spec.ts` (fournisseurs, clients, produits, avec des corps par ailleurs VALIDES pour qu'aucune
+  autre erreur ne masque le défaut). **Contre-épreuve : décorateur rendu permissif → les trois modules retombent en 500.**
+- Mineurs traités : renvoi du même id avec un AUTRE contenu → 409 (contrat `assertSameMutation`/`runOnce`, comme
+  partout, au lieu d'un 201 silencieux) ; **l'ADMIN qui démarre ou termine la tâche d'un autre laisse une trace**
+  d'audit (`onBehalfOf`) — sans elle son résultat passait pour celui du membre ; un PATCH sans changement n'écrit
+  plus de trace identique ; l'instantané d'audit porte `description` et `createdById` (une tâche supprimée se
+  relit) ; `from`/`to` et `locationId` **retirés** (jamais utilisés par l'app, jamais prouvés).
+- Relecture de mes propres captures : la fixture de capture ignorait la vue et montrait une tâche « Terminée »
+  dans « À faire ». Corrigée : la capture montre ce que l'app montrera.
+
+**Contre-épreuves réellement exécutées** :
+- cloisonnement retiré → « chacun ne voit QUE ses tâches » échoue ;
+- compare-and-swap retiré → « une tâche close ne se réécrit plus » échoue (le résultat était écrasé) ;
+- décorateur d'id client rendu permissif → 500 sur fournisseurs, clients et produits ;
+- bornage du sélecteur de date retiré → plantage `initialDate must be on or after firstDate`.
+
+Non fait, tracé : le démarrage (EN_COURS) n'est pas daté (aucune colonne `startedAt`, et l'ajouter demande une
+migration) ; la course admin-réassigne / membre-termine n'est pas éprouvée par un test DÉTERMINISTE (seul le cas
+séquentiel l'est) ; un formulaire renvoyé après une suppression recrée la tâche ; ces corrections n'ont pas été
+ré-auditées par les subagents — la preuve est la suite complète et les contre-épreuves ci-dessus.
+
+**App** — `features/planning/` : destination **« Tâches »** (les 3 rôles, comme la spec mobile le nomme) ;
+badge où **le retard prime sur le statut** ; l'admin filtre par membre et « en retard seulement », crée et
+modifie par un panneau (membres ACTIFS seulement, jours au calendrier), supprime une tâche À FAIRE avec une
+confirmation qui rappelle la trace d'audit ; le membre commence, puis termine dans un dialogue qui exige le
+résultat. `isoDay` remonté des ventes vers `core/dates.dart` (partagé), `formatIsoDay` ajouté.
+Captures **39** (planning de l'équipe, desktop), **40** (nouvelle tâche, desktop), **41** (fin de tâche, mobile).
+Bémol noté : sur mobile, la barre de filtres de l'admin prend deux lignes.
+
+**Preuve finale (2026-09-21, après audits)** : backend `lint:check` **0** · **81** unit · **306** e2e (22 suites,
+**un seul passage**) dont **21** planning et **3** id client ; app `flutter analyze` propre · **+256 ~41** dont
+**16** planning · **41** captures. Le test « contrat figé → 501 » visait `/api/planning-tasks` : reporté sur `/api/audit-logs`,
+la DERNIÈRE route encore au contrat.
+
+**Non fait, tracé** : pas de vue « semaine » en calendrier (les trois vues triées couvrent le besoin ; une
+grille viendra si MEDMEDBEN la veut) ; pas de notification « tâche du
+jour / en retard » (P1 n°16) ; le planning est **en ligne uniquement** (P0 #12) ; ordre des onglets mobiles
+de la spec (`Accueil | Ventes | Stock | Tâches | Plus`) non appliqué — « Tâches » arrive après « Stock » dans
+le menu, mais sur mobile il passe sous « Plus ».
+
 ### 🚧 P0 #9 INVENTAIRE — CODE LIVRÉ, AUDITS EN COURS (2026-09-21 · **MEDMEDBEN**)
 Le stub 501 de l'inventaire est remplacé par la vraie feature (`backend/src/inventory/`,
 `app/lib/features/inventory/`). Spec §22 : « comparer théorique ↔ physique ».

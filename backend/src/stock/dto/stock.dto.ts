@@ -11,7 +11,7 @@ import {
   PaginationMetaDto,
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
-import { IsCanonicalUuid } from '../../common/validation';
+import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 
 /// Aligné sur l'enum `StockMovementType` du schéma Prisma.
 export enum StockMovementTypeDto {
@@ -104,8 +104,7 @@ export class DeclareLossDto {
     description:
       'UUID généré par le client (contrat de sync). Absent → généré serveur.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty() @IsCanonicalUuid() productId!: string;

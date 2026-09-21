@@ -19,9 +19,10 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import {
+  booleanQuery,
+  ClientGeneratedId,
   IsCanonicalUuid,
   IsOptionalNotNull,
-  booleanQuery,
 } from '../../common/validation';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
@@ -65,8 +66,7 @@ export class CreateProductDto {
     description:
       'UUID généré par le client (contrat de sync). Absent → généré serveur.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty({ example: 'CAB-3G25' })
@@ -317,8 +317,7 @@ export class CreateCategoryDto {
   @ApiPropertyOptional({
     description: 'UUID généré par le client. Absent → généré serveur.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty()

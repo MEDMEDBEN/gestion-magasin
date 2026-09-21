@@ -6,7 +6,7 @@ import {
   IsString,
   MaxLength,
 } from 'class-validator';
-import { IsCanonicalUuid } from '../../common/validation';
+import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 
 /// Mouvements de stock déclarables hors-ligne aujourd'hui. Les autres types
 /// (`VENTE`, `RECEPTION`, `TRANSFERT_*`, `AJUSTEMENT_INVENTAIRE`) arriveront avec
@@ -22,8 +22,7 @@ export class StockLossPayloadDto {
     description:
       'UUID du mouvement, généré par l’appareil (contrat de sync §1). Absent → généré serveur.',
   })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty() @IsCanonicalUuid() productId!: string;

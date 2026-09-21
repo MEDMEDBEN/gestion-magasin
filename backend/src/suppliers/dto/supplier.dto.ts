@@ -20,6 +20,7 @@ import {
 import { MAX_MONEY } from '../../sales/dto/sale.dto';
 import {
   booleanQuery,
+  ClientGeneratedId,
   IsCanonicalUuid,
   IsOptionalNotNull,
 } from '../../common/validation';
@@ -30,7 +31,7 @@ const trimOrNull = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() || null : value;
 
 export class CreateSupplierDto {
-  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() id?: string;
+  @ApiPropertyOptional() @ClientGeneratedId() id?: string;
   @ApiProperty()
   @Transform(trim)
   @IsString()
@@ -172,8 +173,7 @@ export class CreateSupplierPaymentDto {
   clientMutationId!: string;
 
   @ApiPropertyOptional({ description: 'Id client (renvoi idempotent).' })
-  @IsCanonicalUuid()
-  @IsOptional()
+  @ClientGeneratedId()
   id?: string;
 
   @ApiProperty() @IsCanonicalUuid() supplierId!: string;
