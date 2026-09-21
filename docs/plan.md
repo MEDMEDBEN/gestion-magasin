@@ -276,6 +276,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `id: null` → 500 sur TOUTES les créations → décorateur partagé sur 12 DTO)_
 - [ ] Tests manuels effectués par un humain
 
+### Feature P0 n°11 : Historique global (audit trail)
+- [x] Schéma DB validé _(AUCUNE migration : `AuditLog` et ses index complets depuis la Phase 0)_
+- [x] Matrice de permissions CRUD par rôle définie _(lecture : ADMIN + `audit.read`, relue EN BASE ; aucune écriture exposée)_
+- [x] Endpoints API implémentés _(GET /audit-logs ; dernier stub 501 retiré, `ApiContractModule` supprimé)_
+- [x] Validation des entrées (class-validator) en place _(type d'objet en lettres, UUID canoniques, action en énum, jours d'Alger stricts, période non vide, tri en liste blanche)_
+- [x] Tests unitaires backend passent _(81 — 2026-09-21)_
+- [x] Tests d'intégration backend passent _(314 e2e dont 8 historique, un seul passage — 2026-09-21)_
+- [x] UI desktop implémentée _(captures 42, 43)_
+- [x] UI mobile implémentée _(même écran ; menu « Plus » rendu défilant)_
+- [x] Sync offline gérée si applicable _(non : lecture seule, en ligne)_
+- [x] Revue par subagent `reviewer` _(2026-09-21 : PAS OK, 2 bloquants — montants imbriqués et écart de caisse en centimes, course filtre/pagination → corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `page` sans borne → 500 sur toutes les listes → borne dans le DTO partagé)_
+- [ ] Tests manuels effectués par un humain
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

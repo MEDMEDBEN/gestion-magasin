@@ -206,6 +206,47 @@ void main() {
     },
   );
 
+  testWidgets(
+    'petit téléphone : TOUTES les entrées de « Plus » restent atteignables',
+    (tester) async {
+      // Un admin a maintenant plus d'entrées qu'un petit écran n'en montre.
+      // Le menu était une colonne FIXE : les dernières sortaient de l'écran et
+      // devenaient inaccessibles (révélé par l'ajout de « Historique »).
+      await _pumpShell(
+        tester,
+        user: authUser(
+          permissions: const [
+            'sale.create',
+            'product.read',
+            'stock.read.store',
+            'planning.task.read',
+            'transfer.request',
+            'purchase.create',
+            'inventory.create',
+            'supplier.read',
+            'user.manage',
+            'audit.read',
+          ],
+        ),
+        size: const Size(360, 640),
+      );
+
+      await tester.tap(find.text('Plus'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      // La DERNIÈRE entrée : on défile jusqu'à elle, puis on l'ouvre.
+      await tester.scrollUntilVisible(
+        find.text('Mon profil'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('Mon profil'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AppBar, 'Mon profil'), findsOneWidget);
+    },
+  );
+
   testWidgets('serveur injoignable : l’en-tête affiche « Hors ligne »', (
     tester,
   ) async {

@@ -154,6 +154,10 @@ aucune migration destructive sans confirmation).
 | Modifier les paramètres système | ✅ | ❌ | ❌ |
 | Consulter l'audit / traçabilité | ✅ | ❌ | ❌ |
 
+**Décision du 2026-09-21 (implémentation de P0 #11)** : la lecture du journal est relue EN BASE à chaque
+appel (`@RequireFreshAccess()`), comme la lecture des comptes : un admin rétrogradé perd l'accès
+immédiatement. Aucune route n'écrit, ne modifie ni n'efface une entrée du journal.
+
 ## Décision du 2026-09-14 (MEDMEDBEN) — perte / casse du magasinier
 - Le « ⚠️ » de la matrice est appliqué à la lettre : une perte déclarée par le **MAGASINIER** crée une
   `StockLossDeclaration` **EN_ATTENTE** ; le stock ne bouge qu'à la **validation de l'ADMIN**

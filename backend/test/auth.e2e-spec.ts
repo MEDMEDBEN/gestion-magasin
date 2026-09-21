@@ -542,17 +542,6 @@ describe('Auth (e2e)', () => {
     expect(res.body.code).toBe('VALIDATION_FAILED');
   });
 
-  it('un endpoint au contrat figé répond 501 NOT_IMPLEMENTED, pas 404', async () => {
-    const session = await login(adminEmail, TEMP_PASSWORD);
-
-    const res = await request(server)
-      .get('/api/audit-logs')
-      .set('Authorization', `Bearer ${session.body.accessToken}`);
-
-    expect(res.status).toBe(501);
-    expect(res.body.code).toBe('NOT_IMPLEMENTED');
-  });
-
   it('refuse de réutiliser le mot de passe courant au changement', async () => {
     const user = await newUser('reuse', RoleCode.VENDEUR, {
       mustChangePassword: true,

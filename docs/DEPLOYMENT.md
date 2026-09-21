@@ -80,6 +80,32 @@ Le projet est **stateless côté serveur** (pas de session stockée en mémoire)
 
 **Sur le desktop et le mobile** : le refresh token est stocké de façon sécurisée (`flutter_secure_storage`, chiffré par l'OS), jamais en clair dans une base locale Drift classique.
 
+## Journal d'audit : le rendre intouchable AU NIVEAU DE LA BASE (à faire toi-même)
+
+L'application n'expose **aucune** route pour modifier ou effacer une entrée du journal (`AuditLog`) — c'est
+éprouvé par les tests. Mais un accès SQL direct le pourrait encore.
+
+⚠️ **État actuel : NON protégé au niveau de la base.** L'infra utilise un **seul** rôle, `magasin_prod`, à la
+fois propriétaire de la base, exécutant des migrations (`prisma migrate deploy` au démarrage du conteneur) et
+utilisé par l'application. Or un propriétaire peut se rendre à lui-même un droit qu'on lui retire : un
+`REVOKE` sur ce rôle ne protège rien.
+
+Ce qu'il faut pour que ce soit réel (changement d'infra, à décider) :
+1. deux rôles — `magasin_owner` (propriétaire, sert uniquement aux migrations) et `magasin_app` (utilisé par
+   l'application, **non propriétaire**) ;
+2. deux URL — les migrations avec `magasin_owner`, l'application avec `magasin_app` ;
+3. puis, en tant que `magasin_owner`, après chaque migration :
+
+```sql
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO magasin_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO magasin_app;
+REVOKE UPDATE, DELETE, TRUNCATE ON "AuditLog" FROM magasin_app;
+```
+
+À ne pas faire en développement : les tests e2e nettoient le journal qu'ils écrivent. Pour la même raison, ne jamais supprimer un compte utilisateur en base : ses entrées
+d'audit passeraient à « Système » (clé étrangère en `ON DELETE SET NULL`) — on désactive un compte, on ne le
+supprime pas.
+
 ## Sauvegardes (critique, ne pas oublier)
 
 Ajouter un cron sur le VPS pour un dump PostgreSQL quotidien :

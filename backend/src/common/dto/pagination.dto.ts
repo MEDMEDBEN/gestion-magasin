@@ -14,10 +14,15 @@ import { ErrorCode } from '../error-codes';
 
 /// Query de pagination commune à TOUTE liste : `?page=1&limit=50&sort=field:asc&q=...`
 export class PaginationQueryDto {
-  @ApiPropertyOptional({ default: 1, minimum: 1 })
+  /// Borne HAUTE obligatoire : sans elle, `?page=1e308` passait `@IsInt`, le
+  /// décalage `(page − 1) × limit` dépassait ce que Prisma accepte, et TOUTES
+  /// les listes répondaient 500 (audit sécurité du 2026-09-21). Un million de
+  /// pages de 200 lignes dépasse de très loin ce qu'un magasin produira.
+  @ApiPropertyOptional({ default: 1, minimum: 1, maximum: 1_000_000 })
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Max(1_000_000)
   @IsOptional()
   page = 1;
 

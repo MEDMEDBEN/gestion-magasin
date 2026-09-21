@@ -87,19 +87,24 @@ class _MobileShellState extends ConsumerState<MobileShell> {
   Future<void> _openMore(List<AppDestination> tabs) async {
     final chosen = await showModalBottomSheet<int>(
       context: context,
+      // DÉFILANTE : un admin a désormais plus d'entrées qu'un petit écran n'en
+      // montre. Une colonne fixe laissait les dernières HORS de l'écran,
+      // inaccessibles sur téléphone.
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var i = _maxTabs - 1; i < tabs.length; i++)
-              ListTile(
-                minTileHeight: AmpereGeometry.listRowMin,
-                leading: Icon(tabs[i].icon),
-                title: Text(tabs[i].label),
-                selected: i == _index,
-                onTap: () => Navigator.of(context).pop(i),
-              ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = _maxTabs - 1; i < tabs.length; i++)
+                ListTile(
+                  minTileHeight: AmpereGeometry.listRowMin,
+                  leading: Icon(tabs[i].icon),
+                  title: Text(tabs[i].label),
+                  selected: i == _index,
+                  onTap: () => Navigator.of(context).pop(i),
+                ),
+            ],
+          ),
         ),
       ),
     );

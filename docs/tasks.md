@@ -188,6 +188,82 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### ✅ P0 #11 HISTORIQUE / AUDIT — LIVRÉ ET AUDITÉ (2026-09-21 · **MEDMEDBEN**)
+Spec §24. Chaque feature écrit déjà son journal DANS sa propre transaction (`writeAudit`) ; P0 #11 livre la
+**lecture**, réservée à l'ADMIN. **Aucune migration** : `AuditLog` et ses index étaient complets.
+
+**Plus aucune route au contrat 501.** L'audit était la dernière : `ApiContractModule` et `notImplemented` sont
+supprimés, et le test « contrat figé → 501 » n'a plus d'objet. Le code d'erreur `NOT_IMPLEMENTED` reste (la
+synchronisation s'en sert pour une opération sans handler).
+
+**Backend** (`src/audit/`) — `GET /audit-logs` : ADMIN + `audit.read` + **`@RequireFreshAccess()`** — l'accès est
+relu EN BASE, pas dans le seul jeton : un admin rétrogradé perd la vue du journal **immédiatement**, pas 15 minutes
+plus tard. Filtres : type d'objet, objet précis, membre, action, période. Les jours `from`/`to` sont des jours
+civils d'**Alger** (minuit à minuit), `to` inclus. Du plus récent au plus ancien, tri en liste blanche, nom de
+l'auteur joint pour la lecture (« Système » quand c'est le serveur qui agit, ex. détection d'un vol de session).
+**Aucune route d'écriture** : le journal est immuable par construction (règle 7), éprouvé (POST/PATCH/DELETE → 404).
+
+**App** — `features/audit/`, destination **« Historique »** (ADMIN seul) : filtres objet / action / période
+(7 jours par défaut, 30 jours, tout), vraie pagination « Afficher plus (N sur M) » — le journal grossit vite, une
+page plafonnée aurait tronqué en silence (la leçon du planning). Le détail d'une entrée montre **champ par champ
+ce qui a changé** (`auditChanges`, testé unitairement). Trois choix de lecture :
+- **les montants, tracés en centimes, se lisent en dinars** — « Prix HT : 1 200,00 DA → 1 350,00 DA », jamais
+  « 120000 ». La modification de prix est la première action sensible de la spec : la lire de travers serait une
+  faute. Les quantités, tracées en chaînes, ne sont pas confondues (testé). Contre-épreuve : formatage retiré →
+  deux tests échouent ;
+- **les opérations de sécurité se lisent** : « Vol de session présumé : toutes les sessions coupées » au lieu de
+  `REFRESH_TOKEN_REUSE_DETECTED` ;
+- une création n'a pas d'« avant », une annulation pas d'« après » : on montre ce qui existe.
+
+**Défaut ANTÉRIEUR révélé et corrigé : sur téléphone, des écrans étaient INACCESSIBLES.** Le menu « Plus » de la
+coquille mobile était une colonne FIXE dans une feuille du bas. Avec « Historique », l'admin a 11 destinations :
+les dernières sortaient de l'écran. Toutes les captures mobiles passant par « Plus » ont échoué d'un coup, ce qui
+l'a révélé. Menu rendu défilant, et un test le garde sur un petit téléphone (360 × 640) : la DERNIÈRE entrée doit
+s'ouvrir. **Contre-épreuve : colonne fixe → « RenderFlex overflowed by 144 pixels ».**
+
+**Audits P0 #11 (2026-09-21)** — `reviewer` : **PAS OK** (2 bloquants) · `security-reviewer` : **NON CONFORME**
+(1 important). Tout ce qui comptait est corrigé :
+- **B1 — j'avais annoncé « les montants se lisent en dinars » : c'était FAUX pour une partie d'entre eux.**
+  L'écart de caisse du rapport Z (`difference`, le chiffre le plus sensible de la clôture) restait en centimes,
+  et les montants IMBRIQUÉS dans des lignes (prix des réceptions et des commandes, tarifs d'un produit)
+  s'affichaient bruts, mêlés d'identifiants. L'affichage est désormais RÉCURSIF et reconnaît `difference`
+  (celui d'un inventaire, une quantité en chaîne, n'est pas confondu). 2 tests.
+- **B2 — course entre changement de filtre et « Afficher plus ».** La page de l'ANCIEN filtre s'ajoutait sous le
+  NOUVEAU : le journal montrait des entrées hors du filtre affiché. Le filtre est mémorisé au départ de l'appel,
+  la réponse périmée est ignorée. Test qui reproduit la course (page 2 retenue, filtre changé, page libérée).
+  **Contre-épreuve : garde retirée → l'entrée de l'ancien filtre réapparaît.**
+- **Important (sécurité) — `?page=1e308` : 500 sur TOUTES les listes du projet.** `page` n'avait pas de borne
+  haute ; le décalage dépassait ce que Prisma accepte. Corrigé une fois dans le DTO de pagination PARTAGÉ
+  (`@Max(1_000_000)`), éprouvé sur 4 listes et sur le journal. **Contre-épreuve : borne retirée → 500.**
+- « Afficher plus » en échec n'était signalé nulle part : l'écran l'annonce, la liste chargée reste (testé) ;
+  doublons de pagination par décalage éliminés (testé) ; refus d'accès vérifiés à la main par l'audit
+  (compte désactivé, session révoquée, mot de passe à changer, sans jeton) désormais FIGÉS par un test.
+- **Prévention pour la P0 #12** : `auditNewValue` devient OBLIGATOIRE dans le contrat des handlers de
+  synchronisation, et le moteur ne retombe plus sur le payload BRUT du client — la P0 #12 va ajouter une
+  dizaine de handlers ; un oubli aurait fait entrer des données client arbitraires dans le journal.
+- **Une consigne que j'avais écrite FAUSSE, corrigée avant de te la transmettre** : j'avais noté dans
+  `docs/DEPLOYMENT.md` qu'il suffisait de retirer les droits de modification sur le journal au rôle de
+  l'application. Or l'infra n'a qu'UN rôle (`magasin_prod`), propriétaire de la base et exécutant des
+  migrations : un propriétaire se rend à lui-même ce qu'on lui retire. Le document dit maintenant la vérité —
+  **journal NON protégé au niveau de la base aujourd'hui** — et ce qu'il faut changer (deux rôles, deux URL).
+
+**Contre-épreuves réellement exécutées** :
+- `@RequireFreshAccess()` retiré → l'admin rétrogradé garde la vue du journal (le test échoue) ;
+- garde du filtre retirée → l'ancienne page s'ajoute sous le nouveau filtre ;
+- borne de `page` retirée → 500 sur 4 listes ;
+- formatage des montants retiré → les centimes bruts réapparaissent (2 tests échouent) ;
+- menu « Plus » non défilant → débordement de 144 px, dernière entrée inaccessible.
+
+**Preuve finale (2026-09-21, après audits)** : backend `lint:check` **0** · **81** unit · **314** e2e (23 suites,
+**un seul passage**) dont **8** historique ; app `flutter analyze` propre · **+275 ~43** dont **18** historique et 1
+coquille mobile · **43** captures (42 : journal, 43 : détail d'une modification de prix).
+
+**Non fait, tracé** : le journal n'est pas protégé AU NIVEAU DE LA BASE contre un `UPDATE`/`DELETE` direct (aucune
+route ne le permet, mais un accès SQL le pourrait). Il faut séparer le rôle propriétaire (migrations) du rôle de
+l'application — changement d'infra à décider, décrit dans `docs/DEPLOYMENT.md`. Ne jamais supprimer un compte en
+base : la clé du journal est en `ON DELETE SET NULL`, ses entrées passeraient à « Système ». Pas d'export PDF/Excel du journal (P1 n°21) ; le filtre
+par membre existe côté serveur mais pas dans l'écran.
+
 ### ✅ P0 #10 PLANNING HEBDOMADAIRE — LIVRÉ ET AUDITÉ (2026-09-21 · **MEDMEDBEN**)
 Le stub 501 des tâches est remplacé par la vraie feature (`backend/src/planning/`,
 `app/lib/features/planning/`). Spec §23. **Aucune migration** : `PlanningTask` était complet depuis la Phase 0.

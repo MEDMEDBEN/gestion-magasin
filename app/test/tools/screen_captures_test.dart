@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/features/audit/data/audit_api.dart';
+import 'package:gestion_magasin/features/audit/data/audit_models.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/auth/presentation/change_password_screen.dart';
@@ -674,6 +676,92 @@ class _CapturePlanningApi extends PlanningApi {
   ];
 }
 
+/// Une journée d'actions sensibles, telle que l'admin la relit.
+class _CaptureAuditApi extends AuditApi {
+  _CaptureAuditApi() : super(Dio());
+
+  static AuditEntry _e(
+    String id,
+    AuditAction action,
+    String type,
+    String? who,
+    DateTime at, {
+    Map<String, dynamic>? before,
+    Map<String, dynamic>? after,
+  }) => AuditEntry(
+    id: id,
+    userId: who == null ? null : 'me',
+    userName: who,
+    action: action,
+    entityType: type,
+    entityId: 'x$id',
+    oldValue: before,
+    newValue: after,
+    createdAt: at,
+  );
+
+  @override
+  Future<AuditPage> list({
+    int page = 1,
+    int limit = 50,
+    String? entityType,
+    AuditAction? action,
+    String? from,
+  }) async => AuditPage(
+    data: [
+      _e(
+        '1',
+        AuditAction.update,
+        'ProductPrice',
+        'Radhi Badache',
+        DateTime(2026, 9, 21, 14, 2),
+        before: {'priceHt': 120000, 'priceTierId': 'detail'},
+        after: {'priceHt': 135000, 'priceTierId': 'detail'},
+      ),
+      _e(
+        '2',
+        AuditAction.validate,
+        'Inventory',
+        'Radhi Badache',
+        DateTime(2026, 9, 21, 11, 40),
+        before: {'status': 'TERMINE'},
+        after: {'status': 'TERMINE', 'adjustedLines': 2},
+      ),
+      _e(
+        '3',
+        AuditAction.cancel,
+        'Sale',
+        'Radhi Badache',
+        DateTime(2026, 9, 21, 10, 15),
+        before: {'status': 'VALIDEE', 'totalTtc': 1284000},
+        after: {'status': 'ANNULEE', 'totalTtc': 1284000},
+      ),
+      _e(
+        '4',
+        AuditAction.update,
+        'User',
+        'Radhi Badache',
+        DateTime(2026, 9, 21, 9, 5),
+        before: {
+          'roles': ['VENDEUR'],
+        },
+        after: {
+          'roles': ['VENDEUR', 'MAGASINIER'],
+        },
+      ),
+      _e(
+        '5',
+        AuditAction.update,
+        'User',
+        null,
+        DateTime(2026, 9, 21, 8, 1),
+        after: {'operation': 'REFRESH_TOKEN_REUSE_DETECTED'},
+      ),
+    ],
+    meta: const PageMeta(page: 1, limit: 50, total: 5),
+  );
+}
+
 class _CaptureSalesApi extends SalesApi {
   _CaptureSalesApi() : super(Dio());
 
@@ -883,6 +971,7 @@ Future<void> _capture(
         transfersApiProvider.overrideWithValue(_CaptureTransfersApi()),
         inventoryApiProvider.overrideWithValue(_CaptureInventoryApi()),
         planningApiProvider.overrideWithValue(_CapturePlanningApi()),
+        auditApiProvider.overrideWithValue(_CaptureAuditApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -936,6 +1025,9 @@ Future<void> _capture(
 /// Mobile : l'admin a plus de 4 destinations, les dernières sont sous « Plus ».
 Future<void> _viaMore(WidgetTester t, String label) async {
   await t.tap(find.text('Plus'));
+  await t.pumpAndSettle();
+  // Le menu défile : l'entrée peut être sous le pli.
+  await t.ensureVisible(find.text(label));
   await t.pumpAndSettle();
   await t.tap(find.text(label));
 }
@@ -1528,6 +1620,32 @@ void main() {
         await t.tap(find.text('Compter les câbles souples'));
         await t.pumpAndSettle();
         await t.tap(find.text('Terminer et donner le résultat'));
+      },
+    ),
+  );
+  testWidgets(
+    '42 historique desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '42_historique_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Historique')),
+    ),
+  );
+  testWidgets(
+    '43 détail d’une modification de prix desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '43_historique_detail_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Historique'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Prix · Modification'));
       },
     ),
   );

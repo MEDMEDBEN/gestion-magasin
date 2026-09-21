@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../features/audit/presentation/audit_screen.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
@@ -114,6 +115,13 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.shield,
       label: 'Utilisateurs',
       builder: (context, _) => const UsersScreen(),
+    ),
+  // `/audit-logs` : @Roles(ADMIN) + audit.read (lecture relue en base).
+  if (user.hasRole('ADMIN') && user.can('audit.read'))
+    AppDestination(
+      icon: LucideIcons.history,
+      label: 'Historique',
+      builder: (context, _) => const AuditScreen(),
     ),
   AppDestination(
     icon: LucideIcons.user,

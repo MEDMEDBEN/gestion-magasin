@@ -6,7 +6,6 @@ import { FreshAccessGuard } from './common/fresh-access.guard';
 import { AppController } from './app.controller';
 
 import { AuthModule } from './auth/auth.module';
-import { ApiContractModule } from './common/api-contract.module';
 import { intFromEnv, validateEnv } from './common/env';
 import { JwtAccessGuard } from './common/jwt-access.guard';
 import { RolesGuard } from './common/roles.guard';
@@ -16,6 +15,7 @@ import { ProductsModule } from './products/products.module';
 import { CustomersModule } from './customers/customers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
+import { AuditModule } from './audit/audit.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PlanningModule } from './planning/planning.module';
 import { TransfersModule } from './transfers/transfers.module';
@@ -51,11 +51,11 @@ import { UsersModule } from './users/users.module';
     TransfersModule,
     InventoryModule,
     PlanningModule,
+    AuditModule,
     CustomersModule,
     ProductsModule,
     LocationsModule,
     SyncModule,
-    ApiContractModule,
   ],
   controllers: [AppController],
   providers: [

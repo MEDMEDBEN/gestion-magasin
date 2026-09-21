@@ -18,8 +18,10 @@ export interface SyncApplyResult {
   entityId: string;
   /// État serveur renvoyé au client pour réconcilier son affichage.
   serverState?: Record<string, string>;
-  /// Valeur d'audit lisible (état appliqué) ; à défaut, le payload brut du client.
-  auditNewValue?: Prisma.InputJsonValue;
+  /// Valeur d'audit lisible (état appliqué). OBLIGATOIRE : un handler qui
+  /// l'oublierait ferait tomber le payload BRUT du client dans le journal — la
+  /// P0 #12 va en ajouter une dizaine (audit sécurité du 2026-09-21).
+  auditNewValue: Prisma.InputJsonValue;
 }
 
 /// Un type d'opération synchronisable = un handler. Les features P0 en ajoutent un

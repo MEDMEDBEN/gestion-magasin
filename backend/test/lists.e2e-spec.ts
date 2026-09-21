@@ -74,6 +74,30 @@ describe('Listes : tri et agrégats par page (e2e)', () => {
     }
   });
 
+  it('page démesurée → 400 sur chaque liste, jamais 500', async () => {
+    // Sans borne haute, `?page=1e308` passait `@IsInt` et le décalage
+    // dépassait ce que Prisma accepte : 500 sur TOUTES les listes (audit
+    // sécurité du 2026-09-21). Le DTO de pagination est partagé : on l'éprouve
+    // sur plusieurs modules à la fois.
+    for (const url of [
+      '/api/sales',
+      '/api/customers',
+      '/api/suppliers',
+      '/api/purchase-orders',
+    ]) {
+      for (const page of ['1e308', '99999999999999999999', '1000001']) {
+        const res = await get(`${url}?page=${page}`);
+        expect({ url, page, status: res.status }).toEqual({
+          url,
+          page,
+          status: 400,
+        });
+      }
+    }
+    // La borne elle-même reste permise.
+    expect((await get('/api/customers?page=1000000')).status).toBe(200);
+  });
+
   it('tri autorisé appliqué : clients et fournisseurs par nom décroissant', async () => {
     for (const url of ['/api/customers', '/api/suppliers']) {
       const res = await get(

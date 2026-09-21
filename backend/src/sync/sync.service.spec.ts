@@ -289,7 +289,10 @@ describe('SyncService', () => {
     const seen: string[] = [];
     handler.apply.mockImplementation(async (payload: any) => {
       seen.push(payload.tag);
-      return { entityId: `movement-${payload.tag}` };
+      return {
+        entityId: `movement-${payload.tag}`,
+        auditNewValue: { tag: payload.tag },
+      };
     });
 
     await service.processBatch(
