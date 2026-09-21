@@ -188,6 +188,125 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P0 #8 TRANSFERTS MAGASIN ↔ DÉPÔT — BACKEND LIVRÉ (2026-09-21 · **MEDMEDBEN**)
+Le stub 501 des transferts est remplacé par la vraie feature (`backend/src/transfers/`). **Aucune migration** :
+le schéma Phase 0 portait déjà `Transfer` + `TransferLine` au complet (y compris `shippedQuantity`).
+
+**Le stock ne bouge qu'à DEUX moments, jamais à la demande ni à la préparation** (règle 2, tout par
+`StockLedgerService`) :
+- **expédition** : DÉPÔT − préparé (`TRANSFERT_SORTIE`), TRANSIT + préparé (`TRANSFERT_ENTREE`) ;
+- **réception** : TRANSIT − expédié, MAGASIN + reçu, et **l'écart RETOURNE au dépôt** (mouvement commenté
+  « écart de transfert »). Décision : le transit ne porte aucune projection déclarable en perte — y laisser
+  du stock le gèlerait pour toujours. Rendu au dépôt, le manquant se constate par une déclaration de perte.
+- Conséquence tenue : **le produit n'est vendable au magasin qu'APRÈS réception** (spec §17), éprouvé par un test.
+
+**Routes** (contrat 501 retiré, `TransfersModule` déclaré) : `POST /transfers` · `GET /transfers` (filtres
+`status` — statut exact ou `EN_COURS` — et `mine`) · `GET /transfers/:id` · `POST /:id/accept` ·
+`POST /:id/prepare` · `POST /:id/ship` · `POST /:id/receive` · `POST /:id/cancel`.
+
+**Cinq écarts assumés par rapport au contrat figé** (les stubs ; aucun artefact OpenAPI versionné
+n'existe, donc aucun client généré n'est cassé), chacun pour une raison :
+1. **`POST /:id/accept` ajouté.** Sans lui, `ACCEPTEE` et `EN_PREPARATION` étaient deux valeurs d'enum mortes
+   alors que `docs/plan.md` fige la machine à états. `accept` = « le dépôt s'en charge » ; `prepare` avec
+   `done: false` = préparation en cours reprenable (EN_PREPARATION), `done: true` = PREPAREE.
+2. **`fromLocationId` / `toLocationId` deviennent facultatifs.** Le périmètre est 1 magasin + 1 dépôt : le
+   serveur les résout (DEPOT actif → MAGASIN actif) et refuse tout identifiant d'une autre espèce — un
+   transfert n'inverse pas le sens du flux. Une liste déroulante de moins à se tromper côté app.
+3. **`GET /transfers` est gardé par les RÔLES seuls** (les 3). Le stub exigeait `transfer.request`, que le
+   **magasinier n'a pas** : la route aurait répondu 403 à celui qui prépare. Aucune permission existante
+   n'est commune aux trois rôles et en inventer une dépasserait `docs/permissions.md`.
+4. **`clientMutationId` passe d'optionnel à OBLIGATOIRE** à la création (règle 8) : une demande renvoyée
+   après une coupure ne doit pas devenir deux demandes. Un appelant écrit sur le stub reçoit 400.
+5. **`POST /:id/cancel` exige un corps `{ status }`** (`REFUSEE` | `ANNULEE`) alors que le stub n'en
+   prenait aucun : c'est la seule façon de distinguer « le dépôt ne suivra pas » de « le demandeur
+   renonce », que la matrice sépare. Un appelant écrit sur le stub reçoit 400.
+
+**Matrice appliquée à la lettre** (`docs/permissions.md`) : le vendeur demande et réceptionne, le magasinier
+accepte/prépare/expédie, le refus (`REFUSEE`) vient du dépôt (ADMIN|MAGASINIER), l'annulation (`ANNULEE`) de
+l'ADMIN **ou du vendeur auteur de la demande** — un autre vendeur reçoit 403.
+
+**Garde-fous, tous testés** : verrou de ligne `lockTransfer` (`SELECT … FOR UPDATE`) point d'entrée UNIQUE de
+toute transition, comme `lockOrder` pour les commandes ; surpréparation et surréception refusées ; expédition
+à vide refusée (« refusez la demande ») ; plus d'annulation après expédition (règle 7) ; pas de double
+réception ; `clientMutationId` obligatoire à la demande (renvoi identique → même demande, autre contenu → 409) ;
+tri en liste blanche ; statut de filtre inconnu → 400 ; produit désactivé → plus de demande possible ;
+chaque étape auditée avec son auteur et l'avant/après.
+
+**Corrigé dans le journal de stock partagé** (`StockLedgerService`, règle 1 de CONVENTIONS — un invariant se
+corrige à l'endroit UNIQUE) :
+- **Un produit désactivé pendant qu'un transfert roule bloquait sa réception** : la sortie du TRANSIT était
+  refusée comme une vente, et la marchandise restait coincée sans aucun chemin de régularisation. La règle
+  « produit désactivé = plus de sortie » ne s'applique plus au TRANSIT, qui ne porte pas de stock vendable
+  mais de la marchandise déjà partie. Contre-épreuve : exception retirée → le test échoue.
+- `StockMovement.sourceLocationId` / `destinationLocationId` sont enfin **renseignés** (le schéma Phase 0 les
+  prévoyait « pour la traçabilité d'un transfert » et rien ne les remplissait).
+
+**Contre-épreuves réellement exécutées** :
+- verrou retiré → « expédition et refus SIMULTANÉS » laisse passer **les deux** (200/200 au lieu de 200/409) ;
+- exception TRANSIT retirée → « produit désactivé : un transit en cours arrive quand même » échoue.
+
+**App** — `features/transfers/` : destination « Transferts » (proposée à qui tient un bout du flux) ;
+liste avec statut, priorité et AVANCEMENT lisible (« préparé 36 sur 40 demandés ») ; formulaire de demande
+(priorité, lignes, commentaire, clé d'intention stable) ; un seul écran de comptage partagé par la
+préparation et la réception (le plafond de l'étape précédente est annoncé ET validé avant l'envoi) ;
+bouton « Enregistrer en cours » pour une préparation reprise plus tard ; confirmation avant expédition
+(« ne s'annule plus ») ; dialogue « Voir les lignes » (demandé / préparé / expédié / reçu).
+**Défaut trouvé en relisant les captures et corrigé** : un transfert reçu AVEC ÉCART portait un badge vert
+comme un transfert nickel — l'écart est pourtant le fait à remarquer. Badge « Reçue · écart » en ton
+d'alerte et mention « le manquant est rentré au dépôt » (2 tests, dont un qui vérifie qu'une réception
+complète reste un simple « Reçue »). Captures **32** (liste desktop), **33** (demande mobile),
+**34** (préparation mobile), **35** (réception desktop).
+
+**Preuve finale (2026-09-21, après audits)** : backend `lint:check` **0** · **81** unit · **264** e2e
+(19 suites, **un seul passage**) dont **15** transferts ; app `flutter analyze` propre · **+227 ~35** dont
+**17** transferts · **35** captures produites. Le test « endpoint au contrat figé → 501 » de `auth.e2e-spec.ts` visait
+`/api/transfers` : reporté sur `/api/inventories`, encore au contrat.
+
+**Audits P0 #8 (2026-09-21)** — `reviewer` : **MERGE POSSIBLE**, aucun bloquant ; `security-reviewer` :
+**NON CONFORME** (0 critique, 1 important, 3 mineurs). Tout ce qui comptait est corrigé :
+- **Important (sécurité) : `?status=constructor` rendait 500.** `status in TransferStatus` traverse la
+  chaîne de PROTOTYPES : `constructor`, `toString`, `valueOf` passaient la garde (≤ 20 caractères, donc le
+  DTO ne les filtrait pas) et atteignaient Prisma comme valeur d'énum → `PrismaClientValidationError`, que
+  le filtre HTTP ne sait pas traduire. Liste blanche RÉELLE (`Object.values(...).includes(...)`), et le test
+  couvre désormais les trois. **Contre-épreuve : `in` remis → le test échoue** (« Invalid value for argument
+  `status` »). Seul endroit du backend qui utilisait ce motif.
+- **Mineur généralisé aux RÉCEPTIONS (CONVENTIONS règle 1)** : `POST /receptions` ne bornait pas
+  `locationId` au type d'emplacement — un magasinier pouvait réceptionner **dans le TRANSIT**, où le stock
+  se serait retrouvé gelé (aucune perte ne s'y déclare). Même garde MAGASIN/DEPOT que le stock initial d'un
+  produit et que la déclaration de perte, plus un e2e. Ce n'était pas la P0 #8, mais c'est le même
+  invariant : il valait mieux le fermer tout de suite.
+- **Chemin UI mort trouvé par la revue** : l'action « Accepter la demande » n'était tapée par AUCUN test
+  (le motif exact du bloquant de la P0 #7, en plus petit). Deux tests ajoutés : le dépôt accepte, et une
+  demande déjà acceptée ne se ré-accepte pas.
+- Exception TRANSIT **resserrée** sur `operationType === 'TRANSFER'` : une future opération sur le transit
+  (ajustement d'inventaire de la P0 #9) n'en héritera pas en silence.
+- Assertions ajoutées : `sourceLocationId`/`destinationLocationId` du mouvement d'écart (la seule partie non
+  éprouvée de ma modification du journal), et emplacement d'une autre espèce → 422 (le sens du flux ne
+  s'inverse pas).
+- Les deux audits confirment que l'exception TRANSIT est **étanche** : les cinq appelants du journal ont été
+  passés en revue, aucun ne peut produire une sortie négative au transit hors d'un transfert.
+
+**Non fait, tracé** : `TransferLine.note` (colonne du schéma Phase 0) n'est alimentée par rien, comme
+`ReceptionLine.note` ; le transfert est **en ligne uniquement** (`MutationType.TRANSFER` n'a pas de handler
+de synchronisation — c'est la P0 #12) ; pas de bon de transfert PDF (P1 n°21c) ; `TransferListQueryDto.q`
+est hérité de la pagination commune et ignoré par la liste (comme sur les réceptions) ; `TransferDto`
+n'expose pas `acceptedAt`/`refusedAt`/`cancelledAt`, que le schéma remplit — l'app n'en a pas besoin ;
+les états Erreur/Hors-ligne de l'écran et la branche « 409 → on relit la liste » ne sont pas couverts par un
+test widget.
+
+**Suite naturelle de l'écart, à trancher par MEDMEDBEN (relevé par la revue, non fait)** : le manquant
+rentre au dépôt et y redevient vendable, alors qu'il n'existe peut-être plus — seul le commentaire du
+mouvement le dit. Le prolongement sans rien inventer serait de créer, dans la MÊME transaction, une
+`StockLossDeclaration` **EN_ATTENTE** au dépôt pour le manquant (mécanisme existant depuis la décision du
+2026-09-14 : l'admin valide, le stock part). À faire si tu valides le principe.
+
+**À confirmer par MEDMEDBEN** : l'écart de réception rendu au DÉPÔT (et non laissé en transit) est une
+décision que j'ai prise seul faute de règle écrite — dis-moi si tu préfères autre chose.
+
+⚠️ **Piège machine** : l'outil de captures a échoué DEUX fois sur une `FileSystemException` en écrivant
+un PNG, puis est repassé vert sans rien changer — un verrou de fichier du poste (explorateur, antivirus),
+pas le code. Si ça arrive, relancer avant de chercher un bug.
+
 **Reste à faire (dans l'ordre)**
 1. **Relecture humaine des 31 captures** par MEDMEDBEN (seul point qu'aucun agent ne peut faire à sa place).
 2. Rejouer le build APK release une fois le NDK Android réinstallé sur le poste.

@@ -120,6 +120,17 @@ aucune migration destructive sans confirmation).
 | Réceptionner au magasin | ✅ | ✅ | ❌ |
 | Refuser / annuler | ✅ | ⚠️ (sa demande) | ✅ (préparation) |
 
+**Décisions du 2026-09-21 (implémentation de P0 #8)** — le « ⚠️ » est appliqué à la lettre :
+- **REFUSER** (`REFUSEE`) est un geste du DÉPÔT : réservé à l'ADMIN et au MAGASINIER.
+- **ANNULER** (`ANNULEE`) est un geste du DEMANDEUR : ADMIN, ou le vendeur **auteur** de la demande.
+  Un autre vendeur reçoit 403 ; le magasinier n'annule pas, il refuse.
+- Les deux ne sont possibles **que tant que rien n'est expédié**. Après l'expédition, la marchandise
+  est en transit : le transfert doit être réceptionné (règle 7), l'écart éventuel retourne au dépôt.
+- **Lecture** (`GET /transfers`, `GET /transfers/:id`) : ouverte aux TROIS rôles par un guard de
+  RÔLE seul, sans permission supplémentaire. Chacun tient un bout du flux et doit voir le même
+  tableau ; aucune permission existante n'est commune aux trois, et en inventer une dépasserait
+  cette matrice.
+
 ## Inventaire / Planning
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

@@ -8,6 +8,7 @@ import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
+import '../features/transfers/presentation/transfers_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 import 'widgets/screen_state.dart';
 
@@ -61,6 +62,16 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.warehouse,
       label: 'Stock',
       builder: (context, user) => StockScreen(user: user),
+    ),
+  // `/transfers` : les 3 rôles lisent la liste (guard de rôle seul) ; l'entrée
+  // n'est proposée qu'à qui tient un bout du flux (demander, préparer, recevoir).
+  if (user.can('transfer.request') ||
+      user.can('transfer.prepare') ||
+      user.can('transfer.receive'))
+    AppDestination(
+      icon: LucideIcons.arrowLeftRight,
+      label: 'Transferts',
+      builder: (context, user) => TransfersScreen(user: user),
     ),
   // `/purchase-orders` : ADMIN|MAGASINIER + purchase.create.
   if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&

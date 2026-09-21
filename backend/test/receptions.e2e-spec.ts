@@ -596,6 +596,38 @@ describe('Réceptions (e2e)', () => {
     expect(refused.body.code).toBe('INVALID_STATE_TRANSITION');
   });
 
+  it('réception au TRANSIT refusée : le stock y serait gelé', async () => {
+    const order = await confirmedOrder('5');
+    const transit = await prisma.location.findFirstOrThrow({
+      where: { type: 'TRANSIT' },
+    });
+    const refused = await as(tokens.magasinier)
+      .post('/api/receptions')
+      .send({
+        clientMutationId: randomUUID(),
+        purchaseOrderId: order.id,
+        supplierId,
+        locationId: transit.id,
+        lines: [
+          {
+            productId: order.productId,
+            purchaseLineId: order.lineId,
+            receivedQuantity: '5',
+            unitPriceHt: 120000,
+          },
+        ],
+      })
+      .expect(422);
+    expect(refused.body.code).toBe('VALIDATION_FAILED');
+    expect(
+      (
+        await prisma.stock.findFirst({
+          where: { productId: order.productId, locationId: transit.id },
+        })
+      )?.quantity.toFixed(3) ?? '0.000',
+    ).toBe('0.000');
+  });
+
   it('quantité mal formée : refusée par le contrat, rien n’entre', async () => {
     const order = await confirmedOrder('5');
     await as(tokens.magasinier)

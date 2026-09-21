@@ -12,6 +12,11 @@ export interface StockMovementInput {
   productId: string;
   locationId: string;
   quantity: Prisma.Decimal;
+  /// Traçabilité d'un transfert : d'où part la marchandise, où elle va. Purement
+  /// informatif (le schéma Phase 0 les prévoit ainsi) — le stock, lui, ne bouge
+  /// que par `locationId` et `quantity`.
+  sourceLocationId?: string | null;
+  destinationLocationId?: string | null;
   type: StockMovementType;
   operationType: OperationType;
   operationId?: string | null;
@@ -63,20 +68,9 @@ export class StockLedgerService {
         HttpStatus.NOT_FOUND,
       );
     }
-    // Produit désactivé : plus aucune SORTIE (on ne le vend plus). Les ENTRÉES
-    // restent possibles — annulation de vente, retour, réception, correction
-    // d'inventaire : une opération inverse ne doit jamais être bloquée (règle 7).
-    if (!product.isActive && input.quantity.isNegative()) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        `Produit désactivé : « ${product.name} » — aucune sortie de stock possible`,
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-
     const location = await tx.location.findUnique({
       where: { id: input.locationId },
-      select: { id: true, name: true, isActive: true },
+      select: { id: true, name: true, type: true, isActive: true },
     });
     if (!location) {
       throw new BusinessException(
@@ -89,6 +83,30 @@ export class StockLedgerService {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
         `Emplacement désactivé : « ${location.name} »`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    // Produit désactivé : plus aucune SORTIE (on ne le vend plus). Les ENTRÉES
+    // restent possibles — annulation de vente, retour, réception, correction
+    // d'inventaire : une opération inverse ne doit jamais être bloquée (règle 7).
+    //
+    // Exception, MÊME raison, volontairement ÉTROITE : vider le TRANSIT au titre
+    // d'un TRANSFERT. Le transit ne porte pas de stock vendable mais de la
+    // marchandise déjà partie ; refuser sa sortie la laisserait coincée pour
+    // toujours, sans chemin de régularisation (aucune perte ne se déclare en
+    // transit). Bornée à `TRANSFER` pour qu'une future opération sur le transit
+    // (ajustement d'inventaire…) n'en hérite pas en silence.
+    const finishingTransfer =
+      location.type === 'TRANSIT' && input.operationType === 'TRANSFER';
+    if (
+      !product.isActive &&
+      input.quantity.isNegative() &&
+      !finishingTransfer
+    ) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Produit désactivé : « ${product.name} » — aucune sortie de stock possible`,
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
@@ -163,6 +181,8 @@ export class StockLedgerService {
         productId: input.productId,
         locationId: input.locationId,
         quantity: input.quantity,
+        sourceLocationId: input.sourceLocationId ?? null,
+        destinationLocationId: input.destinationLocationId ?? null,
         type: input.type,
         operationType: input.operationType,
         operationId: input.operationId ?? null,

@@ -97,6 +97,27 @@ export class ReceptionsService {
             }
           }
 
+          // La marchandise entre au MAGASIN ou au DÉPÔT, jamais au TRANSIT
+          // (qui ne porte que du stock déjà parti) : sans cette borne, une
+          // réception au transit y gèlerait du stock, aucune perte ne s'y
+          // déclarant. Même garde que le stock initial d'un produit et que la
+          // déclaration de perte (CONVENTIONS, règle 1 : un invariant vaut pour
+          // tous les chemins).
+          const destination = await tx.location.findUnique({
+            where: { id: dto.locationId },
+            select: { type: true },
+          });
+          if (
+            destination?.type !== 'MAGASIN' &&
+            destination?.type !== 'DEPOT'
+          ) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_FAILED,
+              'locationId : la marchandise se réceptionne au magasin ou au dépôt',
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+
           const lines = await this.buildLines(tx, dto, order);
           const totalTtc = ReceptionsService.totalTtc(lines);
           const number = await nextDocumentNumber(tx, 'RECEPTION', 'BR', 5);

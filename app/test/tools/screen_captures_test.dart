@@ -27,6 +27,8 @@ import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
+import 'package:gestion_magasin/features/transfers/data/transfers_api.dart';
+import 'package:gestion_magasin/features/transfers/data/transfers_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
@@ -427,6 +429,79 @@ class _CaptureReceptionsApi extends ReceptionsApi {
   ];
 }
 
+/// Le tableau des transferts à toutes les étapes du flux.
+class _CaptureTransfersApi extends TransfersApi {
+  _CaptureTransfersApi() : super(Dio());
+
+  static Transfer _trf(
+    String n,
+    TransferStatus status,
+    TransferPriority priority, {
+    String asked = '20',
+    String prepared = '0',
+    String shipped = '0',
+    String received = '0',
+    String productId = 'p1',
+  }) => Transfer(
+    id: 't$n',
+    number: 'TRF-2026-0000$n',
+    status: status,
+    priority: priority,
+    fromLocationId: 'depot',
+    toLocationId: 'magasin',
+    requestedById: 'me',
+    requestedAt: DateTime(2026, 9, 21, 9, 15),
+    updatedAt: DateTime(2026, 9, 21, 9, 15),
+    comment: 'Rayon vide, deux clients qui attendent',
+    lines: [
+      TransferLine(
+        id: 'tl$n',
+        productId: productId,
+        requestedQuantity: Decimal.parse(asked),
+        preparedQuantity: Decimal.parse(prepared),
+        shippedQuantity: Decimal.parse(shipped),
+        receivedQuantity: Decimal.parse(received),
+      ),
+    ],
+  );
+
+  @override
+  Future<TransferPage> list({String? status, int limit = 200}) async =>
+      TransferPage(
+        data: [
+          _trf('4', TransferStatus.requested, TransferPriority.urgent),
+          _trf(
+            '3',
+            TransferStatus.prepared,
+            TransferPriority.normal,
+            asked: '40',
+            prepared: '36',
+            productId: 'p2',
+          ),
+          _trf(
+            '2',
+            TransferStatus.inTransit,
+            TransferPriority.high,
+            asked: '12',
+            prepared: '12',
+            shipped: '12',
+            productId: 'p3',
+          ),
+          _trf(
+            '1',
+            TransferStatus.received,
+            TransferPriority.normal,
+            asked: '25',
+            prepared: '25',
+            shipped: '25',
+            received: '23',
+            productId: 'p4',
+          ),
+        ],
+        meta: const PageMeta(page: 1, limit: 200, total: 4),
+      );
+}
+
 class _CaptureSalesApi extends SalesApi {
   _CaptureSalesApi() : super(Dio());
 
@@ -633,6 +708,7 @@ Future<void> _capture(
         suppliersApiProvider.overrideWithValue(_CaptureSuppliersApi()),
         purchasesApiProvider.overrideWithValue(_CapturePurchasesApi()),
         receptionsApiProvider.overrideWithValue(_CaptureReceptionsApi()),
+        transfersApiProvider.overrideWithValue(_CaptureTransfersApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -1147,6 +1223,66 @@ void main() {
         await t.tap(find.text('Vente'));
         await t.pumpAndSettle();
         await t.tap(find.text('Caisses'));
+      },
+    ),
+  );
+  testWidgets(
+    '32 transferts desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '32_transferts_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Transferts')),
+    ),
+  );
+  testWidgets(
+    '33 demande au dépôt mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '33_demande_depot_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Transferts');
+        await t.pumpAndSettle();
+        await t.tap(find.text('Nouvelle demande'));
+      },
+    ),
+  );
+  testWidgets(
+    '34 préparation du transfert mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '34_preparation_transfert_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Transferts');
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('TRF-2026-00003'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Corriger la préparation'));
+      },
+    ),
+  );
+  testWidgets(
+    '35 réception du transfert desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '35_reception_transfert_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Transferts'));
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('TRF-2026-00002'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Réceptionner au magasin'));
       },
     ),
   );

@@ -234,6 +234,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-20 : NON CONFORME — prix d'achat et réception hors commande → corrigés)_
 - [ ] Tests manuels effectués par un humain
 
+### Feature P0 n°8 : Transferts magasin ↔ dépôt (demande → préparation → expédition → réception)
+- [x] Schéma DB validé _(AUCUNE migration : `Transfer` + `TransferLine` étaient complets depuis la Phase 0)_
+- [x] Matrice de permissions CRUD par rôle définie _(vendeur : demande + réception + annulation de SA demande ; magasinier : acceptation, préparation, expédition, refus ; admin : tout)_
+- [x] Endpoints API implémentés _(POST /transfers, GET /transfers, GET /transfers/:id, POST /:id/accept|prepare|ship|receive|cancel ; stub 501 retiré)_
+- [x] Validation des entrées (class-validator) en place _(quantités décimales, UUID canoniques, tableaux bornés, `clientMutationId` obligatoire, tri et statut en liste blanche)_
+- [x] Tests unitaires backend passent _(81 — 2026-09-21)_
+- [x] Tests d'intégration backend passent _(264 e2e dont 15 transferts, un seul passage — 2026-09-21)_
+- [x] UI desktop implémentée _(capture 32, 35)_
+- [x] UI mobile implémentée _(captures 33, 34)_
+- [x] Sync offline gérée si applicable _(non : `MutationType.TRANSFER` n'a pas de handler — c'est la P0 #12)_
+- [x] Revue par subagent `reviewer` _(2026-09-21 : MERGE POSSIBLE, aucun bloquant — action `accept` non testée et 2 écarts de contrat non documentés → corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `?status=constructor` rendait 500 → liste blanche réelle + contre-épreuve)_
+- [ ] Tests manuels effectués par un humain
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```
