@@ -202,10 +202,7 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 
 **Tranches (chacune testée, contre-éprouvée et poussée avant la suivante)** :
 - [x] **A — Socle app** (livrée, auditée) — voir le détail juste après la liste.
-- [ ] **B — Vente hors-ligne** (TICKET uniquement — une facture exige un numéro légal serveur, règle 11).
-  Y brancher la garde « trop longtemps hors-ligne » (`MutationQueue.isTooStale`, déjà écrite) qui bloque
-  les nouvelles ventes ; handler `SALE` qui **reconnaît une vente déjà créée en ligne sous la même clé**
-  (précondition M1, voir ci-dessous) + e2e « en ligne puis même clé par /sync → CONFIRMEE, sans doublon ».
+- [x] **B — Vente hors-ligne** (livrée, auditée) — détail après la liste.
 - [ ] **C — Caisse hors-ligne** (ouverture, clôture) : une vente en espèces exige une caisse ouverte (règle 12).
 - [ ] **D — Réception hors-ligne** (spec §15 : « fonctionne hors-ligne »).
 - [ ] **E — Transferts, inventaire (comptage), règlements clients** hors-ligne.
@@ -234,9 +231,42 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 - **Preuve (2026-09-21)** : backend `lint:check` 0 · **82** unit · **317** e2e (23 suites, un seul passage) ;
   app `flutter analyze` propre · **+291 ~43**. Contre-épreuves : déclenchement au retour du réseau retiré → test
   en échec ; garde E1 retirée → test en échec.
-- **Prochaine étape précise** : tranche B — handler de sync `SALE` (`backend/src/sync/handlers/`) qui appelle le
-  cœur de `SalesService` (TICKET seulement, prix recalculé serveur, `SALE_TOTAL_CHANGED` si écart) et reconnaît une
-  vente déjà créée sous la clé ; côté app, l'encaissement passe par `writeOnlineOrQueue` + `isTooStale`.
+
+**Tranche B — vente hors-ligne, livrée (2026-09-22)**
+- **Serveur** : handler de sync `SALE` (`sync/handlers/sale.handler.ts`) = le MÊME cœur que `POST /sales`
+  (`SalesService.createInTx`, extrait avec `replay`). TICKET seulement ; `expectedTotalTtc` obligatoire ; prix du
+  tarif COURANT (écart → `SALE_TOTAL_CHANGED`) ; une vente déjà créée en ligne sous la clé est RECONNUE (M1) ;
+  datée de l'appareil si plausible (0 à 72 h), sinon du sync ; échéance jugée au jour de la VENTE.
+- **Caisse (audit sécu, élevé)** : la vente porte la caisse où les espèces sont entrées (`cashSessionId`,
+  obligatoire hors-ligne) ; si ce n'est plus la caisse ouverte au sync → `CASH_SESSION_CLOSED`. Premier essai
+  (comparer l'heure de la vente à l'ouverture de caisse) rejeté au contre-audit : contournable par une heure
+  « non plausible », et faux refus sur un poste en retard. Côté app, **clôture refusée tant que la file du
+  compte n'est pas vide** ; encaissement en espèces bloqué sans caisse connue ouverte.
+- **Rejets tracés** : tout rejet de sync (sauf refus d'accès, déjà journalisé et qui pourrait noyer
+  l'Historique) écrit un `AuditLog` `REJECT` (`SyncMutation`) — migration additive
+  `20260921230000_audit_reject` ; visible dans l'Historique de l'admin (« Opération hors ligne » / « Refus à la
+  synchronisation »). Raison : une vente refusée a pu avoir lieu physiquement.
+- **Course en ligne ↔ sync** (même vente, réponse en ligne perdue) : le moteur répond « réessayer » quand
+  `handler.existsForKey` trouve l'entité, au lieu d'un faux rejet définitif ; e2e concurrent qui échoue 5/5
+  sans ce correctif.
+- **App** : l'encaissement passe par `writeOnlineOrQueue` (même corps en ligne et en file, `id` = panier) ; hors
+  réseau, reçu « Vente en attente de synchronisation » (jamais un ticket) ; garde « trop longtemps hors ligne ».
+- **Audits** : `reviewer` PAS OK → B1 (test e2e cassé : `SALE` n'était plus « sans handler »), I1 échéance, I2
+  course : corrigés ; `security-reviewer` : élevé caisse + moyens (rejets tracés, échéance) + faible (détection
+  d'unicité) corrigés, tests ajoutés (remise, champs forgés, clé d'un autre compte, horloge).
+- **Risques connus, à décider par MEDMEDBEN** : (1) une vente hors-ligne REFUSÉE (prix changé, stock, caisse)
+  n'a que « Abandonner » côté vendeur — l'admin la voit dans l'Historique, mais aucun écran de régularisation ;
+  (2) une vente À CRÉDIT hors-ligne peut être antidatée jusqu'à 72 h par un appel direct à /sync (pas de caisse
+  pour la borner) ; (3) la vente reconnue en ligne puis par la file laisse une entrée d'audit « Création »
+  (le contrat §4.4 audite toute mutation synchronisée ; les ventes en ligne, elles, ne le sont pas).
+- **Preuve tranche B (2026-09-22)** : backend `lint:check` 0 · **82** unit · **337** e2e (24 suites, un seul
+  passage) ; app `flutter analyze` propre · **+295 ~43**. Contre-épreuves (garde retirée → test en échec) :
+  reconnaissance de la vente en ligne (2 tests), caisse de la vente, échéance au jour de la vente, course
+  en ligne ↔ sync (5/5 en échec), garde « trop longtemps hors ligne ».
+- **Prochaine étape précise** : tranche C — caisse hors-ligne (ouverture/clôture par la file) ; handler
+  `CASH_SESSION` réutilisant `CashSessionsService` (ouverture/clôture, idempotence déjà en place) et
+  reconnaissance en ligne (`existsForKey`) ; côté app, `openCash`/`closeCash` via `writeOnlineOrQueue` —
+  attention : la vente hors-ligne exige alors la `cashSessionId` d'une caisse ouverte HORS LIGNE (id client).
 
 **Décision que je prends seul et que je te signale (à confirmer)** — **prix d'une vente hors-ligne** :
 `docs/context.md` §7 (2026-09-08) dit que le serveur accepte les prix saisis sur l'appareil. Mais la décision

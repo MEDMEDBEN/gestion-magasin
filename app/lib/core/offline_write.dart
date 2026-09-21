@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'error/api_exception.dart';
+import 'error/error_codes.dart';
 import 'mutation_keys.dart';
 import 'providers.dart';
 
@@ -69,15 +70,25 @@ Future<WriteOutcome<T>> writeOnlineOrQueue<T>(
     // CLOSE. La mettre en file l'étiquetterait au nouveau compte, qui la ferait
     // passer sous ses propres droits — on ne met rien en file.
     if (ref.read(currentUserIdProvider) != author) rethrow;
-    await ref
-        .read(mutationQueueProvider)
-        .enqueue(
-          authorUserId: author,
-          deviceId: await ref.read(deviceIdProvider.future),
-          operationType: operationType,
-          payload: body,
-          clientMutationId: key,
-        );
+    final queue = ref.read(mutationQueueProvider);
+    // Borne du contrat (docs/context.md, « Bornes de données offline ») : un
+    // appareil trop longtemps hors-ligne travaille sur un stock trop faux.
+    if (await queue.isTooStale(authorUserId: author)) {
+      throw const ApiException(
+        statusCode: 409,
+        code: ErrorCodes.offlineTooLong,
+        message:
+            'Trop longtemps hors ligne : reconnectez l’appareil pour '
+            'synchroniser avant de nouvelles opérations',
+      );
+    }
+    await queue.enqueue(
+      authorUserId: author,
+      deviceId: await ref.read(deviceIdProvider.future),
+      operationType: operationType,
+      payload: body,
+      clientMutationId: key,
+    );
     // La FILE détient désormais l'intention : un nouvel essai serait une
     // nouvelle opération (la mutation en file partira de toute façon).
     keys.release(intent);

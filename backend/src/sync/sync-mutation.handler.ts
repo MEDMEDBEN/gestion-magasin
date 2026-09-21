@@ -49,10 +49,23 @@ export interface SyncMutationHandler<TPayload extends object = object> {
   validate(payload: unknown): Promise<TPayload>;
 
   /// Applique la mutation. Lever une `BusinessException` = REJET (rien n'est appliqué).
+  ///
+  /// Si l'opération a une route EN LIGNE qui enregistre la même clé
+  /// (`clientMutationId`), `apply` DOIT d'abord reconnaître l'entité déjà créée
+  /// par cette route et la rendre telle quelle (même contenu) : l'app met en file,
+  /// sous la même clé, une écriture dont la réponse en ligne s'est perdue. Sans
+  /// cela : doublon, ou collision renvoyée « réessayer » à chaque cycle.
   apply(
     payload: TPayload,
     context: SyncMutationContext,
   ): Promise<SyncApplyResult>;
+
+  /// L'entité de cette clé existe-t-elle déjà (créée par la route EN LIGNE) ?
+  /// Sert au moteur quand `apply` heurte une contrainte d'unicité : si oui,
+  /// c'est une course avec la même opération en ligne — « réessayer » (le
+  /// prochain cycle la reconnaîtra), pas un rejet définitif. Obligatoire dès
+  /// que la route en ligne enregistre la clé.
+  existsForKey?(clientMutationId: string): Promise<boolean>;
 }
 
 /// Jeton d'injection multi-fournisseurs : le module de sync assemble la liste.

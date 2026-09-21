@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:printing/printing.dart';
 
 import '../../../core/dates.dart';
+import '../../../core/error/error_codes.dart';
+import '../../../core/error/api_exception.dart';
 import '../../../core/mutation_keys.dart';
+import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -220,7 +223,29 @@ class SalesActions {
     return session;
   }
 
+  /// Pas de clôture tant que des opérations de ce compte attendent la synchro :
+  /// les espèces d'une vente faite hors-ligne sont DANS le tiroir, mais pas
+  /// encore dans l'attendu — le rapport Z mentirait, et la vente serait ensuite
+  /// refusée (`CASH_SESSION_CLOSED`, audit sécu tranche B).
+  Future<void> ensureNothingPending() async {
+    final userId = _ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    final pending = await _ref
+        .read(mutationQueueProvider)
+        .pendingCount(authorUserId: userId);
+    if (pending > 0) {
+      throw ApiException(
+        statusCode: 409,
+        code: ErrorCodes.syncPending,
+        message:
+            '$pending opération${pending > 1 ? 's' : ''} en attente de '
+            'synchronisation : synchronisez avant de clôturer la caisse',
+      );
+    }
+  }
+
   Future<CashSession> closeCash(String sessionId, int countedAmount) async {
+    await ensureNothingPending();
     final report = await runMoneyMutation(
       _ref,
       'cash-close:$sessionId',
@@ -235,23 +260,39 @@ class SalesActions {
   }
 
   /// Valide le panier. `paidAmount` : espèces GARDÉES (≤ total) ; le reste
-  /// part en crédit client. Le panier n'est vidé qu'après succès.
+  /// part en crédit client. Le panier n'est vidé qu'après succès — vente
+  /// confirmée (`Applied`) OU mise en file hors-ligne (`Queued`, un TICKET que
+  /// le serveur jugera à la synchronisation : jamais présenté comme définitif).
   /// `expectedTotalTtc` : le total annoncé au client ; le serveur refuse (409)
   /// s'il a changé, pour ne jamais encaisser ou rendre la monnaie sur un faux total.
   /// `dueDate` : échéance OBLIGATOIRE dès qu'une partie reste à crédit.
-  Future<Sale> checkout(
+  Future<WriteOutcome<Sale>> checkout(
     int paidAmount, {
     required int expectedTotalTtc,
     DateTime? dueDate,
   }) async {
     final cart = _ref.read(cartProvider);
+    // Caisse où entrent les espèces (dernier état lu, même hors ligne) : le
+    // serveur refuse si ce n'est plus la caisse ouverte — les espèces ne
+    // passent jamais dans une autre caisse (audit sécu tranche B).
+    final cash = _ref.read(currentCashSessionProvider).value;
+    if (paidAmount > 0 && cash == null) {
+      throw const ApiException(
+        statusCode: 409,
+        code: ErrorCodes.cashSessionRequired,
+        message: 'Ouvrez la caisse avant d’encaisser des espèces',
+      );
+    }
     // L'intention « valider CE panier » garde sa clé jusqu'au succès.
-    final sale = await runMoneyMutation(
+    final outcome = await writeOnlineOrQueue<Sale>(
       _ref,
-      'sale:${cart.saleId}',
-      (key) => _api.createSale(
+      intent: 'sale:${cart.saleId}',
+      operationType: 'SALE',
+      payload: (key) => SalesApi.saleBody(
         clientMutationId: key,
+        id: cart.saleId,
         customerId: cart.customer?.id,
+        cashSessionId: paidAmount > 0 ? cash!.id : null,
         lines: [
           for (final line in cart.lines)
             (
@@ -263,11 +304,12 @@ class SalesActions {
         expectedTotalTtc: expectedTotalTtc,
         dueDate: dueDate == null ? null : isoDay(dueDate),
       ),
+      online: _api.createSale,
     );
     _ref.read(cartProvider.notifier).clear();
     _ref.invalidate(currentCashSessionProvider);
     _ref.invalidate(mySalesProvider);
-    return sale;
+    return outcome;
   }
 
   Future<Sale> invoice(String saleId) async {

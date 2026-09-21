@@ -81,6 +81,16 @@ export class CreateSaleDto {
   @IsOptional()
   customerId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Caisse dans laquelle les espèces sont entrées, telle que l’appareil la ' +
+      'connaissait. Si présente, elle doit être la caisse OUVERTE du vendeur ' +
+      '(sinon `CASH_SESSION_CLOSED`). Obligatoire hors-ligne dès qu’il y a des espèces.',
+  })
+  @IsCanonicalUuid()
+  @IsOptional()
+  cashSessionId?: string;
+
   @ApiProperty({ type: [CreateSaleLineDto] })
   @IsArray()
   @ArrayNotEmpty()

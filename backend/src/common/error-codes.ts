@@ -57,6 +57,10 @@ export enum ErrorCode {
   CASH_SESSION_ALREADY_OPEN = 'CASH_SESSION_ALREADY_OPEN',
   /// Sortie de caisse supérieure aux espèces réellement dans le tiroir.
   CASH_INSUFFICIENT = 'CASH_INSUFFICIENT',
+  /// Vente hors-ligne antérieure à l'ouverture de la caisse actuelle : ses
+  /// espèces appartiennent à une caisse CLÔTURÉE (ou à aucune) — les imputer à
+  /// celle-ci fausserait les deux rapports Z.
+  CASH_SESSION_CLOSED = 'CASH_SESSION_CLOSED',
 
   // Catalogue (règle 15)
   BARCODE_ALREADY_USED = 'BARCODE_ALREADY_USED',

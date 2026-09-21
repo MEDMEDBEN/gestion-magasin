@@ -60,7 +60,19 @@ Pour chaque mutation, le serveur, dans une transaction :
 ## 7. Cas particulier — vente hors-ligne
 La vente hors-ligne est autorisée (décision produit), mais :
 - Le stock affiché hors-ligne peut être périmé → la validation § 4 au sync fait autorité.
-- Les prix de ligne saisis sur l'appareil (avec remise autorisée) sont acceptés par le serveur ; seul le **stock** est re-validé.
+- ~~Les prix de ligne saisis sur l'appareil sont acceptés par le serveur~~ — **remplacé le 2026-09-21**
+  (P0 #12, décision à confirmer par MEDMEDBEN) : l'appareil n'envoie jamais de prix (règle 13, comme en
+  ligne). Le serveur recalcule au tarif COURANT et compare au total encaissé (`expectedTotalTtc`,
+  obligatoire hors-ligne) ; s'ils diffèrent, la vente est **REJETÉE** (`SALE_TOTAL_CHANGED`). Raison :
+  accepter un prix venu de l'appareil permettrait de forger un prix par une requête de sync.
+- Une vente hors-ligne est un **TICKET**, datée de l'appareil si l'instant est plausible (ni futur, ni
+  plus de 72 h), sinon de sa synchronisation. Ses espèces portent la **caisse de la vente**
+  (`cashSessionId`, obligatoire hors-ligne) : si ce n'est plus la caisse ouverte du vendeur au sync, REJET
+  `CASH_SESSION_CLOSED` — jamais d'imputation à une autre caisse, et aucune horloge d'appareil en jeu. L'app
+  refuse de clôturer une caisse tant que la file du compte n'est pas vide. Une vente **à crédit** n'a pas de
+  caisse pour la borner : un appel direct à /sync peut l'antidater jusqu'à 72 h (risque accepté, à confirmer).
+- Tout rejet de sync (hors refus d'accès) est tracé dans l'Historique (`AuditLog` `REJECT`) : une vente
+  refusée a pu avoir lieu physiquement.
 - La dette client est (re)calculée **côté serveur** au moment de l'application, jamais figée par le client.
 
 ---

@@ -6,6 +6,7 @@ import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
 import '../../../core/money.dart';
+import '../../../core/offline_write.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -224,6 +225,13 @@ class _CashBar extends ConsumerWidget {
     WidgetRef ref,
     CashSession cash,
   ) async {
+    try {
+      await ref.read(salesActionsProvider).ensureNothingPending();
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+      return;
+    }
+    if (!context.mounted) return;
     final counted = await _askAmount(
       context,
       title: 'Clôturer la caisse',
@@ -437,6 +445,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
 
   Future<void> _checkout(CartEstimate estimate) async {
     final cart = ref.read(cartProvider);
+    // Caisse CONNUE fermée (dernier état lu, même hors ligne) : une vente
+    // comptoir encaisserait des espèces sans caisse — refusée à coup sûr.
+    final cashState = ref.read(currentCashSessionProvider);
+    if (cart.customer == null &&
+        cashState.hasValue &&
+        cashState.value == null) {
+      _snack(context, 'Ouvrez la caisse avant d’encaisser des espèces');
+      return;
+    }
     final received = await _askAmount(
       context,
       title: 'Encaisser ${formatDA(estimate.totalTtc)}',
@@ -464,7 +481,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     }
     setState(() => _busy = true);
     try {
-      final sale = await ref
+      final outcome = await ref
           .read(salesActionsProvider)
           .checkout(
             kept,
@@ -473,7 +490,16 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           );
       if (!mounted) return;
       final change = received - kept;
-      await _showTicket(sale, change: change);
+      switch (outcome) {
+        case Applied(value: final sale):
+          await _showTicket(sale, change: change);
+        case Queued():
+          await _showQueued(
+            total: estimate.totalTtc,
+            kept: kept,
+            change: change,
+          );
+      }
     } on ApiException catch (error) {
       if (error.code == ErrorCodes.saleTotalChanged) {
         // Prix changé entre-temps : le catalogue local est remis à jour.
@@ -489,6 +515,50 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Vente mise en file hors-ligne : PAS un ticket — le serveur n'a encore rien
+  /// jugé (stock, prix, caisse). Affichée « en attente », jamais comme faite
+  /// (docs/context.md §6) ; un refus apparaîtra dans le panneau de synchro.
+  Future<void> _showQueued({
+    required int total,
+    required int kept,
+    required int change,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Vente en attente de synchronisation'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Pas de connexion : la vente est enregistrée sur cet appareil, '
+                'pas encore confirmée par le serveur. Le ticket officiel sera '
+                'disponible après la synchronisation.',
+              ),
+              const Divider(),
+              Text('Total TTC : ${formatDA(total)}'),
+              Text('Encaissé : ${formatDA(kept)}'),
+              if (change > 0)
+                Text(
+                  'Monnaie à rendre : ${formatDA(change)}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Compris'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showTicket(Sale sale, {required int change}) {
@@ -508,7 +578,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final cart = ref.watch(cartProvider);
     final estimate = ref.watch(cartEstimateProvider);
     final products = ref.watch(activeProductsProvider).value ?? const [];
-    final cash = ref.watch(currentCashSessionProvider).value;
+    final cashState = ref.watch(currentCashSessionProvider);
+    // Hors ligne, la caisse est INCONNUE (pas « fermée ») : pas d'alerte, le
+    // serveur vérifiera à la synchronisation.
+    final noCash = cashState.hasValue && cashState.value == null;
 
     if (!widget.rights.canSell) {
       return const ScreenStateView(
@@ -613,7 +686,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'la vente sera refusée.',
             ),
           ],
-          if (cash == null && cart.customer == null) ...[
+          if (noCash && cart.customer == null) ...[
             const SizedBox(height: 10),
             const AmpereInlineAlert(
               tone: StatusTone.warn,

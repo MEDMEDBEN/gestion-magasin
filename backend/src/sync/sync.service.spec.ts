@@ -69,7 +69,14 @@ describe('SyncService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
       },
-      $transaction: jest.fn(async (run: (c: unknown) => unknown) => run(tx)),
+      auditLog: { create: jest.fn() },
+      // Fonction : transaction d'APPLICATION ; tableau : écriture groupée d'un
+      // rejet (mémoire + audit).
+      $transaction: jest.fn(async (run: unknown) =>
+        Array.isArray(run)
+          ? Promise.all(run)
+          : (run as (c: unknown) => unknown)(tx),
+      ),
     };
 
     service = new SyncService(prisma as PrismaService, [handler]);
@@ -240,8 +247,10 @@ describe('SyncService', () => {
 
     expect(result.status).toBe(SyncResultStatusDto.REJETEE);
     expect(result.code).toBe(ErrorCode.VALIDATION_FAILED);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // Aucune transaction d'APPLICATION : seulement la mémoire du rejet + son audit.
+    expect(handler.apply).not.toHaveBeenCalled();
     expect(prisma.syncMutation.create).toHaveBeenCalledTimes(1);
+    expect(prisma.auditLog.create).toHaveBeenCalledTimes(1);
   });
 
   it('rejette une règle métier violée en gardant le motif lisible', async () => {

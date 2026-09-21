@@ -20,7 +20,9 @@ enum AuditAction {
   @JsonValue('ADJUST')
   adjust('Ajustement'),
   @JsonValue('CLOSE')
-  close('Clôture');
+  close('Clôture'),
+  @JsonValue('REJECT')
+  reject('Refus à la synchronisation');
 
   const AuditAction(this.label);
   final String label;
@@ -48,6 +50,7 @@ const auditEntityLabels = <String, String>{
   'Inventory': 'Inventaire',
   'PlanningTask': 'Tâche',
   'User': 'Compte',
+  'SyncMutation': 'Opération hors ligne',
 };
 
 String auditEntityLabel(String type) => auditEntityLabels[type] ?? type;

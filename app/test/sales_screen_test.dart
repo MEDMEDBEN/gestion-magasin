@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
+import 'package:gestion_magasin/core/providers.dart';
+import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
@@ -34,22 +36,10 @@ class _FakeSalesApi extends SalesApi {
       Uint8List.fromList('%PDF-1.3'.codeUnits);
 
   @override
-  Future<Sale> createSale({
-    required String clientMutationId,
-    String? customerId,
-    required List<({String productId, String quantity})> lines,
-    required int paidAmount,
-    int? expectedTotalTtc,
-    String? dueDate,
-  }) async {
-    sent = {
-      'dueDate': dueDate,
-      'expectedTotalTtc': expectedTotalTtc,
-      'id': clientMutationId,
-      'customerId': customerId,
-      'lines': lines,
-      'paidAmount': paidAmount,
-    };
+  Future<Sale> createSale(Map<String, dynamic> body) async {
+    final clientMutationId = body['clientMutationId'] as String;
+    final paidAmount = body['paidAmount'] as int;
+    sent = body;
     if (failure != null) throw failure!;
     return Sale(
       id: clientMutationId,
@@ -96,15 +86,51 @@ AuthUser _vendeur() => authUser(
   ],
 );
 
+/// File hors-ligne en mémoire : les flux Drift ne tournent pas dans le temps
+/// simulé des tests d'écran (la vraie file est testée à part).
+class _MemoryQueue implements MutationQueue {
+  _MemoryQueue({this.tooStale = false, this.pending = 0});
+
+  final bool tooStale;
+  final int pending;
+
+  @override
+  Future<int> pendingCount({required String authorUserId}) async => pending;
+  final queued = <({String type, Map<String, dynamic> payload, String? key})>[];
+
+  @override
+  Future<bool> isTooStale({required String authorUserId}) async => tooStale;
+
+  @override
+  Future<String> enqueue({
+    required String authorUserId,
+    required String deviceId,
+    required String operationType,
+    required Map<String, dynamic> payload,
+    String? clientMutationId,
+    DateTime? deviceTimestamp,
+  }) async {
+    queued.add((type: operationType, payload: payload, key: clientMutationId));
+    return clientMutationId!;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Future<void> _pumpScreen(
   WidgetTester tester,
   _FakeSalesApi api,
-  List<String> printed,
-) async {
+  List<String> printed, {
+  _MemoryQueue? queue,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         salesApiProvider.overrideWithValue(api),
+        currentUserIdProvider.overrideWithValue('v'),
+        deviceIdProvider.overrideWith((ref) async => 'poste-caisse'),
+        mutationQueueProvider.overrideWithValue(queue ?? _MemoryQueue()),
         printPdfProvider.overrideWithValue((bytes, name) async {
           printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
         }),
@@ -208,7 +234,9 @@ void main() {
       expect(api.sent!['paidAmount'], 345100);
       // Le serveur refusera si le total a changé depuis l'affichage.
       expect(api.sent!['expectedTotalTtc'], 345100);
-      expect(api.sent!['lines'], [(productId: 'p1', quantity: '2.000')]);
+      expect(api.sent!['lines'], [
+        {'productId': 'p1', 'quantity': '2.000'},
+      ]);
       expect(api.sent!.containsKey('unitPriceHt'), isFalse);
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
 
@@ -243,6 +271,90 @@ void main() {
       expect(api.sent!['id'], isNot(firstId));
     },
   );
+
+  testWidgets(
+    'sans réseau : la vente part dans la file (même corps), reçu « en attente », '
+    'jamais un ticket',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final queue = _MemoryQueue();
+      final api = _FakeSalesApi(
+        cash: _openCash,
+        failure: const ApiException(statusCode: 0, message: 'hors ligne'),
+      );
+      await _pumpScreen(tester, api, [], queue: queue);
+      await _scanTwiceAndPay(tester);
+
+      expect(queue.queued, hasLength(1));
+      final queued = queue.queued.single;
+      expect(queued.type, 'SALE');
+      expect(queued.payload, api.sent, reason: 'même corps qu’en ligne');
+      expect(queued.key, queued.payload['clientMutationId']);
+      expect(queued.payload['expectedTotalTtc'], 345100);
+      expect(
+        queued.payload['cashSessionId'],
+        _openCash.id,
+        reason: 'les espèces restent dans la caisse de la vente',
+      );
+      expect(find.text('Vente en attente de synchronisation'), findsOneWidget);
+      expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
+      expect(find.text('Imprimer le ticket'), findsNothing);
+
+      await tester.tap(find.text('Compris'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Encaisser'), findsNothing, reason: 'vidé');
+    },
+  );
+
+  testWidgets(
+    'trop longtemps hors ligne : la vente n’est PAS mise en file, le panier reste',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final queue = _MemoryQueue(tooStale: true);
+      final api = _FakeSalesApi(
+        cash: _openCash,
+        failure: const ApiException(statusCode: 0, message: 'hors ligne'),
+      );
+      await _pumpScreen(tester, api, [], queue: queue);
+      await _scanTwiceAndPay(tester);
+
+      expect(queue.queued, isEmpty);
+      expect(find.textContaining('Trop longtemps hors ligne'), findsOneWidget);
+      expect(find.textContaining('Encaisser 3'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'caisse connue FERMÉE : l’encaissement comptoir est bloqué avant tout envoi',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi();
+      await _pumpScreen(tester, api, []);
+      for (var i = 0; i < 2; i++) {
+        await tester.enterText(find.byType(TextField).first, '3245060123458');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.textContaining('Encaisser 3'));
+      await tester.pumpAndSettle();
+
+      expect(api.sent, isNull);
+      expect(find.text('Valider la vente'), findsNothing);
+    },
+  );
+
+  testWidgets('clôture refusée tant que des opérations attendent la synchro', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    await _pumpScreen(tester, api, [], queue: _MemoryQueue(pending: 2));
+    await tester.tap(find.text('Clôturer').first);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('2 opérations en attente'), findsOneWidget);
+    expect(find.text('Espèces comptées dans le tiroir'), findsNothing);
+  });
 
   test(
     'menu : « Vente » pour ADMIN/VENDEUR avec sale.create, jamais le magasinier',

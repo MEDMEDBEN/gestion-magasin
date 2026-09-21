@@ -213,6 +213,9 @@ enum AuditAction {
   /// Clôture d'un reliquat : ce qui est reçu reste acquis, seul le reste est
   /// abandonné. À distinguer d'une ANNULATION dans le journal.
   CLOSE
+  /// Mutation hors-ligne REFUSÉE à la synchronisation : l'opération a pu avoir
+  /// lieu physiquement (marchandise sortie, espèces reçues) — l'admin doit le voir.
+  REJECT
 }
 
 /// Motif de fermeture d'une session (voir `RefreshToken.revokedReason`).

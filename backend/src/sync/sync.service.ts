@@ -3,7 +3,11 @@ import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { Prisma } from '../generated/prisma/client';
-import { OperationType, SyncMutationStatus } from '../generated/prisma/enums';
+import {
+  AuditAction,
+  OperationType,
+  SyncMutationStatus,
+} from '../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   SyncBatchDto,
@@ -258,6 +262,21 @@ export class SyncService {
         if (concurrent) return this.fromMemoryFor(concurrent, mutation, user);
       }
 
+      // Course avec la MÊME opération envoyée en ligne (réponse perdue, puis mise
+      // en file) : l'entité vient d'être créée sous cette clé. Pas un rejet — au
+      // prochain cycle, le handler la RECONNAÎT. Quelle que soit la contrainte
+      // heurtée (clé ou `id` fourni par l'appareil).
+      if (
+        SyncService.isUniqueViolation(error) &&
+        (await handler.existsForKey?.(mutation.clientMutationId))
+      ) {
+        return this.pending(
+          mutation,
+          ErrorCode.SYNC_RETRY_LATER,
+          'Opération en cours d’enregistrement en ligne — à renvoyer',
+        );
+      }
+
       // Toute AUTRE violation d'unicité vient des données du client — typiquement un `id`
       // d'entité déjà utilisé (le client fournit ses UUID, contrat §1). C'est DÉFINITIF :
       // le renvoyer en « réessayer plus tard » gèlerait la file de l'appareil pour toujours.
@@ -304,7 +323,7 @@ export class SyncService {
       `Mutation refusée (${code}) — user ${user.id}, appareil ${mutation.deviceId}, ` +
         `opération ${mutation.operationType} : ${reason}`,
     );
-    return this.memorizeRejection(mutation, user, code, reason);
+    return this.memorizeRejection(mutation, user, code, reason, false);
   }
 
   /// Renvoie le résultat mémorisé — mais SEULEMENT à son propriétaire. Un
@@ -334,26 +353,54 @@ export class SyncService {
 
   /// Mémorise un rejet définitif : un renvoi de la même mutation renverra ce rejet
   /// sans le recalculer. Corriger l'opération côté client = une NOUVELLE mutation.
+  /// `audited` : faux pour un refus d'ACCÈS (rôle, permission) — déjà journalisé
+  /// en `warn`, et un compte pourrait sinon noyer l'Historique de l'admin sous
+  /// des milliers de refus fabriqués (contre-audit tranche B).
   private async memorizeRejection(
     mutation: SyncMutationDto,
     user: AuthenticatedUser,
     code: ErrorCode,
     reason: string,
+    audited = true,
   ): Promise<SyncMutationResultDto> {
     try {
-      await this.prisma.syncMutation.create({
-        data: {
-          clientMutationId: mutation.clientMutationId,
-          userId: user.id,
-          deviceId: mutation.deviceId,
-          operationType: mutation.operationType as unknown as OperationType,
-          payload: mutation.payload as Prisma.InputJsonValue,
-          status: SyncMutationStatus.REJETEE,
-          rejectionCode: code,
-          rejectionReason: reason,
-          deviceTimestamp: mutation.deviceTimestamp,
-        },
-      });
+      // Tracé pour l'admin (règle 7) : une vente ou un mouvement REFUSÉ a pu
+      // avoir lieu physiquement — marchandise sortie, espèces reçues. Seul
+      // l'appareil le voyait, et il peut l'abandonner.
+      await this.prisma.$transaction([
+        this.prisma.syncMutation.create({
+          data: {
+            clientMutationId: mutation.clientMutationId,
+            userId: user.id,
+            deviceId: mutation.deviceId,
+            operationType: mutation.operationType as unknown as OperationType,
+            payload: mutation.payload as Prisma.InputJsonValue,
+            status: SyncMutationStatus.REJETEE,
+            rejectionCode: code,
+            rejectionReason: reason,
+            deviceTimestamp: mutation.deviceTimestamp,
+          },
+        }),
+        ...(audited
+          ? [
+              this.prisma.auditLog.create({
+                data: {
+                  userId: user.id,
+                  action: AuditAction.REJECT,
+                  entityType: 'SyncMutation',
+                  entityId: mutation.clientMutationId,
+                  newValue: {
+                    operationType: mutation.operationType,
+                    code,
+                    reason,
+                    deviceId: mutation.deviceId,
+                    deviceTimestamp: mutation.deviceTimestamp.toISOString(),
+                  },
+                },
+              }),
+            ]
+          : []),
+      ]);
     } catch (error) {
       if (SyncService.isUniqueViolationOn(error, 'clientMutationId')) {
         const concurrent = await this.prisma.syncMutation.findUnique({

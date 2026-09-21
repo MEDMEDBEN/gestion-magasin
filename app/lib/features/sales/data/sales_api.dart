@@ -53,27 +53,34 @@ class SalesApi {
   }
 
   // ── Ventes ──────────────────────────────────────────────────────────────
-  /// Le client n'envoie JAMAIS de prix : produit + quantité (+ remise ADMIN).
-  Future<Sale> createSale({
+  /// Corps d'une vente — le MÊME pour `POST /sales` et pour la file hors-ligne
+  /// (payload `SALE`). Le client n'envoie JAMAIS de prix : produit + quantité ;
+  /// `expectedTotalTtc` est le total encaissé, que le serveur recompare.
+  static Map<String, dynamic> saleBody({
     required String clientMutationId,
+    required String id,
     String? customerId,
+    String? cashSessionId,
     required List<({String productId, String quantity})> lines,
     required int paidAmount,
-    int? expectedTotalTtc,
+    required int expectedTotalTtc,
     String? dueDate,
-  }) {
-    return _post('/sales', {
-      'expectedTotalTtc': ?expectedTotalTtc,
-      'dueDate': ?dueDate,
-      'clientMutationId': clientMutationId,
-      'customerId': ?customerId,
-      'lines': [
-        for (final line in lines)
-          {'productId': line.productId, 'quantity': line.quantity},
-      ],
-      'paidAmount': paidAmount,
-    }, Sale.fromJson);
-  }
+  }) => {
+    'clientMutationId': clientMutationId,
+    'id': id,
+    'customerId': ?customerId,
+    'cashSessionId': ?cashSessionId,
+    'lines': [
+      for (final line in lines)
+        {'productId': line.productId, 'quantity': line.quantity},
+    ],
+    'paidAmount': paidAmount,
+    'expectedTotalTtc': expectedTotalTtc,
+    'dueDate': ?dueDate,
+  };
+
+  Future<Sale> createSale(Map<String, dynamic> body) =>
+      _post('/sales', body, Sale.fromJson);
 
   Future<SalePage> sales({int limit = 50}) {
     return guardApi(() async {

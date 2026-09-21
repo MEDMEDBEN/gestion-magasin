@@ -18,6 +18,7 @@ StatusTone _tone(AuditAction action) => switch (action) {
   AuditAction.validate => StatusTone.ok,
   AuditAction.adjust => StatusTone.warn,
   AuditAction.close => StatusTone.neutral,
+  AuditAction.reject => StatusTone.error,
 };
 
 /// Historique global (spec §24) — ADMIN seul, lecture seule. Qui a fait quoi,

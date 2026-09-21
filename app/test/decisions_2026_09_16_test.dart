@@ -24,14 +24,10 @@ class _RecordingSalesApi extends SalesApi {
   String? dueDate;
 
   @override
-  Future<Sale> createSale({
-    required String clientMutationId,
-    String? customerId,
-    required List<({String productId, String quantity})> lines,
-    required int paidAmount,
-    int? expectedTotalTtc,
-    String? dueDate,
-  }) async {
+  Future<Sale> createSale(Map<String, dynamic> body) async {
+    final clientMutationId = body['clientMutationId'] as String;
+    final paidAmount = body['paidAmount'] as int;
+    final dueDate = body['dueDate'] as String?;
     this.dueDate = dueDate;
     return Sale(
       id: clientMutationId,

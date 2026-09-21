@@ -55,222 +55,250 @@ export class SalesService {
   async create(dto: CreateSaleDto, user: AuthenticatedUser): Promise<SaleDto> {
     // Idempotence (common/idempotency.ts) : un renvoi du même panier rend la
     // vente déjà créée ; même clé avec un autre panier → 409.
-    const replay = async () => {
-      const existing = await this.prisma.sale.findUnique({
-        where: { clientMutationId: dto.clientMutationId },
-        include: SALE_INCLUDE,
-      });
-      if (!existing) return null;
-      // Comparaison en multi-ensembles triés : doublons et remises comptent.
-      const key = (productId: string, quantity: string, discount: number) =>
-        `${productId}|${quantity}|${discount}`;
-      const sorted = (keys: string[]) => [...keys].sort().join(';');
-      const sameCart =
-        existing.paidAmount === dto.paidAmount &&
-        existing.customerId === (dto.customerId ?? null) &&
-        sorted(
-          existing.lines.map((l) =>
-            key(l.productId, formatQuantity(l.quantity), l.discountAmount),
-          ),
-        ) ===
-          sorted(
-            dto.lines.map((l) =>
-              key(
-                l.productId,
-                formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
-                l.discountAmount ?? 0,
-              ),
-            ),
-          );
-      assertSameMutation(existing, user.id, sameCart, {
-        code: ErrorCode.SALE_ALREADY_RECORDED,
-        message:
-          `Vente déjà enregistrée : ${existing.number} (${formatDA(existing.totalTtc)}) — ` +
-          'vérifiez-la avant de refaire une vente',
-      });
-      return this.toDto(this.prisma, existing);
-    };
-
-    return runOnce(replay, () =>
-      this.prisma.$transaction(async (tx) => {
-        const store = await tx.location.findFirst({
-          where: { type: 'MAGASIN', isActive: true },
-        });
-        if (!store) {
-          throw new BusinessException(
-            ErrorCode.CONFLICT,
-            'Aucun magasin actif : vente impossible',
-            HttpStatus.CONFLICT,
-          );
-        }
-
-        const customer = dto.customerId
-          ? await SalesService.lockCustomer(tx, dto.customerId)
-          : null;
-        // Tarif du client s'il est encore actif, sinon le tarif par défaut.
-        const customerTier = customer?.priceTierId
-          ? await tx.priceTier.findFirst({
-              where: { id: customer.priceTierId, isActive: true },
-            })
-          : null;
-        const tier =
-          customerTier ??
-          (await tx.priceTier.findFirst({
-            where: { isDefault: true, isActive: true },
-          }));
-        if (!tier) {
-          throw new BusinessException(
-            ErrorCode.PRICE_NOT_DEFINED,
-            'Aucun tarif par défaut : l’administrateur doit en définir un',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        const canDiscount = user.permissions.includes(
-          PERMISSIONS.SALE_DISCOUNT,
-        );
-        const lines = [];
-        for (const line of dto.lines) {
-          lines.push(
-            await SalesService.priceLine(tx, line, tier.id, canDiscount),
-          );
-        }
-        const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
-        const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
-        const totalTtc = totalHt + totalTax;
-        // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
-        if (
-          totalTtc > MAX_MONEY ||
-          lines.some((l) => l.lineTotalTtc > MAX_MONEY)
-        ) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'Montant de la vente trop élevé',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        if (
-          dto.expectedTotalTtc !== undefined &&
-          dto.expectedTotalTtc !== totalTtc
-        ) {
-          throw new BusinessException(
-            ErrorCode.SALE_TOTAL_CHANGED,
-            `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
-            HttpStatus.CONFLICT,
-          );
-        }
-        if (dto.paidAmount > totalTtc) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
-        const cashSession =
-          dto.paidAmount > 0
-            ? await CashSessionsService.lockOpenSession(tx, {
-                userId: user.id,
-                locationId: store.id,
-              })
-            : null;
-        if (dto.paidAmount > 0 && !cashSession) {
-          throw new BusinessException(
-            ErrorCode.CASH_SESSION_REQUIRED,
-            'Ouvrez votre caisse avant d’encaisser des espèces',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        // Crédit : client identifié, droit `sale.credit`, dans son plafond.
-        const credit = totalTtc - dto.paidAmount;
-        if (credit > 0) {
-          if (!customer) {
-            throw new BusinessException(
-              ErrorCode.CREDIT_LIMIT_EXCEEDED,
-              'Vente non soldée : choisissez le client à qui accorder le crédit',
-              HttpStatus.UNPROCESSABLE_ENTITY,
-            );
-          }
-          if (!user.permissions.includes(PERMISSIONS.SALE_CREDIT)) {
-            throw new BusinessException(
-              ErrorCode.FORBIDDEN_PERMISSION,
-              'Permission requise pour vendre à crédit : sale.credit',
-              HttpStatus.FORBIDDEN,
-            );
-          }
-          const debt = await SalesService.customerDebt(tx, customer.id);
-          if (debt + credit > customer.creditLimit) {
-            throw new BusinessException(
-              ErrorCode.CREDIT_LIMIT_EXCEEDED,
-              `Plafond de crédit dépassé : dette ${formatDA(debt)}, crédit demandé ` +
-                `${formatDA(credit)}, plafond ${formatDA(customer.creditLimit)}`,
-              HttpStatus.UNPROCESSABLE_ENTITY,
-            );
-          }
-        }
-
-        // Échéance vérifiée APRÈS client, droit et plafond (messages plus utiles).
-        const dueDate = SalesService.dueDate(dto.dueDate, credit);
-
-        const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
-        SELECT nextval('sale_ticket_seq') AS value`;
-        const soldAt = new Date();
-        const sale = await tx.sale.create({
-          data: {
-            id: dto.id,
-            clientMutationId: dto.clientMutationId,
-            number: `TK-${localYear(soldAt)}-${String(value).padStart(6, '0')}`,
-            customerId: customer?.id ?? null,
-            userId: user.id,
-            locationId: store.id,
-            cashSessionId: cashSession?.id ?? null,
-            totalHt,
-            totalTax,
-            totalTtc,
-            paidAmount: dto.paidAmount,
-            paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
-            soldAt,
-            dueDate,
-            note: dto.note ?? null,
-            lines: {
-              create: lines.map(({ productId, ...rest }) => ({
-                productId,
-                ...rest,
-              })),
-            },
-          },
-          include: SALE_INCLUDE,
-        });
-
-        // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
-        // Ordre fixe (par produit) : deux paniers A,B / B,A ne s'interbloquent pas.
-        for (const line of [...sale.lines].sort((a, b) =>
-          a.productId.localeCompare(b.productId),
-        )) {
-          await this.ledger.applyMovement(tx, {
-            productId: line.productId,
-            locationId: store.id,
-            quantity: line.quantity.negated(),
-            type: 'VENTE',
-            operationType: 'SALE',
-            operationId: sale.id,
-            userId: user.id,
-          });
-        }
-        if (cashSession) {
-          await CashSessionsService.recordCashSale(tx, cashSession, {
-            userId: user.id,
-            saleId: sale.id,
-            amount: dto.paidAmount,
-          });
-        }
-        // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
-        return this.toDto(tx, sale);
-      }),
+    return runOnce(
+      () => this.replay(this.prisma, dto, user),
+      () => this.prisma.$transaction((tx) => this.createInTx(tx, dto, user)),
     );
+  }
+
+  /// Vente déjà enregistrée sous `dto.clientMutationId`, ou `null`. Même clé
+  /// avec un AUTRE panier → `SALE_ALREADY_RECORDED` (409). Partagée avec la
+  /// synchronisation : une vente créée en ligne dont la réponse s'est perdue est
+  /// RECONNUE quand la même clé revient par la file, jamais refaite.
+  async replay(
+    db: Db,
+    dto: CreateSaleDto,
+    user: AuthenticatedUser,
+  ): Promise<SaleDto | null> {
+    const existing = await db.sale.findUnique({
+      where: { clientMutationId: dto.clientMutationId },
+      include: SALE_INCLUDE,
+    });
+    if (!existing) return null;
+    // Comparaison en multi-ensembles triés : doublons et remises comptent.
+    const key = (productId: string, quantity: string, discount: number) =>
+      `${productId}|${quantity}|${discount}`;
+    const sorted = (keys: string[]) => [...keys].sort().join(';');
+    const sameCart =
+      existing.paidAmount === dto.paidAmount &&
+      existing.customerId === (dto.customerId ?? null) &&
+      sorted(
+        existing.lines.map((l) =>
+          key(l.productId, formatQuantity(l.quantity), l.discountAmount),
+        ),
+      ) ===
+        sorted(
+          dto.lines.map((l) =>
+            key(
+              l.productId,
+              formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
+              l.discountAmount ?? 0,
+            ),
+          ),
+        );
+    assertSameMutation(existing, user.id, sameCart, {
+      code: ErrorCode.SALE_ALREADY_RECORDED,
+      message:
+        `Vente déjà enregistrée : ${existing.number} (${formatDA(existing.totalTtc)}) — ` +
+        'vérifiez-la avant de refaire une vente',
+    });
+    return this.toDto(db, existing);
+  }
+
+  /// Cœur de la vente, dans la transaction de l'appelant (route en ligne ou
+  /// handler de synchronisation) — les deux chemins appliquent les MÊMES règles.
+  /// `soldAt` : instant de la vente (celui de l'appareil pour une vente faite
+  /// hors-ligne, borné par l'appelant).
+  async createInTx(
+    tx: Db,
+    dto: CreateSaleDto,
+    user: AuthenticatedUser,
+    soldAt: Date = new Date(),
+  ): Promise<SaleDto> {
+    const store = await tx.location.findFirst({
+      where: { type: 'MAGASIN', isActive: true },
+    });
+    if (!store) {
+      throw new BusinessException(
+        ErrorCode.CONFLICT,
+        'Aucun magasin actif : vente impossible',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    const customer = dto.customerId
+      ? await SalesService.lockCustomer(tx, dto.customerId)
+      : null;
+    // Tarif du client s'il est encore actif, sinon le tarif par défaut.
+    const customerTier = customer?.priceTierId
+      ? await tx.priceTier.findFirst({
+          where: { id: customer.priceTierId, isActive: true },
+        })
+      : null;
+    const tier =
+      customerTier ??
+      (await tx.priceTier.findFirst({
+        where: { isDefault: true, isActive: true },
+      }));
+    if (!tier) {
+      throw new BusinessException(
+        ErrorCode.PRICE_NOT_DEFINED,
+        'Aucun tarif par défaut : l’administrateur doit en définir un',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const canDiscount = user.permissions.includes(PERMISSIONS.SALE_DISCOUNT);
+    const lines = [];
+    for (const line of dto.lines) {
+      lines.push(await SalesService.priceLine(tx, line, tier.id, canDiscount));
+    }
+    const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
+    const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
+    const totalTtc = totalHt + totalTax;
+    // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
+    if (totalTtc > MAX_MONEY || lines.some((l) => l.lineTotalTtc > MAX_MONEY)) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Montant de la vente trop élevé',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    if (
+      dto.expectedTotalTtc !== undefined &&
+      dto.expectedTotalTtc !== totalTtc
+    ) {
+      throw new BusinessException(
+        ErrorCode.SALE_TOTAL_CHANGED,
+        `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
+        HttpStatus.CONFLICT,
+      );
+    }
+    if (dto.paidAmount > totalTtc) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
+    const cashSession =
+      dto.paidAmount > 0
+        ? await CashSessionsService.lockOpenSession(tx, {
+            userId: user.id,
+            locationId: store.id,
+          })
+        : null;
+    if (dto.paidAmount > 0 && !cashSession) {
+      throw new BusinessException(
+        ErrorCode.CASH_SESSION_REQUIRED,
+        'Ouvrez votre caisse avant d’encaisser des espèces',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    // Les espèces sont entrées dans la caisse que l'appareil connaissait. Si ce
+    // n'est plus la caisse ouverte (clôturée avant la synchronisation), les
+    // imputer à celle-ci fausserait les deux rapports Z (audit sécu tranche B).
+    // Comparaison d'identifiants : aucune horloge d'appareil n'entre en jeu.
+    if (
+      cashSession &&
+      dto.cashSessionId !== undefined &&
+      dto.cashSessionId !== cashSession.id
+    ) {
+      throw new BusinessException(
+        ErrorCode.CASH_SESSION_CLOSED,
+        'La caisse de cette vente a été clôturée avant sa synchronisation : ' +
+          'ses espèces ne peuvent pas entrer dans la caisse actuelle — voir l’administrateur',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // Crédit : client identifié, droit `sale.credit`, dans son plafond.
+    const credit = totalTtc - dto.paidAmount;
+    if (credit > 0) {
+      if (!customer) {
+        throw new BusinessException(
+          ErrorCode.CREDIT_LIMIT_EXCEEDED,
+          'Vente non soldée : choisissez le client à qui accorder le crédit',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      if (!user.permissions.includes(PERMISSIONS.SALE_CREDIT)) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_PERMISSION,
+          'Permission requise pour vendre à crédit : sale.credit',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      const debt = await SalesService.customerDebt(tx, customer.id);
+      if (debt + credit > customer.creditLimit) {
+        throw new BusinessException(
+          ErrorCode.CREDIT_LIMIT_EXCEEDED,
+          `Plafond de crédit dépassé : dette ${formatDA(debt)}, crédit demandé ` +
+            `${formatDA(credit)}, plafond ${formatDA(customer.creditLimit)}`,
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+    }
+
+    // Échéance vérifiée APRÈS client, droit et plafond (messages plus utiles).
+    const dueDate = SalesService.dueDate(dto.dueDate, credit, soldAt);
+
+    const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
+    SELECT nextval('sale_ticket_seq') AS value`;
+    const sale = await tx.sale.create({
+      data: {
+        id: dto.id,
+        clientMutationId: dto.clientMutationId,
+        number: `TK-${localYear(soldAt)}-${String(value).padStart(6, '0')}`,
+        customerId: customer?.id ?? null,
+        userId: user.id,
+        locationId: store.id,
+        cashSessionId: cashSession?.id ?? null,
+        totalHt,
+        totalTax,
+        totalTtc,
+        paidAmount: dto.paidAmount,
+        paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
+        soldAt,
+        dueDate,
+        note: dto.note ?? null,
+        lines: {
+          create: lines.map(({ productId, ...rest }) => ({
+            productId,
+            ...rest,
+          })),
+        },
+      },
+      include: SALE_INCLUDE,
+    });
+
+    // Règle 2 : le stock ne sort que par le journal (anti-négatif compris).
+    // Ordre fixe (par produit) : deux paniers A,B / B,A ne s'interbloquent pas.
+    for (const line of [...sale.lines].sort((a, b) =>
+      a.productId.localeCompare(b.productId),
+    )) {
+      await this.ledger.applyMovement(tx, {
+        productId: line.productId,
+        locationId: store.id,
+        quantity: line.quantity.negated(),
+        type: 'VENTE',
+        operationType: 'SALE',
+        operationId: sale.id,
+        userId: user.id,
+      });
+    }
+    if (cashSession) {
+      await CashSessionsService.recordCashSale(tx, cashSession, {
+        userId: user.id,
+        saleId: sale.id,
+        amount: dto.paidAmount,
+      });
+    }
+    // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
+    return this.toDto(tx, sale);
   }
 
   async findAll(
@@ -526,7 +554,13 @@ export class SalesService {
   /// TOUJOURS recalculée, jamais stockée.
   /// Échéance d'une vente : obligatoire dès qu'il reste du crédit (spec §9,
   /// décision MEDMEDBEN 2026-09-16), jamais dans le passé, interdite sinon.
-  private static dueDate(raw: string | undefined, credit: number): Date | null {
+  /// Échéance jugée au jour de la VENTE (`soldAt`) : une vente à crédit faite
+  /// hors-ligne et synchronisée le lendemain reste valable.
+  private static dueDate(
+    raw: string | undefined,
+    credit: number,
+    soldAt: Date,
+  ): Date | null {
     if (credit <= 0) {
       if (raw !== undefined) {
         throw new BusinessException(
@@ -545,7 +579,7 @@ export class SalesService {
       );
     }
     const date = parseApiDate(raw, 'dueDate');
-    if (raw.length !== 10 || raw < localDate(new Date())) {
+    if (raw.length !== 10 || raw < localDate(soldAt)) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
         'dueDate : date AAAA-MM-JJ, aujourd’hui ou plus tard',
