@@ -146,8 +146,9 @@ défauts trouvés en le remettant en marche :
   « Vente » ni les réceptions. Complétés.
   Captures écrites dans le dossier passé à `--dart-define=CAPTURE_OUT=…`.
 
-**4. `develop` fusionnée dans `main`** après les deux audits verts. À noter : `main` n'avait **jamais
-existé** dans le dépôt — `develop` était la branche par défaut.
+**4. `main` créée et alignée sur `develop`** (commit `7693fbc`), après correction de tous les points
+bloquants des audits. À noter : `main` n'avait **jamais existé** dans le dépôt — `develop` reste la branche
+de travail ET la branche par défaut du dépôt distant.
 
 **Corrections de l'audit sécurité du 2026-09-20** : le bloc `environment:` du service `minio` **vidait**
 `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (`${...}` s'interpole depuis `.env`, jamais depuis un `env_file`, et
