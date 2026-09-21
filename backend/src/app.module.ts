@@ -16,6 +16,7 @@ import { ProductsModule } from './products/products.module';
 import { CustomersModule } from './customers/customers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
+import { InventoryModule } from './inventory/inventory.module';
 import { TransfersModule } from './transfers/transfers.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { SalesModule } from './sales/sales.module';
@@ -47,6 +48,7 @@ import { UsersModule } from './users/users.module';
     PurchasesModule,
     ReceptionsModule,
     TransfersModule,
+    InventoryModule,
     CustomersModule,
     ProductsModule,
     LocationsModule,

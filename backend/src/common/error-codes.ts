@@ -61,6 +61,12 @@ export enum ErrorCode {
   // Catalogue (règle 15)
   BARCODE_ALREADY_USED = 'BARCODE_ALREADY_USED',
 
+  // Inventaire (spec §22)
+  /// Un AUTRE inventaire a déjà corrigé ces produits depuis ce comptage : le
+  /// même écart serait appliqué deux fois. (Une vente ou une réception, elles,
+  /// ne gênent pas : l'ajustement est un delta, il s'y ajoute.)
+  INVENTORY_STALE_COUNT = 'INVENTORY_STALE_COUNT',
+
   // Machines à états
   INVALID_STATE_TRANSITION = 'INVALID_STATE_TRANSITION',
 

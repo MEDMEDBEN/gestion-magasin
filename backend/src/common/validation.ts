@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsUUID, ValidateIf } from 'class-validator';
+import { IsUUID, ValidateIf, ValidationOptions } from 'class-validator';
 
 /// Champ FACULTATIF mais jamais `null` : absent → ignoré ; présent (même `null`)
 /// → validé par les décorateurs suivants.
@@ -20,10 +20,14 @@ export const booleanQuery = ({ value }: { value: unknown }) =>
 /// Même raison que `CanonicalUuidPipe` pour les routes : PostgreSQL retrouve la
 /// ligne quelle que soit la casse, pas une comparaison de chaînes côté service —
 /// `parentId` en majuscules faisait d'une catégorie son propre parent.
-export const IsCanonicalUuid = () =>
+/// `{ each: true }` couvre un TABLEAU d'UUID : chaque élément est mis en
+/// minuscules puis validé, comme un champ simple.
+export const IsCanonicalUuid = (options?: ValidationOptions) =>
   applyDecorators(
-    Transform(({ value }: { value: unknown }) =>
-      typeof value === 'string' ? value.toLowerCase() : value,
-    ),
-    IsUUID(),
+    Transform(({ value }: { value: unknown }) => {
+      const canonical = (item: unknown) =>
+        typeof item === 'string' ? item.toLowerCase() : item;
+      return Array.isArray(value) ? value.map(canonical) : canonical(value);
+    }),
+    IsUUID('all', options),
   );

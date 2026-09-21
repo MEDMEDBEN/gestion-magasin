@@ -22,6 +22,8 @@ import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
+import 'package:gestion_magasin/features/inventory/data/inventory_api.dart';
+import 'package:gestion_magasin/features/inventory/data/inventory_models.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
@@ -502,6 +504,81 @@ class _CaptureTransfersApi extends TransfersApi {
       );
 }
 
+/// Inventaires à toutes les étapes : comptage en cours, écarts à valider, clos.
+class _CaptureInventoryApi extends InventoryApi {
+  _CaptureInventoryApi() : super(Dio());
+
+  static InventoryLine _line(
+    String productId,
+    String theoretical, {
+    String? counted,
+    String difference = '0',
+  }) => InventoryLine(
+    id: 'il-$productId',
+    productId: productId,
+    theoreticalQuantity: Decimal.parse(theoretical),
+    countedQuantity: counted == null ? null : Decimal.parse(counted),
+    difference: Decimal.parse(difference),
+    state: difference == '0'
+        ? InventoryLineState.matching
+        : InventoryLineState.gap,
+  );
+
+  @override
+  Future<InventoryPage> list({String? status, int limit = 100}) async =>
+      InventoryPage(
+        data: [
+          Inventory(
+            id: 'inv3',
+            number: 'INV-2026-00003',
+            status: InventoryStatus.inProgress,
+            type: InventoryType.cycle,
+            locationId: 'depot',
+            zone: 'Zone A — câbles',
+            createdById: 'me',
+            startedAt: DateTime(2026, 9, 21, 8, 30),
+            updatedAt: DateTime(2026, 9, 21, 8, 30),
+            lines: [
+              _line('p1', '120'),
+              _line('p2', '45', counted: '45'),
+              _line('p3', '8'),
+            ],
+          ),
+          Inventory(
+            id: 'inv2',
+            number: 'INV-2026-00002',
+            status: InventoryStatus.completed,
+            type: InventoryType.cycle,
+            locationId: 'depot',
+            zone: 'Zone B — disjoncteurs',
+            createdById: 'me',
+            startedAt: DateTime(2026, 9, 20, 9, 0),
+            completedAt: DateTime(2026, 9, 20, 11, 15),
+            updatedAt: DateTime(2026, 9, 20, 11, 15),
+            lines: [
+              _line('p1', '120', counted: '117.5', difference: '-2.5'),
+              _line('p4', '30', counted: '30'),
+            ],
+          ),
+          Inventory(
+            id: 'inv1',
+            number: 'INV-2026-00001',
+            status: InventoryStatus.completed,
+            type: InventoryType.full,
+            locationId: 'magasin',
+            createdById: 'me',
+            validatedById: 'me',
+            startedAt: DateTime(2026, 9, 18, 7, 45),
+            completedAt: DateTime(2026, 9, 18, 12, 0),
+            validatedAt: DateTime(2026, 9, 18, 14, 20),
+            updatedAt: DateTime(2026, 9, 18, 14, 20),
+            lines: [_line('p2', '45', counted: '45')],
+          ),
+        ],
+        meta: const PageMeta(page: 1, limit: 100, total: 3),
+      );
+}
+
 class _CaptureSalesApi extends SalesApi {
   _CaptureSalesApi() : super(Dio());
 
@@ -709,6 +786,7 @@ Future<void> _capture(
         purchasesApiProvider.overrideWithValue(_CapturePurchasesApi()),
         receptionsApiProvider.overrideWithValue(_CaptureReceptionsApi()),
         transfersApiProvider.overrideWithValue(_CaptureTransfersApi()),
+        inventoryApiProvider.overrideWithValue(_CaptureInventoryApi()),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -1266,6 +1344,51 @@ void main() {
         await t.tap(find.textContaining('TRF-2026-00003'));
         await t.pumpAndSettle();
         await t.tap(find.text('Corriger la préparation'));
+      },
+    ),
+  );
+  testWidgets(
+    '36 inventaire desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '36_inventaire_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.text('Inventaire')),
+    ),
+  );
+  testWidgets(
+    '37 comptage d’inventaire mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '37_comptage_inventaire_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await _viaMore(t, 'Inventaire');
+        await t.pumpAndSettle();
+        await t.tap(find.text('INV-2026-00003'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Reprendre le comptage'));
+      },
+    ),
+  );
+  testWidgets(
+    '38 écarts d’inventaire à valider desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '38_ecarts_inventaire_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Inventaire'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('INV-2026-00002'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Voir les écarts'));
       },
     ),
   );

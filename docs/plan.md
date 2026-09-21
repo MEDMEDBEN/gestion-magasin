@@ -248,6 +248,20 @@ Traçabilité / système
 - [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `?status=constructor` rendait 500 → liste blanche réelle + contre-épreuve)_
 - [ ] Tests manuels effectués par un humain
 
+### Feature P0 n°9 : Inventaire (comptage, écarts, ajustements) + inventaire tournant
+- [x] Schéma DB validé _(migration ADDITIVE `20260921013306_document_type_inventaire` : `DocumentType.INVENTAIRE`)_
+- [x] Matrice de permissions CRUD par rôle définie _(lancer/compter : ADMIN+MAGASINIER `inventory.create` ; VALIDER : ADMIN seul `inventory.validate` ; vendeur fermé)_
+- [x] Endpoints API implémentés _(POST /inventories, GET /inventories, GET /inventories/:id, POST /:id/count, POST /:id/validate ; stub 501 retiré)_
+- [x] Validation des entrées (class-validator) en place _(quantités décimales, UUID canoniques en tableau, tableaux bornés, `clientMutationId` obligatoire, statut et tri en liste blanche)_
+- [x] Tests unitaires backend passent _(81 — 2026-09-21)_
+- [x] Tests d'intégration backend passent _(282 e2e dont 18 inventaire, un seul passage — 2026-09-21)_
+- [x] UI desktop implémentée _(captures 36, 38)_
+- [x] UI mobile implémentée _(capture 37)_
+- [x] Sync offline gérée si applicable _(non : l'ajustement pose du stock, il reste en ligne — P0 #12)_
+- [x] Revue par subagent `reviewer` _(2026-09-21 : PAS OK, 3 bloquants — garde-fou fondé sur une prémisse fausse, impasse d'état, règle tenue par l'UI seule → tous corrigés)_
+- [x] Audit par subagent `security-reviewer` _(2026-09-21 : CONFORME en sécurité ; 2 importants hors sécurité — impasse + produit désactivé non régularisable → corrigés)_
+- [ ] Tests manuels effectués par un humain
+
 ## Checklist par feature (à copier dans tasks.md pour chaque feature)
 
 ```

@@ -2,146 +2,137 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
+  Ip,
   Param,
-  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
-  ApiProperty,
-  ApiPropertyOptional,
   ApiTags,
 } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
-  ArrayNotEmpty,
-  IsArray,
-  IsEnum,
-  IsNumberString,
-  IsOptional,
-  IsString,
-  IsUUID,
-  ValidateNested,
-} from 'class-validator';
-import { RequirePermissions, RoleCode, Roles } from '../common/auth.decorators';
-import { PaginationQueryDto } from '../common/dto/pagination.dto';
-import { notImplemented } from '../common/not-implemented';
+  AuthenticatedUser,
+  CurrentUser,
+  RequirePermissions,
+  RoleCode,
+  Roles,
+} from '../common/auth.decorators';
+import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PERMISSIONS } from '../common/permissions';
+import {
+  CreateInventoryDto,
+  InventoryDto,
+  InventoryListDto,
+  InventoryListQueryDto,
+  SubmitCountDto,
+} from './dto/inventory.dto';
+import { InventoryService } from './inventory.service';
 
-export enum InventoryTypeDto {
-  COMPLET = 'COMPLET',
-  TOURNANT = 'TOURNANT',
-}
-
-export class CreateInventoryDto {
-  @ApiPropertyOptional() @IsUUID() @IsOptional() id?: string;
-  @ApiProperty() @IsUUID() locationId!: string;
-  @ApiProperty({ enum: InventoryTypeDto, default: InventoryTypeDto.COMPLET })
-  @IsEnum(InventoryTypeDto)
-  type!: InventoryTypeDto;
-  @ApiPropertyOptional({
-    description: 'Zone comptée pour un inventaire tournant.',
-  })
-  @IsString()
-  @IsOptional()
-  zone?: string;
-  @ApiPropertyOptional() @IsUUID() @IsOptional() clientMutationId?: string;
-}
-
-export class CountLineDto {
-  @ApiProperty() @IsUUID() productId!: string;
-  @ApiProperty({
-    example: '47.500',
-    description: 'Quantité physiquement comptée.',
-  })
-  @IsNumberString()
-  countedQuantity!: string;
-}
-
-export class SubmitCountDto {
-  @ApiProperty({ type: [CountLineDto] })
-  @IsArray()
-  @ArrayNotEmpty()
-  @ValidateNested({ each: true })
-  @Type(() => CountLineDto)
-  lines!: CountLineDto[];
-}
-
-export class InventoryDto {
-  @ApiProperty() id!: string;
-  @ApiProperty() number!: string;
-  @ApiProperty({ example: 'EN_COURS', description: 'EN_COURS → TERMINE' })
-  status!: string;
-  @ApiProperty({ enum: InventoryTypeDto }) type!: InventoryTypeDto;
-  @ApiProperty({ nullable: true }) validatedAt!: Date | null;
-}
-
-export class InventoryLineDto {
-  @ApiProperty() productId!: string;
-  @ApiProperty({ example: '50.000' }) theoreticalQuantity!: string;
-  @ApiProperty({ example: '47.500', nullable: true }) countedQuantity!:
-    string | null;
-  @ApiProperty({ example: '-2.500', description: 'compté − théorique' })
-  difference!: string;
-  @ApiProperty({ example: 'ECART', description: 'CONFORME | ECART' })
-  state!: string;
-}
-
-/// CONTRAT FIGÉ — implémentation avec la feature P0 n°9 « Inventaire ».
 @ApiTags('Inventaire')
 @ApiBearerAuth()
 @Controller('inventories')
 export class InventoryController {
+  constructor(private readonly inventories: InventoryService) {}
+
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
   @Post()
   @ApiOperation({
     summary: 'Lance un inventaire (complet ou tournant)',
-    description: 'Fige les quantités théoriques au moment du lancement.',
+    description:
+      'Crée la feuille de comptage avec le stock du moment. AUCUN mouvement de ' +
+      'stock. Un COMPLET prend tout ce que le lieu porte, un TOURNANT la liste ' +
+      '`productIds` annoncée. Le théorique de chaque ligne est RELU au comptage.',
   })
-  @ApiOkResponse({ type: InventoryDto })
-  create(@Body() _dto: CreateInventoryDto): Promise<InventoryDto> {
-    return notImplemented('Inventaire');
+  @ApiCreatedResponse({ type: InventoryDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  create(
+    @Body() dto: CreateInventoryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<InventoryDto> {
+    return this.inventories.create(dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
   @Get()
-  @ApiOperation({ summary: 'Liste paginée des inventaires' })
-  @ApiOkResponse({ type: [InventoryDto] })
-  findAll(@Query() _query: PaginationQueryDto): Promise<InventoryDto[]> {
-    return notImplemented('Inventaire');
+  @ApiOperation({
+    summary: 'Liste paginée des inventaires (filtres statut, à valider)',
+  })
+  @ApiOkResponse({ type: InventoryListDto })
+  findAll(@Query() query: InventoryListQueryDto): Promise<InventoryListDto> {
+    return this.inventories.findAll(query);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
+  @Get(':id')
+  @ApiOperation({ summary: 'Détail d’un inventaire et de ses écarts' })
+  @ApiOkResponse({ type: InventoryDto })
+  findOne(@Param('id', CanonicalUuidPipe) id: string): Promise<InventoryDto> {
+    return this.inventories.findOne(id);
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
   @Post(':id/count')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Saisit le comptage physique',
     description:
-      'Calcule l’écart par ligne. AUCUN mouvement de stock à cette étape.',
+      'Calcule l’écart par ligne (compté − théorique relu à cet instant). ' +
+      'AUCUN mouvement de stock à cette étape. `done: false` garde le comptage ' +
+      'ouvert pour une reprise ; `done: true` le clôt et ouvre la validation, ' +
+      'et exige alors que TOUTES les lignes soient comptées.',
   })
-  @ApiOkResponse({ type: [InventoryLineDto] })
+  @ApiOkResponse({ type: InventoryDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
   submitCount(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: SubmitCountDto,
-  ): Promise<InventoryLineDto[]> {
-    return notImplemented('Inventaire');
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: SubmitCountDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<InventoryDto> {
+    return this.inventories.submitCount(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
   @Roles(RoleCode.ADMIN)
   @RequirePermissions(PERMISSIONS.INVENTORY_VALIDATE)
   @Post(':id/validate')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Valide les ajustements (ADMIN SEUL)',
     description:
-      'Seule étape qui touche le stock : un mouvement AJUSTEMENT_INVENTAIRE par écart.',
+      'Seule étape qui touche le stock : un mouvement AJUSTEMENT_INVENTAIRE ' +
+      'par écart, en DELTA. Une vente survenue depuis le comptage ne gêne pas — ' +
+      'le delta s’y ajoute au lieu de l’écraser. Seule la double correction du ' +
+      'même écart par un AUTRE inventaire est refusée (`INVENTORY_STALE_COUNT`).',
   })
   @ApiOkResponse({ type: InventoryDto })
-  validate(@Param('id', ParseUUIDPipe) _id: string): Promise<InventoryDto> {
-    return notImplemented('Inventaire');
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  validate(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<InventoryDto> {
+    return this.inventories.validate(id, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 }

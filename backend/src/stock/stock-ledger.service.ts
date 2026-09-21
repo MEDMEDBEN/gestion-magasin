@@ -97,11 +97,20 @@ export class StockLedgerService {
     // toujours, sans chemin de régularisation (aucune perte ne se déclare en
     // transit). Bornée à `TRANSFER` pour qu'une future opération sur le transit
     // (ajustement d'inventaire…) n'en hérite pas en silence.
+    //
+    // Et, MÊME raison, les RÉGULARISATIONS : un ajustement d'inventaire ou une
+    // perte/casse constatent ce qui n'est plus là. Les refuser sur un produit
+    // qu'on vient de désactiver gèlerait son stock résiduel pour toujours — il
+    // n'existe aucun autre chemin pour le solder (invariant 4 de CONVENTIONS :
+    // une régularisation ne doit jamais être bloquée par une désactivation).
+    const regularizing =
+      input.operationType === 'INVENTORY' || input.operationType === 'MANUAL';
     const finishingTransfer =
       location.type === 'TRANSIT' && input.operationType === 'TRANSFER';
     if (
       !product.isActive &&
       input.quantity.isNegative() &&
+      !regularizing &&
       !finishingTransfer
     ) {
       throw new BusinessException(

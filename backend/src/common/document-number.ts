@@ -30,7 +30,12 @@ export function localDate(date: Date): string {
 export async function nextDocumentNumber(
   tx: Db,
   documentType:
-    'FACTURE' | 'DEVIS' | 'BON_COMMANDE' | 'TRANSFERT' | 'RECEPTION',
+    | 'FACTURE'
+    | 'DEVIS'
+    | 'BON_COMMANDE'
+    | 'TRANSFERT'
+    | 'RECEPTION'
+    | 'INVENTAIRE',
   prefix: string,
   digits: number,
   year = localYear(new Date()),

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { InventoryController } from '../inventory/inventory.controller';
 import {
   AuditController,
   PlanningController,
@@ -9,6 +8,6 @@ import {
 /// implémentations livrées feature par feature (ordre dans docs/plan.md).
 /// Chaque route répond 501 + `NOT_IMPLEMENTED` tant que sa feature n'est pas faite.
 @Module({
-  controllers: [InventoryController, PlanningController, AuditController],
+  controllers: [PlanningController, AuditController],
 })
 export class ApiContractModule {}

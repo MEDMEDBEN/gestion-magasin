@@ -108,6 +108,7 @@ enum DocumentType {
   BON_COMMANDE
   TRANSFERT
   RECEPTION
+  INVENTAIRE
 }
 
 enum CashSessionStatus {

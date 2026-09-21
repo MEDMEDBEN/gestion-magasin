@@ -188,6 +188,111 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P0 #9 INVENTAIRE — CODE LIVRÉ, AUDITS EN COURS (2026-09-21 · **MEDMEDBEN**)
+Le stub 501 de l'inventaire est remplacé par la vraie feature (`backend/src/inventory/`,
+`app/lib/features/inventory/`). Spec §22 : « comparer théorique ↔ physique ».
+
+**Migration ADDITIVE `20260921013306_document_type_inventaire`** : `ALTER TYPE "DocumentType" ADD VALUE
+'INVENTAIRE'` (numérotation `INV-AAAA-NNNNN` par le générateur unique). Rien d'autre à changer — le schéma
+Phase 0 portait déjà `Inventory` + `InventoryLine` au complet.
+
+**Trois temps, et UN SEUL touche le stock** :
+1. **lancement** : les lignes sont créées, le théorique figé — c'est la feuille de comptage. Aucun mouvement.
+2. **comptage** : le physique est saisi, reprenable (`done: false` garde EN_COURS, `done: true` clôt en
+   TERMINE). Le théorique de la ligne est **RELU à cet instant** : c'est ce que le système croyait quand le
+   compteur avait le produit en main, donc le seul théorique honnête pour l'écart. Aucun mouvement.
+3. **validation (ADMIN SEUL)** : un mouvement `AJUSTEMENT_INVENTAIRE` par écart, **en DELTA** (règle 2 :
+   jamais une quantité absolue). Le magasinier compte, il ne valide jamais — éprouvé par un 403.
+
+**`INVENTORY_STALE_COUNT` — je m'étais trompé, les deux audits l'ont démonté.** J'avais refusé de valider
+dès qu'une VENTE avait bougé le stock depuis le comptage, « pour ne pas l'écraser ». C'était faux : comme
+l'ajustement est un **delta**, il ne peut rien écraser. Théorique 50, compté 47 → −3 ; une vente de 5 laisse
+45 ; appliquer −3 donne **42**, exactement la vérité physique (47 comptés − 5 vendus). Pire, mon refus
+créait une **impasse** : l'inventaire n'était plus ni validable (409) ni recomptable (un TERMINE ne se
+recompte pas), et le message ordonnait un recomptage que l'API interdisait. Dans un magasin qui vend toute
+la journée, c'était le cas NORMAL, pas le cas rare.
+La garde est donc **restreinte à ce qu'elle protège vraiment** : un AUTRE inventaire a déjà corrigé ces
+produits depuis ce comptage (deux inventaires qui se chevauchent appliqueraient deux fois le même écart).
+Une vente ou une réception ne bloquent plus rien. Deux tests : la vente qui passe et donne 42, la double
+correction refusée.
+
+**Routes** (contrat 501 retiré, `InventoryModule` déclaré) : `POST /inventories` · `GET /inventories`
+(filtres `status`, `pendingValidation`) · `GET /inventories/:id` · `POST /:id/count` · `POST /:id/validate`.
+
+**Trois écarts assumés par rapport au contrat figé**, chacun pour une raison :
+1. **`GET /inventories/:id` ajouté** : complète la lecture du contrat (liste seule). L'app ne s'en sert pas
+   aujourd'hui — l'écran travaille sur l'objet de la liste, qui porte déjà les lignes.
+2. **`SubmitCountDto.done`** : sans lui, un comptage ne pouvait jamais être déclaré terminé et la validation
+   n'avait aucune porte d'entrée. Même motif que `prepare` des transferts.
+3. **`CreateInventoryDto.productIds`** : un inventaire TOURNANT doit figer un théorique, donc connaître son
+   périmètre au lancement. Aucun lien produit↔zone n'existe dans le schéma ; la liste explicite est la seule
+   option qui n'invente rien. `zone` reste le libellé libre que le schéma prévoyait. COMPLET les refuse.
+
+**Garde-fous, tous testés** : verrou `lockInventory` point d'entrée UNIQUE de toute écriture ; on n'inventorie
+ni le transit ni une position (MAGASIN/DEPOT seuls) ; un produit étranger à l'inventaire est refusé ; un
+inventaire TERMINE ne se recompte plus ; la validation exige TERMINE ; rejouée elle rend l'inventaire déjà
+validé (aucun second ajustement) ; `clientMutationId` obligatoire au lancement ; tri et statut en liste
+blanche (`constructor`/`toString` compris, cf. le défaut trouvé en P0 #8) ; chaque étape auditée
+(CREATE → ADJUST → VALIDATE), la validation traçant le nombre de lignes ajustées.
+
+**Audits P0 #9 (2026-09-21)** — `reviewer` : **PAS OK** (3 bloquants) · `security-reviewer` : **CONFORME**
+sur le périmètre sécurité (0 critique, 0 important) mais **NON CONFORME** global (2 importants). Les deux
+convergeaient ; tout est corrigé :
+- **Bloquant/important : le garde-fou périmé et son impasse** → voir ci-dessus. Justifications, Swagger,
+  message d'erreur, code d'erreur et commentaire de test réécrits : ils décrivaient une protection qui
+  n'existait pas.
+- **Important : un produit DÉSACTIVÉ portant du stock rendait l'inventaire entier non validable.** Le
+  journal refuse toute sortie sur un produit inactif ; un écart négatif tombait dessus, et comme tout se
+  joue dans une transaction, plus rien ne passait — le stock résiduel était gelé pour toujours, aucun autre
+  chemin ne le soldant. Corrigé **de façon généralisée** dans `StockLedgerService` (CONVENTIONS règle 1) :
+  les RÉGULARISATIONS (`INVENTORY` et `MANUAL`) ne sont plus bloquées par une désactivation — la
+  déclaration de perte/casse souffrait du même défaut, elle est réparée du même coup. C'est exactement ce
+  qu'exige l'invariant 4 (« testé avec l'entité désactivée »).
+- **Bloquant : une règle tenue UNIQUEMENT par l'UI** (règle 1). L'écran refusait de terminer un comptage
+  incomplet, le serveur l'acceptait : un inventaire pouvait finir « Ajusté » avec 499 lignes jamais comptées.
+  Le serveur refuse désormais `done: true` tant qu'une ligne n'a pas de quantité.
+- Ménage demandé par la revue : `pendingValidation` (jamais appelé, jamais testé, et il écrasait
+  silencieusement `status`) et `CountLineDto.note` (mort de bout en bout) **supprimés** ; action d'audit du
+  comptage `ADJUST` → `UPDATE` (il n'ajuste rien, le journal se lisait à l'envers) ; garde `completedAt`
+  nul passée en fail-closed ; motif de quantité du DTO commenté (il refuse le négatif à dessein, ne pas le
+  « factoriser ») ; tests ajoutés pour le produit dupliqué, l'état vide et l'état erreur de l'écran, et le
+  libellé « Reprendre le comptage ».
+- Justification corrigée : `GET /inventories/:id` n'est PAS appelé par l'app (l'écran travaille sur l'objet
+  de la liste, qui porte déjà les lignes) — la route reste, gardée et testée, mais ce n'était pas la raison.
+- **Point laissé ouvert, assumé** : le masquage du théorique avant comptage est **cosmétique**. L'API le
+  renvoie sur toutes les lignes, et le magasinier a de toute façon accès à l'écran Stock. C'est un
+  garde-fou d'ergonomie, pas de sécurité. À trancher si tu veux un comptage réellement aveugle.
+
+**Contre-épreuves réellement exécutées** :
+- verrou retiré → « deux validations SIMULTANÉES » applique l'ajustement **deux fois** (stock à 38 au lieu
+  de 44) ;
+- exception de régularisation retirée → « produit DÉSACTIVÉ » échoue (stock gelé) ;
+- garde du comptage incomplet retirée → « comptage INCOMPLET » échoue.
+
+**App** — `features/inventory/` : destination « Inventaire » (ADMIN|MAGASINIER + `inventory.create`) ; liste
+avec avancement puis écarts (« 1 écart(s) sur 2 produit(s) · tournant · Zone B »), badges **En cours /
+À valider / Ajusté** ; lancement (lieu, type complet/tournant, zone, produits cochés) ; comptage reprenable.
+**Choix d'écran assumé** : le théorique n'est PAS pré-rempli ni affiché avant le premier comptage — afficher
+la réponse attendue est le meilleur moyen d'obtenir un comptage complaisant. Il apparaît ensuite, à côté de
+l'écart. La validation demande une confirmation qui annonce l'effet réel (« le stock sera corrigé d'autant,
+chaque correction laissera un mouvement daté à ton nom »). Captures **36** (liste desktop), **37** (comptage
+mobile), **38** (écarts desktop).
+
+**Preuve finale (2026-09-21, après audits)** : backend `lint:check` **0** · **81** unit · **282** e2e
+(20 suites, **un seul passage**) dont **18** inventaire ; app `flutter analyze` propre · **+240 ~38** dont
+**13** inventaire · **38** captures. Le test « contrat figé → 501 » visait `/api/inventories` : reporté sur
+`/api/planning-tasks`.
+
+**Non fait, tracé** : `InventoryLine.note` est alimentée par le comptage mais aucun écran ne l'affiche ;
+l'inventaire est **en ligne uniquement** (pas de handler de sync — P0 #12) ; pas d'export PDF/Excel des
+écarts (P1 n°21) ; aucun statut d'abandon (la machine à états figée n'en prévoit pas : un inventaire
+délaissé reste EN_COURS).
+
+**Relevé par l'audit sécurité, HORS feature, à toi de trancher** : `.claude/settings.json` autorise
+`Bash(cp .env.example .env)` et `Bash(cp .env.minio-root.example .env.minio-root)` — deux commandes qui
+**écrasent sans confirmation un `.env` local renseigné**. Les variantes `*.reviewtmp` suffisaient. Je n'y
+touche pas : ce sont tes garde-fous, et le harnais m'interdit de modifier mes propres permissions.
+
 ### 🚧 P0 #8 TRANSFERTS MAGASIN ↔ DÉPÔT — BACKEND LIVRÉ (2026-09-21 · **MEDMEDBEN**)
 Le stub 501 des transferts est remplacé par la vraie feature (`backend/src/transfers/`). **Aucune migration** :
 le schéma Phase 0 portait déjà `Transfer` + `TransferLine` au complet (y compris `shippedQuantity`).

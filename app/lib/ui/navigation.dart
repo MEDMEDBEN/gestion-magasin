@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
+import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
@@ -80,6 +81,15 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.clipboardList,
       label: 'Achats',
       builder: (context, user) => PurchasesScreen(user: user),
+    ),
+  // `/inventories` : ADMIN|MAGASINIER + inventory.create (la VALIDATION des
+  // ajustements reste l'admin seul, vérifiée par le serveur).
+  if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+      user.can('inventory.create'))
+    AppDestination(
+      icon: LucideIcons.clipboardCheck,
+      label: 'Inventaire',
+      builder: (context, user) => InventoryScreen(user: user),
     ),
   // `/suppliers` : ADMIN|MAGASINIER + supplier.read (fermé au vendeur).
   if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
