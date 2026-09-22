@@ -273,14 +273,14 @@ class TransfersScreen extends ConsumerWidget {
 
     final actions = ref.read(transfersActionsProvider);
     try {
-      final updated = await switch (action) {
+      final outcome = await switch (action) {
         'accept' => actions.accept(transfer.id),
         'ship' => actions.ship(transfer.id),
         'refuse' => actions.cancel(transfer.id, refuse: true),
         _ => actions.cancel(transfer.id, refuse: false),
       };
       if (context.mounted) {
-        _snack(context, '${updated.number} : ${updated.status.label}.');
+        _snack(context, transferOutcomeText(outcome));
       }
     } on ApiException catch (error) {
       // État périmé (un collègue est passé avant) : on relit la liste.

@@ -113,20 +113,10 @@ class SalesApi {
     }, Customer.fromJson);
   }
 
-  Future<void> payCustomer({
-    required String clientMutationId,
-    required String customerId,
-    required int amount,
-  }) {
+  /// Corps : le MÊME en ligne et dans la file (`CUSTOMER_PAYMENT`).
+  Future<void> payCustomer(Map<String, dynamic> body) {
     return guardApi(() async {
-      await _dio.post<Object?>(
-        '/payments/customer',
-        data: {
-          'clientMutationId': clientMutationId,
-          'customerId': customerId,
-          'amount': amount,
-        },
-      );
+      await _dio.post<Object?>('/payments/customer', data: body);
     });
   }
 

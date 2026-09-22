@@ -193,6 +193,16 @@ export class CreateCustomerPaymentDto {
   @IsOptional()
   saleId?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Caisse dans laquelle les espèces sont entrées, telle que l’appareil la ' +
+      'connaissait. Si présente, elle doit être la caisse OUVERTE de celui qui ' +
+      'encaisse (sinon `CASH_SESSION_CLOSED`). Obligatoire hors-ligne.',
+  })
+  @IsCanonicalUuid()
+  @IsOptional()
+  cashSessionId?: string;
+
   @ApiProperty({ example: 20000, description: 'Montant en centimes.' })
   @IsInt()
   @Min(1)

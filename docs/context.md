@@ -92,6 +92,32 @@ La vente hors-ligne est autorisée (décision produit), mais :
 - Rejets possibles : caisse déjà ouverte (`CASH_SESSION_ALREADY_OPEN`), clôture d'une caisse d'autrui
   (introuvable) ou déjà clôturée — tous tracés dans l'Historique.
 
+## 9. Transferts et règlements clients hors-ligne (P0 #12 tranche E, 2026-09-22)
+- **Règlement client** (`CUSTOMER_PAYMENT`) : corps de `POST /payments/customer` + `cashSessionId`
+  OBLIGATOIRE (mêmes règles que la vente en espèces) ; dette et reste dû rejugés AU SYNC ; relu sous le verrou
+  du client (un règlement déjà fait en ligne est reconnu, jamais refusé comme « supérieur à la dette »).
+- **Transfert** (`TRANSFER`) : une étape par mutation, champ `action` (`REQUEST` = corps de la demande ;
+  `ACCEPT`/`SHIP` sans corps ; `PREPARE`/`RECEIVE`/`CLOSE` = corps de leur route) + `transferId`. Droits
+  contrôlés PAR ÉTAPE, identiques aux routes. Une étape dont l'état cible est déjà atteint (faite en ligne,
+  réponse perdue) est reconnue sous le verrou du transfert. Une étape ne passe jamais devant une étape de
+  transfert encore en file sur l'appareil.
+- **Comptage d'inventaire : reste EN LIGNE** (décision d'implémentation après audit, 2026-09-22). Un comptage
+  mis en file serait comparé à un théorique que le serveur ne sait pas dater : relu au sync, les mouvements
+  survenus entre-temps créent un écart fantôme ; relu « à l'heure de l'appareil », l'heure est falsifiable
+  (masquer un vol) et les mouvements hors-ligne du même appareil portent l'heure de leur synchro (écart
+  fantôme appliqué deux fois à la validation). Hors-ligne propre = horodatage d'opération sur chaque
+  mouvement + contrôle par l'admin : à décider avec l'inventaire mobile (P1 n°14).
+- Une étape de transfert « déjà faite » n'est reconnue que si elle l'a été par le MÊME membre (réponse perdue) ;
+  faite par un autre, elle est REFUSÉE (tracée). Une PRÉPARATION se réapplique tant que le transfert est
+  préparable (correction). Une CLÔTURE n'est jamais reconnue (le transfert ne garde pas qui l'a close) : déjà
+  close, elle est refusée ; la règle auteur/dépôt est vérifiée avant.
+- Les dates d'étape d'un transfert (acceptation, expédition, réception, refus) sont celles de la SYNCHRO,
+  comme ses mouvements de stock. Une étape ne passe jamais devant une étape de transfert encore en file sur
+  l'appareil (prudent : une seule étape bloquée en file fait passer toutes les suivantes par la file).
+- Tout refus levé pendant l'application d'une mutation est audité (`REJECT`), refus de droits MÉTIER compris
+  (vente à crédit sans `sale.credit`, réception hors commande) ; seuls les refus d'accès du moteur (rôle et
+  permission de l'opération) ne le sont pas.
+
 ---
 
 # Bornes de données offline (mobile & desktop)

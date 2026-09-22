@@ -471,18 +471,37 @@ class SalesActions {
   /// Clé d'idempotence gardée par intention (`core/mutation_keys.dart`) : un
   /// nouvel essai après coupure ou délai dépassé
   /// réutilise le même id et le serveur n'efface pas la dette deux fois.
-  Future<void> payCustomer(String customerId, int amount) async {
-    await runMoneyMutation(
+  ///
+  /// Sans réseau, le règlement part dans la file : il porte la caisse où les
+  /// espèces sont entrées (comme la vente) et le serveur le rejuge au sync (dette
+  /// peut-être déjà réglée entre-temps) — jamais présenté comme définitif.
+  Future<WriteOutcome<void>> payCustomer(String customerId, int amount) async {
+    final cash = _ref.read(currentCashSessionProvider).value;
+    if (cash == null) {
+      throw const ApiException(
+        statusCode: 409,
+        code: ErrorCodes.cashSessionRequired,
+        message: 'Ouvrez la caisse avant d’encaisser un règlement',
+      );
+    }
+    final outcome = await writeOnlineOrQueue<void>(
       _ref,
-      'customer-payment:$customerId',
-      (key) => _api.payCustomer(
-        clientMutationId: key,
-        customerId: customerId,
-        amount: amount,
-      ),
+      intent: 'customer-payment:$customerId',
+      operationType: 'CUSTOMER_PAYMENT',
+      payload: (key) => {
+        'clientMutationId': key,
+        'id': key,
+        'customerId': customerId,
+        'amount': amount,
+        'cashSessionId': cash.id,
+      },
+      online: _api.payCustomer,
+      // Caisse encore en file : le règlement passe APRÈS son ouverture.
+      queueOnly: cash.status == cashPendingSync,
     );
     _ref.invalidate(customerSearchProvider);
     _ref.invalidate(currentCashSessionProvider);
+    return outcome;
   }
 }
 

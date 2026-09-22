@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
+import { CustomersModule } from '../customers/customers.module';
 import { ReceptionsModule } from '../receptions/receptions.module';
 import { SalesModule } from '../sales/sales.module';
 import { StockModule } from '../stock/stock.module';
+import { TransfersModule } from '../transfers/transfers.module';
 import { CashSessionHandler } from './handlers/cash-session.handler';
+import { CustomerPaymentHandler } from './handlers/customer-payment.handler';
 import { ReceptionHandler } from './handlers/reception.handler';
 import { SaleHandler } from './handlers/sale.handler';
+import { TransferHandler } from './handlers/transfer.handler';
 import { StockLossHandler } from './handlers/stock-loss.handler';
 import { SyncController } from './sync.controller';
 import {
@@ -17,7 +21,13 @@ import { SyncService } from './sync.service';
 /// Ajouter une opération synchronisable = écrire un handler et l'inscrire ci-dessous —
 /// le moteur (`SyncService`) n'a pas à être modifié.
 @Module({
-  imports: [StockModule, SalesModule, ReceptionsModule],
+  imports: [
+    StockModule,
+    SalesModule,
+    ReceptionsModule,
+    CustomersModule,
+    TransfersModule,
+  ],
   controllers: [SyncController],
   providers: [
     SyncService,
@@ -25,6 +35,8 @@ import { SyncService } from './sync.service';
     SaleHandler,
     CashSessionHandler,
     ReceptionHandler,
+    CustomerPaymentHandler,
+    TransferHandler,
     {
       provide: SYNC_MUTATION_HANDLERS,
       useFactory: (...handlers: SyncMutationHandler[]) => handlers,
@@ -33,6 +45,8 @@ import { SyncService } from './sync.service';
         SaleHandler,
         CashSessionHandler,
         ReceptionHandler,
+        CustomerPaymentHandler,
+        TransferHandler,
       ],
     },
   ],

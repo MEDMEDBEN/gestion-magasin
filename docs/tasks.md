@@ -205,7 +205,7 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 - [x] **B — Vente hors-ligne** (livrée, auditée) — détail après la liste.
 - [x] **C — Caisse hors-ligne** (livrée, auditée) — détail après la liste.
 - [x] **D — Réception hors-ligne** (livrée, auditée) — détail après la liste.
-- [ ] **E — Transferts, inventaire (comptage), règlements clients** hors-ligne.
+- [x] **E — Transferts et règlements clients** hors-ligne (livrée, auditée) ; comptage d'inventaire : reste en ligne (voir détail).
 - Restent EN LIGNE, volontairement : facturation (numéro légal), validation d'inventaire et de pertes (geste
   admin), commandes et paiements fournisseurs, fiches produits/clients/fournisseurs, planning, comptes —
   gestes de bureau, faits au poste fixe, où un « dernier écrivain gagne » masquerait des conflits.
@@ -290,6 +290,43 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
   auteur), reconnaissance en ligne ; côté app, formulaire de réception via `writeOnlineOrQueue` (intention
   `reception:<idFormulaire>`), reçu « en attente ». Attention : prix d'achat pris de la COMMANDE (audit P0 #7).
 
+**Tranche E — règlements clients et transferts hors-ligne (2026-09-22)**
+- **Règlement client** : handler `CUSTOMER_PAYMENT` sur le cœur de `CustomersService` (`payInTx`/`replayPayment`
+  extraits) ; caisse du règlement obligatoire hors-ligne (`CASH_SESSION_CLOSED` sinon) ; relu sous le verrou
+  client — preuve DÉTERMINISTE (appel direct du cœur sous verrou sur un règlement existant ; la course réelle ne
+  s'est pas produite en test : le paiement en ligne est trop rapide). App : `payCustomer` via `writeOnlineOrQueue`,
+  refusé sans caisse connue ouverte ; `_retryable` supprimé (la file le remplace).
+- **Transferts** : handler `TRANSFER` à étapes (`action`), droits par étape, étape déjà faite reconnue par l'état
+  atteint sous `lockTransfer` ; `TransfersService` : `requestInTx`, transitions exécutables dans la transaction
+  du moteur (`db`), audit laissé au moteur. App : toutes les étapes via `writeOnlineOrQueue`, une étape passe
+  derrière celles déjà en file (`queueOnly`), message « pas encore fait ».
+- **Comptage d'inventaire : RESTE EN LIGNE.** Écrit puis RETIRÉ après l'audit sécurité : le serveur ne sait pas dater
+  un comptage hors-ligne (heure appareil falsifiable pour masquer un vol ; mouvements hors-ligne du même appareil
+  datés de leur synchro → écart fantôme retiré deux fois à la validation). Voir docs/context.md §9. À reprendre
+  avec l'inventaire mobile (P1 n°14) : horodatage d'opération par mouvement + contrôle admin — **décision à
+  prendre par MEDMEDBEN**.
+- **Audits** : `security-reviewer` (2 élevés sur le comptage → retiré ; 2 moyens : clôture de transfert reconnue
+  sans la règle auteur/dépôt, étape « déjà faite » par un AUTRE confirmée et attribuée → corrigés : règle vérifiée
+  avant, reconnaissance réservée au même membre, sinon refus tracé ; faibles : `paidAt` jamais avant l'ouverture
+  de la caisse, refus d'accès des handlers journalisés sans audit comme ceux du moteur, tests ajoutés).
+- **Limite commune** (comme la réception) : listes (transferts) chargées EN LIGNE — le hors-ligne
+  couvre la coupure pendant le geste. Cache local = P1 n°14.
+- **Revue `reviewer`** (PAS OK, 2 bloquants reproduits) → corrigés : une correction de préparation hors-ligne était
+  « reconnue » et jetée (préparation réappliquée tant que préparable ; contre-épreuve) ; le routage des refus
+  FORBIDDEN vers « non audité » faisait perdre la trace de refus MÉTIER (vente à crédit, réception hors
+  commande) → tout refus pendant l'application est de nouveau audité (e2e). Importants : clôture jamais reconnue,
+  audit des étapes aussi détaillé qu'en ligne (lignes et quantités), test concurrent de la demande. Mineurs
+  laissés, tracés : double relecture du règlement (marqueur d'audit `offline` dans le cas rare d'une course
+  gagnée sous verrou) ; `_behindQueue` volontairement large.
+- **Preuve tranche E (2026-09-22)** : backend `lint:check` 0 · **82** unit · **384** e2e (28 suites, un seul
+  passage) ; app analyze propre · **+305 ~43**. Contre-épreuves : relecture sous verrou du règlement (test
+  déterministe), étape reconnue seulement par le même membre, règle de clôture avant reconnaissance, correction
+  de préparation réappliquée, droits par étape.
+- **Prochaine étape précise** : P0 terminé côté code. Avant P1 : (1) décisions en attente de MEDMEDBEN (listées
+  dans ce fichier : vente refusée sans écran de régularisation, antidatage 72 h des ventes à crédit, plancher
+  « plus bas tarif » provisoire, comptage d'inventaire hors-ligne) ; (2) relecture humaine des captures ; (3)
+  merge `develop` → `main` après validation ; puis P1 n°13 (scanner code-barres mobile) selon `docs/plan.md`.
+
 **Tranche D — réception hors-ligne (2026-09-22)**
 - **Serveur** : handler `RECEPTION` sur le MÊME cœur que `POST /receptions` (`createInTx`/`replay` extraits ;
   `actor` null → seule la sync audite) : surlivraison refusée, prix d'achat de la COMMANDE (celui du bon ignoré),
@@ -309,12 +346,6 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 - **Preuve tranche D (2026-09-22)** : backend `lint:check` 0 · **82** unit · **363** e2e (26 suites, un seul
   passage) ; app analyze propre · **+301 ~43**. Contre-épreuves : reconnaissance en ligne, relecture sous verrou
   (3/3), coût non écrasé par une réception tardive.
-- **Prochaine étape précise** : tranche E — handlers `TRANSFER` (étapes demande/préparation/réception du
-  `TransfersService`, à découper comme la réception : `replay` + cœur dans la transaction, relecture sous le
-  verrou `lockTransfer`), comptage d'inventaire (`INVENTORY`, lignes comptées seulement — la VALIDATION reste en
-  ligne, geste admin), règlements clients (`CUSTOMER_PAYMENT`, caisse de la vente comme pour la vente en
-  espèces). Chaque handler : `existsForKey` par auteur, test « en ligne puis file » et test concurrent.
-
 **Prix modifiable en vente — décision MEDMEDBEN du 2026-09-22 (livrée, auditée)** — remplace l'ancien rejet
 « prix changé pendant la coupure » :
 - Le vendeur (comme l'admin) **modifie le prix d'une ligne** en vente (crayon, badge « Prix modifié ») ; plancher

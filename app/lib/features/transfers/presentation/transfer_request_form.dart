@@ -60,7 +60,7 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
       _error = null;
     });
     try {
-      final transfer = await ref
+      final outcome = await ref
           .read(transfersActionsProvider)
           .request(
             intent: _intent,
@@ -79,7 +79,10 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${transfer.number} envoyée au dépôt — ${transfer.status.label}.',
+            transferOutcomeText(
+              outcome,
+              done: (t) => '${t.number} envoyée au dépôt — ${t.status.label}.',
+            ),
           ),
         ),
       );

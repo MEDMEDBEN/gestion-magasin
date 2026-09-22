@@ -60,24 +60,13 @@ void _snack(BuildContext context, String message) {
     );
 }
 
-/// Relance automatique UNE fois si le serveur n'a pas répondu : l'opération
-/// porte un id stable, un doublon est donc impossible côté serveur.
-Future<T> _retryable<T>(Future<T> Function() action) async {
-  try {
-    return await action();
-  } on ApiException catch (error) {
-    if (!error.isOffline) rethrow;
-    return action();
-  }
-}
-
 String _errorText(Object error) =>
     error is ApiException ? error.userMessage : 'Action impossible';
 
 /// Vente au comptoir : caisse, panier (recherche ou douchette), client,
-/// encaissement espèces / crédit, ticket et facture. Tout est validé EN LIGNE
-/// par le serveur (prix, stock, caisse, plafond) — la vente hors-ligne arrive
-/// avec la feature P0 n°12.
+/// encaissement espèces / crédit, ticket et facture. Le serveur valide tout
+/// (prix, stock, caisse, plafond) ; sans réseau, vente, caisse et règlements
+/// partent dans la file et sont jugés à la synchronisation (P0 n°12).
 class SalesScreen extends ConsumerStatefulWidget {
   const SalesScreen({super.key, required this.user});
 
@@ -1190,12 +1179,19 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (amount == null || amount == 0 || !mounted) return;
     try {
-      // Même clé à chaque essai de ce règlement, dialogue rouvert compris.
-      await _retryable(
-        () => ref.read(salesActionsProvider).payCustomer(customer.id, amount),
-      );
+      // Même clé à chaque essai de ce règlement, dialogue rouvert compris ;
+      // sans réseau, il part dans la file (même clé).
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .payCustomer(customer.id, amount);
       if (mounted) {
-        _snack(context, 'Règlement de ${formatDA(amount)} encaissé.');
+        _snack(
+          context,
+          outcome is Queued
+              ? 'Règlement de ${formatDA(amount)} enregistré sur cet appareil — '
+                    'en attente de synchronisation.'
+              : 'Règlement de ${formatDA(amount)} encaissé.',
+        );
       }
     } on ApiException catch (error) {
       if (mounted) _snack(context, error.userMessage);

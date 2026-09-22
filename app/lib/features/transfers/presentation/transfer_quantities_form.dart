@@ -120,14 +120,14 @@ class _TransferQuantitiesFormState
     });
     try {
       final actions = ref.read(transfersActionsProvider);
-      final updated = _isPrepare
+      final outcome = _isPrepare
           ? await actions.prepare(widget.transfer.id, quantities, done: done)
           : await actions.receive(widget.transfer.id, quantities);
       if (!mounted) return;
       Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${updated.number} : ${updated.status.label}.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(transferOutcomeText(outcome))));
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {

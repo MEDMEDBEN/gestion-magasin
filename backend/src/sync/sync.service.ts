@@ -290,6 +290,9 @@ export class SyncService {
       }
 
       if (error instanceof BusinessException) {
+        // Tout refus levé pendant l'application est AUDITÉ, refus de droits
+        // métier compris (vente à crédit sans `sale.credit`, réception hors
+        // commande…) : l'opération a pu avoir lieu physiquement.
         return this.memorizeRejection(
           mutation,
           user,

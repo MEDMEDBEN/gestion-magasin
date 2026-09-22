@@ -72,46 +72,59 @@ export class TransfersService {
     actor: ActorContext,
   ): Promise<TransferDto> {
     return runOnce(
-      () => this.replay(dto, user),
+      () => this.replay(this.prisma, dto, user),
       () =>
-        this.prisma.$transaction(async (tx) => {
-          const from = await TransfersService.resolveLocation(
-            tx,
-            'DEPOT',
-            dto.fromLocationId,
-            'fromLocationId',
-          );
-          const to = await TransfersService.resolveLocation(
-            tx,
-            'MAGASIN',
-            dto.toLocationId,
-            'toLocationId',
-          );
-          const lines = await TransfersService.buildLines(tx, dto);
-          const number = await nextDocumentNumber(tx, 'TRANSFERT', 'TRF', 5);
-          const transfer = await tx.transfer.create({
-            include: TRANSFER_INCLUDE,
-            data: {
-              id: dto.id,
-              number,
-              clientMutationId: dto.clientMutationId,
-              fromLocationId: from,
-              toLocationId: to,
-              requestedById: user.id,
-              priority: dto.priority ?? 'NORMALE',
-              comment: dto.comment ?? null,
-              lines: { create: lines },
-            },
-          });
-          await writeAudit(tx, actor, {
-            action: 'CREATE',
-            entityType: 'Transfer',
-            entityId: transfer.id,
-            newValue: TransfersService.snapshot(transfer),
-          });
-          return TransfersService.toDto(transfer);
-        }),
+        this.prisma.$transaction((tx) =>
+          this.requestInTx(tx, dto, user, actor),
+        ),
     );
+  }
+
+  /// Cœur de la demande, dans la transaction de l'appelant (route en ligne ou
+  /// synchronisation). `actor` null : la synchronisation écrit l'audit.
+  async requestInTx(
+    tx: Db,
+    dto: CreateTransferDto,
+    user: AuthenticatedUser,
+    actor: ActorContext | null,
+  ): Promise<TransferDto> {
+    const from = await TransfersService.resolveLocation(
+      tx,
+      'DEPOT',
+      dto.fromLocationId,
+      'fromLocationId',
+    );
+    const to = await TransfersService.resolveLocation(
+      tx,
+      'MAGASIN',
+      dto.toLocationId,
+      'toLocationId',
+    );
+    const lines = await TransfersService.buildLines(tx, dto);
+    const number = await nextDocumentNumber(tx, 'TRANSFERT', 'TRF', 5);
+    const transfer = await tx.transfer.create({
+      include: TRANSFER_INCLUDE,
+      data: {
+        id: dto.id,
+        number,
+        clientMutationId: dto.clientMutationId,
+        fromLocationId: from,
+        toLocationId: to,
+        requestedById: user.id,
+        priority: dto.priority ?? 'NORMALE',
+        comment: dto.comment ?? null,
+        lines: { create: lines },
+      },
+    });
+    if (actor) {
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'Transfer',
+        entityId: transfer.id,
+        newValue: TransfersService.snapshot(transfer),
+      });
+    }
+    return TransfersService.toDto(transfer);
   }
 
   /// « Je m'en occupe » : le dépôt prend la demande sans encore rien préparer.
@@ -119,19 +132,27 @@ export class TransfersService {
   async accept(
     id: string,
     user: AuthenticatedUser,
-    actor: ActorContext,
+    actor: ActorContext | null,
+    /// Transaction de la synchronisation ; absente = la sienne.
+    db?: Db,
   ): Promise<TransferDto> {
-    return this.transition(id, actor, (before) => {
-      if (before.status === 'ACCEPTEE') return null;
-      TransfersService.assertStatus(before, ['DEMANDEE']);
-      return {
-        data: {
-          status: 'ACCEPTEE',
-          acceptedAt: new Date(),
-          preparedById: user.id,
-        },
-      };
-    });
+    return this.transition(
+      id,
+      actor,
+      (before) => {
+        if (before.status === 'ACCEPTEE') return null;
+        TransfersService.assertStatus(before, ['DEMANDEE']);
+        return {
+          data: {
+            status: 'ACCEPTEE',
+            acceptedAt: new Date(),
+            preparedById: user.id,
+          },
+        };
+      },
+      'UPDATE',
+      db,
+    );
   }
 
   /// Préparation, partielle autorisée (spec §17 : portée par les quantités).
@@ -141,62 +162,70 @@ export class TransfersService {
     id: string,
     dto: PrepareTransferDto,
     user: AuthenticatedUser,
-    actor: ActorContext,
+    actor: ActorContext | null,
+    /// Transaction de la synchronisation ; absente = la sienne.
+    db?: Db,
   ): Promise<TransferDto> {
-    return this.transition(id, actor, (before) => {
-      TransfersService.assertStatus(before, PREPARABLE);
-      const asked = new Map<string, string>();
-      for (const line of dto.lines) {
-        if (asked.has(line.productId)) {
+    return this.transition(
+      id,
+      actor,
+      (before) => {
+        TransfersService.assertStatus(before, PREPARABLE);
+        const asked = new Map<string, string>();
+        for (const line of dto.lines) {
+          if (asked.has(line.productId)) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_FAILED,
+              'lines.productId : produit répété dans la préparation',
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+          asked.set(line.productId, line.preparedQuantity);
+        }
+        const lines = before.lines.map((line) => {
+          const raw = asked.get(line.productId);
+          // Ligne non citée : sa préparation précédente est conservée.
+          if (raw === undefined)
+            return { id: line.id, quantity: line.preparedQuantity };
+          const quantity = parseQuantity(raw, 'lines.preparedQuantity');
+          if (quantity.greaterThan(line.requestedQuantity)) {
+            throw new BusinessException(
+              ErrorCode.VALIDATION_FAILED,
+              `Préparation supérieure à la demande : demandé ` +
+                `${formatQuantity(line.requestedQuantity)}, préparé ` +
+                `${formatQuantity(quantity)} — faites d’abord modifier la demande`,
+              HttpStatus.UNPROCESSABLE_ENTITY,
+            );
+          }
+          asked.delete(line.productId);
+          return { id: line.id, quantity };
+        });
+        if (asked.size > 0) {
           throw new BusinessException(
             ErrorCode.VALIDATION_FAILED,
-            'lines.productId : produit répété dans la préparation',
+            'lines.productId : produit absent de cette demande',
             HttpStatus.UNPROCESSABLE_ENTITY,
           );
         }
-        asked.set(line.productId, line.preparedQuantity);
-      }
-      const lines = before.lines.map((line) => {
-        const raw = asked.get(line.productId);
-        // Ligne non citée : sa préparation précédente est conservée.
-        if (raw === undefined)
-          return { id: line.id, quantity: line.preparedQuantity };
-        const quantity = parseQuantity(raw, 'lines.preparedQuantity');
-        if (quantity.greaterThan(line.requestedQuantity)) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            `Préparation supérieure à la demande : demandé ` +
-              `${formatQuantity(line.requestedQuantity)}, préparé ` +
-              `${formatQuantity(quantity)} — faites d’abord modifier la demande`,
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-        asked.delete(line.productId);
-        return { id: line.id, quantity };
-      });
-      if (asked.size > 0) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'lines.productId : produit absent de cette demande',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-      const done = dto.done ?? true;
-      return {
-        data: {
-          status: done ? 'PREPAREE' : 'EN_PREPARATION',
-          acceptedAt: before.acceptedAt ?? new Date(),
-          preparedAt: done ? new Date() : null,
-          preparedById: user.id,
-          lines: {
-            update: lines.map((l) => ({
-              where: { id: l.id },
-              data: { preparedQuantity: l.quantity },
-            })),
+        const done = dto.done ?? true;
+        return {
+          data: {
+            status: done ? 'PREPAREE' : 'EN_PREPARATION',
+            acceptedAt: before.acceptedAt ?? new Date(),
+            preparedAt: done ? new Date() : null,
+            preparedById: user.id,
+            lines: {
+              update: lines.map((l) => ({
+                where: { id: l.id },
+                data: { preparedQuantity: l.quantity },
+              })),
+            },
           },
-        },
-      };
-    });
+        };
+      },
+      'UPDATE',
+      db,
+    );
   }
 
   /// Expédition : le stock QUITTE le dépôt pour le transit. À partir d'ici le
@@ -205,62 +234,70 @@ export class TransfersService {
   async ship(
     id: string,
     user: AuthenticatedUser,
-    actor: ActorContext,
+    actor: ActorContext | null,
+    /// Transaction de la synchronisation ; absente = la sienne.
+    db?: Db,
   ): Promise<TransferDto> {
-    return this.transition(id, actor, async (before, tx) => {
-      TransfersService.assertStatus(before, ['PREPAREE']);
-      const shipped = before.lines.filter((l) =>
-        l.preparedQuantity.greaterThan(0),
-      );
-      if (shipped.length === 0) {
-        throw new BusinessException(
-          ErrorCode.INVALID_STATE_TRANSITION,
-          'Rien de préparé : refusez la demande au lieu de l’expédier à vide',
-          HttpStatus.CONFLICT,
+    return this.transition(
+      id,
+      actor,
+      async (before, tx) => {
+        TransfersService.assertStatus(before, ['PREPAREE']);
+        const shipped = before.lines.filter((l) =>
+          l.preparedQuantity.greaterThan(0),
         );
-      }
-      const transitId = await TransfersService.transitId(tx);
-      // Ordre fixe par produit : deux transferts concurrents ne s'interbloquent pas.
-      for (const line of TransfersService.byProduct(shipped)) {
-        await this.ledger.applyMovement(tx, {
-          productId: line.productId,
-          locationId: before.fromLocationId,
-          quantity: line.preparedQuantity.negated(),
-          sourceLocationId: before.fromLocationId,
-          destinationLocationId: transitId,
-          type: 'TRANSFERT_SORTIE',
-          operationType: 'TRANSFER',
-          operationId: before.id,
-          userId: user.id,
-          comment: before.number,
-        });
-        await this.ledger.applyMovement(tx, {
-          productId: line.productId,
-          locationId: transitId,
-          quantity: line.preparedQuantity,
-          sourceLocationId: before.fromLocationId,
-          destinationLocationId: transitId,
-          type: 'TRANSFERT_ENTREE',
-          operationType: 'TRANSFER',
-          operationId: before.id,
-          userId: user.id,
-          comment: before.number,
-        });
-      }
-      return {
-        data: {
-          status: 'EN_TRANSIT',
-          shippedAt: new Date(),
-          preparedById: user.id,
-          lines: {
-            update: shipped.map((l) => ({
-              where: { id: l.id },
-              data: { shippedQuantity: l.preparedQuantity },
-            })),
+        if (shipped.length === 0) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Rien de préparé : refusez la demande au lieu de l’expédier à vide',
+            HttpStatus.CONFLICT,
+          );
+        }
+        const transitId = await TransfersService.transitId(tx);
+        // Ordre fixe par produit : deux transferts concurrents ne s'interbloquent pas.
+        for (const line of TransfersService.byProduct(shipped)) {
+          await this.ledger.applyMovement(tx, {
+            productId: line.productId,
+            locationId: before.fromLocationId,
+            quantity: line.preparedQuantity.negated(),
+            sourceLocationId: before.fromLocationId,
+            destinationLocationId: transitId,
+            type: 'TRANSFERT_SORTIE',
+            operationType: 'TRANSFER',
+            operationId: before.id,
+            userId: user.id,
+            comment: before.number,
+          });
+          await this.ledger.applyMovement(tx, {
+            productId: line.productId,
+            locationId: transitId,
+            quantity: line.preparedQuantity,
+            sourceLocationId: before.fromLocationId,
+            destinationLocationId: transitId,
+            type: 'TRANSFERT_ENTREE',
+            operationType: 'TRANSFER',
+            operationId: before.id,
+            userId: user.id,
+            comment: before.number,
+          });
+        }
+        return {
+          data: {
+            status: 'EN_TRANSIT',
+            shippedAt: new Date(),
+            preparedById: user.id,
+            lines: {
+              update: shipped.map((l) => ({
+                where: { id: l.id },
+                data: { shippedQuantity: l.preparedQuantity },
+              })),
+            },
           },
-        },
-      };
-    });
+        };
+      },
+      'UPDATE',
+      db,
+    );
   }
 
   /// Réception au magasin : le transit se vide, le magasin reçoit ce qui est
@@ -271,111 +308,119 @@ export class TransfersService {
     id: string,
     dto: ReceiveTransferDto,
     user: AuthenticatedUser,
-    actor: ActorContext,
+    actor: ActorContext | null,
+    /// Transaction de la synchronisation ; absente = la sienne.
+    db?: Db,
   ): Promise<TransferDto> {
-    return this.transition(id, actor, async (before, tx) => {
-      TransfersService.assertStatus(before, ['EN_TRANSIT']);
-      const asked = new Map<string, string>();
-      for (const line of dto.lines ?? []) {
-        if (asked.has(line.productId)) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'lines.productId : produit répété dans la réception',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-        asked.set(line.productId, line.receivedQuantity);
-      }
-      const received = before.lines
-        .filter((l) => l.shippedQuantity.greaterThan(0))
-        .map((line) => {
-          const raw = asked.get(line.productId);
-          // Ligne non citée : tout ce qui est parti est arrivé.
-          const quantity =
-            raw === undefined
-              ? line.shippedQuantity
-              : parseQuantity(raw, 'lines.receivedQuantity');
-          if (quantity.greaterThan(line.shippedQuantity)) {
+    return this.transition(
+      id,
+      actor,
+      async (before, tx) => {
+        TransfersService.assertStatus(before, ['EN_TRANSIT']);
+        const asked = new Map<string, string>();
+        for (const line of dto.lines ?? []) {
+          if (asked.has(line.productId)) {
             throw new BusinessException(
               ErrorCode.VALIDATION_FAILED,
-              `Réception supérieure à l’expédition : expédié ` +
-                `${formatQuantity(line.shippedQuantity)}, reçu ` +
-                `${formatQuantity(quantity)}`,
+              'lines.productId : produit répété dans la réception',
               HttpStatus.UNPROCESSABLE_ENTITY,
             );
           }
-          asked.delete(line.productId);
-          return { line, quantity };
-        });
-      if (asked.size > 0) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'lines.productId : produit absent des lignes expédiées',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
+          asked.set(line.productId, line.receivedQuantity);
+        }
+        const received = before.lines
+          .filter((l) => l.shippedQuantity.greaterThan(0))
+          .map((line) => {
+            const raw = asked.get(line.productId);
+            // Ligne non citée : tout ce qui est parti est arrivé.
+            const quantity =
+              raw === undefined
+                ? line.shippedQuantity
+                : parseQuantity(raw, 'lines.receivedQuantity');
+            if (quantity.greaterThan(line.shippedQuantity)) {
+              throw new BusinessException(
+                ErrorCode.VALIDATION_FAILED,
+                `Réception supérieure à l’expédition : expédié ` +
+                  `${formatQuantity(line.shippedQuantity)}, reçu ` +
+                  `${formatQuantity(quantity)}`,
+                HttpStatus.UNPROCESSABLE_ENTITY,
+              );
+            }
+            asked.delete(line.productId);
+            return { line, quantity };
+          });
+        if (asked.size > 0) {
+          throw new BusinessException(
+            ErrorCode.VALIDATION_FAILED,
+            'lines.productId : produit absent des lignes expédiées',
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
 
-      const transitId = await TransfersService.transitId(tx);
-      for (const { line, quantity } of TransfersService.byProduct(
-        received,
-        (r) => r.line.productId,
-      )) {
-        await this.ledger.applyMovement(tx, {
-          productId: line.productId,
-          locationId: transitId,
-          quantity: line.shippedQuantity.negated(),
-          sourceLocationId: transitId,
-          destinationLocationId: before.toLocationId,
-          type: 'TRANSFERT_SORTIE',
-          operationType: 'TRANSFER',
-          operationId: before.id,
-          userId: user.id,
-          comment: before.number,
-        });
-        if (quantity.greaterThan(0)) {
+        const transitId = await TransfersService.transitId(tx);
+        for (const { line, quantity } of TransfersService.byProduct(
+          received,
+          (r) => r.line.productId,
+        )) {
           await this.ledger.applyMovement(tx, {
             productId: line.productId,
-            locationId: before.toLocationId,
-            quantity,
+            locationId: transitId,
+            quantity: line.shippedQuantity.negated(),
             sourceLocationId: transitId,
             destinationLocationId: before.toLocationId,
-            type: 'TRANSFERT_ENTREE',
+            type: 'TRANSFERT_SORTIE',
             operationType: 'TRANSFER',
             operationId: before.id,
             userId: user.id,
             comment: before.number,
           });
+          if (quantity.greaterThan(0)) {
+            await this.ledger.applyMovement(tx, {
+              productId: line.productId,
+              locationId: before.toLocationId,
+              quantity,
+              sourceLocationId: transitId,
+              destinationLocationId: before.toLocationId,
+              type: 'TRANSFERT_ENTREE',
+              operationType: 'TRANSFER',
+              operationId: before.id,
+              userId: user.id,
+              comment: before.number,
+            });
+          }
+          const missing = line.shippedQuantity.sub(quantity);
+          if (missing.greaterThan(0)) {
+            await this.ledger.applyMovement(tx, {
+              productId: line.productId,
+              locationId: before.fromLocationId,
+              quantity: missing,
+              sourceLocationId: transitId,
+              destinationLocationId: before.fromLocationId,
+              type: 'TRANSFERT_ENTREE',
+              operationType: 'TRANSFER',
+              operationId: before.id,
+              userId: user.id,
+              comment: `${before.number} — écart de transfert, non arrivé au magasin`,
+            });
+          }
         }
-        const missing = line.shippedQuantity.sub(quantity);
-        if (missing.greaterThan(0)) {
-          await this.ledger.applyMovement(tx, {
-            productId: line.productId,
-            locationId: before.fromLocationId,
-            quantity: missing,
-            sourceLocationId: transitId,
-            destinationLocationId: before.fromLocationId,
-            type: 'TRANSFERT_ENTREE',
-            operationType: 'TRANSFER',
-            operationId: before.id,
-            userId: user.id,
-            comment: `${before.number} — écart de transfert, non arrivé au magasin`,
-          });
-        }
-      }
-      return {
-        data: {
-          status: 'RECUE',
-          receivedAt: new Date(),
-          receivedById: user.id,
-          lines: {
-            update: received.map(({ line, quantity }) => ({
-              where: { id: line.id },
-              data: { receivedQuantity: quantity },
-            })),
+        return {
+          data: {
+            status: 'RECUE',
+            receivedAt: new Date(),
+            receivedById: user.id,
+            lines: {
+              update: received.map(({ line, quantity }) => ({
+                where: { id: line.id },
+                data: { receivedQuantity: quantity },
+              })),
+            },
           },
-        },
-      };
-    });
+        };
+      },
+      'UPDATE',
+      db,
+    );
   }
 
   /// Refus (le dépôt ne suivra pas) ou annulation (le demandeur renonce).
@@ -385,32 +430,16 @@ export class TransfersService {
     id: string,
     dto: CloseTransferDto,
     user: AuthenticatedUser,
-    actor: ActorContext,
+    actor: ActorContext | null,
+    /// Transaction de la synchronisation ; absente = la sienne.
+    db?: Db,
   ): Promise<TransferDto> {
     return this.transition(
       id,
       actor,
       (before) => {
         TransfersService.assertStatus(before, PREPARABLE);
-        // Matrice de docs/permissions.md : le DÉPÔT refuse, le DEMANDEUR annule.
-        if (dto.status === 'REFUSEE') {
-          if (!TransfersService.hasRole(user, 'ADMIN', 'MAGASINIER')) {
-            throw new BusinessException(
-              ErrorCode.FORBIDDEN_ROLE,
-              'Seul le dépôt (magasinier) ou un administrateur refuse une demande',
-              HttpStatus.FORBIDDEN,
-            );
-          }
-        } else if (
-          !user.roles.includes('ADMIN') &&
-          before.requestedById !== user.id
-        ) {
-          throw new BusinessException(
-            ErrorCode.FORBIDDEN_ROLE,
-            'Seul l’auteur de la demande ou un administrateur l’annule',
-            HttpStatus.FORBIDDEN,
-          );
-        }
+        TransfersService.assertCanClose(before, dto, user);
         return {
           data:
             dto.status === 'REFUSEE'
@@ -419,6 +448,7 @@ export class TransfersService {
         };
       },
       'CANCEL',
+      db,
     );
   }
 
@@ -463,7 +493,7 @@ export class TransfersService {
   /// visé est déjà atteint (renvoi d'une action) : rien n'est réécrit.
   private async transition(
     id: string,
-    actor: ActorContext,
+    actor: ActorContext | null,
     build: (
       before: TransferWithLines,
       tx: Db,
@@ -471,8 +501,9 @@ export class TransfersService {
       | Promise<{ data: Prisma.TransferUpdateInput } | null>
       | ({ data: Prisma.TransferUpdateInput } | null),
     action: 'UPDATE' | 'CANCEL' = 'UPDATE',
+    db?: Db,
   ): Promise<TransferDto> {
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Db): Promise<TransferDto> => {
       const before = await TransfersService.lockTransfer(tx, id);
       const change = await build(before, tx);
       if (!change) return TransfersService.toDto(before);
@@ -481,15 +512,47 @@ export class TransfersService {
         include: TRANSFER_INCLUDE,
         data: change.data,
       });
-      await writeAudit(tx, actor, {
-        action,
-        entityType: 'Transfer',
-        entityId: id,
-        oldValue: TransfersService.snapshot(before),
-        newValue: TransfersService.snapshot(after),
-      });
+      // `actor` null : la synchronisation écrit elle-même l'audit.
+      if (actor) {
+        await writeAudit(tx, actor, {
+          action,
+          entityType: 'Transfer',
+          entityId: id,
+          oldValue: TransfersService.snapshot(before),
+          newValue: TransfersService.snapshot(after),
+        });
+      }
       return TransfersService.toDto(after);
-    });
+    };
+    return db ? run(db) : this.prisma.$transaction(run);
+  }
+
+  /// Qui peut clore (matrice de docs/permissions.md) : le DÉPÔT refuse, le
+  /// DEMANDEUR annule. Partagé avec la synchronisation, qui le vérifie AVANT de
+  /// reconnaître une clôture déjà faite.
+  static assertCanClose(
+    before: TransferWithLines,
+    dto: CloseTransferDto,
+    user: AuthenticatedUser,
+  ): void {
+    if (dto.status === 'REFUSEE') {
+      if (!TransfersService.hasRole(user, 'ADMIN', 'MAGASINIER')) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_ROLE,
+          'Seul le dépôt (magasinier) ou un administrateur refuse une demande',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+    } else if (
+      !user.roles.includes('ADMIN') &&
+      before.requestedById !== user.id
+    ) {
+      throw new BusinessException(
+        ErrorCode.FORBIDDEN_ROLE,
+        'Seul l’auteur de la demande ou un administrateur l’annule',
+        HttpStatus.FORBIDDEN,
+      );
+    }
   }
 
   /// Point d'entrée UNIQUE de toute écriture sur un transfert (même rôle que
@@ -507,11 +570,12 @@ export class TransfersService {
 
   /// Renvoi de la même demande (réponse perdue, double clic) : on rend celle
   /// déjà enregistrée au lieu d'en créer une seconde.
-  private async replay(
+  async replay(
+    db: Db,
     dto: CreateTransferDto,
     user: AuthenticatedUser,
   ): Promise<TransferDto | null> {
-    const existing = await this.prisma.transfer.findUnique({
+    const existing = await db.transfer.findUnique({
       where: { clientMutationId: dto.clientMutationId },
       include: TRANSFER_INCLUDE,
     });
@@ -710,7 +774,7 @@ export class TransfersService {
     };
   }
 
-  private static toDto(transfer: TransferWithLines): TransferDto {
+  static toDto(transfer: TransferWithLines): TransferDto {
     return {
       id: transfer.id,
       number: transfer.number,

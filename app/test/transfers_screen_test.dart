@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -132,6 +133,9 @@ Future<_FakeTransfersApi> _pump(
     ProviderScope(
       overrides: [
         transfersApiProvider.overrideWithValue(api),
+        // Une écriture (en ligne ou en file) appartient au compte connecté.
+        currentUserIdProvider.overrideWithValue('u'),
+        mutationQueueProvider.overrideWithValue(EmptyMutationQueue()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
             product(id: 'p1', name: 'Câble 3G2,5', sku: 'CAB-3G25'),

@@ -267,6 +267,15 @@ describe('Réception hors-ligne par /sync (e2e)', () => {
       code: 'FORBIDDEN_ROLE',
     });
     expect(await stockOf(order.productId)).toBe('0.000');
+    // Refus d'une RÈGLE MÉTIER (pas d'un droit du moteur) : tracé pour
+    // l'admin — la marchandise est peut-être déjà physiquement au dépôt.
+    const audit = await prisma.auditLog.findFirst({
+      where: {
+        entityType: 'SyncMutation',
+        entityId: String(b.clientMutationId),
+      },
+    });
+    expect(audit?.action).toBe('REJECT');
   });
 
   it('VENDEUR : refusé comme en ligne', async () => {
