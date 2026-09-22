@@ -15,6 +15,7 @@ import { ProductsModule } from './products/products.module';
 import { CustomersModule } from './customers/customers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
+import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { PlanningModule } from './planning/planning.module';
@@ -55,6 +56,7 @@ import { UsersModule } from './users/users.module';
     CustomersModule,
     ProductsModule,
     LocationsModule,
+    ReportsModule,
     SyncModule,
   ],
   controllers: [AppController],

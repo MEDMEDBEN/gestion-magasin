@@ -23,6 +23,29 @@ export function localDate(date: Date): string {
   }).format(date);
 }
 
+/// INSTANT où commence la journée civile algérienne en cours.
+///
+/// C'est la borne à utiliser contre un HORODATAGE RÉEL (`soldAt`, `receivedAt`) :
+/// `parseApiDate(localDate(now))` rend minuit UTC, soit 01 h à Alger — une vente
+/// encaissée entre minuit et 01 h serait comptée sur la veille. Pour un champ de
+/// DATE PURE (`dueDate`, enregistré à minuit UTC), c'est l'inverse : garder
+/// `parseApiDate(localDate(...))`, qui compare bien comme pour comme.
+export function startOfLocalDay(now = new Date()): Date {
+  // Heure murale d'Alger relue comme si elle était UTC : l'écart avec l'instant
+  // réel est le décalage du fuseau, sans le coder en dur.
+  const wall = new Date(
+    `${new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Africa/Algiers',
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    })
+      .format(now)
+      .replace(' ', 'T')}Z`,
+  );
+  const offsetMs = wall.getTime() - now.getTime();
+  return new Date(new Date(`${localDate(now)}T00:00:00Z`).getTime() - offsetMs);
+}
+
 /// Numéro séquentiel d'un document, attribué SERVEUR dans la transaction de
 /// l'appelant (règle 11) : le compteur de l'année est verrouillé par l'UPDATE,
 /// donc deux demandes simultanées ne peuvent pas obtenir le même numéro ni

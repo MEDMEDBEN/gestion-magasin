@@ -188,6 +188,30 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #15 TABLEAU DE BORD — TRANCHE SERVEUR LIVRÉE (2026-09-23 · **MEDMEDBEN**)
+Spec §21 : « un résumé, **ne pas surcharger** ». Un SEUL point d'entrée, `GET /api/dashboard`, ouvert aux trois
+rôles : ce sont les PERMISSIONS du compte qui décident du contenu, bloc par bloc.
+- Un bloc interdit vaut **`null`**, jamais 0 — un 0 se lirait « aucune alerte ». Blocs : `sales` (`sale.create`),
+  `stock` (`stock.read.*`), `transfers` (`transfer.*`), `purchases` (`reception.create`), `customers`
+  (`customer.read`), `suppliers` (`supplier.read`), `tasks` (`planning.task.read`).
+- **CA du jour cloisonné** : le vendeur voit le sien, l'admin voit tout (même règle que la liste des ventes).
+  Ventes VALIDÉES seulement. Montants en centimes, formatage à l'affichage.
+- **Alertes de stock** : sous le seuil (`minThreshold > 0`) et ruptures, calculées sur le stock MAGASIN + DÉPÔT —
+  le TRANSIT est exclu, une marchandise en route n'est pas disponible. 5 lignes au plus, les plus urgentes.
+- **Dettes** : mêmes formules que les fiches client/fournisseur (dette fournisseur = reprise + reçu − payé).
+- **Mes tâches** : chacun ne voit QUE les siennes, l'admin compris (le planning complet est son écran).
+- **Vrai décalage de fuseau corrigé au passage** : `parseApiDate(localDate(now))` rend minuit **UTC**, soit 01 h à
+  Alger — une vente encaissée entre minuit et 01 h était comptée sur la veille. Nouveau
+  `startOfLocalDay()` (`common/document-number.ts`) pour toute borne comparée à un HORODATAGE réel ; minuit UTC
+  reste la bonne borne pour une date PURE (`dueDate`), enregistrée ainsi.
+- **Preuve (2026-09-23)** : backend `tsc` propre · lint 0 · **9 e2e** (`test/dashboard.e2e-spec.ts`) · **4 unit**
+  de dates. Contre-épreuves faites : cloisonnement du CA retiré → test en échec ; filtre de permission forcé à
+  vrai → 2 tests en échec.
+- **Prochaine étape précise** : écran d'accueil Flutter — remplacer le placeholder « Accueil »
+  (`app/lib/features/home/`) par les cartes de ce résumé (desktop riche, mobile allégé par rôle, spec §21),
+  puis audits `reviewer` + `security-reviewer` avant de clore le n°15. Graphiques repoussés au module Rapports
+  (P1 n°21).
+
 ### 🚧 P1 #14 RÉCEPTION / PRÉPARATION / INVENTAIRE MOBILES — LISTES HORS-LIGNE (2026-09-23 · **MEDMEDBEN**)
 Le manque réel (tracé en P0 #12 tranches D et E) : les écrans se chargeaient EN LIGNE, donc au dépôt sans
 réseau ils ne s'ouvraient pas — inutile que la saisie, elle, sache attendre.
