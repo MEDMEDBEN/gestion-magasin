@@ -112,9 +112,10 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
       paidAmount: sale.paidAmount,
       customerId: sale.customerId,
       lines: sale.lines.length,
-      offline: true,
       priceOverrides: SalesService.priceOverrides(sale, dto),
-      ...(recognized && { alreadyRecordedOnline: true }),
+      // Convention commune aux handlers : faite hors-ligne, OU seulement
+      // reconnue (faite en ligne, réponse perdue).
+      ...(recognized ? { alreadyRecordedOnline: true } : { offline: true }),
     };
   }
 }

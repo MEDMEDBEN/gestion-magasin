@@ -399,7 +399,8 @@ describe('Sync (e2e)', () => {
     const mutation = {
       clientMutationId: randomUUID(),
       deviceId: DEVICE,
-      operationType: 'RECEPTION',
+      // Une commande fournisseur reste un geste EN LIGNE : jamais de handler.
+      operationType: 'PURCHASE_ORDER',
       payload: { total: 1000 },
       deviceTimestamp: new Date('2026-09-09T08:00:00.000Z').toISOString(),
     };
@@ -410,7 +411,7 @@ describe('Sync (e2e)', () => {
       status: 'NON_TRAITEE',
       code: 'NOT_IMPLEMENTED',
     });
-    // Rien de mémorisé : la mutation restera valide quand la réception hors-ligne sortira.
+    // Rien de mémorisé : la mutation reste valide si un handler arrive dans une version ultérieure.
     const memorized = await prisma.syncMutation.findUnique({
       where: { clientMutationId: mutation.clientMutationId },
     });

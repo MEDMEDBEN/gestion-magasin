@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/mutation_keys.dart';
+import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../purchases/application/purchases_controller.dart';
@@ -33,7 +33,11 @@ class ReceptionsActions {
   /// La réception fait entrer la marchandise ET endette le fournisseur : elle
   /// porte une clé d'idempotence stable (`intent`), comme tout mouvement
   /// d'argent. Un renvoi après coupure rend le bon déjà enregistré.
-  Future<Reception> receive({
+  ///
+  /// Sans réseau, la réception part dans la file (même clé, même corps) : elle
+  /// n'est PAS faite tant que le serveur ne l'a pas jugée (surlivraison, commande
+  /// annulée entre-temps…) — `Queued`, jamais présentée comme définitive.
+  Future<WriteOutcome<Reception>> receive({
     required String intent,
     String? purchaseOrderId,
     required String supplierId,
@@ -41,11 +45,15 @@ class ReceptionsActions {
     required List<ReceptionLineDraft> lines,
     String? note,
   }) async {
-    final reception = await runMoneyMutation(
+    final outcome = await writeOnlineOrQueue<Reception>(
       _ref,
-      intent,
-      (clientMutationId) => _ref.read(receptionsApiProvider).create({
+      intent: intent,
+      operationType: 'RECEPTION',
+      online: _ref.read(receptionsApiProvider).create,
+      payload: (clientMutationId) => {
         'clientMutationId': clientMutationId,
+        // Id généré par l'appareil (contrat §1) : la clé de l'intention.
+        'id': clientMutationId,
         'purchaseOrderId': ?purchaseOrderId,
         'supplierId': supplierId,
         'locationId': locationId,
@@ -59,7 +67,7 @@ class ReceptionsActions {
               'unitPriceHt': l.unitPriceHt,
             },
         ],
-      }),
+      },
     );
     // Stock, avancement de la commande et dette fournisseur ont bougé.
     _ref.invalidate(purchaseOrdersProvider);
@@ -67,7 +75,7 @@ class ReceptionsActions {
     if (purchaseOrderId != null) {
       _ref.invalidate(orderReceptionsProvider(purchaseOrderId));
     }
-    return reception;
+    return outcome;
   }
 }
 

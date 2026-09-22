@@ -9,5 +9,6 @@ import { ReceptionsService } from './receptions.service';
   imports: [StockModule],
   controllers: [ReceptionsController],
   providers: [ReceptionsService],
+  exports: [ReceptionsService],
 })
 export class ReceptionsModule {}

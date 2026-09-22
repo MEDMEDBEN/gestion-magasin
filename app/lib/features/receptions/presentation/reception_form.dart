@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
+import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -96,7 +97,7 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
       _error = null;
     });
     try {
-      final reception = await ref
+      final outcome = await ref
           .read(receptionsActionsProvider)
           .receive(
             intent: _intent,
@@ -109,10 +110,15 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
       Navigator.of(context).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '${reception.number} : marchandise entrée en stock — '
-            '${formatDA(reception.totalTtc)} TTC ajoutés à la dette.',
-          ),
+          content: Text(switch (outcome) {
+            Applied(value: final reception) =>
+              '${reception.number} : marchandise entrée en stock — '
+                  '${formatDA(reception.totalTtc)} TTC ajoutés à la dette.',
+            // Rien n'est encore entré : le serveur jugera à la synchro.
+            Queued() =>
+              'Réception enregistrée sur cet appareil — en attente de '
+                  'synchronisation (pas encore en stock).',
+          }),
         ),
       );
     } on ApiException catch (error) {

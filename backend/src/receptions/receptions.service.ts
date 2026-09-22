@@ -49,142 +49,174 @@ export class ReceptionsService {
     actor: ActorContext,
   ): Promise<ReceptionDto> {
     return runOnce(
-      () => this.replay(dto, user),
+      () => this.replay(this.prisma, dto, user),
       () =>
-        this.prisma.$transaction(async (tx) => {
-          const supplier = await tx.supplier.findFirst({
-            where: { id: dto.supplierId, isActive: true },
-          });
-          if (!supplier) {
-            throw new BusinessException(
-              ErrorCode.VALIDATION_FAILED,
-              'supplierId : fournisseur introuvable ou désactivé',
-              HttpStatus.UNPROCESSABLE_ENTITY,
-            );
-          }
-
-          // MÊME verrou que l'annulation et la modification de commande : une
-          // annulation et une réception simultanées ne peuvent pas passer
-          // toutes les deux, la seconde voit l'état laissé par la première.
-          const order = dto.purchaseOrderId
-            ? await PurchaseOrdersService.lockOrder(tx, dto.purchaseOrderId)
-            : null;
-          // Hors commande, la réception EST un achat : elle crée du stock, de
-          // la dette et un coût d'achat sans qu'aucun admin ait engagé quoi que
-          // ce soit. Réservée à l'ADMIN (audit sécurité du 2026-09-20).
-          if (!order && !user.roles.includes('ADMIN')) {
-            throw new BusinessException(
-              ErrorCode.FORBIDDEN_ROLE,
-              'Réception hors commande réservée à l’administrateur : ' +
-                'créez la commande, faites-la confirmer, puis réceptionnez',
-              HttpStatus.FORBIDDEN,
-            );
-          }
-          if (order) {
-            if (order.supplierId !== supplier.id) {
-              throw new BusinessException(
-                ErrorCode.VALIDATION_FAILED,
-                `Commande ${order.number} : elle appartient à un autre fournisseur`,
-                HttpStatus.UNPROCESSABLE_ENTITY,
-              );
-            }
-            if (!RECEIVABLE.includes(order.status)) {
-              throw new BusinessException(
-                ErrorCode.INVALID_STATE_TRANSITION,
-                `Commande ${order.status.toLowerCase().replace(/_/g, ' ')} : aucune réception possible`,
-                HttpStatus.CONFLICT,
-              );
-            }
-          }
-
-          // La marchandise entre au MAGASIN ou au DÉPÔT, jamais au TRANSIT
-          // (qui ne porte que du stock déjà parti) : sans cette borne, une
-          // réception au transit y gèlerait du stock, aucune perte ne s'y
-          // déclarant. Même garde que le stock initial d'un produit et que la
-          // déclaration de perte (CONVENTIONS, règle 1 : un invariant vaut pour
-          // tous les chemins).
-          const destination = await tx.location.findUnique({
-            where: { id: dto.locationId },
-            select: { type: true },
-          });
-          if (
-            destination?.type !== 'MAGASIN' &&
-            destination?.type !== 'DEPOT'
-          ) {
-            throw new BusinessException(
-              ErrorCode.VALIDATION_FAILED,
-              'locationId : la marchandise se réceptionne au magasin ou au dépôt',
-              HttpStatus.UNPROCESSABLE_ENTITY,
-            );
-          }
-
-          const lines = await this.buildLines(tx, dto, order);
-          const totalTtc = ReceptionsService.totalTtc(lines);
-          const number = await nextDocumentNumber(tx, 'RECEPTION', 'BR', 5);
-          const reception = await tx.reception.create({
-            include: RECEPTION_INCLUDE,
-            data: {
-              id: dto.id,
-              number,
-              clientMutationId: dto.clientMutationId,
-              purchaseOrderId: order?.id ?? null,
-              supplierId: supplier.id,
-              locationId: dto.locationId,
-              userId: user.id,
-              note: dto.note ?? null,
-              totalTtc,
-              lines: { create: lines },
-            },
-          });
-
-          // Règle 2 : le stock n'entre que par le journal. Ordre fixe par
-          // produit pour ne pas interbloquer deux réceptions concurrentes.
-          for (const line of [...reception.lines].sort((a, b) =>
-            a.productId.localeCompare(b.productId),
-          )) {
-            await this.ledger.applyMovement(tx, {
-              productId: line.productId,
-              locationId: reception.locationId,
-              quantity: line.receivedQuantity,
-              type: 'RECEPTION',
-              operationType: 'RECEPTION',
-              operationId: reception.id,
-              userId: user.id,
-              comment: reception.number,
-            });
-          }
-          // Règle 5 : le coût = DERNIER prix réceptionné. Parcouru dans l'ordre
-          // DU BON (et non dans l'ordre de verrouillage) : si un produit revient
-          // sur deux lignes, c'est la dernière qui fixe le coût, pas le hasard.
-          for (const line of reception.lines) {
-            await tx.product.update({
-              where: { id: line.productId },
-              data: { lastPurchasePriceHt: line.unitPriceHt },
-            });
-          }
-
-          if (order) await ReceptionsService.applyToOrder(tx, order.id, lines);
-
-          await writeAudit(tx, actor, {
-            action: 'CREATE',
-            entityType: 'Reception',
-            entityId: reception.id,
-            newValue: {
-              number: reception.number,
-              purchaseOrderId: reception.purchaseOrderId,
-              supplierId: reception.supplierId,
-              locationId: reception.locationId,
-              totalTtc: reception.totalTtc,
-              lines: reception.lines.map((l) => ({
-                productId: l.productId,
-                receivedQuantity: formatQuantity(l.receivedQuantity),
-                unitPriceHt: l.unitPriceHt,
-              })),
-            },
-          });
-          return ReceptionsService.toDto(reception);
-        }),
+        this.prisma.$transaction((tx) => this.createInTx(tx, dto, user, actor)),
     );
+  }
+
+  /// Cœur de la réception, dans la transaction de l'appelant (route en ligne ou
+  /// handler de synchronisation) — les MÊMES règles sur les deux chemins.
+  /// `actor` null : la synchronisation écrit elle-même l'audit (contrat §4.4).
+  /// `receivedAt` : instant de l'appareil pour une réception faite hors-ligne.
+  async createInTx(
+    tx: Db,
+    dto: CreateReceptionDto,
+    user: AuthenticatedUser,
+    actor: ActorContext | null,
+    receivedAt: Date = new Date(),
+  ): Promise<ReceptionDto> {
+    const supplier = await tx.supplier.findFirst({
+      where: { id: dto.supplierId, isActive: true },
+    });
+    if (!supplier) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'supplierId : fournisseur introuvable ou désactivé',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    // MÊME verrou que l'annulation et la modification de commande : une
+    // annulation et une réception simultanées ne peuvent pas passer
+    // toutes les deux, la seconde voit l'état laissé par la première.
+    const order = dto.purchaseOrderId
+      ? await PurchaseOrdersService.lockOrder(tx, dto.purchaseOrderId)
+      : null;
+    // Relue SOUS le verrou : la même réception, envoyée en ligne juste avant
+    // (réponse perdue) puis par la file, a pu se valider pendant l'attente —
+    // sans cette relecture, le reste à recevoir consommé ferait refuser à tort
+    // (« surlivraison ») une réception bel et bien enregistrée.
+    const already = await this.replay(tx, dto, user);
+    if (already) return already;
+    // Hors commande, la réception EST un achat : elle crée du stock, de
+    // la dette et un coût d'achat sans qu'aucun admin ait engagé quoi que
+    // ce soit. Réservée à l'ADMIN (audit sécurité du 2026-09-20).
+    if (!order && !user.roles.includes('ADMIN')) {
+      throw new BusinessException(
+        ErrorCode.FORBIDDEN_ROLE,
+        'Réception hors commande réservée à l’administrateur : ' +
+          'créez la commande, faites-la confirmer, puis réceptionnez',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (order) {
+      if (order.supplierId !== supplier.id) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          `Commande ${order.number} : elle appartient à un autre fournisseur`,
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      if (!RECEIVABLE.includes(order.status)) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          `Commande ${order.status.toLowerCase().replace(/_/g, ' ')} : aucune réception possible`,
+          HttpStatus.CONFLICT,
+        );
+      }
+    }
+
+    // La marchandise entre au MAGASIN ou au DÉPÔT, jamais au TRANSIT
+    // (qui ne porte que du stock déjà parti) : sans cette borne, une
+    // réception au transit y gèlerait du stock, aucune perte ne s'y
+    // déclarant. Même garde que le stock initial d'un produit et que la
+    // déclaration de perte (CONVENTIONS, règle 1 : un invariant vaut pour
+    // tous les chemins).
+    const destination = await tx.location.findUnique({
+      where: { id: dto.locationId },
+      select: { type: true },
+    });
+    if (destination?.type !== 'MAGASIN' && destination?.type !== 'DEPOT') {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'locationId : la marchandise se réceptionne au magasin ou au dépôt',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const lines = await this.buildLines(tx, dto, order);
+    const totalTtc = ReceptionsService.totalTtc(lines);
+    const number = await nextDocumentNumber(tx, 'RECEPTION', 'BR', 5);
+    const reception = await tx.reception.create({
+      include: RECEPTION_INCLUDE,
+      data: {
+        id: dto.id,
+        number,
+        clientMutationId: dto.clientMutationId,
+        purchaseOrderId: order?.id ?? null,
+        supplierId: supplier.id,
+        locationId: dto.locationId,
+        userId: user.id,
+        receivedAt,
+        note: dto.note ?? null,
+        totalTtc,
+        lines: { create: lines },
+      },
+    });
+
+    // Règle 2 : le stock n'entre que par le journal. Ordre fixe par
+    // produit pour ne pas interbloquer deux réceptions concurrentes.
+    for (const line of [...reception.lines].sort((a, b) =>
+      a.productId.localeCompare(b.productId),
+    )) {
+      await this.ledger.applyMovement(tx, {
+        productId: line.productId,
+        locationId: reception.locationId,
+        quantity: line.receivedQuantity,
+        type: 'RECEPTION',
+        operationType: 'RECEPTION',
+        operationId: reception.id,
+        userId: user.id,
+        comment: reception.number,
+      });
+    }
+    // Règle 5 : le coût = DERNIER prix réceptionné. Parcouru dans l'ordre
+    // DU BON (et non dans l'ordre de verrouillage) : si un produit revient
+    // sur deux lignes, c'est la dernière qui fixe le coût, pas le hasard.
+    // « Dernier » = dernier REÇU : une réception faite hors-ligne et
+    // synchronisée tard n'écrase pas le coût d'une réception plus récente.
+    for (const line of reception.lines) {
+      const newer = await tx.receptionLine.count({
+        where: {
+          productId: line.productId,
+          reception: { receivedAt: { gt: receivedAt } },
+        },
+      });
+      if (newer > 0) continue;
+      await tx.product.update({
+        where: { id: line.productId },
+        data: { lastPurchasePriceHt: line.unitPriceHt },
+      });
+    }
+
+    if (order) await ReceptionsService.applyToOrder(tx, order.id, lines);
+
+    if (actor) {
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'Reception',
+        entityId: reception.id,
+        newValue: ReceptionsService.audit(reception),
+      });
+    }
+    return ReceptionsService.toDto(reception);
+  }
+
+  /// Trace d'une réception : ce qui est entré, à quel prix, pour quelle dette.
+  private static audit(reception: ReceptionWithLines) {
+    return {
+      number: reception.number,
+      purchaseOrderId: reception.purchaseOrderId,
+      supplierId: reception.supplierId,
+      locationId: reception.locationId,
+      totalTtc: reception.totalTtc,
+      lines: reception.lines.map((l) => ({
+        productId: l.productId,
+        receivedQuantity: formatQuantity(l.receivedQuantity),
+        unitPriceHt: l.unitPriceHt,
+      })),
+    };
   }
 
   async findAll(query: ReceptionListQueryDto): Promise<ReceptionListDto> {
@@ -226,13 +258,15 @@ export class ReceptionsService {
     return ReceptionsService.toDto(reception);
   }
 
-  /// Renvoi de la même réception (réponse perdue, double clic) : on rend celle
-  /// déjà enregistrée, sans faire entrer la marchandise une seconde fois.
-  private async replay(
+  /// Renvoi de la même réception (réponse perdue, double clic, ou même clé
+  /// revenue par la file hors-ligne) : on rend celle déjà enregistrée, sans
+  /// faire entrer la marchandise une seconde fois.
+  async replay(
+    db: Db,
     dto: CreateReceptionDto,
     user: AuthenticatedUser,
   ): Promise<ReceptionDto | null> {
-    const existing = await this.prisma.reception.findUnique({
+    const existing = await db.reception.findUnique({
       where: { clientMutationId: dto.clientMutationId },
       include: RECEPTION_INCLUDE,
     });

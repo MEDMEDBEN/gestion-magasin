@@ -204,7 +204,7 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 - [x] **A — Socle app** (livrée, auditée) — voir le détail juste après la liste.
 - [x] **B — Vente hors-ligne** (livrée, auditée) — détail après la liste.
 - [x] **C — Caisse hors-ligne** (livrée, auditée) — détail après la liste.
-- [ ] **D — Réception hors-ligne** (spec §15 : « fonctionne hors-ligne »).
+- [x] **D — Réception hors-ligne** (livrée, auditée) — détail après la liste.
 - [ ] **E — Transferts, inventaire (comptage), règlements clients** hors-ligne.
 - Restent EN LIGNE, volontairement : facturation (numéro légal), validation d'inventaire et de pertes (geste
   admin), commandes et paiements fournisseurs, fiches produits/clients/fournisseurs, planning, comptes —
@@ -289,6 +289,31 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
   `ReceptionsService` (à extraire en `createInTx`/`replay`, comme la vente), `existsForKey` (clé de réception, par
   auteur), reconnaissance en ligne ; côté app, formulaire de réception via `writeOnlineOrQueue` (intention
   `reception:<idFormulaire>`), reçu « en attente ». Attention : prix d'achat pris de la COMMANDE (audit P0 #7).
+
+**Tranche D — réception hors-ligne (2026-09-22)**
+- **Serveur** : handler `RECEPTION` sur le MÊME cœur que `POST /receptions` (`createInTx`/`replay` extraits ;
+  `actor` null → seule la sync audite) : surlivraison refusée, prix d'achat de la COMMANDE (celui du bon ignoré),
+  hors commande = ADMIN, stock par le journal, coût et dette mis à jour. Réception déjà faite en ligne sous la
+  clé → reconnue (`alreadyRecordedOnline`) ; `existsForKey` par auteur ; datée de l'appareil (borne plausible).
+- **App** : `ReceptionsActions.receive` via `writeOnlineOrQueue` (id = clé d'intention du formulaire) ; sans
+  réseau, message « enregistrée sur cet appareil — pas encore en stock ».
+- **Limite connue** : la liste des commandes et le formulaire se chargent EN LIGNE. La réception hors-ligne couvre
+  donc la coupure PENDANT la saisie, pas un dépôt sans réseau dès l'ouverture de l'écran. Mettre les commandes
+  engagées en cache local = P1 n°14 (« réception mobile »).
+- **Audits** : `security-reviewer` — aucun critique/élevé ; corrigés : audit hors-ligne aussi détaillé qu'en
+  ligne (lignes, quantités, prix), une réception synchronisée TARD n'écrase plus un coût plus récent, tests « id
+  réutilisé » et « clé d'un autre compte ». `reviewer` PAS OK → corrigés : test e2e cassé (`RECEPTION` n'est plus
+  « sans handler » → `PURCHASE_ORDER`, qui restera en ligne), **course en ligne ↔ sync** (la réception relue SOUS
+  le verrou de commande, sinon faux rejet « surlivraison » — e2e concurrent : 3/3 en échec sans le correctif),
+  convention d'audit unique (`offline` OU `alreadyRecordedOnline`, alignée sur la vente).
+- **Preuve tranche D (2026-09-22)** : backend `lint:check` 0 · **82** unit · **363** e2e (26 suites, un seul
+  passage) ; app analyze propre · **+301 ~43**. Contre-épreuves : reconnaissance en ligne, relecture sous verrou
+  (3/3), coût non écrasé par une réception tardive.
+- **Prochaine étape précise** : tranche E — handlers `TRANSFER` (étapes demande/préparation/réception du
+  `TransfersService`, à découper comme la réception : `replay` + cœur dans la transaction, relecture sous le
+  verrou `lockTransfer`), comptage d'inventaire (`INVENTORY`, lignes comptées seulement — la VALIDATION reste en
+  ligne, geste admin), règlements clients (`CUSTOMER_PAYMENT`, caisse de la vente comme pour la vente en
+  espèces). Chaque handler : `existsForKey` par auteur, test « en ligne puis file » et test concurrent.
 
 **Prix modifiable en vente — décision MEDMEDBEN du 2026-09-22 (livrée, auditée)** — remplace l'ancien rejet
 « prix changé pendant la coupure » :

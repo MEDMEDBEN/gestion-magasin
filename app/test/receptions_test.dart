@@ -3,6 +3,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
+import 'package:gestion_magasin/core/offline_write.dart';
+import 'package:gestion_magasin/core/providers.dart';
+import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -10,6 +14,7 @@ import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/purchases/presentation/purchases_screen.dart';
+import 'package:gestion_magasin/features/receptions/application/receptions_controller.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
@@ -153,6 +158,8 @@ Future<_FakeReceptionsApi> _pump(
       overrides: [
         purchasesApiProvider.overrideWithValue(_lastPurchases),
         receptionsApiProvider.overrideWithValue(receptions),
+        // Une écriture (en ligne ou en file) appartient au compte connecté.
+        currentUserIdProvider.overrideWithValue('magasinier'),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
@@ -183,7 +190,86 @@ Future<void> _openReceptionForm(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+class _OfflineReceptionsApi extends ReceptionsApi {
+  _OfflineReceptionsApi() : super(Dio());
+
+  @override
+  Future<Reception> create(Map<String, Object?> fields) async =>
+      throw const ApiException(statusCode: 0, message: 'hors ligne');
+}
+
+class _RecordingQueue implements MutationQueue {
+  final queued = <({String type, Map<String, dynamic> payload, String? key})>[];
+
+  @override
+  Future<bool> isTooStale({required String authorUserId}) async => false;
+
+  @override
+  Future<String> enqueue({
+    required String authorUserId,
+    required String deviceId,
+    required String operationType,
+    required Map<String, dynamic> payload,
+    String? clientMutationId,
+    DateTime? deviceTimestamp,
+  }) async {
+    queued.add((type: operationType, payload: payload, key: clientMutationId));
+    return clientMutationId!;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 void main() {
+  test(
+    'sans réseau : la réception part dans la file (même clé, id de l’appareil), '
+    'jamais présentée comme faite',
+    () async {
+      final queue = _RecordingQueue();
+      final container = ProviderContainer(
+        overrides: [
+          receptionsApiProvider.overrideWithValue(_OfflineReceptionsApi()),
+          currentUserIdProvider.overrideWithValue('magasinier'),
+          deviceIdProvider.overrideWith((ref) async => 'poste-depot'),
+          mutationQueueProvider.overrideWithValue(queue),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final outcome = await container
+          .read(receptionsActionsProvider)
+          .receive(
+            intent: 'reception:formulaire-1',
+            purchaseOrderId: 'o1',
+            supplierId: 's1',
+            locationId: 'depot',
+            lines: [
+              (
+                productId: 'p1',
+                purchaseLineId: 'l1',
+                receivedQuantity: Decimal.fromInt(4),
+                unitPriceHt: 120000,
+              ),
+            ],
+          );
+
+      expect(outcome, isA<Queued<Reception>>());
+      final queued = queue.queued.single;
+      expect(queued.type, 'RECEPTION');
+      expect(queued.payload['clientMutationId'], queued.key);
+      expect(queued.payload['id'], queued.key);
+      expect(queued.payload['lines'], [
+        {
+          'productId': 'p1',
+          'purchaseLineId': 'l1',
+          'receivedQuantity': '4.000',
+          'unitPriceHt': 120000,
+        },
+      ]);
+    },
+  );
+
   testWidgets(
     'le reste à recevoir est pré-rempli et part avec une clé d’idempotence',
     (tester) async {
