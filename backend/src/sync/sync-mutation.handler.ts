@@ -22,6 +22,9 @@ export interface SyncApplyResult {
   /// l'oublierait ferait tomber le payload BRUT du client dans le journal — la
   /// P0 #12 va en ajouter une dizaine (audit sécurité du 2026-09-21).
   auditNewValue: Prisma.InputJsonValue;
+  /// Action tracée quand elle dépend du contenu (caisse : ouverture = CREATE,
+  /// clôture = VALIDATE). Par défaut, `auditAction` du handler.
+  auditAction?: AuditAction;
 }
 
 /// Un type d'opération synchronisable = un handler. Les features P0 en ajoutent un
@@ -65,7 +68,22 @@ export interface SyncMutationHandler<TPayload extends object = object> {
   /// c'est une course avec la même opération en ligne — « réessayer » (le
   /// prochain cycle la reconnaîtra), pas un rejet définitif. Obligatoire dès
   /// que la route en ligne enregistre la clé.
-  existsForKey?(clientMutationId: string): Promise<boolean>;
+  /// Limité à l'AUTEUR : une clé d'un autre compte ne peut pas faire boucler
+  /// une file en « réessayer ».
+  existsForKey?(clientMutationId: string, userId: string): Promise<boolean>;
+}
+
+/// Au-delà, l'instant de l'appareil n'est plus cru. Même valeur que
+/// `AppConfig.maxOfflineDuration`, mais pas la même mesure (l'app mesure l'âge
+/// de sa file au moment de saisir).
+const MAX_OFFLINE_MS = 72 * 3600 * 1000;
+
+/// Instant d'une opération faite hors-ligne : celui de l'appareil s'il est
+/// plausible — ni dans le futur, ni plus ancien que la durée hors-ligne permise
+/// —, sinon celui de la synchronisation. Borne l'antidatage par un appel direct.
+export function plausibleDeviceTime(deviceTimestamp: Date, now = new Date()) {
+  const age = now.getTime() - deviceTimestamp.getTime();
+  return age >= 0 && age <= MAX_OFFLINE_MS ? deviceTimestamp : now;
 }
 
 /// Jeton d'injection multi-fournisseurs : le module de sync assemble la liste.

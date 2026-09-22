@@ -163,12 +163,17 @@ class _CashBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(currentCashSessionProvider);
+    // Gardé en vie : « Ouvrir la caisse » y cherche le magasin. Lu seulement au
+    // clic, ce provider auto-libéré était encore vide (« Magasin introuvable »).
+    ref.watch(locationsProvider);
     return session.when(
       loading: () => const SizedBox(
         width: 18,
         height: 18,
         child: CircularProgressIndicator(strokeWidth: 2),
       ),
+      // Caisse INCONNUE (hors ligne, jamais lue sur cet appareil) : on ne
+      // propose pas d'en ouvrir une — elle l'est peut-être déjà au serveur.
       error: (error, _) => AmpereBadge(
         label: 'Caisse indisponible',
         tone: StatusTone.warn,
@@ -184,10 +189,17 @@ class _CashBar extends ConsumerWidget {
               spacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                AmpereBadge(
-                  label: 'Caisse ouverte · ${formatDA(cash.currentAmount)}',
-                  tone: StatusTone.ok,
-                ),
+                cash.status == cashPendingSync
+                    ? const AmpereBadge(
+                        label: 'Caisse ouverte · en attente de synchronisation',
+                        tone: StatusTone.warn,
+                        icon: LucideIcons.refreshCw,
+                      )
+                    : AmpereBadge(
+                        label:
+                            'Caisse ouverte · ${formatDA(cash.currentAmount)}',
+                        tone: StatusTone.ok,
+                      ),
                 TextButton(
                   onPressed: () => _closeCash(context, ref, cash),
                   child: const Text('Clôturer'),
@@ -213,8 +225,17 @@ class _CashBar extends ConsumerWidget {
     );
     if (amount == null || !context.mounted) return;
     try {
-      await ref.read(salesActionsProvider).openCash(store.id, amount);
-      if (context.mounted) _snack(context, 'Caisse ouverte.');
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .openCash(store.id, amount);
+      if (context.mounted) {
+        _snack(
+          context,
+          outcome is Queued
+              ? 'Caisse ouverte sur cet appareil — en attente de synchronisation.'
+              : 'Caisse ouverte.',
+        );
+      }
     } on ApiException catch (error) {
       if (context.mounted) _snack(context, error.userMessage);
     }
@@ -225,13 +246,6 @@ class _CashBar extends ConsumerWidget {
     WidgetRef ref,
     CashSession cash,
   ) async {
-    try {
-      await ref.read(salesActionsProvider).ensureNothingPending();
-    } on ApiException catch (error) {
-      if (context.mounted) _snack(context, error.userMessage);
-      return;
-    }
-    if (!context.mounted) return;
     final counted = await _askAmount(
       context,
       title: 'Clôturer la caisse',
@@ -241,11 +255,34 @@ class _CashBar extends ConsumerWidget {
     );
     if (counted == null || !context.mounted) return;
     try {
-      final report = await ref
+      final outcome = await ref
           .read(salesActionsProvider)
           .closeCash(cash.id, counted);
       if (!context.mounted) return;
-      await _showZReport(context, report);
+      switch (outcome) {
+        case Applied(value: final report):
+          await _showZReport(context, report);
+        case Queued():
+          // Le serveur n'a encore rien calculé : pas de rapport Z, jamais un
+          // écart inventé côté appareil.
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Clôture en attente de synchronisation'),
+              content: Text(
+                'Compté : ${formatDA(counted)}. La clôture partira après les '
+                'opérations encore en attente ; le rapport Z (attendu, écart) '
+                'sera disponible une fois synchronisée.',
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Compris'),
+                ),
+              ],
+            ),
+          );
+      }
     } on ApiException catch (error) {
       if (context.mounted) _snack(context, error.userMessage);
     }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,18 +12,65 @@ import '../../../core/mutation_keys.dart';
 import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
+import '../../../data/sync/sync_coordinator.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../../payments/data/payment_models.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 
-/// Caisse ouverte du compte connecté (`null` : aucune). Lue en ligne.
+/// Statut local d'une caisse ouverte sur cet appareil et pas encore connue du
+/// serveur : jamais présentée comme définitive (règle 8).
+const cashPendingSync = 'EN_ATTENTE';
+
+/// Caisse ouverte du compte connecté (`null` : aucune). Trois sources, par
+/// ordre de priorité :
+/// 1. la FILE : la dernière ouverture/clôture de caisse de ce compte encore en
+///    attente fait foi (le serveur ne la connaît pas encore). Un rejet ou une
+///    confirmation la sort de la file : l'état se recale tout seul ;
+/// 2. le SERVEUR, lu en ligne, dont la réponse est conservée sur l'appareil ;
+/// 3. hors ligne, ce DERNIER ÉTAT CONNU — même après un redémarrage. Jamais
+///    connu : erreur (caisse inconnue) — on ne propose alors pas d'en ouvrir
+///    une, elle pourrait déjà l'être au serveur (audit tranche C).
 final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>((
   ref,
-) {
-  ref.watch(currentUserIdProvider);
-  return ref.watch(salesApiProvider).currentCashSession();
+) async {
+  final userId = ref.watch(currentUserIdProvider);
+  if (userId == null) return null;
+  // Recalcul à chaque mouvement de la file (mise en file, synchro, rejet).
+  ref.watch(pendingMutationsCountProvider);
+  final queued = await ref
+      .watch(mutationQueueProvider)
+      .latestPending(authorUserId: userId, operationType: 'CASH_SESSION');
+  if (queued != null) {
+    final body = jsonDecode(queued.payload) as Map<String, dynamic>;
+    if (body['action'] == 'CLOSE') return null;
+    return CashSession(
+      id: body['id'] as String,
+      status: cashPendingSync,
+      openingFloat: body['openingFloat'] as int,
+      cashSalesAmount: 0,
+      cashSalesCount: 0,
+      currentAmount: body['openingFloat'] as int,
+      openedAt: queued.deviceTimestamp,
+    );
+  }
+  final settings = ref.watch(localSettingsStoreProvider);
+  final memoryKey = 'cash-session.$userId';
+  try {
+    final server = await ref.watch(salesApiProvider).currentCashSession();
+    await settings.write(
+      memoryKey,
+      server == null ? 'none' : jsonEncode(server.toJson()),
+    );
+    return server;
+  } on ApiException catch (error) {
+    final known = error.isOffline ? await settings.read(memoryKey) : null;
+    if (known == null) rethrow;
+    return known == 'none'
+        ? null
+        : CashSession.fromJson(jsonDecode(known) as Map<String, dynamic>);
+  }
 });
 
 final customerSearchProvider = FutureProvider.autoDispose
@@ -209,55 +258,79 @@ class SalesActions {
 
   SalesApi get _api => _ref.read(salesApiProvider);
 
-  Future<CashSession> openCash(String storeId, int openingFloat) async {
-    final session = await runMoneyMutation(
+  /// Ouverture : en ligne si possible, sinon par la file. L'id de la caisse est
+  /// la clé de l'intention (stable d'un essai à l'autre) : une caisse ouverte
+  /// HORS LIGNE est désignée par les ventes suivantes avant d'exister au serveur.
+  Future<WriteOutcome<CashSession>> openCash(
+    String storeId,
+    int openingFloat,
+  ) async {
+    final outcome = await writeOnlineOrQueue<CashSession>(
       _ref,
-      'cash-open',
-      (key) => _api.openCashSession(
-        clientMutationId: key,
-        locationId: storeId,
-        openingFloat: openingFloat,
-      ),
+      // Exception motivée à la règle « une intention = une opération » : un
+      // compte n'a qu'UNE caisse ouverte à la fois, et la clé est libérée dès
+      // l'ouverture faite ou mise en file.
+      intent: 'cash-open',
+      operationType: 'CASH_SESSION',
+      payload: (key) => {
+        'action': 'OPEN',
+        'clientMutationId': key,
+        'id': key,
+        'locationId': storeId,
+        'openingFloat': openingFloat,
+      },
+      online: (body) => _api.openCashSession(_withoutAction(body)),
     );
+    // En file : `currentCashSessionProvider` la lit dans la file elle-même.
     _ref.invalidate(currentCashSessionProvider);
-    return session;
+    return outcome;
   }
 
-  /// Pas de clôture tant que des opérations de ce compte attendent la synchro :
-  /// les espèces d'une vente faite hors-ligne sont DANS le tiroir, mais pas
-  /// encore dans l'attendu — le rapport Z mentirait, et la vente serait ensuite
-  /// refusée (`CASH_SESSION_CLOSED`, audit sécu tranche B).
-  Future<void> ensureNothingPending() async {
+  /// Clôture (rapport Z). S'il reste des opérations de ce compte en file (ventes
+  /// hors-ligne), on tente d'abord de les synchroniser ; si elles attendent
+  /// encore, la clôture passe PAR LA FILE, derrière elles : le serveur les
+  /// compte dans l'attendu. Clôturer en ligne avant elles fausserait le rapport
+  /// Z et ferait refuser ces ventes (`CASH_SESSION_CLOSED`).
+  Future<WriteOutcome<CashSession>> closeCash(
+    String sessionId,
+    int countedAmount,
+  ) async {
+    final behindQueue = await _pendingAfterSync() > 0;
+    final outcome = await writeOnlineOrQueue<CashSession>(
+      _ref,
+      intent: 'cash-close:$sessionId',
+      operationType: 'CASH_SESSION',
+      payload: (key) => {
+        'action': 'CLOSE',
+        'clientMutationId': key,
+        'sessionId': sessionId,
+        'countedAmount': countedAmount,
+      },
+      online: (body) {
+        final route = _withoutAction(body)..remove('sessionId');
+        return _api.closeCashSession(sessionId, route);
+      },
+      queueOnly: behindQueue,
+      // Fermer son tiroir reste possible après une longue coupure.
+      staleGuard: false,
+    );
+    _ref.invalidate(currentCashSessionProvider);
+    return outcome;
+  }
+
+  Future<int> _pendingAfterSync() async {
     final userId = _ref.read(currentUserIdProvider);
-    if (userId == null) return;
-    final pending = await _ref
-        .read(mutationQueueProvider)
-        .pendingCount(authorUserId: userId);
-    if (pending > 0) {
-      throw ApiException(
-        statusCode: 409,
-        code: ErrorCodes.syncPending,
-        message:
-            '$pending opération${pending > 1 ? 's' : ''} en attente de '
-            'synchronisation : synchronisez avant de clôturer la caisse',
-      );
-    }
+    if (userId == null) return 0;
+    final queue = _ref.read(mutationQueueProvider);
+    if (await queue.pendingCount(authorUserId: userId) == 0) return 0;
+    await _ref.read(syncCoordinatorProvider.notifier).kick();
+    return queue.pendingCount(authorUserId: userId);
   }
 
-  Future<CashSession> closeCash(String sessionId, int countedAmount) async {
-    await ensureNothingPending();
-    final report = await runMoneyMutation(
-      _ref,
-      'cash-close:$sessionId',
-      (key) => _api.closeCashSession(
-        sessionId,
-        clientMutationId: key,
-        countedAmount: countedAmount,
-      ),
-    );
-    _ref.invalidate(currentCashSessionProvider);
-    return report;
-  }
+  /// `action` n'existe que dans la file (le handler aiguille OPEN / CLOSE) ;
+  /// les routes en ligne refusent un champ inconnu.
+  static Map<String, dynamic> _withoutAction(Map<String, dynamic> body) =>
+      {...body}..remove('action');
 
   /// Valide le panier. `paidAmount` : espèces GARDÉES (≤ total) ; le reste
   /// part en crédit client. Le panier n'est vidé qu'après succès — vente
@@ -275,7 +348,10 @@ class SalesActions {
     // Caisse où entrent les espèces (dernier état lu, même hors ligne) : le
     // serveur refuse si ce n'est plus la caisse ouverte — les espèces ne
     // passent jamais dans une autre caisse (audit sécu tranche B).
-    final cash = _ref.read(currentCashSessionProvider).value;
+    // Sans espèces (crédit), aucune caisse en jeu.
+    final cash = paidAmount > 0
+        ? _ref.read(currentCashSessionProvider).value
+        : null;
     if (paidAmount > 0 && cash == null) {
       throw const ApiException(
         statusCode: 409,
@@ -305,6 +381,8 @@ class SalesActions {
         dueDate: dueDate == null ? null : isoDay(dueDate),
       ),
       online: _api.createSale,
+      // Caisse encore en file : la vente doit passer APRÈS son ouverture.
+      queueOnly: cash?.status == cashPendingSync,
     );
     _ref.read(cartProvider.notifier).clear();
     _ref.invalidate(currentCashSessionProvider);

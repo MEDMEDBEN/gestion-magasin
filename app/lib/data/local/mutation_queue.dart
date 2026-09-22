@@ -124,6 +124,23 @@ class MutationQueue {
         .watch();
   }
 
+  /// Dernière mutation EN ATTENTE de ce type pour ce compte (ex. la dernière
+  /// ouverture/clôture de caisse pas encore synchronisée), ou `null`.
+  Future<PendingMutation?> latestPending({
+    required String authorUserId,
+    required String operationType,
+  }) {
+    return (_db.select(_db.pendingMutations)
+          ..where(
+            (t) =>
+                _pendingOf(t, authorUserId) &
+                t.operationType.equals(operationType),
+          )
+          ..orderBy([(t) => OrderingTerm.desc(t.deviceTimestamp)])
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   Future<int> pendingCount({required String authorUserId}) =>
       _countWhere(_pendingOf(_db.pendingMutations, authorUserId)).getSingle();
 

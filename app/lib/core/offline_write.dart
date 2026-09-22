@@ -40,12 +40,19 @@ final class Queued<T> extends WriteOutcome<T> {
 /// `intent` doit désigner UNE opération (`sale:<idDuPanier>`), jamais un
 /// geste générique (« sale ») : deux opérations sous la même intention
 /// partageraient une clé tant que la première n'est pas close.
+///
+/// `queueOnly` : pas d'essai en ligne — l'opération doit passer APRÈS celles
+/// déjà en file (ex. clôture de caisse derrière les ventes hors-ligne).
+/// `staleGuard` : faux pour un geste qui doit rester possible même après une
+/// longue coupure (clôturer son tiroir) ; la garde vise les NOUVELLES ventes.
 Future<WriteOutcome<T>> writeOnlineOrQueue<T>(
   Ref ref, {
   required String intent,
   required String operationType,
   required Map<String, dynamic> Function(String clientMutationId) payload,
   required Future<T> Function(Map<String, dynamic> body) online,
+  bool queueOnly = false,
+  bool staleGuard = true,
 }) async {
   // L'auteur est celui qui a FAIT le geste, lu AVANT l'attente réseau : un autre
   // compte peut se connecter pendant qu'elle dure (audit sécu E1).
@@ -56,42 +63,44 @@ Future<WriteOutcome<T>> writeOnlineOrQueue<T>(
   final keys = ref.read(mutationKeysProvider.notifier);
   final key = keys.keyFor(intent);
   final body = payload(key);
-  try {
-    final value = await online(body);
-    keys.release(intent);
-    return Applied(value);
-  } on ApiException catch (error) {
-    if (!error.isOffline) {
-      // Refus métier ou conflit : même règle que les mutations d'argent.
-      if (alreadyAppliedCodes.contains(error.code)) keys.release(intent);
-      rethrow;
+  if (!queueOnly) {
+    try {
+      final value = await online(body);
+      keys.release(intent);
+      return Applied(value);
+    } on ApiException catch (error) {
+      if (!error.isOffline) {
+        // Refus métier ou conflit : même règle que les mutations d'argent.
+        if (alreadyAppliedCodes.contains(error.code)) keys.release(intent);
+        rethrow;
+      }
+      // Session changée pendant l'essai : l'intention appartient à une session
+      // CLOSE. La mettre en file l'étiquetterait au nouveau compte, qui la
+      // ferait passer sous ses propres droits — on ne met rien en file.
+      if (ref.read(currentUserIdProvider) != author) rethrow;
     }
-    // Session changée pendant l'essai : l'intention appartient à une session
-    // CLOSE. La mettre en file l'étiquetterait au nouveau compte, qui la ferait
-    // passer sous ses propres droits — on ne met rien en file.
-    if (ref.read(currentUserIdProvider) != author) rethrow;
-    final queue = ref.read(mutationQueueProvider);
-    // Borne du contrat (docs/context.md, « Bornes de données offline ») : un
-    // appareil trop longtemps hors-ligne travaille sur un stock trop faux.
-    if (await queue.isTooStale(authorUserId: author)) {
-      throw const ApiException(
-        statusCode: 409,
-        code: ErrorCodes.offlineTooLong,
-        message:
-            'Trop longtemps hors ligne : reconnectez l’appareil pour '
-            'synchroniser avant de nouvelles opérations',
-      );
-    }
-    await queue.enqueue(
-      authorUserId: author,
-      deviceId: await ref.read(deviceIdProvider.future),
-      operationType: operationType,
-      payload: body,
-      clientMutationId: key,
-    );
-    // La FILE détient désormais l'intention : un nouvel essai serait une
-    // nouvelle opération (la mutation en file partira de toute façon).
-    keys.release(intent);
-    return Queued(key);
   }
+  final queue = ref.read(mutationQueueProvider);
+  // Borne du contrat (docs/context.md, « Bornes de données offline ») : un
+  // appareil trop longtemps hors-ligne travaille sur un stock trop faux.
+  if (staleGuard && await queue.isTooStale(authorUserId: author)) {
+    throw const ApiException(
+      statusCode: 409,
+      code: ErrorCodes.offlineTooLong,
+      message:
+          'Trop longtemps hors ligne : reconnectez l’appareil pour '
+          'synchroniser avant de nouvelles opérations',
+    );
+  }
+  await queue.enqueue(
+    authorUserId: author,
+    deviceId: await ref.read(deviceIdProvider.future),
+    operationType: operationType,
+    payload: body,
+    clientMutationId: key,
+  );
+  // La FILE détient désormais l'intention : un nouvel essai serait une
+  // nouvelle opération (la mutation en file partira de toute façon).
+  keys.release(intent);
+  return Queued(key);
 }

@@ -203,7 +203,7 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 **Tranches (chacune testée, contre-éprouvée et poussée avant la suivante)** :
 - [x] **A — Socle app** (livrée, auditée) — voir le détail juste après la liste.
 - [x] **B — Vente hors-ligne** (livrée, auditée) — détail après la liste.
-- [ ] **C — Caisse hors-ligne** (ouverture, clôture) : une vente en espèces exige une caisse ouverte (règle 12).
+- [x] **C — Caisse hors-ligne** (livrée, auditée) — détail après la liste.
 - [ ] **D — Réception hors-ligne** (spec §15 : « fonctionne hors-ligne »).
 - [ ] **E — Transferts, inventaire (comptage), règlements clients** hors-ligne.
 - Restent EN LIGNE, volontairement : facturation (numéro légal), validation d'inventaire et de pertes (geste
@@ -263,10 +263,31 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
   passage) ; app `flutter analyze` propre · **+295 ~43**. Contre-épreuves (garde retirée → test en échec) :
   reconnaissance de la vente en ligne (2 tests), caisse de la vente, échéance au jour de la vente, course
   en ligne ↔ sync (5/5 en échec), garde « trop longtemps hors ligne ».
-- **Prochaine étape précise** : tranche C — caisse hors-ligne (ouverture/clôture par la file) ; handler
-  `CASH_SESSION` réutilisant `CashSessionsService` (ouverture/clôture, idempotence déjà en place) et
-  reconnaissance en ligne (`existsForKey`) ; côté app, `openCash`/`closeCash` via `writeOnlineOrQueue` —
-  attention : la vente hors-ligne exige alors la `cashSessionId` d'une caisse ouverte HORS LIGNE (id client).
+
+**Tranche C — caisse hors-ligne, livrée (2026-09-22)**
+- **Serveur** : handler `CASH_SESSION` (`OPEN`/`CLOSE`) sur le MÊME cœur que les routes (`openInTx`/`closeInTx`
+  /`replayOpen` extraits ; `actor` null → seule la sync audite, pas de doublon ; `alreadyRecordedOnline` quand
+  la file ne fait que reconnaître un geste fait en ligne). Id de caisse généré par l'appareil ; ouverture et
+  clôture datées de l'appareil (borne plausible commune, `plausibleDeviceTime`). `existsForKey` limité à l'auteur.
+- **App** : état de caisse = dernière ouverture/clôture EN FILE, sinon dernier état serveur conservé sur
+  l'appareil (`LocalSettingsStore`, par compte). Hors ligne sans état connu : « Caisse indisponible », aucune
+  ouverture proposée. Clôture : synchro tentée d'abord, puis PAR LA FILE si des ventes attendent encore
+  (remplace le refus de la tranche B) ; vente dont la caisse est encore en file → par la file aussi. Badge
+  « Caisse ouverte · en attente de synchronisation ».
+- **Bug latent corrigé** : « Ouvrir la caisse » lisait un provider auto-libéré jamais surveillé → « Magasin
+  introuvable » (même en ligne).
+- **Audits** : `reviewer` PAS OK (B1 « Ouvrir hors ligne » après redémarrage → cascade de rejets ; B2 état
+  local bloqué après rejet ; I1 dates de caisse ; I2 vente avant l'ouverture en file ; docs) et
+  `security-reviewer` (élevé = B1 ; audit trompeur ; dates ; `existsForKey`) : tout corrigé — l'état local
+  dérive désormais de la file, un rejet ou une confirmation le recale sans intervention.
+- Non fait, assumé : note d'une clôture rejouée non comparée (aucun impact argent).
+- **Preuve tranche C (2026-09-22)** : backend `lint:check` 0 · **82** unit · **344** e2e (25 suites, un seul
+  passage) ; app `flutter analyze` propre · **+298 ~43** ; **43 captures** régénérées (écran Vente vérifié).
+  Contre-épreuves : reconnaissance d'une ouverture faite en ligne ; mémoire du dernier état de caisse (2 tests).
+- **Prochaine étape précise** : tranche D — réception hors-ligne (spec §15). Handler `RECEPTION` sur le cœur de
+  `ReceptionsService` (à extraire en `createInTx`/`replay`, comme la vente), `existsForKey` (clé de réception, par
+  auteur), reconnaissance en ligne ; côté app, formulaire de réception via `writeOnlineOrQueue` (intention
+  `reception:<idFormulaire>`), reçu « en attente ». Attention : prix d'achat pris de la COMMANDE (audit P0 #7).
 
 **Décision que je prends seul et que je te signale (à confirmer)** — **prix d'une vente hors-ligne** :
 `docs/context.md` §7 (2026-09-08) dit que le serveur accepte les prix saisis sur l'appareil. Mais la décision

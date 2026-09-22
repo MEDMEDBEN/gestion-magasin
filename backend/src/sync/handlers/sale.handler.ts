@@ -9,17 +9,11 @@ import { CreateSaleDto, SaleDto } from '../../sales/dto/sale.dto';
 import { SalesService } from '../../sales/sales.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
+  plausibleDeviceTime,
   SyncApplyResult,
   SyncMutationContext,
   SyncMutationHandler,
 } from '../sync-mutation.handler';
-
-/// Au-delà, l'instant de l'appareil n'est plus cru : la vente est datée de sa
-/// synchronisation. Même valeur que `AppConfig.maxOfflineDuration`, mais pas la
-/// même mesure (l'app mesure l'âge de la file au moment de saisir). Borne
-/// l'antidatage par un appel direct à /sync ; une vente en espèces est de plus
-/// bornée par l'ouverture de sa caisse (`CASH_SESSION_CLOSED`).
-const MAX_OFFLINE_MS = 72 * 3600 * 1000;
 
 /// Payload `SALE` = le MÊME corps que `POST /sales` (`CreateSaleDto`), avec le
 /// total encaissé OBLIGATOIRE (contrôlé dans `validate` : le `@IsOptional`
@@ -49,8 +43,11 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
     private readonly prisma: PrismaService,
   ) {}
 
-  async existsForKey(clientMutationId: string): Promise<boolean> {
-    return (await this.prisma.sale.count({ where: { clientMutationId } })) > 0;
+  async existsForKey(clientMutationId: string, userId: string) {
+    return (
+      (await this.prisma.sale.count({ where: { clientMutationId, userId } })) >
+      0
+    );
   }
 
   async validate(payload: unknown): Promise<CreateSaleDto> {
@@ -93,7 +90,7 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
         context.tx,
         payload,
         context.user,
-        SaleHandler.soldAt(context.deviceTimestamp),
+        plausibleDeviceTime(context.deviceTimestamp),
       ));
     return {
       entityId: sale.id,
@@ -104,13 +101,6 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
       },
       auditNewValue: SaleHandler.audit(sale, already !== null),
     };
-  }
-
-  /// Instant de la vente : celui de l'appareil s'il est plausible — ni dans le
-  /// futur, ni plus ancien que la durée hors-ligne permise.
-  static soldAt(deviceTimestamp: Date, now = new Date()): Date {
-    const age = now.getTime() - deviceTimestamp.getTime();
-    return age >= 0 && age <= MAX_OFFLINE_MS ? deviceTimestamp : now;
   }
 
   private static audit(sale: SaleDto, recognized: boolean) {

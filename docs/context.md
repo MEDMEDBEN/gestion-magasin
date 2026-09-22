@@ -68,12 +68,26 @@ La vente hors-ligne est autorisée (décision produit), mais :
 - Une vente hors-ligne est un **TICKET**, datée de l'appareil si l'instant est plausible (ni futur, ni
   plus de 72 h), sinon de sa synchronisation. Ses espèces portent la **caisse de la vente**
   (`cashSessionId`, obligatoire hors-ligne) : si ce n'est plus la caisse ouverte du vendeur au sync, REJET
-  `CASH_SESSION_CLOSED` — jamais d'imputation à une autre caisse, et aucune horloge d'appareil en jeu. L'app
-  refuse de clôturer une caisse tant que la file du compte n'est pas vide. Une vente **à crédit** n'a pas de
+  `CASH_SESSION_CLOSED` — jamais d'imputation à une autre caisse, et aucune horloge d'appareil en jeu. Tant
+  que la file du compte n'est pas vide, l'app clôture la caisse PAR LA FILE, derrière les ventes (§8). Une vente **à crédit** n'a pas de
   caisse pour la borner : un appel direct à /sync peut l'antidater jusqu'à 72 h (risque accepté, à confirmer).
 - Tout rejet de sync (hors refus d'accès) est tracé dans l'Historique (`AuditLog` `REJECT`) : une vente
   refusée a pu avoir lieu physiquement.
 - La dette client est (re)calculée **côté serveur** au moment de l'application, jamais figée par le client.
+
+## 8. Caisse hors-ligne (P0 #12 tranche C, 2026-09-22)
+- Opération `CASH_SESSION` : payload = le corps de la route en ligne + `action` (`OPEN` | `CLOSE`) ; une
+  clôture porte `sessionId`. Même cœur que `POST /cash-sessions` et `…/:id/close`, mêmes droits.
+- L'**id de la caisse est généré par l'appareil** (contrat §1) : les ventes hors-ligne la désignent
+  (`cashSessionId`) avant qu'elle n'existe au serveur. L'ordre de la file (appareil) impose ouverture →
+  ventes → clôture ; une vente en ligne dont la caisse est encore en file passe elle aussi par la file.
+- Caisse ouverte / clôturée datée de l'appareil (même borne plausible que la vente) : le rapport Z garde
+  une chronologie cohérente avec ses ventes.
+- Côté app, l'état de caisse = la dernière ouverture/clôture EN FILE, sinon le dernier état lu au serveur
+  (conservé sur l'appareil, même après redémarrage). Jamais connu hors ligne → aucune ouverture proposée :
+  une caisse déjà ouverte au serveur ferait refuser toutes les ventes de la journée.
+- Rejets possibles : caisse déjà ouverte (`CASH_SESSION_ALREADY_OPEN`), clôture d'une caisse d'autrui
+  (introuvable) ou déjà clôturée — tous tracés dans l'Historique.
 
 ---
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:decimal/decimal.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/providers.dart';
+import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -21,15 +23,48 @@ import 'package:gestion_magasin/ui/theme/app_theme.dart';
 import 'support/catalog_fakes.dart';
 import 'support/fakes.dart';
 
+StorageLocation _store() => StorageLocation(
+  id: 'magasin',
+  code: 'MAG',
+  name: 'Magasin',
+  type: 'MAGASIN',
+  isActive: true,
+  updatedAt: DateTime.utc(2026),
+);
+
 class _FakeSalesApi extends SalesApi {
-  _FakeSalesApi({this.cash, this.failure}) : super(Dio());
+  _FakeSalesApi({this.cash, this.failure, this.offline = false}) : super(Dio());
 
   final CashSession? cash;
   final ApiException? failure;
+
+  /// Aucune réponse du serveur, sur TOUTES les routes.
+  final bool offline;
+  static const _noNetwork = ApiException(statusCode: 0, message: 'hors ligne');
+  final cashCalls = <String>[];
+
+  @override
+  Future<CashSession> openCashSession(Map<String, dynamic> body) async {
+    cashCalls.add('open');
+    throw _noNetwork;
+  }
+
+  @override
+  Future<CashSession> closeCashSession(
+    String id,
+    Map<String, dynamic> body,
+  ) async {
+    cashCalls.add('close');
+    throw _noNetwork;
+  }
+
   Map<String, Object?>? sent;
 
   @override
-  Future<CashSession?> currentCashSession() async => cash;
+  Future<CashSession?> currentCashSession() async {
+    if (offline) throw _noNetwork;
+    return cash;
+  }
 
   @override
   Future<Uint8List> saleDocument(String saleId) async =>
@@ -95,7 +130,29 @@ class _MemoryQueue implements MutationQueue {
   final int pending;
 
   @override
-  Future<int> pendingCount({required String authorUserId}) async => pending;
+  Future<int> pendingCount({required String authorUserId}) async =>
+      pending + queued.length;
+
+  @override
+  Future<PendingMutation?> latestPending({
+    required String authorUserId,
+    required String operationType,
+  }) async {
+    final last = queued.where((q) => q.type == operationType).lastOrNull;
+    if (last == null) return null;
+    return PendingMutation(
+      clientMutationId: last.key!,
+      authorUserId: authorUserId,
+      deviceId: 'poste-caisse',
+      operationType: last.type,
+      payload: jsonEncode(last.payload),
+      deviceTimestamp: DateTime.utc(2026, 9, 22, 8),
+      status: LocalMutationStatus.enAttente,
+      attemptCount: 0,
+      createdAt: DateTime.utc(2026, 9, 22, 8),
+    );
+  }
+
   final queued = <({String type, Map<String, dynamic> payload, String? key})>[];
 
   @override
@@ -123,6 +180,8 @@ Future<void> _pumpScreen(
   _FakeSalesApi api,
   List<String> printed, {
   _MemoryQueue? queue,
+  bool withStore = false,
+  MemorySettingsStore? settings,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -131,11 +190,16 @@ Future<void> _pumpScreen(
         currentUserIdProvider.overrideWithValue('v'),
         deviceIdProvider.overrideWith((ref) async => 'poste-caisse'),
         mutationQueueProvider.overrideWithValue(queue ?? _MemoryQueue()),
+        localSettingsStoreProvider.overrideWithValue(
+          settings ?? MemorySettingsStore(),
+        ),
         printPdfProvider.overrideWithValue((bytes, name) async {
           printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
         }),
         activeProductsProvider.overrideWith((ref) => Stream.value([_cable()])),
-        locationsProvider.overrideWith((ref) => Stream.value(const [])),
+        locationsProvider.overrideWith(
+          (ref) => Stream.value(withStore ? [_store()] : const []),
+        ),
         priceTiersProvider.overrideWith(
           (ref) async => const [
             PriceTier(
@@ -343,18 +407,119 @@ void main() {
     },
   );
 
-  testWidgets('clôture refusée tant que des opérations attendent la synchro', (
-    tester,
-  ) async {
-    useScreenSize(tester, const Size(500, 1400));
-    final api = _FakeSalesApi(cash: _openCash);
-    await _pumpScreen(tester, api, [], queue: _MemoryQueue(pending: 2));
-    await tester.tap(find.text('Clôturer').first);
-    await tester.pumpAndSettle();
+  testWidgets(
+    'clôture avec des ventes encore en file : elle part PAR LA FILE, derrière '
+    'elles — jamais en ligne avant elles',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(cash: _openCash);
+      final queue = _MemoryQueue(pending: 2);
+      await _pumpScreen(tester, api, [], queue: queue);
+      await tester.tap(find.text('Clôturer').first);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '5000');
+      await tester.tap(find.text('Clôturer').last);
+      await tester.pumpAndSettle();
 
-    expect(find.textContaining('2 opérations en attente'), findsOneWidget);
-    expect(find.text('Espèces comptées dans le tiroir'), findsNothing);
-  });
+      expect(api.cashCalls, isEmpty, reason: 'aucun essai en ligne');
+      expect(queue.queued.single.type, 'CASH_SESSION');
+      expect(queue.queued.single.payload, {
+        'action': 'CLOSE',
+        'clientMutationId': queue.queued.single.key,
+        'sessionId': _openCash.id,
+        'countedAmount': 500000,
+      });
+      expect(
+        find.text('Clôture en attente de synchronisation'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Compris'));
+      await tester.pumpAndSettle();
+      // Le serveur la dit encore ouverte (file pas partie) : l'appareil, lui,
+      // la sait fermée — plus d'encaissement dedans.
+      expect(find.text('Ouvrir la caisse'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'journée sans réseau : caisse ouverte sur l’appareil, la vente suivante '
+    'désigne CETTE caisse',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(
+        offline: true,
+        failure: const ApiException(statusCode: 0, message: 'hors ligne'),
+      );
+      final queue = _MemoryQueue();
+      // Dernier état connu du serveur : aucune caisse ouverte.
+      final settings = MemorySettingsStore()..values['cash-session.v'] = 'none';
+      await _pumpScreen(
+        tester,
+        api,
+        [],
+        queue: queue,
+        withStore: true,
+        settings: settings,
+      );
+
+      await tester.tap(find.text('Ouvrir la caisse'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '5000');
+      await tester.tap(find.text('Ouvrir'));
+      await tester.pumpAndSettle();
+
+      final open = queue.queued.single;
+      expect(open.type, 'CASH_SESSION');
+      expect(open.payload['action'], 'OPEN');
+      expect(open.payload['id'], open.key);
+      expect(
+        find.text('Caisse ouverte · en attente de synchronisation'),
+        findsOneWidget,
+      );
+
+      await _scanTwiceAndPay(tester);
+      final sale = queue.queued.last;
+      expect(sale.type, 'SALE');
+      expect(sale.payload['cashSessionId'], open.payload['id']);
+    },
+  );
+
+  testWidgets(
+    'redémarrage hors ligne : la caisse ouverte le matin reste connue — pas de '
+    'seconde ouverture proposée',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final settings = MemorySettingsStore();
+      // En ligne le matin : la caisse lue au serveur est mémorisée.
+      await _pumpScreen(
+        tester,
+        _FakeSalesApi(cash: _openCash),
+        [],
+        settings: settings,
+      );
+      expect(settings.values['cash-session.v'], contains(_openCash.id));
+
+      // Plus tard, hors ligne après redémarrage.
+      await _pumpScreen(
+        tester,
+        _FakeSalesApi(offline: true),
+        [],
+        settings: settings,
+      );
+      expect(find.textContaining('Caisse ouverte'), findsOneWidget);
+      expect(find.text('Ouvrir la caisse'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'hors ligne, caisse jamais lue sur cet appareil : aucune ouverture proposée',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      await _pumpScreen(tester, _FakeSalesApi(offline: true), []);
+      expect(find.text('Caisse indisponible'), findsOneWidget);
+      expect(find.text('Ouvrir la caisse'), findsNothing);
+    },
+  );
 
   test(
     'menu : « Vente » pour ADMIN/VENDEUR avec sale.create, jamais le magasinier',

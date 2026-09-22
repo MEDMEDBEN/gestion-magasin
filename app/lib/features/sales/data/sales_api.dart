@@ -27,30 +27,11 @@ class SalesApi {
     });
   }
 
-  Future<CashSession> openCashSession({
-    required String clientMutationId,
-    required String locationId,
-    required int openingFloat,
-  }) {
-    return _post('/cash-sessions', {
-      'clientMutationId': clientMutationId,
-      'locationId': locationId,
-      'openingFloat': openingFloat,
-    }, CashSession.fromJson);
-  }
+  Future<CashSession> openCashSession(Map<String, dynamic> body) =>
+      _post('/cash-sessions', body, CashSession.fromJson);
 
-  Future<CashSession> closeCashSession(
-    String id, {
-    required String clientMutationId,
-    required int countedAmount,
-    String? note,
-  }) {
-    return _post('/cash-sessions/$id/close', {
-      'clientMutationId': clientMutationId,
-      'countedAmount': countedAmount,
-      'note': ?note,
-    }, CashSession.fromJson);
-  }
+  Future<CashSession> closeCashSession(String id, Map<String, dynamic> body) =>
+      _post('/cash-sessions/$id/close', body, CashSession.fromJson);
 
   // ── Ventes ──────────────────────────────────────────────────────────────
   /// Corps d'une vente — le MÊME pour `POST /sales` et pour la file hors-ligne

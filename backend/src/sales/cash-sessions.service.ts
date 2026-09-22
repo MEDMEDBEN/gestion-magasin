@@ -37,70 +37,89 @@ export class CashSessionsService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<CashSessionDto> {
-    const replay = async () => {
-      const existing = await this.prisma.cashSession.findUnique({
-        where: { openMutationId: dto.clientMutationId },
-      });
-      if (!existing) return null;
-      assertSameMutation(
-        existing,
-        user.id,
-        existing.locationId === dto.locationId &&
-          existing.openingFloat === dto.openingFloat,
-        {
-          code: ErrorCode.CONFLICT,
-          message: 'Cette ouverture de caisse a déjà été enregistrée autrement',
-        },
-      );
-      return this.toDto(this.prisma, existing);
-    };
-    return runOnce(replay, () => this.openOnce(dto, user, actor));
+    return runOnce(
+      () => this.replayOpen(this.prisma, dto, user),
+      () =>
+        this.prisma.$transaction((tx) => this.openInTx(tx, dto, user, actor)),
+    );
   }
 
-  private openOnce(
+  /// Ouverture déjà enregistrée sous cette clé (même contenu), ou `null`.
+  /// Partagée avec la synchronisation : une ouverture faite en ligne dont la
+  /// réponse s'est perdue est RECONNUE quand la clé revient par la file.
+  async replayOpen(
+    db: Db,
     dto: OpenCashSessionDto,
     user: AuthenticatedUser,
-    actor: ActorContext,
+  ): Promise<CashSessionDto | null> {
+    const existing = await db.cashSession.findUnique({
+      where: { openMutationId: dto.clientMutationId },
+    });
+    if (!existing) return null;
+    assertSameMutation(
+      existing,
+      user.id,
+      existing.locationId === dto.locationId &&
+        existing.openingFloat === dto.openingFloat &&
+        (dto.id === undefined || existing.id === dto.id),
+      {
+        code: ErrorCode.CONFLICT,
+        message: 'Cette ouverture de caisse a déjà été enregistrée autrement',
+      },
+    );
+    return this.toDto(db, existing);
+  }
+
+  /// Cœur de l'ouverture, dans la transaction de l'appelant. `actor` null : la
+  /// synchronisation écrit elle-même l'audit (contrat §4.4), pas de doublon.
+  async openInTx(
+    tx: Db,
+    dto: OpenCashSessionDto,
+    user: AuthenticatedUser,
+    actor: ActorContext | null,
+    openedAt: Date = new Date(),
   ): Promise<CashSessionDto> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, hashtext(${user.id}))`;
-      const already = await tx.cashSession.findFirst({
-        where: { userId: user.id, status: 'OUVERTE' },
-      });
-      if (already) {
-        throw new BusinessException(
-          ErrorCode.CASH_SESSION_ALREADY_OPEN,
-          'Vous avez déjà une caisse ouverte : clôturez-la avant d’en ouvrir une autre',
-          HttpStatus.CONFLICT,
-        );
-      }
-      const location = await tx.location.findUnique({
-        where: { id: dto.locationId },
-        select: { type: true, isActive: true },
-      });
-      if (location?.type !== 'MAGASIN' || !location.isActive) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'Une caisse s’ouvre au magasin',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-      const session = await tx.cashSession.create({
-        data: {
-          userId: user.id,
-          locationId: dto.locationId,
-          openingFloat: dto.openingFloat,
-          openMutationId: dto.clientMutationId,
-        },
-      });
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, hashtext(${user.id}))`;
+    const already = await tx.cashSession.findFirst({
+      where: { userId: user.id, status: 'OUVERTE' },
+    });
+    if (already) {
+      throw new BusinessException(
+        ErrorCode.CASH_SESSION_ALREADY_OPEN,
+        'Vous avez déjà une caisse ouverte : clôturez-la avant d’en ouvrir une autre',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const location = await tx.location.findUnique({
+      where: { id: dto.locationId },
+      select: { type: true, isActive: true },
+    });
+    if (location?.type !== 'MAGASIN' || !location.isActive) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Une caisse s’ouvre au magasin',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const session = await tx.cashSession.create({
+      data: {
+        id: dto.id,
+        userId: user.id,
+        locationId: dto.locationId,
+        openingFloat: dto.openingFloat,
+        openMutationId: dto.clientMutationId,
+        openedAt,
+      },
+    });
+    if (actor) {
       await writeAudit(tx, actor, {
         action: 'CREATE',
         entityType: 'CashSession',
         entityId: session.id,
         newValue: { openingFloat: session.openingFloat },
       });
-      return this.toDto(tx, session);
-    });
+    }
+    return this.toDto(tx, session);
   }
 
   /// Toutes les caisses (ADMIN) : qui, quand, attendu / compté / écart. Totaux
@@ -161,60 +180,80 @@ export class CashSessionsService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<CashSessionDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const [locked] = await tx.$queryRaw<{ id: string }[]>`
+    return this.prisma.$transaction((tx) =>
+      this.closeInTx(tx, id, dto, user, actor),
+    );
+  }
+
+  /// Cœur de la clôture (rapport Z), dans la transaction de l'appelant. Un
+  /// renvoi de la même clôture rend le rapport déjà établi. `actor` null : voir
+  /// `openInTx`.
+  async closeInTx(
+    tx: Db,
+    id: string,
+    dto: CloseCashSessionDto,
+    user: AuthenticatedUser,
+    actor: ActorContext | null,
+    closedAt: Date = new Date(),
+  ): Promise<CashSessionDto> {
+    const [locked] = await tx.$queryRaw<{ id: string }[]>`
         SELECT "id" FROM "CashSession" WHERE "id" = ${id}::uuid FOR UPDATE`;
-      const session = locked
-        ? await tx.cashSession.findUnique({ where: { id } })
-        : null;
-      CashSessionsService.assertCanSee(session, user);
-      // Renvoi de la même clôture (réponse perdue) : le rapport Z déjà établi.
-      if (session!.closeMutationId === dto.clientMutationId) {
-        assertSameMutation(
-          { userId: user.id },
-          user.id,
-          session!.countedAmount === dto.countedAmount,
-          {
-            code: ErrorCode.CONFLICT,
-            message:
-              'Cette clôture a déjà été enregistrée avec un autre montant',
-          },
-        );
-        return this.toDto(tx, session!);
-      }
-      if (session!.status !== 'OUVERTE') {
-        throw new BusinessException(
-          ErrorCode.INVALID_STATE_TRANSITION,
-          'Cette caisse est déjà clôturée',
-          HttpStatus.CONFLICT,
-        );
-      }
-      const totals = await CashSessionsService.totals(tx, id);
-      const expected = session!.openingFloat + totals.cashIn - totals.cashOut;
-      const closed = await tx.cashSession.update({
-        where: { id },
-        data: {
-          status: 'CLOTUREE',
-          closedAt: new Date(),
-          expectedAmount: expected,
-          countedAmount: dto.countedAmount,
-          difference: dto.countedAmount - expected,
-          note: dto.note ?? null,
-          closeMutationId: dto.clientMutationId,
+    const session = locked
+      ? await tx.cashSession.findUnique({ where: { id } })
+      : null;
+    CashSessionsService.assertCanSee(session, user);
+    // Renvoi de la même clôture (réponse perdue) : le rapport Z déjà établi.
+    if (session!.closeMutationId === dto.clientMutationId) {
+      assertSameMutation(
+        { userId: user.id },
+        user.id,
+        session!.countedAmount === dto.countedAmount,
+        {
+          code: ErrorCode.CONFLICT,
+          message: 'Cette clôture a déjà été enregistrée avec un autre montant',
         },
-      });
+      );
+      return this.toDto(tx, session!);
+    }
+    if (session!.status !== 'OUVERTE') {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        'Cette caisse est déjà clôturée',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const totals = await CashSessionsService.totals(tx, id);
+    const expected = session!.openingFloat + totals.cashIn - totals.cashOut;
+    const closed = await tx.cashSession.update({
+      where: { id },
+      data: {
+        status: 'CLOTUREE',
+        closedAt,
+        expectedAmount: expected,
+        countedAmount: dto.countedAmount,
+        difference: dto.countedAmount - expected,
+        note: dto.note ?? null,
+        closeMutationId: dto.clientMutationId,
+      },
+    });
+    if (actor) {
       await writeAudit(tx, actor, {
         action: 'VALIDATE',
         entityType: 'CashSession',
         entityId: id,
-        newValue: {
-          expectedAmount: expected,
-          countedAmount: dto.countedAmount,
-          difference: dto.countedAmount - expected,
-        },
+        newValue: CashSessionsService.closeAudit(closed),
       });
-      return this.toDto(tx, closed);
-    });
+    }
+    return this.toDto(tx, closed);
+  }
+
+  /// Trace d'une clôture : attendu, compté, écart (centimes).
+  static closeAudit(session: CashSession) {
+    return {
+      expectedAmount: session.expectedAmount,
+      countedAmount: session.countedAmount,
+      difference: session.difference,
+    };
   }
 
   /// Rapport Z : le vendeur ne voit que SA session, l'admin toutes.

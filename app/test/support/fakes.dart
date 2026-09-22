@@ -2,6 +2,9 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
+import 'package:gestion_magasin/data/local/mutation_queue.dart';
+import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/data/local/local_settings_store.dart';
 import 'package:gestion_magasin/data/local/token_store.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_api.dart';
@@ -185,6 +188,33 @@ class FakeAuthApi implements AuthApi {
     expiresIn: 900,
     user: user,
   );
+}
+
+/// File de mutations VIDE : rien en attente sur cet appareil.
+class EmptyMutationQueue implements MutationQueue {
+  @override
+  Future<PendingMutation?> latestPending({
+    required String authorUserId,
+    required String operationType,
+  }) async => null;
+
+  @override
+  Future<int> pendingCount({required String authorUserId}) async => 0;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Réglages locaux en mémoire (sans Drift, dont les requêtes ne tournent pas
+/// dans le temps simulé des tests d'écran).
+class MemorySettingsStore implements LocalSettingsStore {
+  final values = <String, String>{};
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
 }
 
 /// Stockage de tokens en mémoire (le plugin natif est absent en test).

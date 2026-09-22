@@ -42,13 +42,11 @@ class ErrorCodes {
   static const String saleAlreadyRecorded = 'SALE_ALREADY_RECORDED';
   static const String paymentAlreadyRecorded = 'PAYMENT_ALREADY_RECORDED';
 
-  /// Codes LOCAUX (jamais envoyés par le serveur ; levés avec un statut 409
-  /// conventionnel pour que `userMessage` affiche leur motif, et non « pas de
+  /// Code LOCAL (jamais envoyé par le serveur ; levé avec un statut 409
+  /// conventionnel pour que `userMessage` affiche son motif, et non « pas de
   /// connexion ») : file hors-ligne trop vieille ou trop longue — la nouvelle
-  /// opération n'est pas mise en file ; clôture de caisse avec des opérations
-  /// encore en attente.
+  /// opération n'est pas mise en file.
   static const String offlineTooLong = 'OFFLINE_TOO_LONG';
-  static const String syncPending = 'SYNC_PENDING';
 
   // Caisse
   static const String cashSessionRequired = 'CASH_SESSION_REQUIRED';

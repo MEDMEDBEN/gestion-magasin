@@ -208,6 +208,14 @@ export class OpenCashSessionDto {
   @ClientMutationId()
   clientMutationId!: string;
 
+  @ApiPropertyOptional({
+    description:
+      'UUID de la caisse, généré par l’appareil : une caisse ouverte HORS LIGNE ' +
+      'est désignée par ses ventes avant même d’exister au serveur.',
+  })
+  @ClientGeneratedId()
+  id?: string;
+
   @ApiProperty({ description: 'Le MAGASIN' })
   @IsCanonicalUuid()
   locationId!: string;

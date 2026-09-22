@@ -227,7 +227,7 @@ export class SyncService {
         await tx.auditLog.create({
           data: {
             userId: user.id,
-            action: handler.auditAction,
+            action: outcome.auditAction ?? handler.auditAction,
             entityType: handler.auditEntityType,
             entityId: outcome.entityId,
             // Toujours l'instantané CHOISI par le handler, jamais le payload
@@ -268,7 +268,7 @@ export class SyncService {
       // heurtée (clé ou `id` fourni par l'appareil).
       if (
         SyncService.isUniqueViolation(error) &&
-        (await handler.existsForKey?.(mutation.clientMutationId))
+        (await handler.existsForKey?.(mutation.clientMutationId, user.id))
       ) {
         return this.pending(
           mutation,
