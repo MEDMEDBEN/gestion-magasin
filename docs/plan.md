@@ -229,7 +229,7 @@ Traçabilité / système
 - [x] Tests d'intégration backend passent _(246 e2e dont 11 réceptions — 2026-09-20)_
 - [x] UI desktop implémentée
 - [x] UI mobile implémentée
-- [x] Sync offline gérée si applicable _(non : la réception endette le fournisseur, elle reste en ligne)_
+- [x] Sync offline gérée si applicable _(oui : handler `RECEPTION`, même cœur qu'en ligne — P0 #12 tranche D, 2026-09-22 ; la liste des commandes reste chargée en ligne)_
 - [x] Revue par subagent `reviewer` _(2026-09-20 : PAS OK — écran jamais exécuté → corrigé + test)_
 - [x] Audit par subagent `security-reviewer` _(2026-09-20 : NON CONFORME — prix d'achat et réception hors commande → corrigés)_
 - [ ] Tests manuels effectués par un humain
