@@ -95,7 +95,34 @@ class CatalogEntries extends Table {
   Set<Column> get primaryKey => {kind, id};
 }
 
-@DriftDatabase(tables: [PendingMutations, LocalSettings, CatalogEntries])
+/// Documents de travail gardés pour le HORS-LIGNE (schéma v5, P1 n°14) :
+/// transferts, commandes à réceptionner, inventaires. Ils ne servent qu'à
+/// OUVRIR l'écran sans réseau ; toute écriture passe par la file de mutations
+/// et le serveur reste juge.
+///
+/// Rangés PAR COMPTE (poste partagé) : le vendeur ne lit pas les documents
+/// descendus par le magasinier, comme pour la file de mutations.
+class CachedDocuments extends Table {
+  TextColumn get accountId => text()();
+
+  /// `transfer`, `purchaseOrder` ou `inventory`.
+  TextColumn get kind => text()();
+  TextColumn get id => text()();
+
+  /// Rang dans la liste rendue par le serveur : l'ordre (récent d'abord) est
+  /// une information, il ne se redevine pas depuis des UUID.
+  IntColumn get rank => integer()();
+
+  /// La ressource complète, telle que le serveur l'a rendue.
+  TextColumn get json => text()();
+
+  @override
+  Set<Column> get primaryKey => {accountId, kind, id};
+}
+
+@DriftDatabase(
+  tables: [PendingMutations, LocalSettings, CatalogEntries, CachedDocuments],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _open());
 
@@ -103,7 +130,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -116,6 +143,9 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(catalogEntries);
       } else if (from < 4) {
         await m.addColumn(catalogEntries, catalogEntries.updatedAt);
+      }
+      if (from < 5) {
+        await m.createTable(cachedDocuments);
       }
     },
   );

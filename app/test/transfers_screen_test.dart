@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/providers.dart';
+import 'package:gestion_magasin/data/local/document_cache.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -45,9 +49,12 @@ Transfer _transfer(
 );
 
 class _FakeTransfersApi extends TransfersApi {
-  _FakeTransfersApi(this.transfers) : super(Dio());
+  _FakeTransfersApi(this.transfers, {this.offline = false}) : super(Dio());
 
   final List<Transfer> transfers;
+
+  /// Serveur injoignable : l'écran doit s'ouvrir sur la copie locale.
+  final bool offline;
   Map<String, Object?>? created;
   Map<String, Object?>? prepared;
   Map<String, Object?>? receivedFields;
@@ -56,11 +63,15 @@ class _FakeTransfersApi extends TransfersApi {
   String? closedStatus;
 
   @override
-  Future<TransferPage> list({String? status, int limit = 200}) async =>
-      TransferPage(
-        data: transfers,
-        meta: PageMeta(page: 1, limit: limit, total: transfers.length),
-      );
+  Future<TransferPage> list({String? status, int limit = 200}) async {
+    if (offline) {
+      throw const ApiException(statusCode: 0, message: 'hors ligne');
+    }
+    return TransferPage(
+      data: transfers,
+      meta: PageMeta(page: 1, limit: limit, total: transfers.length),
+    );
+  }
 
   @override
   Future<Transfer> create(Map<String, Object?> fields) async {
@@ -126,15 +137,18 @@ Future<_FakeTransfersApi> _pump(
   WidgetTester tester,
   AuthUser user, {
   List<Transfer> transfers = const [],
+  MemoryDocumentCache? cache,
+  bool offline = false,
 }) async {
   useScreenSize(tester, const Size(500, 1400));
-  final api = _FakeTransfersApi(transfers);
+  final api = _FakeTransfersApi(transfers, offline: offline);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         transfersApiProvider.overrideWithValue(api),
         // Une écriture (en ligne ou en file) appartient au compte connecté.
         currentUserIdProvider.overrideWithValue('u'),
+        documentCacheProvider.overrideWithValue(cache ?? MemoryDocumentCache()),
         mutationQueueProvider.overrideWithValue(EmptyMutationQueue()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
@@ -501,4 +515,38 @@ void main() {
       isNot(contains('Transferts')),
     );
   });
+
+  test(
+    'un transfert gardé en JSON se relit à l’identique, LIGNES comprises',
+    () {
+      final t = _transfer(TransferStatus.requested, prepared: '18');
+      // Tel que la copie locale l'écrit et le relit (le `toJson()` de freezed ne
+      // descend pas seul dans les listes : c'est l'encodage JSON qui le fait).
+      final read = Transfer.fromJson(
+        jsonDecode(jsonEncode(t.toJson())) as Map<String, dynamic>,
+      );
+      expect(read.number, t.number);
+      expect(
+        read.lines.single.preparedQuantity,
+        t.lines.single.preparedQuantity,
+      );
+    },
+  );
+
+  testWidgets(
+    'hors ligne : l’écran s’ouvre sur la copie locale, DATÉE à l’écran',
+    (tester) async {
+      final cache = MemoryDocumentCache();
+      final transfer = _transfer(TransferStatus.requested);
+      await cache.save('u', DocumentKind.transfer, [
+        transfer.toJson(),
+      ], at: DateTime.utc(2026, 9, 22, 8, 30));
+
+      await _pump(tester, _magasinier(), offline: true, cache: cache);
+
+      expect(find.textContaining(transfer.number), findsOneWidget);
+      expect(find.textContaining('Hors ligne : liste du'), findsOneWidget);
+      expect(find.textContaining('22/09/2026'), findsOneWidget);
+    },
+  );
 }

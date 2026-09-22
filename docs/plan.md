@@ -110,7 +110,7 @@ Traçabilité / système
 
 ### P1 — Important
 13. Scanner code-barres (mobile) _(code écrit 2026-09-22 ; **NON terminé** : build APK et scan sur appareil impossibles ici — NDK Android cassé, à faire par MEDMEDBEN)_
-14. Réception / préparation / inventaire mobiles
+14. Réception / préparation / inventaire mobiles _(2026-09-22 : listes gardées sur l'appareil — les écrans s'ouvrent au dépôt sans réseau ; comptage d'inventaire toujours en ligne, voir docs/context.md §9)_
 15. Dashboard (KPI + graphiques + alertes) desktop et mobile
 16. Notifications (temps réel via WebSocket)
 17. Communication interne (Conversation/Message)

@@ -2,19 +2,25 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
+import '../../../data/local/document_cache.dart';
+import '../../../data/local/offline_documents.dart';
 import '../../../core/quantity.dart';
 import '../../stock/application/stock_controller.dart';
 import '../data/transfers_api.dart';
 import '../data/transfers_models.dart';
 
-/// Transferts lus EN LIGNE : un état de transfert périmé ferait préparer ou
-/// réceptionner deux fois. Liés au compte connecté (poste partagé).
-final transfersProvider = FutureProvider.autoDispose<List<Transfer>>((
-  ref,
-) async {
-  ref.watch(currentUserIdProvider);
-  return (await ref.watch(transfersApiProvider).list()).data;
-});
+/// Transferts lus EN LIGNE, gardés sur l'appareil : au dépôt sans réseau,
+/// l'écran s'ouvre sur la DERNIÈRE liste connue (datée à l'écran), et toute
+/// étape part dans la file — le serveur rejuge l'état au sync.
+final transfersProvider = FutureProvider.autoDispose<CachedList<Transfer>>(
+  (ref) => onlineOrCached(
+    ref,
+    DocumentKind.transfer,
+    fetch: () async => (await ref.watch(transfersApiProvider).list()).data,
+    toJson: (t) => t.toJson(),
+    fromJson: Transfer.fromJson,
+  ),
+);
 
 /// Ligne saisie dans le formulaire de demande (avant envoi au serveur).
 typedef TransferLineDraft = ({String productId, Quantity quantity});

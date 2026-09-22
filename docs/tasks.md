@@ -188,6 +188,28 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #14 RÉCEPTION / PRÉPARATION / INVENTAIRE MOBILES — LISTES HORS-LIGNE (2026-09-23 · **MEDMEDBEN**)
+Le manque réel (tracé en P0 #12 tranches D et E) : les écrans se chargeaient EN LIGNE, donc au dépôt sans
+réseau ils ne s'ouvraient pas — inutile que la saisie, elle, sache attendre.
+- **Cache local par COMPTE** (`CachedDocuments`, schéma Drift **v5** ; `DocumentCache`) : **transferts et
+  inventaires**. Les COMMANDES FOURNISSEURS en sont exclues (prix d'achat + fournisseur interdits en local,
+  audit sécurité) : une réception se saisit toujours hors-ligne, mais l'écran doit avoir été ouvert avant.
+- `onlineOrCached` + `CachedList` : la PROVENANCE voyage avec la liste (`cachedAt`), le bandeau la date et le
+  retour du réseau relit la liste — un bandeau branché sur l'état du réseau laissait afficher du périmé comme
+  frais (audit sécurité, élevé). Sans copie ou copie de plus de 72 h → l'écran reste « hors ligne » (la copie
+  périmée est effacée) ; une liste VIDE descendue, elle, s'ouvre (revue, bloquant) ; un refus métier remonte
+  tel quel. Ordre du serveur conservé (`rank`). Purge à la DÉCONNEXION.
+- **Comptage d'inventaire toujours EN LIGNE** : le bandeau le dit sur cet écran, et le formulaire aussi.
+- **Écarts assumés, écrits dans `docs/context.md` §10** : lecture réseau d'abord (pas « cache-first ») ;
+  l'état « en attente de synchronisation » n'est pas encore porté ligne par ligne dans ces listes.
+- **Audits** : `security-reviewer` (2 élevés : bandeau branché sur le réseau, commandes fournisseurs en local ;
+  3 moyens : purge, borne d'âge, droits révoqués ; 2 faibles) et `reviewer` (bloquant : liste vide non
+  mémorisée ; importants : ordre, cache-first, preuves manquantes, purge) → tout corrigé ou tracé.
+- **Preuve (2026-09-23)** : app `flutter analyze` propre · **+328 ~44** (10 tests de cache/repli, test d'écran
+  « hors ligne : liste du 22/09/2026 », migration v4→v5 avec la file qui survit) · **44 captures**.
+- **Reste à faire pour clore le n°14** : ergonomie mobile fine des trois écrans, marquage « en attente » par
+  ligne, et preuve sur appareil — même blocage NDK que le n°13.
+
 ### 🚧 P1 #13 SCANNER CODE-BARRES (MOBILE) — CODE ÉCRIT, **PREUVE APPAREIL MANQUANTE** (2026-09-22 · **MEDMEDBEN**)
 Spec §27. **Pas « terminé » au sens de CLAUDE.md** : la seule partie non prouvée est justement celle qui peut
 casser — la caméra. `flutter build apk` et un scan réel restent à faire, et le NDK Android de ce poste est

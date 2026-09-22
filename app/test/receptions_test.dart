@@ -160,6 +160,7 @@ Future<_FakeReceptionsApi> _pump(
         receptionsApiProvider.overrideWithValue(receptions),
         // Une écriture (en ligne ou en file) appartient au compte connecté.
         currentUserIdProvider.overrideWithValue('magasinier'),
+        documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([

@@ -978,6 +978,7 @@ Future<void> _capture(
         appDatabaseProvider.overrideWithValue(db),
         usersApiProvider.overrideWithValue(FakeUsersApi(users: _users)),
         currentUserIdProvider.overrideWithValue('me'),
+        documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         pendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
         foreignPendingMutationsCountProvider.overrideWith(
           (ref) => Stream.value(foreignPending),

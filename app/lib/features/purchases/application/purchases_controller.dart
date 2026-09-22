@@ -1,11 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
+import '../../../core/providers.dart';
 import '../data/purchases_api.dart';
 import '../data/purchases_models.dart';
 
 /// Commandes lues EN LIGNE, liées au compte connecté (poste partagé).
+/// Commandes lues EN LIGNE, et gardées NULLE PART : elles portent les prix
+/// d'achat et le fournisseur, que la base locale (partagée par les comptes du
+/// poste) ne doit pas contenir — `docs/permissions.md`.
 final purchaseOrdersProvider = FutureProvider.autoDispose<List<PurchaseOrder>>((
   ref,
 ) async {

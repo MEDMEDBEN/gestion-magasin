@@ -7,6 +7,7 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/offline_documents_notice.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -136,7 +137,7 @@ class TransfersScreen extends ConsumerWidget {
               message: error is ApiException ? error.userMessage : '$error',
               onRetry: () => ref.invalidate(transfersProvider),
             ),
-            data: (items) => items.isEmpty
+            data: (list) => list.items.isEmpty
                 ? const ScreenStateView(
                     status: ScreenStatus.empty,
                     title: 'Aucun transfert',
@@ -147,7 +148,8 @@ class TransfersScreen extends ConsumerWidget {
                 : ListView(
                     padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
                     children: [
-                      for (final t in items)
+                      OfflineDocumentsNotice(cachedAt: list.cachedAt),
+                      for (final t in list.items)
                         Card(
                           child: ListTile(
                             title: Text(

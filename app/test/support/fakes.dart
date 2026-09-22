@@ -1,9 +1,12 @@
+import 'dart:convert';
+
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/data/local/document_cache.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
 import 'package:gestion_magasin/data/local/token_store.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
@@ -188,6 +191,44 @@ class FakeAuthApi implements AuthApi {
     expiresIn: 900,
     user: user,
   );
+}
+
+/// Cache de documents en MÉMOIRE : les tests d'écran n'ouvrent pas de base
+/// locale (les requêtes Drift ne se résolvent pas dans leur temps simulé).
+class MemoryDocumentCache implements DocumentCache {
+  final byKind = <String, List<Map<String, dynamic>>>{};
+  final stamps = <String, DateTime>{};
+
+  @override
+  Future<void> save(
+    String accountId,
+    DocumentKind kind,
+    List<Map<String, dynamic>> documents, {
+    DateTime? at,
+  }) async {
+    // Comme la vraie : le passage par JSON aplatit les objets imbriqués
+    // (`toJson()` de freezed ne descend pas seul dans les listes).
+    byKind['$accountId/${kind.name}'] = [
+      for (final document in documents)
+        jsonDecode(jsonEncode(document)) as Map<String, dynamic>,
+    ];
+    stamps['$accountId/${kind.name}'] = at ?? DateTime.now().toUtc();
+  }
+
+  @override
+  Future<({List<Map<String, dynamic>> documents, DateTime? cachedAt})> read(
+    String accountId,
+    DocumentKind kind,
+  ) async => (
+    documents: byKind['$accountId/${kind.name}'] ?? const [],
+    cachedAt: stamps['$accountId/${kind.name}'],
+  );
+
+  @override
+  Future<void> clear(String accountId) async {
+    byKind.removeWhere((key, _) => key.startsWith('$accountId/'));
+    stamps.removeWhere((key, _) => key.startsWith('$accountId/'));
+  }
 }
 
 /// File de mutations VIDE : rien en attente sur cet appareil.

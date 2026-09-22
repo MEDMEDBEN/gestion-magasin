@@ -21,6 +21,7 @@ void main() {
       overrides: [
         authApiProvider.overrideWithValue(api),
         tokenStoreProvider.overrideWithValue(tokens),
+        documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
       ],
     );
     addTearDown(container.dispose);

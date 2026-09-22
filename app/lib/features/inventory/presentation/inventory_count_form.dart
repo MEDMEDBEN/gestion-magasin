@@ -96,7 +96,13 @@ class _InventoryCountFormState extends ConsumerState<InventoryCountForm> {
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {
-          _error = error.userMessage;
+          // Le comptage reste EN LIGNE (docs/context.md §9) : le serveur seul
+          // sait à quoi comparer les quantités. On le DIT, au lieu de laisser
+          // croire à une panne passagère.
+          _error = error.isOffline
+              ? 'Comptage impossible hors ligne : il se compare au stock du '
+                    'serveur. Reconnectez-vous pour l’enregistrer.'
+              : error.userMessage;
           _saving = false;
         });
       }

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
@@ -146,6 +147,8 @@ Future<_FakeInventoryApi> _pump(
     ProviderScope(
       overrides: [
         inventoryApiProvider.overrideWithValue(api),
+        currentUserIdProvider.overrideWithValue('u'),
+        documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
             product(id: 'p1', name: 'Câble 3G2,5', sku: 'CAB-3G25'),
@@ -409,6 +412,8 @@ void main() {
         ProviderScope(
           overrides: [
             inventoryApiProvider.overrideWithValue(_BrokenInventoryApi()),
+            currentUserIdProvider.overrideWithValue('u'),
+            documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
             activeProductsProvider.overrideWith(
               (ref) => Stream.value([product(id: 'p1')]),
             ),

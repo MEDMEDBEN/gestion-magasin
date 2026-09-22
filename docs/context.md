@@ -118,6 +118,23 @@ La vente hors-ligne est autorisée (décision produit), mais :
   (vente à crédit sans `sale.credit`, réception hors commande) ; seuls les refus d'accès du moteur (rôle et
   permission de l'opération) ne le sont pas.
 
+## 10. Listes de travail hors-ligne (P1 n°14, 2026-09-23)
+- Gardées sur l'appareil, PAR COMPTE : **transferts et inventaires** seulement. **Pas les commandes
+  fournisseurs** : elles portent prix d'achat et fournisseur, que la base locale (partagée, non chiffrée) ne
+  doit pas contenir — décision du 2026-09-14 maintenue.
+- La provenance voyage avec la liste (`CachedList.cachedAt`) : l'écran affiche « liste du <date> ». La
+  fraîcheur ne se déduit JAMAIS de l'état du réseau (il peut revenir sans que la liste soit relue) ; le retour
+  du réseau relit la liste.
+- Une liste VIDE descendue est une réponse (« rien à faire »), pas une panne : elle s'ouvre hors ligne.
+  Rien n'a jamais été descendu, ou la copie dépasse `MAX_OFFLINE_HOURS` (72 h) : l'écran reste en « hors
+  ligne » et la copie périmée est effacée. Purge aussi à la déconnexion.
+- **Écart assumé au « cache-first »** de `CONVENTIONS.md` : la lecture reste RÉSEAU d'abord, copie en secours.
+  Raison : un seul aller-retour par écran, et la copie ne doit jamais s'afficher tant qu'on peut avoir le vrai
+  état (un transfert déjà préparé se prépare deux fois). À revoir si le réseau lent (et non coupé) gêne
+  vraiment le dépôt : il faudra alors un flux à deux temps (copie puis rafraîchissement).
+- **Limite connue** : une étape faite hors ligne n'est pas encore marquée ligne par ligne « en attente de
+  synchronisation » dans ces listes (le panneau de synchro, lui, la montre).
+
 ---
 
 # Bornes de données offline (mobile & desktop)

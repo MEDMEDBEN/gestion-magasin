@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -113,6 +114,8 @@ Future<_FakePurchasesApi> _pump(
     ProviderScope(
       overrides: [
         purchasesApiProvider.overrideWithValue(api),
+        currentUserIdProvider.overrideWithValue('u'),
+        documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([

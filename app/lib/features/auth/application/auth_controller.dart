@@ -149,6 +149,15 @@ class AuthController extends AsyncNotifier<AuthState> {
         }
       }
       await tokenStore.clear();
+      // Les documents de travail gardés pour le hors-ligne ne survivent pas à
+      // la session : le poste est partagé, sa base locale n'est pas chiffrée.
+      final userId = switch (state.value) {
+        AuthSignedIn(:final user) => user.id,
+        _ => null,
+      };
+      if (userId != null) {
+        await ref.read(documentCacheProvider).clear(userId);
+      }
     } finally {
       client.endSessionClose();
     }

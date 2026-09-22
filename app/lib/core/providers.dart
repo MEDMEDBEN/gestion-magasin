@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../data/api/dio_client.dart';
 import '../data/api/sync_api.dart';
 import '../data/local/app_database.dart';
+import '../data/local/document_cache.dart';
 import '../data/local/local_settings_store.dart';
 import '../data/local/mutation_queue.dart';
 import '../data/local/token_store.dart';
@@ -33,6 +34,12 @@ final mutationQueueProvider = Provider<MutationQueue>(
     ref.watch(appDatabaseProvider),
     uuid: ref.watch(uuidProvider),
   ),
+);
+
+/// Documents de travail gardés pour le hors-ligne (transferts, commandes,
+/// inventaires) — par compte, voir `DocumentCache`.
+final documentCacheProvider = Provider<DocumentCache>(
+  (ref) => DocumentCache(ref.watch(appDatabaseProvider)),
 );
 
 /// Le serveur a-t-il répondu au dernier échange ? Alimente l'état « Hors ligne »

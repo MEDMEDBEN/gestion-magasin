@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/mutation_keys.dart';
-import '../../../core/providers.dart';
+import '../../../data/local/document_cache.dart';
+import '../../../data/local/offline_documents.dart';
 import '../../../core/quantity.dart';
 import '../../stock/application/stock_controller.dart';
 import '../data/inventory_api.dart';
@@ -9,12 +10,15 @@ import '../data/inventory_models.dart';
 
 /// Inventaires lus EN LIGNE : un comptage périmé ferait ajuster du stock sur
 /// une photo fausse. Liés au compte connecté (poste partagé).
-final inventoriesProvider = FutureProvider.autoDispose<List<Inventory>>((
-  ref,
-) async {
-  ref.watch(currentUserIdProvider);
-  return (await ref.watch(inventoryApiProvider).list()).data;
-});
+final inventoriesProvider = FutureProvider.autoDispose<CachedList<Inventory>>(
+  (ref) => onlineOrCached(
+    ref,
+    DocumentKind.inventory,
+    fetch: () async => (await ref.watch(inventoryApiProvider).list()).data,
+    toJson: (i) => i.toJson(),
+    fromJson: Inventory.fromJson,
+  ),
+);
 
 /// Écritures de l'inventaire — toujours validées par le serveur.
 class InventoryActions {
