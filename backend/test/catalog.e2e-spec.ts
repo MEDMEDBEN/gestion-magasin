@@ -643,9 +643,11 @@ describe('Catalogue (e2e)', () => {
           ];
         };
 
+        // Le vendeur voit le coût (décision MEDMEDBEN 2026-09-22 : plancher
+        // du prix modifiable en vente), jamais le fournisseur.
         for (const product of await view(tokens.vendeur)) {
           expect(product).toMatchObject({
-            lastPurchasePriceHt: null,
+            lastPurchasePriceHt: 145_000,
             mainSupplierId: null,
           });
         }

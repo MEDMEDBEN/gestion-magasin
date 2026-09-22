@@ -148,6 +148,93 @@ describe('Ventes (e2e)', () => {
   });
 
   describe('validation d’une vente', () => {
+    it('prix modifié par le VENDEUR : appliqué, tarif conservé, tracé pour l’admin', async () => {
+      const p = await product('10.000');
+      // Tarif 1 450,00 HT → vendu 1 600,00 HT : TTC 1 904,00.
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [
+            {
+              productId: p,
+              quantity: '1',
+              unitPriceHt: 160000,
+              priceEdited: true,
+            },
+          ],
+          paidAmount: 190400,
+        })
+        .expect(201);
+
+      expect(res.body).toMatchObject({ totalHt: 160000, totalTtc: 190400 });
+      expect(res.body.lines[0]).toMatchObject({
+        unitPriceHt: 160000,
+        tariffPriceHt: 145000,
+      });
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { entityId: res.body.id, entityType: 'Sale' },
+      });
+      expect(audit.newValue).toMatchObject({
+        priceOverrides: [
+          { productId: p, tariffPriceHt: 145000, unitPriceHt: 160000 },
+        ],
+      });
+    });
+
+    it('vente au prix du tarif : aucune entrée d’audit (spec §24)', async () => {
+      const p = await product('10.000');
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [{ productId: p, quantity: '1', unitPriceHt: 145000 }],
+          paidAmount: 172550,
+        })
+        .expect(201);
+      expect(
+        await prisma.auditLog.count({ where: { entityId: res.body.id } }),
+      ).toBe(0);
+    });
+
+    it('prix sous le dernier prix d’achat : refusé PRICE_BELOW_COST, rien écrit', async () => {
+      const p = await product('10.000');
+      await prisma.product.update({
+        where: { id: p },
+        data: { lastPurchasePriceHt: 120000 },
+      });
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [
+            {
+              productId: p,
+              quantity: '1',
+              unitPriceHt: 119999,
+              priceEdited: true,
+            },
+          ],
+          paidAmount: 142799,
+        })
+        .expect(422);
+      expect(res.body.code).toBe('PRICE_BELOW_COST');
+      expect(await stockOf(p)).toBe('10.000');
+
+      // Au prix d'achat exactement : accepté (pas de perte).
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [
+            {
+              productId: p,
+              quantity: '1',
+              unitPriceHt: 120000,
+              priceEdited: true,
+            },
+          ],
+          paidAmount: 142800,
+        })
+        .expect(201);
+    });
+
     it('comptoir payé en espèces : prix du tarif par défaut figé, TVA, stock, caisse', async () => {
       const p = await product('10.000');
       // 2,5 × 1 450,00 = 3 625,00 HT ; TVA 19 % = 688,75 ; TTC 4 313,75
@@ -338,12 +425,94 @@ describe('Ventes (e2e)', () => {
       }
     });
 
-    it('le client n’envoie JAMAIS le prix : un champ de prix est refusé', async () => {
+    it('coût d’achat inconnu : le prix ne descend pas sous le tarif (jamais 1 centime)', async () => {
+      const p = await product('10.000');
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [
+            { productId: p, quantity: '1', unitPriceHt: 1, priceEdited: true },
+          ],
+          paidAmount: 1,
+        })
+        .expect(422);
+      expect(res.body.code).toBe('PRICE_BELOW_COST');
+      expect(await stockOf(p)).toBe('10.000');
+    });
+
+    it('ni coût ni tarif : aucun prix ne se fixe en caisse (jamais une vente à 0)', async () => {
+      const bare = await prisma.product.create({
+        data: {
+          sku: `E2E-SALE-${suffix}-BARE`,
+          barcode: `E2E-SALE-BC-${suffix}-BARE`,
+          name: 'Produit sans prix',
+          taxRateId: tva19Id,
+        },
+      });
+      productIds.push(bare.id);
+      await prisma.stock.create({
+        data: { productId: bare.id, locationId: magasinId, quantity: '5' },
+      });
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [
+            {
+              productId: bare.id,
+              quantity: '1',
+              unitPriceHt: 0,
+              priceEdited: true,
+            },
+          ],
+          paidAmount: 0,
+        })
+        .expect(422);
+      expect(res.body.code).toBe('PRICE_NOT_DEFINED');
+    });
+
+    it('remise ADMIN qui ferait passer la ligne sous le coût : refusée', async () => {
+      const p = await product('10.000');
+      await prisma.product.update({
+        where: { id: p },
+        data: { lastPurchasePriceHt: 120000 },
+      });
+      const res = await as(tokens.admin)
+        .post('/api/sales')
+        .send({
+          lines: [
+            {
+              productId: p,
+              quantity: '1',
+              unitPriceHt: 120000,
+              priceEdited: true,
+              discountAmount: 1,
+            },
+          ],
+          paidAmount: 142799,
+        })
+        .expect(422);
+      expect(res.body.code).toBe('PRICE_BELOW_COST');
+    });
+
+    it('en ligne, prix NON modifié qui n’est plus le tarif (catalogue en retard) : 409, rien écrit', async () => {
+      const p = await product('10.000');
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [{ productId: p, quantity: '1', unitPriceHt: 140000 }],
+          paidAmount: 166600,
+        })
+        .expect(409);
+      expect(res.body.code).toBe('SALE_TOTAL_CHANGED');
+      expect(await stockOf(p)).toBe('10.000');
+    });
+
+    it('le prix du TARIF ne se forge pas : champ refusé', async () => {
       const p = await product('10.000');
       await as(tokens.vendeur)
         .post('/api/sales')
         .send({
-          lines: [{ productId: p, quantity: '1', unitPriceHt: 1 }],
+          lines: [{ productId: p, quantity: '1', tariffPriceHt: 1 }],
           paidAmount: 0,
         })
         .expect(400);

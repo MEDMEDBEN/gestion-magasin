@@ -236,7 +236,8 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
 - **Serveur** : handler de sync `SALE` (`sync/handlers/sale.handler.ts`) = le MÊME cœur que `POST /sales`
   (`SalesService.createInTx`, extrait avec `replay`). TICKET seulement ; `expectedTotalTtc` obligatoire ; prix du
   tarif COURANT (écart → `SALE_TOTAL_CHANGED`) ; une vente déjà créée en ligne sous la clé est RECONNUE (M1) ;
-  datée de l'appareil si plausible (0 à 72 h), sinon du sync ; échéance jugée au jour de la VENTE.
+  datée de l'appareil si plausible (0 à 72 h), sinon du sync ; échéance jugée au jour de la VENTE. (Prix :
+  voir « Prix modifiable en vente » plus bas — le prix de l'appareil fait foi depuis le 2026-09-22.)
 - **Caisse (audit sécu, élevé)** : la vente porte la caisse où les espèces sont entrées (`cashSessionId`,
   obligatoire hors-ligne) ; si ce n'est plus la caisse ouverte au sync → `CASH_SESSION_CLOSED`. Premier essai
   (comparer l'heure de la vente à l'ouverture de caisse) rejeté au contre-audit : contournable par une heure
@@ -289,14 +290,27 @@ sync appelle donc le MÊME cœur que la route en ligne, y compris son contrôle 
   auteur), reconnaissance en ligne ; côté app, formulaire de réception via `writeOnlineOrQueue` (intention
   `reception:<idFormulaire>`), reçu « en attente ». Attention : prix d'achat pris de la COMMANDE (audit P0 #7).
 
-**Décision que je prends seul et que je te signale (à confirmer)** — **prix d'une vente hors-ligne** :
-`docs/context.md` §7 (2026-09-08) dit que le serveur accepte les prix saisis sur l'appareil. Mais la décision
-du 2026-09-09 (« prix gérés par l'admin, pas de remise libre ») et la route en ligne (le client n'envoie JAMAIS
-de prix) disent l'inverse — et accepter un prix venu de l'appareil permettrait à n'importe qui de forger un
-prix en fabriquant une requête de sync. Retenu : le serveur recalcule au tarif COURANT et compare au total que
-l'appareil a encaissé ; s'ils diffèrent (l'admin a changé un prix pendant la coupure), la vente est **REJETÉE**
-(`SALE_TOTAL_CHANGED`) et apparaît dans l'écran des rejets pour décision. Rare dans un magasin (il faut un
-changement de prix PENDANT une coupure), sûr, et identique au comportement en ligne.
+**Prix modifiable en vente — décision MEDMEDBEN du 2026-09-22 (livrée, auditée)** — remplace l'ancien rejet
+« prix changé pendant la coupure » :
+- Le vendeur (comme l'admin) **modifie le prix d'une ligne** en vente (crayon, badge « Prix modifié ») ; plancher
+  = **dernier prix d'achat** (serveur ET app, ligne nette de remise comprise → `PRICE_BELOW_COST`).
+- **Le vendeur voit le coût d'achat** (`cost.read` ajoutée au rôle VENDEUR ; le coût est désormais gardé dans la
+  base locale). Choix de MEDMEDBEN après l'audit : garder le coût secret tout en le prenant pour plancher le
+  laissait deviner par essais.
+- Hors ligne, **le prix affiché fait foi**. En ligne, une ligne NON modifiée doit être au tarif courant (sinon
+  409 `SALE_TOTAL_CHANGED` : catalogue en retard). `SaleLine.tariffPriceHt` (migration additive + reprise) garde
+  le tarif à côté du prix appliqué ; seules les lignes `priceEdited` sont tracées dans l'Historique.
+- **Ni coût ni tarif** → `PRICE_NOT_DEFINED` : le produit ne se vend pas tant que l'admin ne lui a pas donné un
+  prix — **validé par MEDMEDBEN le 2026-09-22**.
+- **À REVOIR PLUS TARD (MEDMEDBEN, 2026-09-22)** : produit jamais réceptionné (coût inconnu) → le vendeur ne
+  descend pas sous le plus bas de ses tarifs. Règle provisoire laissée en place ; à rediscuter (ex. prix
+  minimum saisi par l'admin, ou coût saisi à l'import du stock initial).
+- Audits : `security-reviewer` (2 élevés : coût révélé, vente à 0 ; 3 moyens : remise sous le coût, prix
+  toujours envoyé en ligne, historique trompeur) et `reviewer` (même bloquant) → tout corrigé ou tranché.
+- **Preuve (2026-09-22)** : backend `lint:check` 0 · **82** unit · **352** e2e (25 suites) ; app analyze propre ·
+  **+300 ~43** ; **43 captures**. Contre-épreuves : plancher (3 tests), prix non modifié ≠ tarif en ligne, plancher
+  sur le net (remise admin).
+
 
 ### ✅ P0 #11 HISTORIQUE / AUDIT — LIVRÉ ET AUDITÉ (2026-09-21 · **MEDMEDBEN**)
 Spec §24. Chaque feature écrit déjà son journal DANS sa propre transaction (`writeAudit`) ; P0 #11 livre la

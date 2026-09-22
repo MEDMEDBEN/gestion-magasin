@@ -57,7 +57,26 @@ export class SalesService {
     // vente déjà créée ; même clé avec un autre panier → 409.
     return runOnce(
       () => this.replay(this.prisma, dto, user),
-      () => this.prisma.$transaction((tx) => this.createInTx(tx, dto, user)),
+      () =>
+        this.prisma.$transaction(async (tx) => {
+          const sale = await this.createInTx(tx, dto, user);
+          const overrides = SalesService.priceOverrides(sale, dto);
+          // Spec §24 : une vente normale ne pollue pas le journal ; une vente à
+          // prix MODIFIÉ, si — l'admin doit la voir (décision 2026-09-22).
+          if (overrides.length > 0) {
+            await writeAudit(
+              tx,
+              { userId: user.id },
+              {
+                action: 'CREATE',
+                entityType: 'Sale',
+                entityId: sale.id,
+                newValue: { number: sale.number, priceOverrides: overrides },
+              },
+            );
+          }
+          return sale;
+        }),
     );
   }
 
@@ -75,16 +94,26 @@ export class SalesService {
       include: SALE_INCLUDE,
     });
     if (!existing) return null;
-    // Comparaison en multi-ensembles triés : doublons et remises comptent.
-    const key = (productId: string, quantity: string, discount: number) =>
-      `${productId}|${quantity}|${discount}`;
+    // Comparaison en multi-ensembles triés : doublons, remises et prix saisis
+    // comptent. Une ligne sans prix saisi a pris le tarif : on compare à lui.
+    const key = (
+      productId: string,
+      quantity: string,
+      discount: number,
+      price: number | null,
+    ) => `${productId}|${quantity}|${discount}|${price}`;
     const sorted = (keys: string[]) => [...keys].sort().join(';');
     const sameCart =
       existing.paidAmount === dto.paidAmount &&
       existing.customerId === (dto.customerId ?? null) &&
       sorted(
         existing.lines.map((l) =>
-          key(l.productId, formatQuantity(l.quantity), l.discountAmount),
+          key(
+            l.productId,
+            formatQuantity(l.quantity),
+            l.discountAmount,
+            l.unitPriceHt,
+          ),
         ),
       ) ===
         sorted(
@@ -93,6 +122,10 @@ export class SalesService {
               l.productId,
               formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
               l.discountAmount ?? 0,
+              l.unitPriceHt ??
+                existing.lines.find((e) => e.productId === l.productId)
+                  ?.tariffPriceHt ??
+                null,
             ),
           ),
         );
@@ -105,6 +138,21 @@ export class SalesService {
     return this.toDto(db, existing);
   }
 
+  /// Lignes dont le vendeur a MODIFIÉ le prix : produit, tarif, appliqué. (Un
+  /// tarif changé pendant une coupure n'en est pas une.)
+  static priceOverrides(sale: SaleDto, dto: CreateSaleDto) {
+    const edited = new Set(
+      dto.lines.filter((l) => l.priceEdited).map((l) => l.productId),
+    );
+    return sale.lines
+      .filter((l) => edited.has(l.productId))
+      .map((l) => ({
+        productId: l.productId,
+        tariffPriceHt: l.tariffPriceHt,
+        unitPriceHt: l.unitPriceHt,
+      }));
+  }
+
   /// Cœur de la vente, dans la transaction de l'appelant (route en ligne ou
   /// handler de synchronisation) — les deux chemins appliquent les MÊMES règles.
   /// `soldAt` : instant de la vente (celui de l'appareil pour une vente faite
@@ -114,6 +162,8 @@ export class SalesService {
     dto: CreateSaleDto,
     user: AuthenticatedUser,
     soldAt: Date = new Date(),
+    /// Vente venue de la FILE : le prix affiché sur l'appareil fait foi.
+    trustDevicePrice = false,
   ): Promise<SaleDto> {
     const store = await tx.location.findFirst({
       where: { type: 'MAGASIN', isActive: true },
@@ -151,7 +201,15 @@ export class SalesService {
     const canDiscount = user.permissions.includes(PERMISSIONS.SALE_DISCOUNT);
     const lines = [];
     for (const line of dto.lines) {
-      lines.push(await SalesService.priceLine(tx, line, tier.id, canDiscount));
+      lines.push(
+        await SalesService.priceLine(
+          tx,
+          line,
+          tier.id,
+          canDiscount,
+          trustDevicePrice,
+        ),
+      );
     }
     const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
     const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
@@ -171,7 +229,7 @@ export class SalesService {
     ) {
       throw new BusinessException(
         ErrorCode.SALE_TOTAL_CHANGED,
-        `Le total a changé : ${formatDA(totalTtc)} (prix mis à jour) — vérifiez avant d’encaisser`,
+        `Le total a changé : ${formatDA(totalTtc)} (tarif ou TVA mis à jour) — vérifiez avant d’encaisser`,
         HttpStatus.CONFLICT,
       );
     }
@@ -688,6 +746,7 @@ export class SalesService {
     line: CreateSaleDto['lines'][number],
     priceTierId: string,
     canDiscount: boolean,
+    trustDevicePrice: boolean,
   ) {
     const quantity = parseQuantity(line.quantity, 'lines.quantity');
     if (quantity.lessThanOrEqualTo(0)) {
@@ -699,7 +758,8 @@ export class SalesService {
     }
     const product = await tx.product.findUnique({
       where: { id: line.productId },
-      include: { taxRate: true, prices: { where: { priceTierId } } },
+      // TOUS les tarifs : le plancher sans coût connu est le plus bas d'entre eux.
+      include: { taxRate: true, prices: true },
     });
     if (!product?.isActive) {
       throw new BusinessException(
@@ -708,14 +768,57 @@ export class SalesService {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
-    const price = product.prices[0];
-    if (!price) {
+    // Prix APPLIQUÉ : celui saisi par le vendeur, sinon celui du tarif
+    // (décision MEDMEDBEN 2026-09-22). Le tarif reste tracé sur la ligne.
+    const tariffPriceHt =
+      product.prices.find((p) => p.priceTierId === priceTierId)?.priceHt ??
+      null;
+    const unitPriceHt = line.unitPriceHt ?? tariffPriceHt;
+    // Plancher : le dernier prix d'achat (règle 5 : jamais de vente à perte) ;
+    // sans coût connu (jamais réceptionné, ou reçu gratuit), le plus bas des
+    // tarifs du produit — sinon rien n'empêcherait de vendre à 0.
+    const cost =
+      product.lastPurchasePriceHt !== null && product.lastPurchasePriceHt > 0
+        ? product.lastPurchasePriceHt
+        : null;
+    const lowestTariff = product.prices.length
+      ? Math.min(...product.prices.map((p) => p.priceHt))
+      : null;
+    const floor = cost ?? lowestTariff;
+    // Ni coût ni tarif : aucune référence, le prix ne se fixe pas en caisse.
+    if (unitPriceHt === null || floor === null) {
       throw new BusinessException(
         ErrorCode.PRICE_NOT_DEFINED,
-        `« ${product.name} » n’a pas de prix pour ce tarif`,
+        `« ${product.name} » n’a pas de prix de vente : l’administrateur doit le définir`,
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
+    // En ligne, un prix NON modifié par le vendeur doit être le tarif courant :
+    // un catalogue local en retard ne fait pas vendre à l'ancien prix. Hors
+    // ligne, le prix vu par le client fait foi (décision 2026-09-22).
+    if (
+      !trustDevicePrice &&
+      line.unitPriceHt !== undefined &&
+      !line.priceEdited &&
+      line.unitPriceHt !== tariffPriceHt
+    ) {
+      throw new BusinessException(
+        ErrorCode.SALE_TOTAL_CHANGED,
+        `Le tarif de « ${product.name} » a changé : vérifiez le prix avant d’encaisser`,
+        HttpStatus.CONFLICT,
+      );
+    }
+    const belowFloor = () =>
+      new BusinessException(
+        ErrorCode.PRICE_BELOW_COST,
+        cost !== null
+          ? `« ${product.name} » : prix inférieur au dernier prix d’achat ` +
+              `(${formatDA(floor)} HT)`
+          : `« ${product.name} » : coût d’achat inconnu, le prix ne peut pas ` +
+              `descendre sous le plus bas tarif (${formatDA(floor)} HT)`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    if (unitPriceHt < floor) throw belowFloor();
     const discount = line.discountAmount ?? 0;
     if (discount > 0 && !canDiscount) {
       throw new BusinessException(
@@ -724,7 +827,7 @@ export class SalesService {
         HttpStatus.FORBIDDEN,
       );
     }
-    const grossHt = roundMoney(new Prisma.Decimal(price.priceHt).mul(quantity));
+    const grossHt = roundMoney(new Prisma.Decimal(unitPriceHt).mul(quantity));
     if (discount > grossHt) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
@@ -734,6 +837,11 @@ export class SalesService {
     }
     const taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
     const lineTotalHt = grossHt - discount;
+    // Le plancher vaut aussi pour le NET : une remise admin ne fait pas passer
+    // la ligne sous le coût.
+    if (lineTotalHt < roundMoney(new Prisma.Decimal(floor).mul(quantity))) {
+      throw belowFloor();
+    }
     const lineTaxAmount = roundMoney(
       new Prisma.Decimal(lineTotalHt).mul(taxRate).div(100),
     );
@@ -741,7 +849,8 @@ export class SalesService {
       productId: product.id,
       priceTierId,
       quantity,
-      unitPriceHt: price.priceHt,
+      unitPriceHt,
+      tariffPriceHt,
       taxRate,
       discountAmount: discount,
       lineTotalHt,
@@ -823,6 +932,7 @@ export class SalesService {
         productId: line.productId,
         quantity: formatQuantity(line.quantity),
         unitPriceHt: line.unitPriceHt,
+        tariffPriceHt: line.tariffPriceHt,
         priceTierId: line.priceTierId,
         taxRate: line.taxRate.toFixed(2),
         discountAmount: line.discountAmount,

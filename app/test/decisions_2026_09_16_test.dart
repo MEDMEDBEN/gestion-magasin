@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/providers.dart';
+import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/payments/data/payment_models.dart';
 import 'package:gestion_magasin/features/payments/presentation/payment_history_dialog.dart';
@@ -98,6 +99,18 @@ void main() {
         overrides: [
           salesApiProvider.overrideWithValue(api),
           currentUserIdProvider.overrideWithValue('v'),
+          // L'encaissement lit l'estimation du panier (prix appliqués).
+          priceTiersProvider.overrideWith(
+            (ref) async => const [
+              PriceTier(
+                id: 'd',
+                code: 'DETAIL',
+                name: 'Détail',
+                isDefault: true,
+              ),
+            ],
+          ),
+          taxRatesProvider.overrideWith((ref) => Stream.value(const [])),
         ],
       );
       addTearDown(container.dispose);

@@ -40,6 +40,9 @@ export enum ErrorCode {
   INVOICE_ONLINE_ONLY = 'INVOICE_ONLINE_ONLY',
   PRICE_NOT_DEFINED = 'PRICE_NOT_DEFINED',
   DISCOUNT_NOT_ALLOWED = 'DISCOUNT_NOT_ALLOWED',
+  /// Prix saisi en vente sous le dernier prix d'achat : jamais de vente à perte
+  /// (décision MEDMEDBEN 2026-09-22).
+  PRICE_BELOW_COST = 'PRICE_BELOW_COST',
   CREDIT_LIMIT_EXCEEDED = 'CREDIT_LIMIT_EXCEEDED',
   /// Total calculé serveur ≠ total annoncé au client (prix changé) : rien écrit.
   SALE_TOTAL_CHANGED = 'SALE_TOTAL_CHANGED',

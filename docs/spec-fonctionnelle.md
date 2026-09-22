@@ -127,7 +127,7 @@ Une vente **validée** (dans une seule transaction) : enregistre la vente + ses 
 ## 8bis. Tarifs, TVA / facturation, Caisse
 
 ### Tarifs (détail / gros)
-Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`, `GROS`). `ProductPrice` porte le prix par (produit × tarif). Chaque client a un **tarif par défaut** (particulier → détail, électricien pro → gros). À la vente, la ligne prend le prix du tarif du client ; une remise ponctuelle reste possible selon permission. **Le prix appliqué est figé sur la `SaleLine`.**
+Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`, `GROS`). `ProductPrice` porte le prix par (produit × tarif). Chaque client a un **tarif par défaut** (particulier → détail, électricien pro → gros). À la vente, la ligne prend le prix du tarif du client ; **le vendeur peut modifier le prix unitaire d'une ligne** (décision MEDMEDBEN 2026-09-22), jamais sous le dernier prix d'achat (sans coût connu : jamais sous le plus bas de ses tarifs — provisoire, à revoir plus tard ; ni coût ni tarif : pas de vente tant que l'admin n'a pas fixé un prix — validé par MEDMEDBEN le 2026-09-22) ; une remise ponctuelle reste possible selon permission (admin). **Le prix appliqué est figé sur la `SaleLine`**, à côté du prix du tarif (vente à prix modifié tracée pour l'admin).
 
 ### TVA, ticket et facture
 - Chaque produit a un **taux de TVA** (peut être 0).

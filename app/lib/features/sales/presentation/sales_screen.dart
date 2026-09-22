@@ -705,6 +705,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               line: line,
               missingPrice: estimate.missingPrices.contains(line.product),
               totalHt: estimate.lineTotalsHt[line.product.id],
+              unitPriceHt: estimate.unitPricesHt[line.product.id],
+              tariffPriceHt: estimate.tariffPricesHt[line.product.id],
             ),
         if (!cart.isEmpty) ...[
           const Divider(height: 28),
@@ -784,11 +786,50 @@ class _CartLineRow extends ConsumerWidget {
     required this.line,
     required this.missingPrice,
     this.totalHt,
+    this.unitPriceHt,
+    this.tariffPriceHt,
   });
 
   final CartLine line;
   final bool missingPrice;
   final int? totalHt;
+  final int? unitPriceHt;
+  final int? tariffPriceHt;
+
+  /// Prix modifiable en vente (décision MEDMEDBEN 2026-09-22), jamais sous le
+  /// plancher : dernier prix d'achat, sinon tarif. Le serveur revérifie.
+  Future<void> _editPrice(BuildContext context, WidgetRef ref) async {
+    final floor = priceFloor(line.product);
+    if (floor == null) {
+      _snack(
+        context,
+        'Aucun prix de vente pour « ${line.product.name} » : '
+        'l’administrateur doit le définir',
+      );
+      return;
+    }
+    final value = await _askAmount(
+      context,
+      title: 'Prix de « ${line.product.name} »',
+      label: 'Prix unitaire HT',
+      confirm: 'Appliquer',
+      initial: unitPriceHt,
+      help: [
+        if (tariffPriceHt != null) 'Tarif : ${formatDA(tariffPriceHt!)} HT',
+        'minimum : ${formatDA(floor)} HT',
+      ].join(' · '),
+    );
+    if (value == null || !context.mounted) return;
+    if (value < floor) {
+      _snack(
+        context,
+        'Prix trop bas : minimum ${formatDA(floor)} HT '
+        '(${line.product.lastPurchasePriceHt != null ? 'prix d’achat' : 'tarif'})',
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).setPrice(line.product.id, value);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -812,13 +853,28 @@ class _CartLineRow extends ConsumerWidget {
                       : '${line.product.sku} · ${formatDA(totalHt!)} HT',
                   style: AmpereType.mono.copyWith(color: colors.ink3),
                 ),
+                if (unitPriceHt != null)
+                  Text(
+                    '${formatDA(unitPriceHt!)} HT / ${line.product.unit.short}',
+                    style: AmpereType.meta.copyWith(color: colors.ink2),
+                  ),
                 if (missingPrice)
                   const AmpereBadge(
                     label: 'Prix non fixé',
                     tone: StatusTone.error,
+                  )
+                else if (unitPriceHt != tariffPriceHt)
+                  const AmpereBadge(
+                    label: 'Prix modifié',
+                    tone: StatusTone.warn,
                   ),
               ],
             ),
+          ),
+          IconButton(
+            tooltip: 'Modifier le prix',
+            icon: const Icon(LucideIcons.pencil, size: 17),
+            onPressed: () => _editPrice(context, ref),
           ),
           IconButton(
             tooltip: 'Moins',

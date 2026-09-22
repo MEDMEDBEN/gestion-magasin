@@ -89,10 +89,24 @@ final mySalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
 
 @immutable
 class CartLine {
-  const CartLine(this.product, this.quantity);
+  const CartLine(this.product, this.quantity, {this.unitPriceHt});
 
   final Product product;
   final Quantity quantity;
+
+  /// Prix unitaire HT saisi par le vendeur (centimes) ; `null` = prix du tarif.
+  final int? unitPriceHt;
+}
+
+/// Plancher du prix de vente (décision 2026-09-22, MÊME règle que le serveur) :
+/// le dernier prix d'achat ; sans coût connu (ou reçu gratuit), le plus bas des
+/// tarifs du produit. `null` : aucune référence — le prix ne se fixe pas en
+/// caisse, l'admin doit le définir.
+int? priceFloor(Product product) {
+  final cost = product.lastPurchasePriceHt;
+  if (cost != null && cost > 0) return cost;
+  final tariffs = product.prices.map((p) => p.priceHt);
+  return tariffs.isEmpty ? null : tariffs.reduce((a, b) => a < b ? a : b);
 }
 
 /// Panier en cours. Il vit côté client jusqu'à la validation (pas de brouillon
@@ -131,7 +145,11 @@ class CartController extends Notifier<CartState> {
     final lines = [...state.lines];
     final index = lines.indexWhere((l) => l.product.id == product.id);
     if (index >= 0) {
-      lines[index] = CartLine(product, lines[index].quantity + added);
+      lines[index] = CartLine(
+        product,
+        lines[index].quantity + added,
+        unitPriceHt: lines[index].unitPriceHt,
+      );
     } else {
       lines.add(CartLine(product, added));
     }
@@ -145,7 +163,20 @@ class CartController extends Notifier<CartState> {
           if (line.product.id != productId)
             line
           else if (quantity > Quantity.zero)
-            CartLine(line.product, quantity),
+            CartLine(line.product, quantity, unitPriceHt: line.unitPriceHt),
+      ],
+    );
+  }
+
+  /// Prix unitaire HT modifié sur une ligne (le plancher est vérifié par l'écran
+  /// ET par le serveur, qui fait foi).
+  void setPrice(String productId, int unitPriceHt) {
+    state = state.copyWith(
+      lines: [
+        for (final line in state.lines)
+          line.product.id == productId
+              ? CartLine(line.product, line.quantity, unitPriceHt: unitPriceHt)
+              : line,
       ],
     );
   }
@@ -171,6 +202,8 @@ class CartEstimate {
     required this.totalTax,
     required this.missingPrices,
     this.lineTotalsHt = const {},
+    this.unitPricesHt = const {},
+    this.tariffPricesHt = const {},
   });
 
   final int totalHt;
@@ -182,6 +215,13 @@ class CartEstimate {
 
   /// Total HT estimé par produit (affiché sur chaque ligne du panier).
   final Map<String, int> lineTotalsHt;
+
+  /// Prix unitaire HT APPLIQUÉ par produit (saisi, sinon tarif) — c'est lui qui
+  /// part au serveur : le prix vu par le client fait foi, même hors ligne.
+  final Map<String, int> unitPricesHt;
+
+  /// Prix du tarif par produit (absent : pas de tarif pour ce produit).
+  final Map<String, int> tariffPricesHt;
 }
 
 int _roundMoney(Decimal value) =>
@@ -197,15 +237,21 @@ CartEstimate estimateCart(
   var tax = 0;
   final missing = <Product>[];
   final lineTotals = <String, int>{};
+  final unitPrices = <String, int>{};
+  final tariffs = <String, int>{};
   for (final line in cart.lines) {
-    final price = line.product.prices
+    final tariff = line.product.prices
         .where((p) => p.priceTierId == tierId)
-        .firstOrNull;
+        .firstOrNull
+        ?.priceHt;
+    if (tariff != null) tariffs[line.product.id] = tariff;
+    final price = line.unitPriceHt ?? tariff;
     if (price == null) {
       missing.add(line.product);
       continue;
     }
-    final lineHt = _roundMoney(Decimal.fromInt(price.priceHt) * line.quantity);
+    unitPrices[line.product.id] = price;
+    final lineHt = _roundMoney(Decimal.fromInt(price) * line.quantity);
     final rate = taxRates[line.product.taxRateId] ?? Decimal.zero;
     lineTotals[line.product.id] = lineHt;
     ht += lineHt;
@@ -220,6 +266,8 @@ CartEstimate estimateCart(
     totalTax: tax,
     missingPrices: missing,
     lineTotalsHt: lineTotals,
+    unitPricesHt: unitPrices,
+    tariffPricesHt: tariffs,
   );
 }
 
@@ -336,8 +384,10 @@ class SalesActions {
   /// part en crédit client. Le panier n'est vidé qu'après succès — vente
   /// confirmée (`Applied`) OU mise en file hors-ligne (`Queued`, un TICKET que
   /// le serveur jugera à la synchronisation : jamais présenté comme définitif).
-  /// `expectedTotalTtc` : le total annoncé au client ; le serveur refuse (409)
-  /// s'il a changé, pour ne jamais encaisser ou rendre la monnaie sur un faux total.
+  /// `expectedTotalTtc` : le total annoncé au client. En ligne, le serveur
+  /// refuse (409) si un tarif a changé sur une ligne non modifiée (catalogue en
+  /// retard) ; hors ligne, le prix affiché fait foi et seule la TVA peut encore
+  /// faire diverger le total — jamais d'encaissement sur un faux total.
   /// `dueDate` : échéance OBLIGATOIRE dès qu'une partie reste à crédit.
   Future<WriteOutcome<Sale>> checkout(
     int paidAmount, {
@@ -359,6 +409,9 @@ class SalesActions {
         message: 'Ouvrez la caisse avant d’encaisser des espèces',
       );
     }
+    // Prix APPLIQUÉ de chaque ligne, envoyé explicitement : si le tarif change
+    // pendant une coupure, c'est le prix vu par le client qui est vendu.
+    final unitPrices = _ref.read(cartEstimateProvider).unitPricesHt;
     // L'intention « valider CE panier » garde sa clé jusqu'au succès.
     final outcome = await writeOnlineOrQueue<Sale>(
       _ref,
@@ -374,6 +427,10 @@ class SalesActions {
             (
               productId: line.product.id,
               quantity: quantityToJson(line.quantity),
+              unitPriceHt: unitPrices[line.product.id],
+              // Prix saisi par le vendeur : tracé pour l'admin ; sinon c'est
+              // le tarif affiché, que le serveur revérifie en ligne.
+              priceEdited: line.unitPriceHt != null,
             ),
         ],
         paidAmount: paidAmount,

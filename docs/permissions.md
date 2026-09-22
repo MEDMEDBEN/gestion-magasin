@@ -7,8 +7,11 @@
 
 ## Règles fermes (validées — non négociables)
 
-1. **Prix & tarifs : ADMIN uniquement.** Le vendeur voit et applique les tarifs, il n'en fixe aucun.
-2. **Aucune remise libre du vendeur.** La remise sur ligne (`sale.discount`) est réservée à l'ADMIN.
+1. **Tarifs : ADMIN uniquement.** Le vendeur voit et applique les tarifs ; il ne modifie aucun tarif, seulement le
+   prix d'une ligne au moment de la vente (règle 2).
+2. **Aucune remise libre du vendeur.** La remise sur ligne (`sale.discount`) est réservée à l'ADMIN. **Mais le prix
+   unitaire d'une ligne est modifiable en vente** par le vendeur comme par l'admin (décision 2026-09-22), jamais sous
+   le dernier prix d'achat (sans coût connu : jamais sous le plus bas de ses tarifs — provisoire, à revoir plus tard ; ni coût ni tarif : pas de vente tant que l'admin n'a pas fixé un prix — validé par MEDMEDBEN le 2026-09-22) ; tracé pour l'admin (`tariffPriceHt` + Historique).
 3. **Vente à crédit** : autorisée au vendeur, strictement **dans la limite de `Customer.creditLimit`**
    fixée par l'admin. **Défaut = 0, donc pas de crédit** tant que l'admin n'a pas relevé le plafond.
 4. **Commandes fournisseurs** : créées et modifiées par l'**ADMIN et le MAGASINIER**.
@@ -168,15 +171,19 @@ immédiatement. Aucune route n'écrit, ne modifie ni n'efface une entrée du jou
 - Le VENDEUR voit dans le journal les mouvements `PERTE_CASSE` (le stock doit rester explicable), mais
   **ni le constat, ni le déclarant** (`comment`, `userId`, `operationId` masqués sans `stock.loss`).
 
-## Décision du 2026-09-14 (MEDMEDBEN) — coût d'achat
-- Le **coût d'achat** (`Product.lastPurchasePriceHt`, dernier prix réceptionné = base de la marge) est
-  visible par l'**ADMIN et le MAGASINIER** (permission `cost.read`), **jamais par le vendeur**. Le serveur
-  renvoie `null` à qui n'a pas `cost.read`, sur toute réponse produit (liste, fiche, code-barres, delta).
-- Même traitement pour `mainSupplierId` sans `supplier.read` (le vendeur n'a aucun accès fournisseurs).
-- L'app n'enregistre **jamais** ces deux champs dans sa base locale (partagée par les comptes d'un poste).
+## Décision du 2026-09-14 (MEDMEDBEN) — coût d'achat · **amendée le 2026-09-22**
+- ~~Le coût d'achat est visible par l'ADMIN et le MAGASINIER, jamais par le vendeur.~~ **Depuis le 2026-09-22
+  (MEDMEDBEN)**, le **VENDEUR a `cost.read`** : le coût d'achat (`Product.lastPurchasePriceHt`) est le plancher du
+  prix qu'il peut modifier en vente, il doit le connaître — hors ligne compris. Raison : garder le coût secret
+  tout en l'utilisant comme plancher le laissait deviner (un refus sous le coût, un accord au-dessus) ; le rendre
+  visible est honnête et permet de baisser jusqu'à lui.
+- Le serveur continue de renvoyer `null` à qui n'a pas `cost.read` (aucun rôle aujourd'hui).
+- `mainSupplierId` reste masqué sans `supplier.read` (le vendeur n'a aucun accès fournisseurs) et n'est **jamais**
+  enregistré en local. Le **coût, lui, est enregistré** dans la base locale : les trois rôles le voient, le poste
+  partagé ne révèle donc rien à personne.
 
 ## Décisions figées (2026-09-09)
-- **Prix & tarifs : gérés par l'admin uniquement.** Le vendeur ne fixe aucun prix et n'applique **aucune remise libre** — il voit et applique les tarifs définis par l'admin.
+- **Tarifs : gérés par l'admin.** Le vendeur applique les tarifs, et peut **modifier le prix d'une ligne au moment de la vente** (décision MEDMEDBEN 2026-09-22) — jamais sous le dernier prix d'achat, sans coût connu jamais sous le plus bas de ses tarifs ; tracé. Pas de remise libre (`sale.discount` = admin).
 - **Vente à crédit** : autorisée au vendeur, dans la **limite de crédit du client** définie par l'admin.
 - **Commandes fournisseurs** : créées/modifiées par l'**admin ET le magasinier**. Confirmation/annulation = admin.
 - **Plafond de crédit par défaut = 0** pour tout nouveau client (aucun crédit sans décision explicite de l'admin).

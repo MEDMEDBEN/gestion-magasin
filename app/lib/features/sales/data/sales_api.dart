@@ -42,7 +42,10 @@ class SalesApi {
     required String id,
     String? customerId,
     String? cashSessionId,
-    required List<({String productId, String quantity})> lines,
+    required List<
+      ({String productId, String quantity, int? unitPriceHt, bool priceEdited})
+    >
+    lines,
     required int paidAmount,
     required int expectedTotalTtc,
     String? dueDate,
@@ -53,7 +56,12 @@ class SalesApi {
     'cashSessionId': ?cashSessionId,
     'lines': [
       for (final line in lines)
-        {'productId': line.productId, 'quantity': line.quantity},
+        {
+          'productId': line.productId,
+          'quantity': line.quantity,
+          'unitPriceHt': ?line.unitPriceHt,
+          if (line.priceEdited) 'priceEdited': true,
+        },
     ],
     'paidAmount': paidAmount,
     'expectedTotalTtc': expectedTotalTtc,

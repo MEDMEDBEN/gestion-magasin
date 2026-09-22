@@ -667,7 +667,13 @@ model SaleLine {
   productId      String  @db.Uuid
   priceTierId    String? @db.Uuid
   quantity       Decimal @db.Decimal(14, 3)
+  /// Prix APPLIQUÉ (centimes HT) — celui du tarif, ou celui saisi par le vendeur
+  /// (décision MEDMEDBEN 2026-09-22 : prix modifiable en vente, jamais sous le
+  /// dernier prix d'achat).
   unitPriceHt    Int
+  /// Prix du TARIF au moment de la vente, `null` si le produit n'en avait pas.
+  /// Différent de `unitPriceHt` = prix modifié par le vendeur (tracé).
+  tariffPriceHt  Int?
   /// Taux de TVA figé au moment de la vente (pourcentage).
   taxRate        Decimal @default(0) @db.Decimal(5, 2)
   discountAmount Int     @default(0)

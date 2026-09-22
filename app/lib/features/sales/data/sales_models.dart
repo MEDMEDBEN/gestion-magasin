@@ -40,6 +40,9 @@ abstract class SaleLine with _$SaleLine {
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
     required Quantity quantity,
     required int unitPriceHt,
+
+    /// Prix du tarif au moment de la vente ; différent = prix modifié.
+    int? tariffPriceHt,
     required String taxRate,
     required int discountAmount,
     required int lineTotalHt,

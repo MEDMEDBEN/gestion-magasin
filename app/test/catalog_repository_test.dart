@@ -137,23 +137,20 @@ void main() {
     },
   );
 
-  test(
-    'le coût d’achat et le fournisseur ne sont JAMAIS écrits sur le poste',
-    () async {
-      final repo = CatalogRepository(db, settings, _PagedApi(const []));
-      await repo.saveAll(
-        products: [
-          product(id: 'p1').copyWith(
-            lastPurchasePriceHt: 145000,
-            mainSupplierId: 'fournisseur',
-          ),
-        ],
-      );
-      final rows = await db.select(db.catalogEntries).get();
-      expect(rows.single.json, isNot(contains('145000')));
-      expect(rows.single.json, isNot(contains('fournisseur')));
-    },
-  );
+  test('le fournisseur n’est JAMAIS écrit sur le poste ; le coût, si (plancher '
+      'du prix modifiable hors ligne, décision 2026-09-22)', () async {
+    final repo = CatalogRepository(db, settings, _PagedApi(const []));
+    await repo.saveAll(
+      products: [
+        product(
+          id: 'p1',
+        ).copyWith(lastPurchasePriceHt: 145000, mainSupplierId: 'fournisseur'),
+      ],
+    );
+    final rows = await db.select(db.catalogEntries).get();
+    expect(rows.single.json, contains('145000'));
+    expect(rows.single.json, isNot(contains('fournisseur')));
+  });
 
   test('recherche sans accents : « cable » trouve « Câble »', () async {
     final repo = CatalogRepository(db, settings, _PagedApi(const []));

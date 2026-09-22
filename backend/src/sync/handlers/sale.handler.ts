@@ -17,12 +17,13 @@ import {
 
 /// Payload `SALE` = le MÊME corps que `POST /sales` (`CreateSaleDto`), avec le
 /// total encaissé OBLIGATOIRE (contrôlé dans `validate` : le `@IsOptional`
-/// hérité resterait actif sur un DTO dérivé). Le prix n'est jamais accepté de
-/// l'appareil : recalculé au tarif COURANT, un écart → `SALE_TOTAL_CHANGED`.
+/// hérité resterait actif sur un DTO dérivé). Le prix de chaque ligne est celui
+/// que l'appareil affichait (décision 2026-09-22), accepté s'il respecte le
+/// plancher (coût d'achat) ; un écart de TOTAL ne vient plus que de la TVA.
 ///
 /// Vente (TICKET) faite hors-ligne. MÊME cœur que `POST /sales`
-/// (`SalesService.createInTx`) : stock revalidé (anti-négatif), prix du tarif
-/// courant, caisse ouverte pour les espèces, plafond de crédit. Une facture ne
+/// (`SalesService.createInTx`) : stock revalidé (anti-négatif), prix de
+/// l'appareil (plancher : coût d'achat), caisse de la vente, plafond de crédit. Une facture ne
 /// passe jamais par ici : son numéro légal s'attribue en ligne (règle 11).
 @Injectable()
 export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
@@ -91,6 +92,7 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
         payload,
         context.user,
         plausibleDeviceTime(context.deviceTimestamp),
+        true,
       ));
     return {
       entityId: sale.id,
@@ -99,11 +101,11 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
         totalTtc: String(sale.totalTtc),
         soldAt: sale.soldAt.toISOString(),
       },
-      auditNewValue: SaleHandler.audit(sale, already !== null),
+      auditNewValue: SaleHandler.audit(sale, payload, already !== null),
     };
   }
 
-  private static audit(sale: SaleDto, recognized: boolean) {
+  private static audit(sale: SaleDto, dto: CreateSaleDto, recognized: boolean) {
     return {
       number: sale.number,
       totalTtc: sale.totalTtc,
@@ -111,6 +113,7 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
       customerId: sale.customerId,
       lines: sale.lines.length,
       offline: true,
+      priceOverrides: SalesService.priceOverrides(sale, dto),
       ...(recognized && { alreadyRecordedOnline: true }),
     };
   }

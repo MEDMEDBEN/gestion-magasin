@@ -277,20 +277,48 @@ describe('Vente hors-ligne par /sync (e2e)', () => {
     expect(await stockOf(p)).toBe('1.000');
   });
 
-  it('prix changé pendant la coupure : REJETEE SALE_TOTAL_CHANGED, rien écrit', async () => {
+  it('tarif changé pendant la coupure : le prix vu par le client fait foi (décision 2026-09-22)', async () => {
     const p = await product('5.000');
+    // Produit réceptionné : son coût (1 000,00 HT) est le plancher.
+    await prisma.product.update({
+      where: { id: p },
+      data: { lastPurchasePriceHt: 100000 },
+    });
     await prisma.productPrice.updateMany({
       where: { productId: p, priceTierId: detailId },
       data: { priceHt: 150000 },
     });
-    const body = saleBody(p);
+    // L'appareil a encaissé au prix qu'il affichait : 1 450,00 HT.
+    const body = saleBody(p, {
+      lines: [{ productId: p, quantity: '1.000', unitPriceHt: 145000 }],
+    });
+    const res = await sync(tokens.vendeur, [mutation(body)]);
+
+    expect(res.body.results[0].status).toBe('CONFIRMEE');
+    const line = await prisma.saleLine.findFirstOrThrow({
+      where: { saleId: String(body.id) },
+    });
+    expect(line).toMatchObject({ unitPriceHt: 145000, tariffPriceHt: 150000 });
+    expect(await stockOf(p)).toBe('4.000');
+  });
+
+  it('prix sous le dernier prix d’achat, même hors-ligne : REJETEE PRICE_BELOW_COST', async () => {
+    const p = await product('5.000');
+    await prisma.product.update({
+      where: { id: p },
+      data: { lastPurchasePriceHt: 100000 },
+    });
+    const body = saleBody(p, {
+      lines: [{ productId: p, quantity: '1.000', unitPriceHt: 99999 }],
+      paidAmount: 118999,
+      expectedTotalTtc: 118999,
+    });
     const res = await sync(tokens.vendeur, [mutation(body)]);
 
     expect(res.body.results[0]).toMatchObject({
       status: 'REJETEE',
-      code: 'SALE_TOTAL_CHANGED',
+      code: 'PRICE_BELOW_COST',
     });
-    expect(await salesWithKey(body.clientMutationId)).toBe(0);
     expect(await stockOf(p)).toBe('5.000');
   });
 
@@ -449,7 +477,7 @@ describe('Vente hors-ligne par /sync (e2e)', () => {
   it('prix, type ou numéro forgés dans le corps : REJETEE (champs inconnus)', async () => {
     const p = await product('5.000');
     for (const forged of [
-      { lines: [{ productId: p, quantity: '1.000', unitPriceHt: 1 }] },
+      { lines: [{ productId: p, quantity: '1.000', tariffPriceHt: 1 }] },
       { type: 'FACTURE' },
       { invoiceNumber: 'FA-2026-000001' },
       { soldAt: '2020-01-01T00:00:00.000Z' },

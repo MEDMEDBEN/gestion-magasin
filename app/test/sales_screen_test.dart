@@ -182,6 +182,7 @@ Future<void> _pumpScreen(
   _MemoryQueue? queue,
   bool withStore = false,
   MemorySettingsStore? settings,
+  Product? product,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -196,7 +197,9 @@ Future<void> _pumpScreen(
         printPdfProvider.overrideWithValue((bytes, name) async {
           printed.add('$name:${String.fromCharCodes(bytes.take(5))}');
         }),
-        activeProductsProvider.overrideWith((ref) => Stream.value([_cable()])),
+        activeProductsProvider.overrideWith(
+          (ref) => Stream.value([product ?? _cable()]),
+        ),
         locationsProvider.overrideWith(
           (ref) => Stream.value(withStore ? [_store()] : const []),
         ),
@@ -298,10 +301,10 @@ void main() {
       expect(api.sent!['paidAmount'], 345100);
       // Le serveur refusera si le total a changé depuis l'affichage.
       expect(api.sent!['expectedTotalTtc'], 345100);
+      // Le prix APPLIQUÉ part explicitement (prix vu par le client).
       expect(api.sent!['lines'], [
-        {'productId': 'p1', 'quantity': '2.000'},
+        {'productId': 'p1', 'quantity': '2.000', 'unitPriceHt': 145000},
       ]);
-      expect(api.sent!.containsKey('unitPriceHt'), isFalse);
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
 
       // Le ticket PDF (généré serveur) part vers l'impression / le partage.
@@ -518,6 +521,67 @@ void main() {
       await _pumpScreen(tester, _FakeSalesApi(offline: true), []);
       expect(find.text('Caisse indisponible'), findsOneWidget);
       expect(find.text('Ouvrir la caisse'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'prix modifié sur une ligne : total recalculé, prix envoyé, badge « Prix modifié »',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(cash: _openCash);
+      await _pumpScreen(tester, api, []);
+      await tester.enterText(find.byType(TextField).first, '3245060123458');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier le prix'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '1600');
+      await tester.tap(find.text('Appliquer'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Prix modifié'), findsOneWidget);
+      // 1 600,00 HT × 1,19 = 1 904,00 TTC
+      await tester.tap(find.textContaining('Encaisser 1'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '1904');
+      await tester.tap(find.text('Valider la vente'));
+      await tester.pumpAndSettle();
+
+      expect(api.sent!['lines'], [
+        {
+          'productId': 'p1',
+          'quantity': '1.000',
+          'unitPriceHt': 160000,
+          'priceEdited': true,
+        },
+      ]);
+      expect(api.sent!['expectedTotalTtc'], 190400);
+    },
+  );
+
+  testWidgets(
+    'prix sous le prix d’achat : refusé à la saisie, le tarif reste appliqué',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      await _pumpScreen(
+        tester,
+        _FakeSalesApi(cash: _openCash),
+        [],
+        product: _cable().copyWith(lastPurchasePriceHt: 120000),
+      );
+      await tester.enterText(find.byType(TextField).first, '3245060123458');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Modifier le prix'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).last, '1199,99');
+      await tester.tap(find.text('Appliquer'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Prix trop bas'), findsOneWidget);
+      expect(find.text('Prix modifié'), findsNothing);
     },
   );
 

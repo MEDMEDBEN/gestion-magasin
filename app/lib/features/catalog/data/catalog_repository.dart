@@ -68,13 +68,12 @@ class CatalogRepository {
           parentId: p.categoryId,
           isActive: p.isActive,
           updatedAt: p.updatedAt,
-          // Jamais sur le disque : la base locale est partagée par les comptes
-          // du poste et non chiffrée, le coût d'achat est réservé à ADMIN et
-          // MAGASINIER (docs/permissions.md). Un écran qui en aura besoin le
-          // lira en ligne.
-          json: p
-              .copyWith(lastPurchasePriceHt: null, mainSupplierId: null)
-              .toJson(),
+          // Le fournisseur jamais sur le disque (base locale partagée par les
+          // comptes du poste, non chiffrée ; le vendeur n'y a pas accès). Le
+          // coût, lui, y est : les TROIS rôles le voient depuis la décision
+          // du 2026-09-22 — c'est le plancher du prix modifiable, hors ligne
+          // compris (docs/permissions.md).
+          json: p.copyWith(mainSupplierId: null).toJson(),
         ),
       for (final c in categories)
         _row(

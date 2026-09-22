@@ -79,6 +79,9 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
   [RoleCode.VENDEUR]: [
     P.PRODUCT_READ,
     P.PRICE_READ,
+    // Décision MEDMEDBEN 2026-09-22 : le vendeur voit le coût d'achat, plancher
+    // du prix qu'il peut modifier en vente (avant : secret, décision 2026-09-14).
+    P.COST_READ,
     P.STOCK_READ_STORE,
     P.STOCK_READ_WAREHOUSE,
     P.SALE_CREATE,

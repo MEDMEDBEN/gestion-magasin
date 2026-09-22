@@ -60,11 +60,14 @@ Pour chaque mutation, le serveur, dans une transaction :
 ## 7. Cas particulier — vente hors-ligne
 La vente hors-ligne est autorisée (décision produit), mais :
 - Le stock affiché hors-ligne peut être périmé → la validation § 4 au sync fait autorité.
-- ~~Les prix de ligne saisis sur l'appareil sont acceptés par le serveur~~ — **remplacé le 2026-09-21**
-  (P0 #12, décision à confirmer par MEDMEDBEN) : l'appareil n'envoie jamais de prix (règle 13, comme en
-  ligne). Le serveur recalcule au tarif COURANT et compare au total encaissé (`expectedTotalTtc`,
-  obligatoire hors-ligne) ; s'ils diffèrent, la vente est **REJETÉE** (`SALE_TOTAL_CHANGED`). Raison :
-  accepter un prix venu de l'appareil permettrait de forger un prix par une requête de sync.
+- **Prix (décision MEDMEDBEN 2026-09-22)** : l'appareil envoie le prix APPLIQUÉ de chaque ligne (tarif, ou prix
+  modifié par le vendeur) ; le serveur l'accepte s'il n'est pas sous le plancher (dernier prix d'achat, sinon tarif)
+  — un tarif changé pendant la coupure ne fait donc plus rejeter la vente. Le total encaissé (`expectedTotalTtc`,
+  obligatoire hors-ligne) reste comparé : seul un changement de TVA pendant la coupure peut encore le faire
+  diverger (`SALE_TOTAL_CHANGED`). Cas limite accepté : produit SANS coût connu dont le tarif a été relevé pendant
+  la coupure → l'ancien prix peut passer sous le plancher (le plus bas tarif), vente refusée et tracée. En
+  ligne, un prix NON modifié par le vendeur doit être le tarif courant (sinon 409 : catalogue local en retard) ;
+  une ligne modifiée porte `priceEdited` et c'est elle seule qui est tracée pour l'admin.
 - Une vente hors-ligne est un **TICKET**, datée de l'appareil si l'instant est plausible (ni futur, ni
   plus de 72 h), sinon de sa synchronisation. Ses espèces portent la **caisse de la vente**
   (`cashSessionId`, obligatoire hors-ligne) : si ce n'est plus la caisse ouverte du vendeur au sync, REJET
@@ -127,6 +130,10 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
 - **2026-09-09** — Caisse avec clôture quotidienne : `CashSession` + `CashMovement`, rapport Z. Encaissement espèces rattaché à une session ouverte.
 - **2026-09-09** — Bornes offline et optimisations mobiles définies (voir sections ci-dessus).
 - **2026-09-09** — Prix & tarifs gérés par l'admin uniquement ; le vendeur les voit/applique, pas de remise libre.
+  **Amendé le 2026-09-22 (MEDMEDBEN)** : le prix d'une ligne est modifiable en vente (vendeur + admin), jamais sous le
+  dernier prix d'achat (sans coût connu : jamais sous le plus bas de ses tarifs — provisoire, à revoir plus tard ; ni coût ni tarif : pas de vente tant que l'admin n'a pas fixé un prix — validé par MEDMEDBEN le 2026-09-22), tarif et prix appliqué gardés sur la ligne, vente à
+  prix modifié tracée dans l'Historique. Raison : supprime le rejet « prix changé pendant la coupure » — le prix vu
+  par le client fait foi.
 - **2026-09-09** — Vente à crédit autorisée au vendeur dans la limite du client fixée par l'admin.
 - **2026-09-09** — Commandes fournisseurs créables par l'admin ET le magasinier (confirmation = admin).
 - **2026-09-09** — Ajout génération de fichiers : PDF (ticket, facture, devis, bons de livraison/transfert/commande, rapports) + exports Excel/CSV d'historique ; import Excel/CSV (produits, clients, fournisseurs, stock initial). Une seule bibliothèque par besoin (voir `CONVENTIONS.md`).

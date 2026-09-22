@@ -9,6 +9,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -46,6 +47,29 @@ export class CreateSaleLineDto {
   @IsString()
   @MaxLength(20)
   quantity!: string;
+
+  @ApiPropertyOptional({
+    example: 14500,
+    description:
+      'Prix unitaire HT APPLIQUÉ (centimes), saisi par le vendeur. Absent → prix du ' +
+      'tarif. Jamais sous le dernier prix d’achat (`PRICE_BELOW_COST`). Le prix du ' +
+      'tarif reste tracé sur la ligne (`tariffPriceHt`).',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MONEY)
+  @IsOptional()
+  unitPriceHt?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Vrai si le vendeur a MODIFIÉ ce prix (sinon c’est le tarif affiché). En ' +
+      'ligne, un prix non modifié qui n’est plus le tarif courant → 409 ' +
+      '`SALE_TOTAL_CHANGED`. Seuls les prix modifiés sont tracés pour l’admin.',
+  })
+  @IsBoolean()
+  @IsOptional()
+  priceEdited?: boolean;
 
   @ApiPropertyOptional({
     description:
@@ -146,9 +170,15 @@ export class SaleLineDto {
   @ApiProperty({ example: '12.500' }) quantity!: string;
   @ApiProperty({
     example: 14500,
-    description: 'Prix HT figé au moment de la vente.',
+    description: 'Prix HT APPLIQUÉ, figé au moment de la vente.',
   })
   unitPriceHt!: number;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Prix du tarif au moment de la vente. Différent de `unitPriceHt` = prix modifié.',
+  })
+  tariffPriceHt!: number | null;
   @ApiProperty({ nullable: true }) priceTierId!: string | null;
   @ApiProperty({ example: '19.00' }) taxRate!: string;
   @ApiProperty() discountAmount!: number;
