@@ -15,6 +15,7 @@ import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../scan/presentation/scanned_product_sheet.dart';
 import '../../catalog/data/catalog_repository.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
 import '../application/sales_controller.dart';
@@ -459,7 +460,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   void _scan(String raw, List<Product> products) {
     final code = raw.trim();
     if (code.isEmpty) return;
-    final match = products.where((p) => p.barcode == code).firstOrNull;
+    // MÊME recherche que le scanner mobile : une seule règle de comparaison.
+    final match = productForBarcode(products, code);
     if (match == null) {
       _snack(context, 'Aucun produit pour le code $code');
     } else {

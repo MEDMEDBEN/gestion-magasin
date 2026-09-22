@@ -46,6 +46,16 @@ final stockByProductProvider =
       };
     });
 
+/// Stock d'UN produit (scan, fiche) : une requête au lieu de tout le stock.
+final productStockProvider = FutureProvider.autoDispose
+    .family<ProductStock, String>((ref, productId) async {
+      ref.watch(currentUserIdProvider);
+      final page = await ref
+          .watch(stockApiProvider)
+          .levels(productId: productId);
+      return ProductStock(page.data);
+    });
+
 /// Les 50 derniers mouvements d'un produit (journal immuable).
 final productMovementsProvider = FutureProvider.autoDispose
     .family<List<StockMovementEntry>, String>((ref, productId) async {

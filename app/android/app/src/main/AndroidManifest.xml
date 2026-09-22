@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Sans elle, l'APK RELEASE ne joint pas l'API (debug/profile l'ont seules). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanner de codes-barres (spec §27) : la caméra ne sert QU'À ça. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Pas EXIGÉE : l'app reste installable sur un appareil sans caméra. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- allowBackup=false : la base locale (file de mutations) et le stockage
          sécurisé ne partent pas dans la sauvegarde cloud automatique d'Android. -->
     <application

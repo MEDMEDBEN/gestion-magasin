@@ -401,11 +401,14 @@ void main() {
       destinationsFor(authUser(permissions: const [])).map((d) => d.label),
       isNot(contains('Catalogue')),
     );
-    // 4 onglets au plus pour l'admin (AMPÈRE §7).
     final admin = authUser(
       permissions: const [..._allProductPermissions, 'user.manage'],
     );
-    expect(destinationsFor(admin), hasLength(4));
+    // 4 entrées au POSTE (le scanner est mobile : il lui faut une caméra),
+    // 5 sur mobile où les suivantes passent dans « Plus » (AMPÈRE §7).
+    final entries = destinationsFor(admin);
+    expect(entries.where((d) => !d.mobileOnly), hasLength(4));
+    expect(entries, hasLength(5));
   });
 
   test('changedFields ne garde que ce qui a bougé, `null` compris', () {

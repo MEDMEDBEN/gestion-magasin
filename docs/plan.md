@@ -109,7 +109,7 @@ Traçabilité / système
 12. Socle offline/sync appliqué aux opérations P0 _(livré 2026-09-22 : vente, caisse, réception, transferts, règlements clients ; inventaire et facturation restent en ligne)_
 
 ### P1 — Important
-13. Scanner code-barres (mobile)
+13. Scanner code-barres (mobile) _(code écrit 2026-09-22 ; **NON terminé** : build APK et scan sur appareil impossibles ici — NDK Android cassé, à faire par MEDMEDBEN)_
 14. Réception / préparation / inventaire mobiles
 15. Dashboard (KPI + graphiques + alertes) desktop et mobile
 16. Notifications (temps réel via WebSocket)

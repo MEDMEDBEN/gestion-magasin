@@ -9,6 +9,7 @@ import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
+import '../features/scan/presentation/scan_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/transfers/presentation/transfers_screen.dart';
@@ -21,11 +22,16 @@ class AppDestination {
     required this.icon,
     required this.label,
     required this.builder,
+    this.mobileOnly = false,
   });
 
   final IconData icon;
   final String label;
   final Widget Function(BuildContext context, AuthUser user) builder;
+
+  /// Réservée au mobile (ex. le scanner : il lui faut une caméra ; au poste,
+  /// la douchette fait le travail dans l'écran Vente).
+  final bool mobileOnly;
 }
 
 /// Destinations proposées à un compte — SOURCE UNIQUE pour les deux coquilles.
@@ -65,6 +71,18 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.warehouse,
       label: 'Stock',
       builder: (context, user) => StockScreen(user: user),
+    ),
+  // Scanner (spec §27) : les 3 rôles qui lisent le catalogue, MOBILE seulement
+  // (il lui faut une caméra ; au poste, la douchette agit dans Vente). Placé
+  // après les écrans du quotidien : il tombe donc dans « Plus » (AMPÈRE §7),
+  // soit deux tapes — un accès direct depuis l'accueil viendra avec le tableau
+  // de bord mobile (P1 n°15).
+  if (user.can('product.read'))
+    AppDestination(
+      icon: LucideIcons.scanBarcode,
+      label: 'Scanner',
+      mobileOnly: true,
+      builder: (context, user) => ScanScreen(user: user),
     ),
   // `/planning-tasks` : 3 rôles + planning.task.read ; chacun n'y voit que
   // SES tâches (le serveur cloisonne), l'admin voit tout et planifie.

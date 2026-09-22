@@ -37,6 +37,7 @@ import 'package:gestion_magasin/features/transfers/data/transfers_api.dart';
 import 'package:gestion_magasin/features/transfers/data/transfers_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
+import 'package:gestion_magasin/features/scan/presentation/scanned_product_sheet.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/breakpoints.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
@@ -1621,6 +1622,31 @@ void main() {
         await t.pumpAndSettle();
         await t.tap(find.text('Terminer et donner le résultat'));
       },
+    ),
+  );
+  testWidgets(
+    '44 résultat de scan mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '44_scan_mobile',
+      size: const Size(390, 844),
+      products: _priced,
+      // L'écran caméra ne se capture pas (pas de caméra en test) : on capture
+      // ce qu'il montre APRÈS le scan (spec §27).
+      home: Builder(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Scanner')),
+          body: ScannedProductSheet(
+            barcode: '3245060123458',
+            user: authUser(
+              id: 'me',
+              fullName: 'Radhi Badache',
+              permissions: _adminPermissions,
+            ),
+          ),
+        ),
+      ),
     ),
   );
   testWidgets(

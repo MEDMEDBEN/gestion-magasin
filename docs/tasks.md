@@ -188,6 +188,31 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #13 SCANNER CODE-BARRES (MOBILE) — CODE ÉCRIT, **PREUVE APPAREIL MANQUANTE** (2026-09-22 · **MEDMEDBEN**)
+Spec §27. **Pas « terminé » au sens de CLAUDE.md** : la seule partie non prouvée est justement celle qui peut
+casser — la caméra. `flutter build apk` et un scan réel restent à faire, et le NDK Android de ce poste est
+cassé (voir l'incident du 2026-09-20). **À faire par MEDMEDBEN avec un téléphone** : build APK, scan d'un
+produit connu, d'un code inconnu, et refus de la permission caméra.
+- Entrée **« Scanner » mobile uniquement** (`AppDestination.mobileOnly`, filtrée par la coquille desktop) : au
+  poste, la douchette USB agit déjà dans Vente. Elle tombe dans « Plus » (2 tapes) ; un accès direct viendra
+  avec le tableau de bord mobile (P1 n°15).
+- **Dépendance** : `mobile_scanner` ^7.4.2 (seule bibliothèque de scan, CONVENTIONS.md), décodage sur
+  l'appareil ; permission `CAMERA` déclarée, caméra NON exigée à l'installation.
+- `ScanScreen` : un seul code à la fois (`firstBarcode`, testée) ; caméra arrêtée pendant l'affichage du
+  résultat ET quand l'app passe en arrière-plan ; états explicites à la place de l'écran noir anglais du
+  paquet (permission refusée → message + « Réessayer »).
+- `ScannedProductSheet` (testable sans caméra) : produit du catalogue LOCAL (le scan répond hors ligne), prix
+  du **tarif du client choisi au panier** (sinon tarif par défaut), stock du SEUL produit scanné
+  (`productStockProvider`), « Ajouter au panier » selon les droits ; prix et stock masqués sans `price.read`
+  / `stock.read.store`. Un refus de droit ne se déguise pas en « hors ligne ». Code scanné borné et nettoyé
+  avant affichage. `productForBarcode` est partagée avec la douchette de l'écran Vente.
+- **Audits** : `security-reviewer` — aucun critique/élevé (coût d'achat jamais affiché, action alignée sur le
+  guard, paquet sans réseau ni télémétrie) ; 4 faibles corrigés. `reviewer` — PAS OK : B1 preuve appareil
+  (ci-dessus, reste à faire), B2 état d'erreur caméra, I3 cycle de vie, I4 stock du produit seul, I5 tarif du
+  client → tous corrigés sauf B1.
+- Preuves partielles : app `flutter analyze` propre · **10 tests de scan** · **44 captures** (`44_scan_mobile`
+  vérifiée). Il MANQUE la preuve appareil.
+
 ### 🚧 P0 #12 RACCORDEMENT HORS-LIGNE — EN COURS (2026-09-21 · **MEDMEDBEN**)
 
 **État de départ constaté** : le moteur de sync existe (serveur `POST /api/sync` + file Drift + `SyncEngine`),

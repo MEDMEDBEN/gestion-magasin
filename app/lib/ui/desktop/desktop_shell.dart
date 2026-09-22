@@ -33,7 +33,10 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final entries = destinationsFor(widget.user);
+    // Le scanner exige une caméra : il ne s'affiche pas au poste.
+    final entries = destinationsFor(
+      widget.user,
+    ).where((d) => !d.mobileOnly).toList();
     final index = _index.clamp(0, entries.length - 1);
 
     return Scaffold(
