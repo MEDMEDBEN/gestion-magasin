@@ -106,7 +106,7 @@ Traçabilité / système
 9. Inventaire (comptage, écarts, ajustements) + inventaire tournant
 10. Planning hebdomadaire
 11. Historique global (audit trail)
-12. Socle offline/sync appliqué aux opérations P0
+12. Socle offline/sync appliqué aux opérations P0 _(livré 2026-09-22 : vente, caisse, réception, transferts, règlements clients ; inventaire et facturation restent en ligne)_
 
 ### P1 — Important
 13. Scanner code-barres (mobile)
@@ -187,7 +187,7 @@ Traçabilité / système
 - [x] Tests d'intégration backend passent _(184 e2e — 2026-09-15)_
 - [x] UI desktop implémentée
 - [x] UI mobile implémentée
-- [ ] Sync offline gérée si applicable _(ventes hors-ligne = feature P0 #12, après N6b)_
+- [x] Sync offline gérée si applicable _(vente TICKET + caisse hors-ligne — P0 #12 tranches B et C, 2026-09-22)_
 - [x] Revue par subagent `reviewer` _(2026-09-15 : PAS OK → corrigé ; contre-revue PAS OK (date de facture) → corrigé)_
 - [x] Audit par subagent `security-reviewer` _(2026-09-15 : corrigé commit 12b890a ; contre-audit **CONFORME**, 4 mineurs corrigés)_
 - [ ] Tests manuels effectués par un humain _(captures 21 à 23 + PDF ticket/facture à relire par MEDMEDBEN)_
@@ -243,7 +243,7 @@ Traçabilité / système
 - [x] Tests d'intégration backend passent _(264 e2e dont 15 transferts, un seul passage — 2026-09-21)_
 - [x] UI desktop implémentée _(capture 32, 35)_
 - [x] UI mobile implémentée _(captures 33, 34)_
-- [x] Sync offline gérée si applicable _(non : `MutationType.TRANSFER` n'a pas de handler — c'est la P0 #12)_
+- [x] Sync offline gérée si applicable _(oui : handler `TRANSFER`, une étape par mutation — P0 #12 tranche E)_
 - [x] Revue par subagent `reviewer` _(2026-09-21 : MERGE POSSIBLE, aucun bloquant — action `accept` non testée et 2 écarts de contrat non documentés → corrigés)_
 - [x] Audit par subagent `security-reviewer` _(2026-09-21 : NON CONFORME — `?status=constructor` rendait 500 → liste blanche réelle + contre-épreuve)_
 - [ ] Tests manuels effectués par un humain
@@ -257,7 +257,7 @@ Traçabilité / système
 - [x] Tests d'intégration backend passent _(282 e2e dont 18 inventaire, un seul passage — 2026-09-21)_
 - [x] UI desktop implémentée _(captures 36, 38)_
 - [x] UI mobile implémentée _(capture 37)_
-- [x] Sync offline gérée si applicable _(non : l'ajustement pose du stock, il reste en ligne — P0 #12)_
+- [x] Sync offline gérée si applicable _(non, et assumé : comptage ET validation restent en ligne — le serveur ne sait pas dater un comptage hors-ligne, voir docs/context.md §9)_
 - [x] Revue par subagent `reviewer` _(2026-09-21 : PAS OK, 3 bloquants — garde-fou fondé sur une prémisse fausse, impasse d'état, règle tenue par l'UI seule → tous corrigés)_
 - [x] Audit par subagent `security-reviewer` _(2026-09-21 : CONFORME en sécurité ; 2 importants hors sécurité — impasse + produit désactivé non régularisable → corrigés)_
 - [ ] Tests manuels effectués par un humain
