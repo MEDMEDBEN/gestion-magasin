@@ -1,233 +1,322 @@
-# Compiler et lancer « Gestion magasin » — procédure autonome
+# Compiler « Gestion magasin » sur un PC neuf — recette complète
 
-Ce fichier se suffit à lui-même : **tu n'as pas besoin de lire le reste du projet.** Suis les étapes dans
-l'ordre. À la fin, l'application de bureau s'ouvre, connectée à un vrai serveur et à une vraie base.
+Ce fichier se suffit à lui-même. **Tu n'as rien à analyser dans le projet** : suis les étapes dans l'ordre,
+de l'installation des outils jusqu'à l'exécutable Windows, puis l'application mobile.
 
-Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — branche **`develop`**.
-Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (bureau Windows et mobile Android).
+- Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — branche **`develop`**
+- Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android)
+- Résultat attendu : un **`.exe` Windows** qui s'ouvre et se connecte à un vrai serveur local, puis un **APK**
 
----
-
-## 0. Interdits et pièges (à lire avant de taper quoi que ce soit)
-
-1. **Ne touche à aucun conteneur Docker dont le nom commence par `infinit-school-`.** Ils appartiennent à une
-   autre application de la même machine (ports 5433, 9002, 9003). Ni `stop`, ni `rm`, ni suppression de
-   volume. Les conteneurs de CE projet s'appellent `infra-postgres-1`, `infra-redis-1`, `infra-minio-1`.
-2. **Ne lance JAMAIS `flutter build windows --release` pointé sur `http://`.** L'application refuse de
-   démarrer (règle de sécurité volontaire : mots de passe et jetons ne doivent pas circuler en clair). Pour un
-   test local, c'est `--debug` — voir l'étape 7.
-3. **Les fichiers générés Dart ne sont pas dans Git** (`*.g.dart`, `*.freezed.dart`). Si tu sautes l'étape 6
-   (`build_runner`), la compilation échouera avec des dizaines d'erreurs « isn't a type » ou « Target of URI
-   doesn't exist ». Ce n'est pas un bug : c'est l'étape manquante.
-4. **Espace disque** : prévoir **10 Go libres**. C'est le point qui a bloqué les tentatives précédentes.
-5. Ne modifie aucun fichier source. Si quelque chose ne compile pas, **arrête-toi et rapporte** (voir §9).
+**Machine cible** : Windows 10 ou 11 (64 bits), **15 Go libres**, droits administrateur, connexion Internet.
 
 ---
 
-## 1. Prérequis — vérifie-les, ne les suppose pas
+## Règles de conduite
 
-Lance ces commandes ; chacune doit répondre sans erreur.
+1. **Ne modifie aucun fichier source du projet.** Si quelque chose ne compile pas, arrête-toi et rapporte
+   (§10). Tout ce qui suit fonctionne sans retoucher une ligne de code.
+2. **Trois pièges connus**, traités aux étapes 1, 6 et 7. Si tu les sautes, la compilation échoue avec des
+   messages trompeurs.
+3. Rends compte avec les **sorties réelles** collées, jamais « ça devrait marcher ».
 
-| Outil | Commande de vérification | Attendu |
-|---|---|---|
-| Git | `git --version` | ≥ 2.40 |
-| Node.js | `node --version` | **v20 ou v22** (v18 ne suffit pas) |
-| Docker | `docker ps` | la liste s'affiche (démon démarré) |
-| Flutter | `flutter --version` | **3.44.x**, canal `stable` |
-| Espace disque | `Get-PSDrive C` (PowerShell) | ≥ 10 Go libres |
+---
 
-**Pour compiler l'application Windows**, il faut en plus, dans Visual Studio (installeur → « Modifier » →
-onglet « Composants individuels ») :
-- **Outils de build C++ pour Desktop** ;
-- le composant **`C++ ATL` (`Microsoft.VisualStudio.Component.VC.ATL`)** — sans lui, l'erreur est
-  `atlstr.h: No such file or directory`.
+## 1. Installer les outils
 
-Vérification : `flutter doctor -v` ne doit signaler aucun problème sur la ligne « Visual Studio ».
+### 1.1 Git, Node.js, Docker Desktop
 
-*(Pour l'APK Android seulement : un NDK fonctionnel est nécessaire. Sur la machine d'origine il est cassé ;
-si `flutter doctor` signale le NDK, saute l'étape 8 et dis-le dans ton rapport.)*
+Dans un PowerShell **administrateur** :
+
+```powershell
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Docker.DockerDesktop -e
+```
+
+Ferme et rouvre PowerShell, puis vérifie :
+
+```powershell
+git --version          # ≥ 2.40
+node --version         # v20 ou v22 — v18 ne suffit PAS
+npm --version
+```
+
+Lance **Docker Desktop** et attends que son icône indique « Engine running ». Vérifie :
+
+```powershell
+docker ps              # doit afficher un tableau vide, sans erreur
+```
+
+### 1.2 Visual Studio — PIÈGE N°1
+
+Flutter compile l'application Windows avec le compilateur C++ de Visual Studio. Il faut **la charge de travail
+Desktop C++ ET le composant ATL** — sans ATL, l'erreur est `atlstr.h: No such file or directory`.
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended"
+```
+
+L'installation prend 10 à 20 minutes. Si Visual Studio est déjà présent : ouvre « Visual Studio Installer » →
+**Modifier** → onglet **Composants individuels** → coche **`C++ ATL pour les outils de build v143 (x86/x64)`**.
+
+### 1.3 Flutter
+
+Télécharge le SDK stable et décompresse-le dans **`C:\flutter`** (un chemin **sans espace ni accent**) :
+`https://docs.flutter.dev/get-started/install/windows/desktop`
+
+Ajoute `C:\flutter\bin` au `Path` de l'utilisateur, rouvre PowerShell, puis :
+
+```powershell
+flutter --version      # 3.44.x, canal stable
+flutter config --enable-windows-desktop
+flutter doctor -v
+```
+
+`flutter doctor` doit être **vert sur « Visual Studio »**. Ignore une éventuelle ligne rouge sur Android tant
+que tu es à l'étape Windows ; elle ne concerne que l'APK (§9).
 
 ---
 
 ## 2. Récupérer le code
 
-```bash
+```powershell
+cd C:\
 git clone https://github.com/MEDMEDBEN/gestion-magasin.git
 cd gestion-magasin
 git checkout develop
-git pull
 ```
-
-Si le dépôt est déjà sur la machine : `cd` dedans, puis `git checkout develop && git pull`.
 
 ---
 
 ## 3. Démarrer la base de données et le stockage de fichiers
 
-```bash
-cd infra
+```powershell
+cd C:\gestion-magasin\infra
 docker compose -f docker-compose.dev.yml up -d
 docker ps
 ```
 
-Tu dois voir **trois** conteneurs de ce projet en marche : `infra-postgres-1` (port 5432),
-`infra-redis-1` (6379), `infra-minio-1` (9000/9001).
-
-> Si le port 5432 est déjà pris par autre chose, **n'arrête rien** : signale-le et arrête-toi. Une autre
-> application tourne peut-être sur cette machine.
+Tu dois voir **trois** conteneurs en marche : PostgreSQL (port **5432**), Redis (**6379**), MinIO
+(**9000** et **9001**). Ils se téléchargent au premier lancement (quelques minutes).
 
 ---
 
-## 4. Configurer le backend
+## 4. Configurer le backend — PIÈGE N°2
 
-```bash
-cd ../backend
-cp .env.example .env
+```powershell
+cd C:\gestion-magasin\backend
+Copy-Item .env.example .env
 ```
 
-Ouvre `backend/.env` et remplace **une seule valeur** :
+Le serveur **refuse volontairement de démarrer** avec la clé d'exemple. Génère une vraie clé :
+
+```powershell
+$b = New-Object byte[] 48
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+[Convert]::ToBase64String($b)
+```
+
+Ouvre `C:\gestion-magasin\backend\.env` dans un éditeur et remplace **uniquement** la ligne :
 
 ```
 JWT_ACCESS_SECRET=CHANGER_CETTE_CLE_ALEATOIRE
 ```
 
-par une clé aléatoire d'au moins 32 octets. Génère-la avec :
-
-```bash
-openssl rand -base64 48
-```
-
-> Le serveur **refuse de démarrer** avec la valeur d'exemple ou une clé trop courte : c'est voulu.
-> Toutes les autres valeurs du fichier correspondent déjà aux conteneurs de l'étape 3, n'y touche pas.
+par la valeur affichée. **Ne touche à aucune autre ligne** : elles correspondent déjà aux conteneurs de l'étape 3.
 
 ---
 
-## 5. Installer, migrer, créer le compte administrateur
+## 5. Installer le backend, créer la base et le compte administrateur
 
-```bash
+```powershell
+cd C:\gestion-magasin\backend
 npm ci
 npx prisma migrate deploy
 npx prisma generate
 npm run seed
 ```
 
-`npm run seed` crée l'administrateur avec les identifiants lus dans `.env` :
-**`admin@magasin.dz` / `ChangeMoi123!`** (à changer à la première connexion — l'application l'exigera).
+Le seed crée l'administrateur : **`admin@magasin.dz`** / **`ChangeMoi123!`**
 
-**Vérification obligatoire avant de continuer :**
+**Vérification — ne passe pas à la suite si elle échoue :**
 
-```bash
+```powershell
 npm run build
 npm test
 ```
 
-`npm run build` doit finir sans erreur, et `npm test` afficher **84 tests passés**. Si ce n'est pas le cas,
-arrête-toi et rapporte : inutile de compiler l'application si le serveur ne tient pas.
+Attendu : build sans erreur, puis **84 tests passés**.
 
-Laisse ensuite le serveur tourner **dans un terminal dédié** :
+Laisse maintenant le serveur tourner dans **ce terminal, ouvert** :
 
-```bash
+```powershell
 npm run start:dev
 ```
 
-Il écoute sur `http://localhost:3000`. Laisse ce terminal ouvert.
+Il écoute sur `http://localhost:3000`. Vérifie dans un navigateur : **`http://localhost:3000/docs`** affiche
+la documentation interactive de l'API (les routes, elles, vivent sous `/api`).
 
 ---
 
-## 6. Préparer l'application Flutter (étape à ne PAS sauter)
+## 6. Préparer l'application Flutter — PIÈGE N°3
 
-Dans un **second** terminal :
+Les fichiers Dart générés **ne sont pas dans Git** : il faut les produire. Sans cette étape, la compilation
+échoue avec des dizaines de `isn't a type` ou `Target of URI doesn't exist` — ce n'est pas un bug du projet.
 
-```bash
-cd gestion-magasin/app
+Ouvre un **deuxième** terminal PowerShell :
+
+```powershell
+cd C:\gestion-magasin\app
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-La dernière commande génère les fichiers `*.g.dart` / `*.freezed.dart`, absents de Git. Elle prend une à deux
-minutes et se termine par `Built with build_runner`.
+La dernière commande dure 1 à 2 minutes et se termine par `Built with build_runner`.
 
 Vérification :
 
-```bash
+```powershell
 flutter analyze
 flutter test
 ```
 
-Attendu : `No issues found!` puis **345 tests passés** (≈ 46 ignorés, c'est normal — ce sont les captures
-d'écran, désactivées par défaut).
+Attendu : `No issues found!` puis **345 tests passés** (≈ 46 ignorés — normal, ce sont les captures d'écran,
+désactivées par défaut).
 
 ---
 
-## 7. Compiler et lancer l'application de bureau
+## 7. Compiler l'exécutable Windows
 
-Le serveur local est en `http://`, donc **build de débogage** (voir le piège n°2) :
+Le serveur local est en `http://`. L'application **refuse une build `--release` sur une adresse non chiffrée**
+(les mots de passe et jetons passeraient en clair). Pour un test local, compile en **`--profile`** : c'est une
+build optimisée, sans les outils de débogage, et qui accepte `http://localhost`.
 
-```bash
-flutter build windows --debug
+```powershell
+cd C:\gestion-magasin\app
+flutter build windows --profile
 ```
 
-Le binaire sort dans `app\build\windows\x64\runner\Debug\`. Lance-le, ou plus simplement :
+L'exécutable et ses DLL sont dans :
 
-```bash
-flutter run -d windows
+```
+C:\gestion-magasin\app\build\windows\x64\runner\Profile\
 ```
 
-**Connexion** : `admin@magasin.dz` / `ChangeMoi123!`. L'application demandera un nouveau mot de passe à la
-première connexion — c'est le comportement attendu, choisis-en un et note-le.
+Lance **`gestion_magasin.exe`** depuis ce dossier (le serveur de l'étape 5 doit tourner).
 
-> Si tu veux une vraie build `--release`, il faut un serveur en HTTPS et passer son adresse :
-> `flutter build windows --release --dart-define=API_BASE_URL=https://ton-domaine/api`.
-> Avec `http://`, l'application se fermera au démarrage, volontairement.
+> **Pour transmettre l'application à quelqu'un**, copie le **dossier `Profile` entier**, pas seulement le
+> `.exe` : il a besoin des DLL et du dossier `data` qui l'accompagnent. Compresse-le en `.zip`.
+
+### Première connexion
+
+- Identifiant : **`admin@magasin.dz`** — Mot de passe : **`ChangeMoi123!`**
+- L'application **exigera un nouveau mot de passe** dès la première connexion : c'est le comportement prévu.
+  Choisis-en un (12 caractères, majuscule, minuscule, chiffre, symbole) et **note-le dans ton rapport**.
+
+### Ce que tu dois voir
+
+Un thème sombre, en français, avec une barre latérale gauche : Accueil, Vente, Catalogue, Stock, Tâches,
+Transferts, Achats, Inventaire, Fournisseurs, Utilisateurs, Historique, Notifications, Mon profil. L'accueil
+affiche un tableau de bord. **La base est neuve : tous les chiffres sont à zéro et les listes vides. C'est
+normal, ce n'est pas une panne.**
+
+### Build `--release` (seulement avec un serveur HTTPS)
+
+```powershell
+flutter build windows --release --dart-define=API_BASE_URL=https://ton-domaine.com/api
+```
+
+Avec `http://`, l'application se fermera au démarrage — volontairement.
 
 ---
 
-## 8. (Optionnel) APK Android
+## 8. Vérifier que l'application parle vraiment au serveur
 
-À ne tenter que si `flutter doctor` ne signale aucun problème de NDK :
-
-```bash
-flutter build apk --debug
-```
-
-Sortie : `app\build\app\outputs\flutter-apk\app-debug.apk`.
-
-Sur un téléphone, `localhost` ne désigne pas le PC : il faut l'adresse du PC sur le réseau local, par exemple
-`flutter build apk --debug --dart-define=API_BASE_URL=http://192.168.1.20:3000/api`.
+Après connexion, va dans **Catalogue → Nouveau produit**, crée un produit avec un nom et un prix,
+enregistre-le, puis reviens sur la liste : il doit y apparaître. Le terminal du backend (étape 5) doit montrer
+la requête correspondante. **C'est cette vérification qui prouve que la chaîne complète fonctionne**, pas
+seulement l'ouverture de la fenêtre.
 
 ---
 
-## 9. Ce que tu dois rapporter
+## 9. Application mobile (APK) — après la build Windows
 
-Rends compte de façon factuelle, en collant les sorties réelles — jamais « ça devrait marcher » :
+### 9.1 Outils Android
 
-1. Résultat de `flutter doctor -v` (la partie Visual Studio / Android).
-2. Résultat de `npm test` (nombre de tests) et de `npm run build`.
-3. Résultat de `flutter analyze` et `flutter test` (nombre de tests).
-4. L'application s'ouvre-t-elle ? Une **capture d'écran** de la fenêtre après connexion.
-5. Tout message d'erreur **complet**, tel quel.
+Installe **Android Studio** (`winget install --id Google.AndroidStudio -e`), lance-le une fois et laisse-le
+télécharger le SDK. Puis :
 
-### Pannes connues et ce qu'elles veulent dire
+```powershell
+flutter doctor --android-licenses     # accepter toutes les licences
+flutter doctor -v                     # la ligne Android doit être verte
+```
+
+Si `flutter doctor` signale un **NDK** absent ou corrompu : ouvre Android Studio → **SDK Manager** → onglet
+**SDK Tools** → coche **NDK (Side by side)** et **CMake** → applique.
+
+### 9.2 Adresse du serveur pour un téléphone
+
+Sur un téléphone, `localhost` désigne le téléphone lui-même, pas le PC. De plus **Android bloque le HTTP en
+clair** : pointer l'APK sur `http://192.168.x.x` ne fonctionnera pas, l'application apparaîtra « hors ligne ».
+
+Deux solutions, au choix :
+
+- **La plus simple** — exposer temporairement le backend en HTTPS avec un tunnel :
+  ```powershell
+  winget install --id Cloudflare.cloudflared -e
+  cloudflared tunnel --url http://localhost:3000
+  ```
+  Il affiche une adresse `https://xxxxx.trycloudflare.com`. Utilise-la telle quelle :
+  ```powershell
+  cd C:\gestion-magasin\app
+  flutter build apk --release --dart-define=API_BASE_URL=https://xxxxx.trycloudflare.com/api
+  ```
+- **Sinon** : un vrai serveur en HTTPS, et la même commande avec son adresse.
+
+L'APK sort dans :
+
+```
+C:\gestion-magasin\app\build\app\outputs\flutter-apk\app-release.apk
+```
+
+Transfère-le sur le téléphone et installe-le (« Sources inconnues » à autoriser). Le scanner de codes-barres
+demandera l'accès à la caméra au premier usage.
+
+---
+
+## 10. Ce que tu dois rapporter
+
+Colle les sorties réelles :
+
+1. `flutter doctor -v` (sections Visual Studio et Android).
+2. `npm run build` et `npm test` (nombre de tests).
+3. `flutter analyze` et `flutter test` (nombre de tests).
+4. `flutter build windows --profile` : la ligne finale, et le **chemin du `.exe`** produit.
+5. **Une capture d'écran de l'application ouverte, après connexion.**
+6. Le résultat de la vérification §8 (le produit créé apparaît-il ?).
+7. Le mot de passe administrateur que tu as défini.
+8. Pour l'APK : le chemin du fichier, et si tu as pu l'installer et te connecter.
+9. **Tout message d'erreur, complet et tel quel.**
+
+### Pannes connues
 
 | Message | Cause | Action |
 |---|---|---|
-| `atlstr.h: No such file or directory` | composant ATL absent de Visual Studio | installer `C++ ATL` (§1) |
-| Dizaines d'erreurs « isn't a type », « Target of URI doesn't exist » | `build_runner` non lancé | refaire l'étape 6 |
-| `JWT_ACCESS_SECRET` / refus de démarrer | clé d'exemple ou trop courte | refaire l'étape 4 |
-| `API_BASE_URL doit être en https://` | build `--release` sur `http://` | utiliser `--debug` (§7) |
-| `Can't reach database server at localhost:5432` | conteneurs arrêtés | refaire l'étape 3 |
-| Disque plein en cours de build | < 10 Go libres | libérer de la place, **ne rien supprimer dans le projet** sauf `app/build` et `app/.dart_tool`, qui se régénèrent |
+| `atlstr.h: No such file or directory` | composant ATL manquant | §1.2 |
+| Beaucoup de `isn't a type` / `Target of URI doesn't exist` | `build_runner` non lancé | §6 |
+| `API_BASE_URL doit être en https://` | build `--release` sur `http://` | compiler en `--profile` (§7) |
+| Le serveur refuse de démarrer, parle de `JWT_ACCESS_SECRET` | clé d'exemple ou trop courte | §4 |
+| `Can't reach database server at localhost:5432` | conteneurs arrêtés ou Docker éteint | §3 |
+| `Unable to find suitable Visual Studio toolchain` | charge de travail Desktop C++ absente | §1.2 |
+| L'APK s'ouvre mais reste « hors ligne » | Android bloque le HTTP en clair | tunnel HTTPS (§9.2) |
+| Disque plein pendant la compilation | < 15 Go libres | libérer de la place ; `app\build` et `app\.dart_tool` se régénèrent |
 
 ---
 
-## 10. Ce que le projet fait (contexte minimal, pour reconnaître un écran correct)
+## 11. Contexte minimal (pour reconnaître un écran correct)
 
-Gestion d'un magasin de matériel électrique et de son dépôt : produits, stock, ventes et caisse, clients et
-fournisseurs, achats et réceptions, transferts magasin ↔ dépôt, inventaires, planning, tableau de bord,
-notifications. Trois rôles : **Admin**, **Vendeur/Caissier**, **Magasinier** — l'écran d'accueil et le menu
-varient selon les droits du compte connecté. L'interface est en français, thème sombre.
-
-Après connexion en administrateur, tu dois voir une barre latérale gauche (Accueil, Vente, Catalogue, Stock,
-Tâches, Transferts, Achats, Inventaire, Fournisseurs, Utilisateurs, Historique, Notifications, Mon profil) et
-un tableau de bord d'accueil. La base étant neuve, les chiffres seront à zéro et les listes vides : **c'est
-normal**, ce n'est pas une panne.
+Logiciel de gestion d'un magasin de matériel électrique et de son dépôt : produits, stock, ventes et caisse,
+clients et fournisseurs, achats et réceptions, transferts magasin ↔ dépôt, inventaires, planning, tableau de
+bord, notifications. Trois rôles — **Admin**, **Vendeur/Caissier**, **Magasinier** — et le menu change selon
+les droits du compte connecté. Interface en français, thème sombre. L'application fonctionne hors ligne pour
+la vente et se resynchronise ensuite ; un bandeau l'indique.
