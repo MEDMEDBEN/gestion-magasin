@@ -12,6 +12,10 @@ import {
   PurchaseOrder,
 } from '../generated/prisma/client';
 import { parseSort } from '../common/dto/pagination.dto';
+import {
+  NOTIFY_DEPOT,
+  NotificationsService,
+} from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
 import {
@@ -294,6 +298,21 @@ export class PurchaseOrdersService {
         oldValue: { status: before.status },
         newValue: PurchaseOrdersService.snapshot(order),
       });
+      // Confirmer est réservé à l'admin : sans cette alerte, le magasinier qui
+      // réceptionnera n'apprend par aucun canal qu'une livraison est engagée.
+      // Aucun montant dans le message — le lien ramène à la commande.
+      await NotificationsService.notifyRoles(
+        tx,
+        NOTIFY_DEPOT,
+        {
+          type: 'COMMANDE_CONFIRMEE',
+          title: `Commande ${order.number} confirmée`,
+          body: `${order.lines.length} ligne(s) à recevoir.`,
+          operationType: 'PURCHASE_ORDER',
+          operationId: order.id,
+        },
+        user.id,
+      );
       return PurchaseOrdersService.toDto(order);
     });
   }

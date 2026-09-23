@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
+import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/users/data/user_models.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
@@ -48,6 +49,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             entries: entries,
             selectedIndex: index,
             compact: widget.compact,
+            unread: ref.watch(unreadNotificationsProvider).value ?? 0,
             onSelect: (i) => setState(() => _index = i),
           ),
           VerticalDivider(width: 1, color: colors.line),
@@ -86,6 +88,7 @@ class _Sidebar extends StatelessWidget {
     required this.selectedIndex,
     required this.compact,
     required this.onSelect,
+    this.unread = 0,
   });
 
   final AuthUser user;
@@ -93,6 +96,10 @@ class _Sidebar extends StatelessWidget {
   final int selectedIndex;
   final bool compact;
   final ValueChanged<int> onSelect;
+
+  /// Notifications non lues. Le nombre est porté par la SIDEBAR, pas par
+  /// l'écran : on ne va pas ouvrir une boîte dont rien ne dit qu'elle a du neuf.
+  final int unread;
 
   @override
   Widget build(BuildContext context) {
@@ -133,6 +140,7 @@ class _Sidebar extends StatelessWidget {
               entry: entries[i],
               selected: i == selectedIndex,
               compact: compact,
+              unread: entries[i].label == 'Notifications' ? unread : 0,
               onTap: () => onSelect(i),
             ),
           const Spacer(),
@@ -181,12 +189,14 @@ class _NavItem extends StatelessWidget {
     required this.selected,
     required this.compact,
     required this.onTap,
+    this.unread = 0,
   });
 
   final AppDestination entry;
   final bool selected;
   final bool compact;
   final VoidCallback onTap;
+  final int unread;
 
   @override
   Widget build(BuildContext context) {
@@ -219,10 +229,14 @@ class _NavItem extends StatelessWidget {
                   ? MainAxisAlignment.center
                   : MainAxisAlignment.start,
               children: [
-                Icon(
-                  entry.icon,
-                  size: 17,
-                  color: selected ? colors.accentHi : colors.ink2,
+                Badge.count(
+                  count: unread,
+                  isLabelVisible: unread > 0,
+                  child: Icon(
+                    entry.icon,
+                    size: 17,
+                    color: selected ? colors.accentHi : colors.ink2,
+                  ),
                 ),
                 if (!compact) ...[
                   const SizedBox(width: 10),

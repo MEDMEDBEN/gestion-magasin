@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
-import { AuthenticatedUser } from '../common/auth.decorators';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
@@ -8,6 +8,7 @@ import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PurchaseOrdersService } from '../purchases/purchase-orders.service';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
@@ -190,7 +191,31 @@ export class ReceptionsService {
       });
     }
 
-    if (order) await ReceptionsService.applyToOrder(tx, order.id, lines);
+    const complete = order
+      ? await ReceptionsService.applyToOrder(tx, order.id, lines)
+      : null;
+
+    // L'admin suit la dette fournisseur : une entrée de marchandise l'augmente.
+    // Une réception PARTIELLE se distingue — c'est elle qui demande un suivi
+    // (relance du reliquat), pas une commande soldée.
+    await NotificationsService.notifyRoles(
+      tx,
+      [RoleCode.ADMIN],
+      {
+        type: complete === false ? 'RECEPTION_PARTIELLE' : 'RECEPTION',
+        title:
+          complete === false
+            ? `Réception partielle ${reception.number}`
+            : `Réception ${reception.number}`,
+        // PAS de montant dans le corps : une notification survit à un
+        // changement de rôle, et rien ne la re-filtre à la lecture. Le lien
+        // ramène au bon de réception, où le serveur reste juge des droits.
+        body: `${reception.lines.length} ligne(s) reçue(s)`,
+        operationType: 'RECEPTION',
+        operationId: reception.id,
+      },
+      reception.userId,
+    );
 
     if (actor) {
       await writeAudit(tx, actor, {
@@ -414,6 +439,9 @@ export class ReceptionsService {
       where: { id: orderId },
       data: { status: complete ? 'RECUE' : 'PARTIELLEMENT_RECUE' },
     });
+    // Rendu à l'appelant : c'est ce qui distingue une réception PARTIELLE
+    // (reliquat à relancer) d'une commande soldée, pour l'alerte de l'admin.
+    return complete;
   }
 
   private static round(value: Prisma.Decimal): number {

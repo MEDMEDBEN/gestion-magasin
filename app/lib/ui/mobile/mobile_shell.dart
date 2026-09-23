@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
+import '../../features/notifications/application/notifications_controller.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
@@ -35,6 +36,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final pending = ref.watch(pendingMutationsCountProvider);
     final rejected = ref.watch(rejectedMutationsProvider);
     final reachable = ref.watch(serverReachableProvider);
+    final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
 
     final tabs = destinationsFor(widget.user);
     final index = _index.clamp(0, tabs.length - 1);
@@ -73,10 +75,30 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         backgroundColor: colors.surface,
         destinations: [
           for (final tab in overflow ? tabs.take(_maxTabs - 1) : tabs)
-            NavigationDestination(icon: Icon(tab.icon), label: tab.label),
+            NavigationDestination(
+              icon: Badge.count(
+                // Non lues : seul l'onglet Notifications porte le compteur ;
+                // sans lui, personne n'irait voir une boîte muette.
+                count: unread,
+                isLabelVisible: tab.label == 'Notifications' && unread > 0,
+                child: Icon(tab.icon),
+              ),
+              label: tab.label,
+            ),
           if (overflow)
-            const NavigationDestination(
-              icon: Icon(LucideIcons.ellipsis),
+            NavigationDestination(
+              // « Plus » hérite du compteur des onglets qu'il cache : sinon,
+              // sur un téléphone où Notifications passe dessous, rien ne
+              // signalerait jamais une alerte.
+              icon: Badge.count(
+                count: unread,
+                isLabelVisible:
+                    unread > 0 &&
+                    tabs
+                        .skip(_maxTabs - 1)
+                        .any((t) => t.label == 'Notifications'),
+                child: const Icon(LucideIcons.ellipsis),
+              ),
               label: 'Plus',
             ),
         ],

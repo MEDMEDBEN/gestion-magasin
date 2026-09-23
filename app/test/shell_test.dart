@@ -8,6 +8,7 @@ import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
+import 'package:gestion_magasin/features/notifications/data/notifications_api.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/desktop/desktop_shell.dart';
@@ -34,6 +35,7 @@ Future<void> _pumpShell(
   CatalogRepository? catalog,
   List<PendingMutation> rejected = const [],
   MutationQueue? queue,
+  int unread = 0,
 }) async {
   useScreenSize(tester, size);
   final db = AppDatabase.forTesting();
@@ -50,6 +52,9 @@ Future<void> _pumpShell(
         // L'accueil est l'écran par défaut : son résumé ne passe pas par le
         // réseau dans un test (il est éprouvé dans home_screen_test.dart).
         dashboardApiProvider.overrideWithValue(FakeDashboardApi()),
+        notificationsApiProvider.overrideWithValue(
+          FakeNotificationsApi(unread: unread),
+        ),
         // Les flux Drift réels ne se résolvent pas dans le temps simulé des
         // tests d'écran ; la file elle-même est testée à part.
         pendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
@@ -342,6 +347,33 @@ void main() {
       expect(container.read(requestedDestinationProvider), isNull);
     },
   );
+
+  /// Le badge est ce qui fait EXISTER les notifications : sans lui, personne
+  /// n'ouvre une boîte dont rien ne dit qu'elle a du neuf. Sur téléphone,
+  /// « Notifications » tombe sous « Plus » — c'est donc « Plus » qui doit le
+  /// porter, sinon l'alerte est invisible.
+  testWidgets('le nombre de non lues s’affiche dans les deux coquilles', (
+    tester,
+  ) async {
+    for (final size in [const Size(1300, 900), const Size(400, 800)]) {
+      await _pumpShell(
+        tester,
+        user: authUser(
+          permissions: const ['user.manage', 'product.read', 'sale.create'],
+        ),
+        size: size,
+        unread: 3,
+      );
+
+      final badge = tester.widgetList<Badge>(find.byType(Badge));
+      expect(
+        badge.where((b) => b.isLabelVisible),
+        hasLength(1),
+        reason: 'un seul compteur visible, sur la bonne entrée ($size)',
+      );
+      expect(find.text('3'), findsOneWidget);
+    }
+  });
 
   testWidgets('serveur injoignable : l’en-tête affiche « Hors ligne »', (
     tester,

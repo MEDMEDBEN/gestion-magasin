@@ -9,6 +9,11 @@ import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Transfer, TransferLine } from '../generated/prisma/client';
 import { TransferStatus } from '../generated/prisma/enums';
+import {
+  NOTIFY_DEPOT,
+  NOTIFY_MAGASIN,
+  NotificationsService,
+} from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
@@ -124,6 +129,21 @@ export class TransfersService {
         newValue: TransfersService.snapshot(transfer),
       });
     }
+    // Le dépôt apprend la demande dans la MÊME transaction : pas de demande
+    // sans alerte, pas d'alerte sans demande (spec §18).
+    await NotificationsService.notifyRoles(
+      tx,
+      NOTIFY_DEPOT,
+      {
+        type: 'NOUVELLE_DEMANDE_DEPOT',
+        title: `Demande ${transfer.number} à préparer`,
+        body: `${transfer.lines.length} produit(s) demandé(s) par le magasin.`,
+        priority: transfer.priority,
+        operationType: 'TRANSFER',
+        operationId: transfer.id,
+      },
+      user.id,
+    );
     return TransfersService.toDto(transfer);
   }
 
@@ -522,9 +542,99 @@ export class TransfersService {
           newValue: TransfersService.snapshot(after),
         });
       }
+      await TransfersService.notifyTransition(tx, before, after);
       return TransfersService.toDto(after);
     };
     return db ? run(db) : this.prisma.$transaction(run);
+  }
+
+  /// Qui doit savoir, à chaque étape franchie (spec §18). UN seul endroit :
+  /// une transition ajoutée plus tard hérite du même traitement, et personne
+  /// n'est prévenu de ce qu'il vient lui-même de faire.
+  ///
+  /// L'auteur est lu sur le TRANSFERT (`preparedById`, `receivedById`) et non
+  /// sur l'`actor` : hors-ligne, la synchronisation n'a pas d'acteur HTTP.
+  private static async notifyTransition(
+    tx: Db,
+    before: TransferWithLines,
+    after: Transfer,
+  ): Promise<void> {
+    if (before.status === after.status) return;
+    const link = {
+      operationType: 'TRANSFER' as const,
+      operationId: after.id,
+      priority: after.priority,
+    };
+    switch (after.status) {
+      // Prête : le magasin peut venir la chercher. Adressée au MAGASIN entier
+      // et pas au seul demandeur — s'il est absent ou désactivé, la
+      // marchandise resterait prête sans que personne ne le sache.
+      case 'PREPAREE':
+        await NotificationsService.notifyRoles(
+          tx,
+          NOTIFY_MAGASIN,
+          {
+            ...link,
+            type: 'DEMANDE_PRETE',
+            title: `Demande ${after.number} prête au dépôt`,
+          },
+          after.preparedById ?? undefined,
+        );
+        break;
+      // Partie : le magasin doit la réceptionner à l'arrivée.
+      case 'EN_TRANSIT':
+        await NotificationsService.notifyRoles(
+          tx,
+          NOTIFY_MAGASIN,
+          {
+            ...link,
+            type: 'TRANSFERT',
+            title: `Transfert ${after.number} en route vers le magasin`,
+          },
+          after.preparedById ?? undefined,
+        );
+        break;
+      // Reçue : le dépôt sait que sa marchandise est arrivée (et qu'un écart
+      // éventuel lui est revenu).
+      case 'RECUE':
+        await NotificationsService.notifyRoles(
+          tx,
+          NOTIFY_DEPOT,
+          {
+            ...link,
+            type: 'TRANSFERT_RECU',
+            title: `Transfert ${after.number} reçu au magasin`,
+          },
+          after.receivedById ?? undefined,
+        );
+        break;
+      // Refusée : seul le demandeur attend cette réponse.
+      case 'REFUSEE':
+        await NotificationsService.notifyUsers(tx, [after.requestedById], {
+          ...link,
+          type: 'TRANSFERT',
+          title: `Demande ${after.number} refusée par le dépôt`,
+          priority: 'HAUTE',
+        });
+        break;
+      // Annulée par le magasin : le dépôt est peut-être EN TRAIN de la
+      // préparer. C'est le travail pour rien que cette feature doit éviter.
+      case 'ANNULEE':
+        await NotificationsService.notifyRoles(
+          tx,
+          NOTIFY_DEPOT,
+          {
+            ...link,
+            type: 'TRANSFERT',
+            title: `Demande ${after.number} annulée`,
+            priority: 'HAUTE',
+          },
+          after.requestedById,
+        );
+        break;
+      default:
+        break;
+    }
   }
 
   /// Qui peut clore (matrice de docs/permissions.md) : le DÉPÔT refuse, le

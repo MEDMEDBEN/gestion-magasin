@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
-import { AuthenticatedUser } from '../common/auth.decorators';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
@@ -9,6 +9,7 @@ import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Inventory, InventoryLine, Prisma } from '../generated/prisma/client';
 import { InventoryStatus } from '../generated/prisma/enums';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
@@ -206,6 +207,24 @@ export class InventoryService {
         oldValue: InventoryService.snapshot(before),
         newValue: InventoryService.snapshot(after),
       });
+      // Comptage TERMINÉ avec des écarts : seul l'admin peut valider les
+      // ajustements, il doit donc savoir qu'un inventaire l'attend. Averti au
+      // moment où c'est complet, pas à chaque ligne saisie.
+      const ecarts = after.lines.filter((l) => l.state === 'ECART').length;
+      if (done && ecarts > 0) {
+        await NotificationsService.notifyRoles(
+          tx,
+          [RoleCode.ADMIN],
+          {
+            type: 'ECART_DETECTE',
+            title: `Inventaire ${after.number} : ${ecarts} écart(s) à valider`,
+            operationType: 'INVENTORY',
+            operationId: after.id,
+            priority: 'HAUTE',
+          },
+          user.id,
+        );
+      }
       return InventoryService.toDto(after);
     });
   }

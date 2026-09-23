@@ -404,11 +404,12 @@ void main() {
     final admin = authUser(
       permissions: const [..._allProductPermissions, 'user.manage'],
     );
-    // 4 entrées au POSTE (le scanner est mobile : il lui faut une caméra),
-    // 5 sur mobile où les suivantes passent dans « Plus » (AMPÈRE §7).
+    // Accueil, Catalogue, Utilisateurs, Notifications, Mon profil : 5 entrées
+    // au POSTE (le scanner est mobile : il lui faut une caméra), 6 sur mobile
+    // où les suivantes passent dans « Plus » (AMPÈRE §7).
     final entries = destinationsFor(admin);
-    expect(entries.where((d) => !d.mobileOnly), hasLength(4));
-    expect(entries, hasLength(5));
+    expect(entries.where((d) => !d.mobileOnly), hasLength(5));
+    expect(entries, hasLength(6));
   });
 
   test('changedFields ne garde que ce qui a bougé, `null` compris', () {

@@ -17,6 +17,8 @@ import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/users/data/user_models.dart';
 import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
 import 'package:gestion_magasin/features/home/data/dashboard_models.dart';
+import 'package:gestion_magasin/features/notifications/data/notification_models.dart';
+import 'package:gestion_magasin/features/notifications/data/notifications_api.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 
 /// Support de test partagé : faux clients d'API (aucun réseau), fabriques de
@@ -299,6 +301,32 @@ void useScreenSize(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+}
+
+/// Boîte de réception sans réseau : l'accueil et les deux coquilles lisent le
+/// compteur de non lues à chaque construction.
+class FakeNotificationsApi extends NotificationsApi {
+  FakeNotificationsApi({this.unread = 0, this.items = const []}) : super(Dio());
+
+  final int unread;
+  final List<AppNotification> items;
+
+  @override
+  Future<NotificationPage> list({
+    int page = 1,
+    int limit = 30,
+    bool unreadOnly = false,
+  }) async => NotificationPage(
+    data: items,
+    meta: PageMeta(page: page, limit: limit, total: items.length),
+    unread: unread,
+  );
+
+  @override
+  Future<int> markRead(String id) async => unread;
+
+  @override
+  Future<int> markAllRead() async => 0;
 }
 
 /// Résumé d'accueil sans réseau. L'accueil est l'écran par DÉFAUT : sans cette

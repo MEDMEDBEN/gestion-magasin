@@ -188,6 +188,46 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #16 NOTIFICATIONS — SERVEUR + ÉCRAN LIVRÉS (2026-09-23 · **MEDMEDBEN**)
+Spec §18. Boîte de réception par compte ; l'alerte est écrite **dans la transaction de l'opération** qui la
+déclenche (règle 3) : pas d'opération sans alerte, pas d'alerte orpheline. Personne n'est prévenu de sa propre
+action.
+- **Cloisonnement du DESTINATAIRE, pas de permission** : `userId` vient toujours du token ; l'admin n'a aucun
+  chemin vers la boîte d'un collègue. Une notification qui n'est pas la mienne n'est pas « interdite », elle
+  n'existe pas pour moi (`updateMany` borné, donc aucun oracle d'existence). Ligne ajoutée dans
+  `docs/permissions.md`, avec la règle : **jamais dans un message ce que le destinataire ne peut pas lire à
+  l'écran** (le montant a été retiré de l'alerte de réception — elle survit à un changement de rôle).
+- **Émissions livrées** : demande au dépôt, demande prête, transfert en route, transfert reçu, demande
+  refusée, demande **annulée** (le dépôt préparait peut-être), réception et réception **partielle** (distinguées),
+  commande fournisseur **confirmée** (le magasinier l'apprenait par aucun canal), **écart d'inventaire** à valider
+  (à la clôture du comptage, pas à chaque ligne).
+- **Reste de la liste §18, tranché** : `STOCK_FAIBLE` / `RUPTURE` partent avec le **n°19 Réapprovisionnement**
+  (le tableau de bord les affiche déjà, et l'endroit unique est le journal de stock) ; les alertes pilotées par
+  une DATE (retard fournisseur, échéance client, dette, inventaire à faire, tâches du jour/en retard) exigent un
+  ordonnanceur — le dossier `automation/` est vide — et partiront en bloc avec le n°19 et le planning n°10.
+- **Écran** : boîte de réception, non lues distinguées, « Tout marquer lu » ; toucher une alerte la marque lue
+  ET ouvre l'opération quand ce compte a l'écran (sinon elle informe, sans bouton mort). Badge de non lues dans
+  la barre latérale et sur l'onglet mobile — **y compris sur « Plus »**, où « Notifications » tombe sur un
+  téléphone, sinon l'alerte serait invisible. Le badge suit le **battement du coordinateur de synchro** : sans
+  cette dépendance, il était calculé une fois par session et une demande posée après ne s'affichait jamais
+  (bloquant relevé par `reviewer`). Rien n'est gardé sur l'appareil : une alerte périmée envoie travailler pour
+  rien. Déconnecté : zéro, et aucun appel.
+- **Rétention** : les alertes LUES de plus de 90 jours sont effacées au moment où l'utilisateur fait « tout
+  marquer lu » — purge opportuniste, pas d'ordonnanceur à surveiller.
+- **Audits** : `security-reviewer` — aucun critique/élevé ; 2 moyens (lecture non fraîche, aucune purge) et
+  4 faibles corrigés (compte désactivé notifié, montant dans le corps, badge du compte précédent, code mort).
+  `reviewer` — 2 bloquants (badge jamais rafraîchi ; `notifyTransition` sans aucune preuve) et 5 importants,
+  tous traités sauf ce qui est tranché ci-dessus.
+- **Preuve (2026-09-23)** : backend `tsc` propre · lint 0 · **84 unit** · **407 e2e** (dont **11** de
+  notifications : cycle complet du transfert, annulation, compte désactivé, boîte d'un collègue) ; app
+  `flutter analyze` propre · **+345 ~46** (6 tests d'écran, badge des deux coquilles). Contre-épreuves :
+  cloisonnement du destinataire retiré → test en échec ; exclusion de l'auteur retirée → test en échec.
+  **Note d'honnêteté** : la première version de ce second test ne prouvait RIEN (l'auteur n'était pas
+  destinataire) ; il a été refait avec un admin, qui l'est.
+- **Reste à faire pour clore le n°16** : `docs/plan.md` annonce « temps réel via **WebSocket** » — on est
+  aujourd'hui sur le battement de synchro (30 s), ce qui suffit au magasin mais n'est pas ce qui est écrit ;
+  à trancher avec MEDMEDBEN. Pas de « charger plus » sur la boîte (le serveur pagine déjà).
+
 ### 🚧 P1 #15 TABLEAU DE BORD — SERVEUR + ÉCRAN LIVRÉS (2026-09-23 · **MEDMEDBEN**)
 Spec §21 : « un résumé, **ne pas surcharger** ». Un SEUL point d'entrée, `GET /api/dashboard`, ouvert aux trois
 rôles : ce sont les PERMISSIONS du compte qui décident du contenu, bloc par bloc.

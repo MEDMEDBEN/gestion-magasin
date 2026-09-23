@@ -8,6 +8,7 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
+import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
@@ -158,6 +159,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       label: 'Historique',
       builder: (context, _) => const AuditScreen(),
     ),
+  // `/notifications` : les trois rôles, aucune permission — recevoir les
+  // alertes de son propre travail fait partie du métier. Le serveur ne rend
+  // que celles du compte connecté.
+  AppDestination(
+    icon: LucideIcons.bell,
+    label: 'Notifications',
+    builder: (context, user) => NotificationsScreen(user: user),
+  ),
   AppDestination(
     icon: LucideIcons.user,
     label: 'Mon profil',

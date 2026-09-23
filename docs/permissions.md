@@ -150,6 +150,24 @@ aucune migration destructive sans confirmation).
   ne l'a commencée**. Une tâche close ne se réécrit plus.
 - Audit : seuls les gestes de l'ADMIN y figurent ; le travail courant du membre reste dans la tâche.
 
+## Notifications (P1 n°16, ajouté le 2026-09-23)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Lire SES notifications | ✅ | ✅ | ✅ |
+| Marquer SES notifications comme lues | ✅ | ✅ | ✅ |
+| Lire ou modifier celles d'un autre | ❌ | ❌ | ❌ |
+
+**Aucune permission n'est exigée, et c'est volontaire** : un droit que les trois rôles portent est un droit
+mort. Ce qui est gardé ici, c'est le **destinataire** — `userId` vient toujours du token, jamais d'un
+paramètre, et l'admin n'a aucun chemin privilégié vers la boîte d'un collègue (cloisonnement plus fort qu'un
+droit de route). La lecture est **sensible** (`@RequireFreshAccess`) : un compte désactivé ou rétrogradé cesse
+aussitôt de lire sa boîte.
+
+**Règle à graver** : ne jamais mettre dans le titre ou le corps d'une notification ce que le rôle destinataire
+ne pourrait pas lire à l'écran. Une notification survit à un changement de rôle et n'est jamais re-filtrée à
+la lecture — c'est pourquoi le montant d'une réception a été retiré du message ; le lien ramène au document,
+où le serveur reste juge.
+
 ## Administration
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

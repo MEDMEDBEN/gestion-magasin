@@ -112,7 +112,7 @@ Traçabilité / système
 13. Scanner code-barres (mobile) _(code écrit 2026-09-22 ; **NON terminé** : build APK et scan sur appareil impossibles ici — NDK Android cassé, à faire par MEDMEDBEN)_
 14. Réception / préparation / inventaire mobiles _(2026-09-22 : listes gardées sur l'appareil — les écrans s'ouvrent au dépôt sans réseau ; comptage d'inventaire toujours en ligne, voir docs/context.md §9)_
 15. Dashboard (KPI + graphiques + alertes) desktop et mobile _(2026-09-23 : `GET /api/dashboard` + écran d'accueil livrés et prouvés — un bloc par permission, `null` si interdit ; graphiques repoussés au module Rapports n°21)_
-16. Notifications (temps réel via WebSocket)
+16. Notifications (temps réel via WebSocket) _(2026-09-23 : boîte par compte + alertes des transferts, réceptions, commandes confirmées et écarts d'inventaire, livrées et prouvées ; rafraîchies par le battement de synchro (30 s) et NON par WebSocket — à trancher. Alertes pilotées par une date : avec le n°19 et le planning, un ordonnanceur est nécessaire)_
 17. Communication interne (Conversation/Message)
 18. Signalement de problème
 19. Réapprovisionnement (seuils, suggestions)
