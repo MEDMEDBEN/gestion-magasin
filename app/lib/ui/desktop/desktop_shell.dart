@@ -38,6 +38,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
       widget.user,
     ).where((d) => !d.mobileOnly).toList();
     final index = _index.clamp(0, entries.length - 1);
+    _followRequest(entries);
 
     return Scaffold(
       body: Row(
@@ -62,6 +63,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         ],
       ),
     );
+  }
+
+  /// Suit un raccourci demandé par un écran (accueil, §21). Après la frame :
+  /// changer d'onglet PENDANT la construction rejouerait le build en boucle.
+  void _followRequest(List<AppDestination> entries) {
+    final requested = ref.watch(requestedDestinationProvider);
+    if (requested == null) return;
+    final target = entries.indexWhere((d) => d.label == requested);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(requestedDestinationProvider.notifier).taken();
+      if (target >= 0) setState(() => _index = target);
+    });
   }
 }
 

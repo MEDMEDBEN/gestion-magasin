@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -8,6 +9,7 @@ import {
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RoleCode,
   Roles,
 } from '../common/auth.decorators';
@@ -22,7 +24,18 @@ export class DashboardController {
 
   /// Ouvert aux trois rôles : ce sont les PERMISSIONS du compte qui décident du
   /// contenu, bloc par bloc (un bloc interdit vaut `null`).
+  ///
+  /// Lecture SENSIBLE (`@RequireFreshAccess`) : les droits sont relus en base,
+  /// pas pris dans le token. Sans cela, un admin rétrogradé continuerait de voir
+  /// le CA GLOBAL et les dettes du magasin pendant la vie de son access token
+  /// (15 min) — c'est le cloisonnement du CA qui en dépend (audit sécurité).
+  ///
+  /// Débit bridé : un résumé coûte une quinzaine de requêtes dont un parcours
+  /// du catalogue ; la limite globale (120/min PAR IP, tout le magasin derrière
+  /// la même) laisserait un seul compte les enchaîner.
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER)
+  @RequireFreshAccess()
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Get()
   @ApiOperation({
     summary: 'Résumé d’accueil du compte connecté',

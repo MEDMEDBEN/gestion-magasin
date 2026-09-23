@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../features/audit/presentation/audit_screen.dart';
 import '../features/auth/data/auth_models.dart';
 import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
+import '../features/home/presentation/home_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
@@ -14,7 +16,6 @@ import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/transfers/presentation/transfers_screen.dart';
 import '../features/users/presentation/users_screen.dart';
-import 'widgets/screen_state.dart';
 
 /// Une destination de navigation (entrée de sidebar desktop, onglet mobile).
 class AppDestination {
@@ -34,6 +35,27 @@ class AppDestination {
   final bool mobileOnly;
 }
 
+/// Destination demandée par un ÉCRAN (les raccourcis de l'accueil, spec §21).
+///
+/// Chaque coquille garde son propre onglet courant ; ce libellé est le seul
+/// canal pour lui demander d'en changer. Il est remis à `null` dès qu'il est
+/// suivi, sinon la coquille reviendrait sur cet onglet à chaque reconstruction.
+class RequestedDestination extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void ask(String label) => state = label;
+
+  void taken() => state = null;
+}
+
+final requestedDestinationProvider =
+    NotifierProvider<RequestedDestination, String?>(RequestedDestination.new);
+
+/// Demande à la coquille d'ouvrir la destination `label` (celui du menu).
+void goToDestination(WidgetRef ref, String label) =>
+    ref.read(requestedDestinationProvider.notifier).ask(label);
+
 /// Destinations proposées à un compte — SOURCE UNIQUE pour les deux coquilles.
 ///
 /// Le menu est dérivé des droits (§6) : une entrée que le backend refuserait
@@ -44,11 +66,7 @@ List<AppDestination> destinationsFor(AuthUser user) => [
   AppDestination(
     icon: LucideIcons.layoutGrid,
     label: 'Accueil',
-    builder: (context, user) => ScreenStateView(
-      status: ScreenStatus.empty,
-      title: 'Bonjour ${user.fullName.split(' ').first}',
-      message: 'Les modules arrivent avec les prochaines features P0.',
-    ),
+    builder: (context, user) => HomeScreen(user: user),
   ),
   // `/sales` : ADMIN|VENDEUR + sale.create.
   if ((user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
@@ -75,8 +93,7 @@ List<AppDestination> destinationsFor(AuthUser user) => [
   // Scanner (spec §27) : les 3 rôles qui lisent le catalogue, MOBILE seulement
   // (il lui faut une caméra ; au poste, la douchette agit dans Vente). Placé
   // après les écrans du quotidien : il tombe donc dans « Plus » (AMPÈRE §7),
-  // soit deux tapes — un accès direct depuis l'accueil viendra avec le tableau
-  // de bord mobile (P1 n°15).
+  // soit deux tapes — l'accueil en donne un raccourci direct (P1 n°15).
   if (user.can('product.read'))
     AppDestination(
       icon: LucideIcons.scanBarcode,

@@ -7,10 +7,12 @@ import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
+import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 import 'package:gestion_magasin/ui/adaptive_shell.dart';
 import 'package:gestion_magasin/ui/desktop/desktop_shell.dart';
 import 'package:gestion_magasin/ui/mobile/mobile_shell.dart';
+import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 
@@ -45,6 +47,9 @@ Future<void> _pumpShell(
         usersApiProvider.overrideWithValue(
           FakeUsersApi(users: [managedUser()]),
         ),
+        // L'accueil est l'écran par défaut : son résumé ne passe pas par le
+        // réseau dans un test (il est éprouvé dans home_screen_test.dart).
+        dashboardApiProvider.overrideWithValue(FakeDashboardApi()),
         // Les flux Drift réels ne se résolvent pas dans le temps simulé des
         // tests d'écran ; la file elle-même est testée à part.
         pendingMutationsCountProvider.overrideWith((ref) => Stream.value(0)),
@@ -269,6 +274,72 @@ void main() {
       await tester.tap(find.text('Mon profil'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Mon profil'), findsOneWidget);
+    },
+  );
+
+  /// Une destination DEMANDÉE par un écran (les raccourcis de l'accueil, §21)
+  /// doit vraiment changer l'onglet courant, sinon le tableau de bord n'est
+  /// qu'une décoration. Le lien bouton → demande est éprouvé dans
+  /// `home_screen_test.dart` ; ici c'est la coquille qui est en cause, et la
+  /// destination visée est volontairement légère (aucun appel réseau).
+  testWidgets('mobile : la coquille suit la destination demandée', (
+    tester,
+  ) async {
+    await _pumpShell(
+      tester,
+      user: authUser(
+        roles: const ['VENDEUR'],
+        permissions: const ['sale.create'],
+      ),
+      size: const Size(400, 800),
+    );
+    expect(find.widgetWithText(AppBar, 'Accueil'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AdaptiveShell)),
+    );
+    container.read(requestedDestinationProvider.notifier).ask('Mon profil');
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, 'Mon profil'), findsOneWidget);
+    expect(
+      container.read(requestedDestinationProvider),
+      isNull,
+      reason: 'la demande est consommée, sinon l’onglet se rouvrirait sans fin',
+    );
+  });
+
+  /// La coquille desktop a sa propre copie du mécanisme, et sa liste est
+  /// FILTRÉE des destinations mobiles : un « Scanner » demandé au poste ne
+  /// correspond à rien et doit être jeté sans rien casser.
+  testWidgets(
+    'desktop : la destination demandée est suivie, l’inconnue jetée',
+    (tester) async {
+      await _pumpShell(
+        tester,
+        user: authUser(
+          roles: const ['VENDEUR'],
+          permissions: const ['sale.create', 'product.read'],
+        ),
+        size: const Size(1300, 900),
+      );
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(AdaptiveShell)),
+      );
+
+      // Au repos, « Mon profil » n'est QUE dans la sidebar.
+      expect(find.text('Mon profil'), findsOneWidget);
+
+      container.read(requestedDestinationProvider.notifier).ask('Mon profil');
+      await tester.pumpAndSettle();
+      // Ouvert : le libellé est aussi le titre de la barre supérieure.
+      expect(find.text('Mon profil'), findsNWidgets(2));
+
+      // « Scanner » n'existe pas au poste : on reste où on est, sans erreur.
+      container.read(requestedDestinationProvider.notifier).ask('Scanner');
+      await tester.pumpAndSettle();
+      expect(find.text('Mon profil'), findsNWidgets(2));
+      expect(container.read(requestedDestinationProvider), isNull);
     },
   );
 

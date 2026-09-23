@@ -24,6 +24,8 @@ import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
+import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
+import 'package:gestion_magasin/features/home/data/dashboard_models.dart';
 import 'package:gestion_magasin/features/inventory/data/inventory_api.dart';
 import 'package:gestion_magasin/features/inventory/data/inventory_models.dart';
 import 'package:gestion_magasin/features/planning/data/planning_api.dart';
@@ -900,6 +902,41 @@ Future<void> _loadFonts() async {
   await Future.wait([archivo.load(), lucide.load()]);
 }
 
+/// Résumé d'accueil fictif (P1 n°15) : un admin voit tous les blocs.
+const _summary = DashboardSummary(
+  day: '2026-09-23',
+  sales: DashboardSales(count: 14, revenueTtc: 18745000),
+  stock: DashboardStock(
+    lowCount: 3,
+    outOfStockCount: 1,
+    low: [
+      DashboardLowStock(
+        productId: 'p1',
+        name: 'Câble H07V-U 2,5 mm² — couronne 100 m',
+        quantity: '2.000',
+        minThreshold: '10.000',
+      ),
+      DashboardLowStock(
+        productId: 'p2',
+        name: 'Disjoncteur 16 A courbe C',
+        quantity: '4.000',
+        minThreshold: '12.000',
+      ),
+      DashboardLowStock(
+        productId: 'p3',
+        name: 'Boîte d’encastrement Ø 67',
+        quantity: '8.000',
+        minThreshold: '15.000',
+      ),
+    ],
+  ),
+  transfers: DashboardTransfers(toPrepare: 2, inTransit: 1),
+  purchases: DashboardPurchases(toReceive: 3),
+  customers: DashboardCustomers(debt: 42350000, overdue: 7800000),
+  suppliers: DashboardSuppliers(debt: 96500000),
+  tasks: DashboardTasks(open: 4, late: 1),
+);
+
 Future<void> _capture(
   WidgetTester tester, {
   required String name,
@@ -973,6 +1010,9 @@ Future<void> _capture(
         inventoryApiProvider.overrideWithValue(_CaptureInventoryApi()),
         planningApiProvider.overrideWithValue(_CapturePlanningApi()),
         auditApiProvider.overrideWithValue(_CaptureAuditApi()),
+        dashboardApiProvider.overrideWithValue(
+          FakeDashboardApi(result: _summary),
+        ),
         stockByProductProvider.overrideWith((ref) async => _stockByProduct),
         stockApiProvider.overrideWithValue(_CaptureStockApi()),
         appDatabaseProvider.overrideWithValue(db),
@@ -1069,6 +1109,26 @@ void main() {
       name: '03_mdp_force_mobile',
       size: const Size(390, 844),
       home: const ChangePasswordScreen(),
+    ),
+  );
+  testWidgets(
+    '45 accueil desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '45_accueil_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+    ),
+  );
+  testWidgets(
+    '46 accueil mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '46_accueil_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
     ),
   );
   testWidgets(

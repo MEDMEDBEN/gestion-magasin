@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +15,8 @@ import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_api.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/users/data/user_models.dart';
+import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
+import 'package:gestion_magasin/features/home/data/dashboard_models.dart';
 import 'package:gestion_magasin/features/users/data/users_api.dart';
 
 /// Support de test partagé : faux clients d'API (aucun réseau), fabriques de
@@ -295,4 +299,26 @@ void useScreenSize(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+}
+
+/// Résumé d'accueil sans réseau. L'accueil est l'écran par DÉFAUT : sans cette
+/// doublure, tout test de coquille attendrait un appel HTTP qui ne vient pas.
+class FakeDashboardApi extends DashboardApi {
+  FakeDashboardApi({
+    this.result = const DashboardSummary(day: '2026-09-23'),
+    this.failure,
+  }) : super(Dio());
+
+  final DashboardSummary result;
+  final ApiException? failure;
+
+  /// Nombre de lectures : c'est lui qui prouve qu'un « Réessayer » relit.
+  int calls = 0;
+
+  @override
+  Future<DashboardSummary> summary() async {
+    calls++;
+    if (failure != null) throw failure!;
+    return result;
+  }
 }

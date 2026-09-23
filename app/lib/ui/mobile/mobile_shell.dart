@@ -39,6 +39,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final tabs = destinationsFor(widget.user);
     final index = _index.clamp(0, tabs.length - 1);
     final current = tabs[index];
+    _followRequest(tabs);
     final overflow = tabs.length > _maxTabs;
 
     return Scaffold(
@@ -81,6 +82,19 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         ],
       ),
     );
+  }
+
+  /// Suit un raccourci demandé par un écran (accueil, §21) — après la frame,
+  /// pour ne pas relancer la construction en cours.
+  void _followRequest(List<AppDestination> tabs) {
+    final requested = ref.watch(requestedDestinationProvider);
+    if (requested == null) return;
+    final target = tabs.indexWhere((d) => d.label == requested);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(requestedDestinationProvider.notifier).taken();
+      if (target >= 0) setState(() => _index = target);
+    });
   }
 
   static const _maxTabs = 4;

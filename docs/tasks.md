@@ -188,7 +188,7 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #15 TABLEAU DE BORD — TRANCHE SERVEUR LIVRÉE (2026-09-23 · **MEDMEDBEN**)
+### 🚧 P1 #15 TABLEAU DE BORD — SERVEUR + ÉCRAN LIVRÉS (2026-09-23 · **MEDMEDBEN**)
 Spec §21 : « un résumé, **ne pas surcharger** ». Un SEUL point d'entrée, `GET /api/dashboard`, ouvert aux trois
 rôles : ce sont les PERMISSIONS du compte qui décident du contenu, bloc par bloc.
 - Un bloc interdit vaut **`null`**, jamais 0 — un 0 se lirait « aucune alerte ». Blocs : `sales` (`sale.create`),
@@ -204,13 +204,47 @@ rôles : ce sont les PERMISSIONS du compte qui décident du contenu, bloc par bl
   Alger — une vente encaissée entre minuit et 01 h était comptée sur la veille. Nouveau
   `startOfLocalDay()` (`common/document-number.ts`) pour toute borne comparée à un HORODATAGE réel ; minuit UTC
   reste la bonne borne pour une date PURE (`dueDate`), enregistrée ainsi.
-- **Preuve (2026-09-23)** : backend `tsc` propre · lint 0 · **9 e2e** (`test/dashboard.e2e-spec.ts`) · **4 unit**
-  de dates. Contre-épreuves faites : cloisonnement du CA retiré → test en échec ; filtre de permission forcé à
-  vrai → 2 tests en échec.
-- **Prochaine étape précise** : écran d'accueil Flutter — remplacer le placeholder « Accueil »
-  (`app/lib/features/home/`) par les cartes de ce résumé (desktop riche, mobile allégé par rôle, spec §21),
-  puis audits `reviewer` + `security-reviewer` avant de clore le n°15. Graphiques repoussés au module Rapports
-  (P1 n°21).
+- **Lecture SENSIBLE** (`@RequireFreshAccess`, audit sécurité) : les droits sont relus en BASE, pas pris dans le
+  token — sans cela un admin rétrogradé gardait la vue globale (CA de tout le magasin, dettes) pendant 15 min.
+  Débit bridé à 30/min (un résumé coûte une quinzaine de requêtes dont un parcours du catalogue).
+- **Écran d'accueil Flutter** (`app/lib/features/home/`) : le placeholder est remplacé. Une carte par bloc rendu
+  par le serveur — un bloc absent n'affiche RIEN. Desktop : grille de cartes fixes. Mobile : deux par ligne
+  (une seule faisait défiler le résumé sur trois écrans). Les cartes sont cliquables vers leur écran, et seuls
+  « Nouvelle vente » et « Scanner » (mobile) sont proposés en raccourcis : le reste du menu est déjà à une tape.
+  Hors ligne, le résumé manque (il n'est PAS gardé sur l'appareil : un CA périmé est un CA faux) mais les
+  raccourcis restent utilisables — c'est là qu'ils servent le plus.
+- **Navigation entre coquilles** : `requestedDestinationProvider` (`ui/navigation.dart`) ne transporte qu'un
+  LIBELLÉ, que chaque coquille résout contre `destinationsFor(user)` — un libellé inconnu est jeté, aucun écran
+  interdit ne s'ouvre. La demande est consommée après la frame, sinon l'onglet se rouvrirait sans fin.
+- **Preuve (2026-09-23, après corrections d'audit)** : backend `tsc` propre · lint 0 · **84 unit** · **396 e2e**
+  (dont **12** de tableau de bord) ; app `flutter analyze` propre · **+338 ~46** (8 tests d'accueil, 14 de
+  coquille) · captures `45_accueil_desktop` et `46_accueil_mobile` régénérées et relues. Contre-épreuves faites :
+  cloisonnement du CA retiré → test en échec ; filtre de permission forcé à vrai → 2 tests en échec ; suivi de
+  destination retiré de la coquille → test en échec.
+- **Audits — corrigés avant commit.** `security-reviewer` : 2 moyens (droits relus en base, débit bridé) et
+  1 faible (bloc stock exigeant les DEUX droits de lecture) → corrigés, avec le test e2e du rôle retiré.
+  `reviewer` : **bloquant B1** — le retard client retranchait TOUS les règlements, donc un client réglant une
+  facture pas encore due faisait disparaître sa créance échue et l'alerte sautait en silence ; corrigé en
+  reprenant la formule de `SalesService.customerOverdue` (seuls les règlements rattachés à une vente échue).
+  **B2** — les deux blocs d'argent n'étaient éprouvés que par leur présence : 2 e2e ajoutés (c'est eux qui
+  auraient attrapé B1). **I1** — la dette fournisseurs est maintenant soldée PAR fournisseur puis les soldes
+  positifs additionnés : un fournisseur payé d'avance n'efface plus la dette des autres, et le total réconcilie
+  avec l'écran Fournisseurs. **I2** — une carte n'est cliquable que si l'écran visé est ouvert à ce compte (les
+  droits d'un bloc et ceux de son écran ne coïncident pas toujours au cumul de rôles). **I4** — cas desktop du
+  suivi de destination ajouté. Mineurs : état « Rien à résumer », plus de `toString()` d'exception à l'écran,
+  marge partagée au lieu d'être réécrite en dur, doublure de test unique, « Réessayer » éprouvé.
+- **Écarts assumés, à trancher par MEDMEDBEN** : (1) le **magasinier voit le total des dettes clients** —
+  conforme à la lettre de `docs/permissions.md` (il a `customer.read`), mais cette ligne visait des fiches, pas
+  un agrégat financier du magasin ; (2) l'accueil MOBILE affiche les 7 blocs, là où la spec §21 dit « uniquement
+  urgent / important aujourd'hui » — garder « Dettes fournisseurs » sur téléphone ? ; (3) `stockAlerts()`
+  parcourt le catalogue actif en mémoire (commentaire `ponytail` sur place : passer en `groupBy` SQL si le
+  catalogue grossit).
+- **Balayage du bug de fuseau à terminer** (relevé par `reviewer`) : `startOfLocalDay` corrige la borne du CA,
+  mais `cash-sessions.service.ts` compare encore `openedAt` (horodatage réel) à `parseApiDate(from/to)` = minuit
+  UTC — même décalage d'une heure sur les filtres de caisse. À reprendre avec la prochaine feature qui touche à
+  la caisse ; `AuditService.startOfLocalDay` (privé, quasi-homonyme) sera réutilisé ou renommé à cette occasion.
+- **Reste à faire pour clore le n°15** : graphiques (repoussés au module Rapports, P1 n°21) et relecture humaine
+  des deux captures.
 
 ### 🚧 P1 #14 RÉCEPTION / PRÉPARATION / INVENTAIRE MOBILES — LISTES HORS-LIGNE (2026-09-23 · **MEDMEDBEN**)
 Le manque réel (tracé en P0 #12 tranches D et E) : les écrans se chargeaient EN LIGNE, donc au dépôt sans

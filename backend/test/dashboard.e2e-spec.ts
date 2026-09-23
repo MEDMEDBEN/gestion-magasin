@@ -19,6 +19,9 @@ describe('Tableau de bord (e2e)', () => {
   const PASSWORD = 'MotDePasseTemp1!';
   const userIds: string[] = [];
   const productIds: string[] = [];
+  const customerIds: string[] = [];
+  const supplierIds: string[] = [];
+
   const ids: Record<string, string> = {};
   const tokens: Record<string, string> = {};
   let magasinId: string;
@@ -42,6 +45,25 @@ describe('Tableau de bord (e2e)', () => {
         totalTtc,
         paidAmount: totalTtc,
         soldAt,
+      },
+      select: { id: true },
+    });
+
+  /// Vente à CRÉDIT d'un client, échue ou non (`dueDate`). `paidAmount: 0` :
+  /// tout reste dû.
+  const creditSale = async (customerId: string, totalTtc: number, due: Date) =>
+    prisma.sale.create({
+      data: {
+        number: `E2E-DASH-C-${suffix}-${Math.random().toString(36).slice(2, 8)}`,
+        userId: ids.vendeur,
+        locationId: magasinId,
+        customerId,
+        totalHt: totalTtc,
+        totalTax: 0,
+        totalTtc,
+        paidAmount: 0,
+        dueDate: due,
+        soldAt: new Date(due.getTime() - 24 * 3600 * 1000),
       },
       select: { id: true },
     });
@@ -82,7 +104,15 @@ describe('Tableau de bord (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.customerPayment.deleteMany({
+      where: { customerId: { in: customerIds } },
+    });
+    await prisma.supplierPayment.deleteMany({
+      where: { supplierId: { in: supplierIds } },
+    });
     await prisma.sale.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
     await prisma.planningTask.deleteMany({
       where: {
         OR: [
@@ -239,7 +269,102 @@ describe('Tableau de bord (e2e)', () => {
     expect(body.tasks).toEqual({ open: 2, late: 1 });
   });
 
+  /// L'argent affiché doit être le MÊME que sur la fiche : un chiffre d'accueil
+  /// qui ne réconcilie pas avec l'écran Clients ne vaut rien.
+  it('dette clients : un règlement sur une vente NON échue ne fait pas disparaître le retard', async () => {
+    const avant = (await dashboard(tokens.admin).expect(200)).body.customers;
+    const client = await prisma.customer.create({
+      data: { name: `Client dette ${suffix}`, creditLimit: 100000000 },
+      select: { id: true },
+    });
+    customerIds.push(client.id);
+    const jour = (offset: number) =>
+      new Date(Date.now() + offset * 24 * 3600 * 1000);
+
+    await creditSale(client.id, 600000, jour(-5));
+    const aVenir = await creditSale(client.id, 400000, jour(10));
+
+    const avecDette = (await dashboard(tokens.admin).expect(200)).body
+      .customers;
+    expect(avecDette.debt).toBe(avant.debt + 1000000);
+    expect(avecDette.overdue).toBe(avant.overdue + 600000);
+
+    // Le client règle la vente PAS ENCORE DUE : sa créance échue reste entière.
+    await prisma.customerPayment.create({
+      data: {
+        customerId: client.id,
+        saleId: aVenir.id,
+        userId: ids.admin,
+        amount: 400000,
+      },
+    });
+
+    const apres = (await dashboard(tokens.admin).expect(200)).body.customers;
+    expect(apres.debt).toBe(avant.debt + 600000);
+    // Le retard ne bouge pas : ce règlement ne soldait rien d'échu.
+    expect(apres.overdue).toBe(avant.overdue + 600000);
+  });
+
+  it('dette fournisseurs : un fournisseur payé d’avance n’efface pas la dette des autres', async () => {
+    const avant = (await dashboard(tokens.admin).expect(200)).body.suppliers;
+    const doit = await prisma.supplier.create({
+      data: { name: `Fournisseur dû ${suffix}`, openingBalance: 800000 },
+      select: { id: true },
+    });
+    const avance = await prisma.supplier.create({
+      data: { name: `Fournisseur avance ${suffix}`, openingBalance: 0 },
+      select: { id: true },
+    });
+    supplierIds.push(doit.id, avance.id);
+    // Payé sans rien avoir reçu : son solde est négatif (un avoir).
+    await prisma.supplierPayment.create({
+      data: {
+        supplierId: avance.id,
+        userId: ids.admin,
+        amount: 500000,
+        method: 'ESPECES',
+      },
+    });
+
+    const apres = (await dashboard(tokens.admin).expect(200)).body.suppliers;
+    expect(apres.debt).toBe(avant.debt + 800000);
+  });
+
   it('sans token : refusé', async () => {
     await request(server).get('/api/dashboard').expect(401);
+  });
+
+  /// Lecture SENSIBLE : les droits sont relus en BASE. Sans cela, un admin
+  /// rétrogradé garderait la vue globale (CA de tout le magasin, dettes)
+  /// jusqu'à l'expiration de son access token.
+  it('rôle retiré en base : le MÊME token ne donne plus la vue d’admin', async () => {
+    const email = `e2e-dash-retro-${suffix}@test.local`;
+    const user = await createTestUser(prisma, {
+      email,
+      password: PASSWORD,
+      roles: [RoleCode.ADMIN, RoleCode.VENDEUR],
+    });
+    userIds.push(user.id);
+    const token = (
+      await request(server)
+        .post('/api/auth/login')
+        .send({ identifier: email, password: PASSWORD })
+        .expect(200)
+    ).body.accessToken;
+
+    // Admin : il voit les ventes de TOUT LE MONDE.
+    await sale(ids.vendeur, 310000);
+    const commeAdmin = (await dashboard(token).expect(200)).body;
+    expect(commeAdmin.sales.count).toBeGreaterThan(0);
+    expect(commeAdmin.suppliers).not.toBeNull();
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { roles: { disconnect: [{ code: RoleCode.ADMIN }] } },
+    });
+
+    const apres = (await dashboard(token).expect(200)).body;
+    expect(apres.sales).toEqual({ count: 0, revenueTtc: 0 });
+    expect(apres.suppliers).toBeNull();
   });
 });

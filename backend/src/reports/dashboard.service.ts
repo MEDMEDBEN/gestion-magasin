@@ -30,7 +30,10 @@ export class DashboardService {
     const [sales, stock, transfers, purchases, customers, suppliers, tasks] =
       await Promise.all([
         can(PERMISSIONS.SALE_CREATE) ? this.salesOfDay(user, startOfDay) : null,
-        can(PERMISSIONS.STOCK_READ_STORE) ||
+        // LES DEUX droits : le chiffre couvre le magasin ET le dépôt. Un « ou »
+        // montrerait le dépôt à qui n'a que le magasin si les permissions
+        // redevenaient individuelles (audit sécurité).
+        can(PERMISSIONS.STOCK_READ_STORE) &&
         can(PERMISSIONS.STOCK_READ_WAREHOUSE)
           ? this.stockAlerts()
           : null,
@@ -148,26 +151,34 @@ export class DashboardService {
   /// l'échéance est passée, bornée par la dette (un acompte solde le plus
   /// ancien d'abord).
   private async customerDebt(today: Date) {
-    const [sales, payments, dueSales] = await Promise.all([
+    const echu = { status: 'VALIDEE' as const, dueDate: { lt: today } };
+    const [sales, payments, dueSales, duePayments] = await Promise.all([
       this.prisma.sale.aggregate({
         where: { status: 'VALIDEE', customerId: { not: null } },
         _sum: { totalTtc: true, paidAmount: true },
       }),
       this.prisma.customerPayment.aggregate({ _sum: { amount: true } }),
       this.prisma.sale.aggregate({
-        where: {
-          status: 'VALIDEE',
-          customerId: { not: null },
-          dueDate: { lt: today },
-        },
+        where: { ...echu, customerId: { not: null } },
         _sum: { totalTtc: true, paidAmount: true },
       }),
+      // Pour le RETARD, seuls comptent les règlements rattachés à une vente
+      // échue — exactement `SalesService.customerOverdue`. Retrancher tous les
+      // règlements ferait disparaître une créance échue dès qu'un client paie
+      // une facture pas encore due, et l'alerte sauterait en silence.
+      this.prisma.customerPayment.aggregate({
+        where: { sale: echu },
+        _sum: { amount: true },
+      }),
     ]);
-    const paid = payments._sum.amount ?? 0;
     const debt =
-      (sales._sum.totalTtc ?? 0) - (sales._sum.paidAmount ?? 0) - paid;
+      (sales._sum.totalTtc ?? 0) -
+      (sales._sum.paidAmount ?? 0) -
+      (payments._sum.amount ?? 0);
     const due =
-      (dueSales._sum.totalTtc ?? 0) - (dueSales._sum.paidAmount ?? 0) - paid;
+      (dueSales._sum.totalTtc ?? 0) -
+      (dueSales._sum.paidAmount ?? 0) -
+      (duePayments._sum.amount ?? 0);
     return {
       debt: Math.max(debt, 0),
       overdue: Math.min(Math.max(due, 0), Math.max(debt, 0)),
@@ -176,17 +187,43 @@ export class DashboardService {
 
   /// Dette FOURNISSEURS : reprise de l'existant + marchandise réellement reçue
   /// − paiements (la commande seule n'endette pas, décision 2026-09-16).
+  ///
+  /// Soldée PAR FOURNISSEUR, comme la fiche (`SuppliersService.debt`), puis les
+  /// soldes positifs additionnés : un fournisseur payé d'avance ne doit pas
+  /// effacer ce qu'on doit aux autres. Le total d'accueil réconcilie alors avec
+  /// la liste Fournisseurs.
   private async supplierDebt() {
-    const [opening, received, paid] = await Promise.all([
-      this.prisma.supplier.aggregate({ _sum: { openingBalance: true } }),
-      this.prisma.reception.aggregate({ _sum: { totalTtc: true } }),
-      this.prisma.supplierPayment.aggregate({ _sum: { amount: true } }),
+    const [suppliers, received, paid] = await Promise.all([
+      this.prisma.supplier.findMany({
+        select: { id: true, openingBalance: true },
+      }),
+      this.prisma.reception.groupBy({
+        by: ['supplierId'],
+        _sum: { totalTtc: true },
+      }),
+      this.prisma.supplierPayment.groupBy({
+        by: ['supplierId'],
+        _sum: { amount: true },
+      }),
     ]);
-    const debt =
-      (opening._sum.openingBalance ?? 0) +
-      (received._sum.totalTtc ?? 0) -
-      (paid._sum.amount ?? 0);
-    return { debt: Math.max(debt, 0) };
+    const balances = new Map(
+      suppliers.map((s) => [s.id, s.openingBalance] as const),
+    );
+    for (const row of received) {
+      balances.set(
+        row.supplierId,
+        (balances.get(row.supplierId) ?? 0) + (row._sum.totalTtc ?? 0),
+      );
+    }
+    for (const row of paid) {
+      balances.set(
+        row.supplierId,
+        (balances.get(row.supplierId) ?? 0) - (row._sum.amount ?? 0),
+      );
+    }
+    let debt = 0;
+    for (const balance of balances.values()) debt += Math.max(balance, 0);
+    return { debt };
   }
 
   /// MES tâches ouvertes : l'accueil ne montre que les siennes, même à l'admin
