@@ -4,6 +4,21 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+## 🏷️ Repère de compilation — `v0.2.0-rc1` (2026-09-24)
+
+`main` est resté au **21/09** volontairement, avec 21 commits de retard. Sa seule valeur est d'être un point de
+retour dont on sait qu'il fonctionne : le merger avant la première compilation le ferait perdre au moment
+précis où on en aurait besoin.
+
+- **Ce que contient le tag** : P0 complète (dont le hors-ligne) + P1 n°13 à 17. Tests et audits passés.
+  **Jamais compilé, jamais ouvert par un humain.**
+- **Ce qu'il sert** : l'agent de build compile CE tag (voir `docs/BUILD.md`), pas une branche qui bouge.
+- **Condition pour merger sur `main`** : l'application s'ouvre ET le contrôle du §8 de `BUILD.md` passe
+  (créer un produit, le retrouver dans la liste). Alors seulement :
+  `git checkout main && git merge --ff-only develop && git push origin main`.
+
+Tant que cette condition n'est pas remplie, `main` ne bouge pas — quel que soit le nombre de tests verts.
+
 ## ✅ CORRECTIONS DE LA REVUE GÉNÉRALE — 2026-09-17 · **MEDMEDBEN** (à lire avant de coder)
 Bilan de départ : `docs/revue-generale-2026-09-16.md`. Règles durcies ajoutées dans `CONVENTIONS.md` (« Invariants &
 anti-récidive », 6 règles). Tout ce qui suit est poussé sur `develop`, **non mergé sur `main`** (re-revue d'abord).
