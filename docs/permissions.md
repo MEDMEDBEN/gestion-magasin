@@ -150,6 +150,25 @@ aucune migration destructive sans confirmation).
   ne l'a commencée**. Une tâche close ne se réécrit plus.
 - Audit : seuls les gestes de l'ADMIN y figurent ; le travail courant du membre reste dans la tâche.
 
+## Communication interne (P1 n°17, ajouté le 2026-09-24)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Ouvrir un fil, écrire dedans, le lire | ✅ | ✅ | ✅ |
+| Lire ou écrire dans un fil dont je ne suis PAS participant | ❌ | ❌ | ❌ |
+| Clore un fil | ✅ (s'il y participe) | ✅ (l'auteur) | ✅ (l'auteur) |
+| Lister les membres à qui écrire (id + nom) | ✅ | ✅ | ✅ |
+
+**Aucune permission, garde sur la PARTICIPATION** — même principe que les notifications. Un fil dont je ne
+fais pas partie répond **404, pas 403** : un 403 confirmerait son existence, donc son sujet (« Problème caisse
+Karim »), ce qui est déjà une fuite.
+
+**Décision à figer : l'admin n'a AUCUN accès de modération** aux fils dont il n'est pas participant, et il
+n'existe volontairement aucune route pour s'ajouter à un fil existant — ce serait le seul moyen de contourner
+le cloisonnement. Si un besoin de modération apparaît, il faudra le trancher ici AVANT de toucher au code.
+
+L'annuaire des destinataires est une route **dédiée** (`GET /conversations/recipients`, id et nom seulement) :
+`/users` reste réservé à l'admin, alors que les trois rôles doivent pouvoir ouvrir un fil.
+
 ## Notifications (P1 n°16, ajouté le 2026-09-23)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

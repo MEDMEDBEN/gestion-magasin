@@ -188,6 +188,35 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #17 COMMUNICATION INTERNE — SERVEUR + ÉCRAN LIVRÉS (2026-09-24 · **MEDMEDBEN**)
+Spec §25. Fils de discussion magasin ↔ dépôt et admin ↔ membres. Migration **additive** créée par le subagent
+`db-migrator` : `20260923231224_conversations_messages` (3 tables, 2 valeurs d'enum, aucune perte possible).
+- **Garde sur la PARTICIPATION, pas sur un rôle** : un fil dont je ne fais pas partie répond **404** (un 403
+  confirmerait son existence, donc son sujet). L'admin n'a AUCUN accès de modération et il n'existe pas de
+  route pour s'ajouter à un fil — décision écrite dans `docs/permissions.md`, à trancher avant tout code si un
+  besoin de modération apparaît.
+- **Annuaire dédié** `GET /conversations/recipients` (id + nom) : `/users` est réservé à l'admin, et l'audit a
+  montré que sans cette route **deux rôles sur trois ne pouvaient pas ouvrir un fil** — le formulaire tombait
+  en erreur. C'est le magasinier qui a le plus besoin de poser une question.
+- **Volontairement pauvre** : pas de pièce jointe, pas de quantité, pas de produit, pas de statut, pas de
+  recherche. C'est CETTE pauvreté qui tient la règle de la spec §25 (« une opération métier ne doit jamais
+  être remplacée par un message »), pas le bandeau d'avertissement. **À refuser explicitement** le jour où on
+  demandera « juste » une pièce jointe ou un champ quantité : la règle tomberait avec.
+- Ouvrir un fil vaut **lecture** (les non-lus tombent, et ses alertes sont soldées — une alerte est faite pour
+  être traitée). Message et alertes dans la MÊME transaction. Fil clos = lecture seule, rien n'est supprimé.
+- **Régression évitée de justesse** : ajouter `MESSAGE`/`CONVERSATION` aux enums serveur cassait le décodage
+  de TOUTE la boîte de notifications côté app (badge compris) — la feature n°16, livrée la veille. Corrigé, et
+  la classe de bug fermée : les enums de notification ont désormais une valeur de repli `unknown`, donc un
+  serveur plus récent ne peut plus casser l'écran. Test dédié ajouté.
+- **Audits** : `security-reviewer` — aucun critique ; 1 élevé (annuaire, ci-dessus), 1 moyen (débit bridé :
+  20 fils/min, 60 messages/min — un message écrit une alerte par participant), 3 faibles corrigés.
+  `reviewer` — 2 bloquants (décodage d'enum ; formulaire inutilisable) et 6 importants, traités.
+- **Preuve (2026-09-24)** : backend `tsc` propre · lint 0 · **84 unit** · **417 e2e** (dont **10** de conversations) ; app `flutter analyze`
+  propre · **+354 ~46** (7 tests d'écran + 2 de décodage d'enum). Contre-épreuve : filtre de participation retiré
+  → le test « un fil dont je ne fais pas partie n'existe pas » échoue.
+- **Reste à faire** : « charger plus » au-delà de 200 messages dans un fil (borne posée) ; l'app recharge le
+  fil entier après une réponse alors que le serveur la renvoie déjà.
+
 ### 🚧 P1 #16 NOTIFICATIONS — SERVEUR + ÉCRAN LIVRÉS (2026-09-23 · **MEDMEDBEN**)
 Spec §18. Boîte de réception par compte ; l'alerte est écrite **dans la transaction de l'opération** qui la
 déclenche (règle 3) : pas d'opération sans alerte, pas d'alerte orpheline. Personne n'est prévenu de sa propre
@@ -1586,14 +1615,26 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Fournisseurs + clients + dettes fournisseurs | 🟡 **Code livré**, relecture humaine en attente | 🟢 Fiches, reprise de dette, paiements, contre-passation | 🟢 Fournisseurs, clients, historiques | 🟢 e2e + widget | 🟢 CONFORME |
 | Achats | 🟡 **Code livré**, relecture humaine en attente | 🟢 Commandes, statuts, confirmation ADMIN, annulation | 🟢 Liste, formulaire, actions | 🟢 15 e2e · 5 widget | 🟢 corrigé |
 | Réceptions (dont partielles) | 🟡 **Code livré**, relecture humaine en attente | 🟢 Partielles, surlivraison refusée, dette | 🟢 Réception depuis la commande | 🟢 11 e2e · 6 widget | 🟢 corrigé (2 importants) |
-| Transferts magasin↔dépôt | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Inventaire + tournant | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Planning hebdomadaire | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Historique/audit | 🔴 Non commencé | 🟡 Contrat figé (501) | — | — | — |
-| Handlers de sync par opération P0 | 🔴 Non commencé | 🟡 Moteur prêt, 1 handler livré | — | — | — |
-| Génération PDF/Excel, devis, étiquettes (P1) | 🔴 Non commencé | — | — | — | — |
+| Transferts magasin↔dépôt | 🟡 **Code livré**, relecture humaine en attente | 🟢 Demande → acceptation → préparation → expédition → réception, écarts | 🟢 Liste, actions, quantités | 🟢 e2e + widget | 🟢 CONFORME |
+| Inventaire + tournant | 🟡 **Code livré**, relecture humaine en attente | 🟢 Comptage, écarts, ajustement ADMIN (delta, jamais absolu) | 🟢 Liste, comptage | 🟢 e2e + widget | 🟢 CONFORME |
+| Planning hebdomadaire | 🟡 **Code livré**, relecture humaine en attente | 🟢 Tâches cloisonnées par membre, retard calculé | 🟢 Semaine, formulaire | 🟢 e2e + widget | 🟢 CONFORME |
+| Historique/audit | 🟡 **Code livré**, relecture humaine en attente | 🟢 Journal immuable, ADMIN seul, lecture fraîche | 🟢 Écran filtrable | 🟢 e2e + widget | 🟢 CONFORME |
+| Handlers de sync par opération P0 | 🟡 **Code livré** (2026-09-22) | 🟢 Vente, caisse, réception, transferts, règlements clients | 🟢 File, reprise, rejets | 🟢 e2e par opération | 🟢 CONFORME |
+| Scanner mobile (P1 #13) | 🟠 **Code écrit, PREUVE APPAREIL MANQUANTE** | — | 🟢 Écran caméra + fiche produit | 🟢 10 tests (sans caméra) | 🟢 CONFORME |
+| Écrans dépôt hors-ligne (P1 #14) | 🟠 **Code écrit, PREUVE APPAREIL MANQUANTE** | — | 🟢 Listes gardées 72 h, bandeau daté | 🟢 e2e + widget | 🟢 corrigé (2 élevés) |
+| Tableau de bord (P1 #15) | 🟡 **Code livré** (2026-09-23) | 🟢 Un bloc par permission, `null` si interdit | 🟢 Accueil desktop + mobile | 🟢 12 e2e · 8 widget | 🟢 corrigé (2 moyens) |
+| Notifications (P1 #16) | 🟡 **Code livré** (2026-09-23) | 🟢 Alertes dans la transaction de l'opération | 🟢 Boîte + badge des 2 coquilles | 🟢 11 e2e · 8 widget | 🟢 corrigé (2 moyens) |
+| Communication interne (P1 #17) | 🟡 **Code livré** (2026-09-24) | 🟢 Fils, garde sur la PARTICIPATION (404) | 🟢 Liste, fil, formulaire | 🟢 10 e2e · 7 widget | 🟢 corrigé (1 élevé) |
+| Signalement de problème (P1 #18) | 🔴 Non commencé | — | — | — | — |
+| Réapprovisionnement (P1 #19) | 🔴 Non commencé | — | — | — | — |
+| Rapports, devis, étiquettes, PDF/Excel (P1 #20-21c) | 🔴 Non commencé | — | — | — | — |
 
-Légende : 🔴 non commencé · 🟡 en cours · 🟢 terminé et prouvé
+Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
+humaine en attente · 🟢 terminé et validé par MEDMEDBEN
+
+> **Ce tableau était FAUX jusqu'au 2026-09-24** : transferts, inventaire, planning, audit et handlers de sync
+> y étaient marqués « non commencé » alors qu'ils sont livrés depuis des jours. Un relais qui s'y fiait aurait
+> refait le travail. Le mettre à jour fait partie de la clôture d'une feature, au même titre que les tests.
 
 ## Décisions en attente
 - ~~Matrice de permissions CRUD~~ → **VALIDÉE le 2026-09-09** (`docs/permissions.md`).

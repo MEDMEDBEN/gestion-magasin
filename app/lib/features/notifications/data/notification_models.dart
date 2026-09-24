@@ -41,7 +41,15 @@ enum NotificationKind {
   @JsonValue('TACHE_DU_JOUR')
   taskToday('Tâche du jour'),
   @JsonValue('TACHE_EN_RETARD')
-  taskLate('Tâche en retard');
+  taskLate('Tâche en retard'),
+  @JsonValue('MESSAGE')
+  message('Message'),
+
+  /// Valeur inconnue de CETTE version de l'app : un serveur plus récent a
+  /// ajouté un type. L'alerte s'affiche quand même — sans ce repli, une seule
+  /// valeur nouvelle faisait échouer le décodage de TOUTE la boîte, badge
+  /// compris (régression constatée en revue P1 n°17).
+  unknown('Notification');
 
   const NotificationKind(this.label);
   final String label;
@@ -69,8 +77,14 @@ enum NotificationTarget {
   cashSession,
   @JsonValue('PRODUCT')
   product,
+  @JsonValue('CONVERSATION')
+  conversation,
   @JsonValue('MANUAL')
   manual,
+
+  /// Opération inconnue de cette version : l'alerte reste lisible, elle
+  /// n'ouvre simplement aucun écran.
+  unknown,
 }
 
 enum NotificationPriority {
@@ -88,12 +102,15 @@ enum NotificationPriority {
 abstract class AppNotification with _$AppNotification {
   const factory AppNotification({
     required String id,
+    @JsonKey(unknownEnumValue: NotificationKind.unknown)
     required NotificationKind type,
+    @JsonKey(unknownEnumValue: NotificationPriority.normal)
     required NotificationPriority priority,
     required String title,
     String? body,
     required bool isRead,
     DateTime? readAt,
+    @JsonKey(unknownEnumValue: NotificationTarget.unknown)
     NotificationTarget? operationType,
     String? operationId,
     required DateTime createdAt,

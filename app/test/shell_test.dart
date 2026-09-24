@@ -144,6 +144,12 @@ void main() {
       );
 
       expect(find.text('Utilisateurs'), findsNothing);
+      // Le vendeur a désormais plus de 4 destinations : les dernières passent
+      // sous « Plus » (AMPÈRE §7). « Utilisateurs » ne doit pas s'y cacher non
+      // plus — c'est LÀ qu'une entrée interdite passerait inaperçue.
+      await tester.tap(find.text('Plus'));
+      await tester.pumpAndSettle();
+      expect(find.text('Utilisateurs'), findsNothing);
       expect(find.text('Mon profil'), findsWidgets);
     });
 

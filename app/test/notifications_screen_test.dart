@@ -186,6 +186,48 @@ void main() {
     expect(find.textContaining('Tout marquer lu'), findsNothing);
   });
 
+  /// Le serveur peut ajouter un type d'alerte avant que l'app ne soit mise à
+  /// jour. Sans repli, une SEULE valeur inconnue faisait échouer le décodage de
+  /// toute la boîte — badge compris (régression P1 n°17, écran P1 n°16 cassé).
+  test('une alerte d’un type inconnu se décode au lieu de tout casser', () {
+    final json = {
+      'id': 'n9',
+      'type': 'TYPE_QUI_N_EXISTE_PAS_ENCORE',
+      'priority': 'PRIORITE_INCONNUE',
+      'title': 'Quelque chose est arrivé',
+      'body': null,
+      'isRead': false,
+      'readAt': null,
+      'operationType': 'OPERATION_INCONNUE',
+      'operationId': 'op-9',
+      'createdAt': '2026-09-24T09:00:00.000Z',
+    };
+
+    final parsed = AppNotification.fromJson(json);
+
+    expect(parsed.type, NotificationKind.unknown);
+    expect(parsed.operationType, NotificationTarget.unknown);
+    expect(parsed.title, 'Quelque chose est arrivé');
+    // Inconnue : lisible, mais elle n'ouvre aucun écran.
+    expect(destinationFor(parsed.operationType), isNull);
+  });
+
+  test('les types livrés avec la messagerie sont reconnus', () {
+    final parsed = AppNotification.fromJson({
+      'id': 'n10',
+      'type': 'MESSAGE',
+      'priority': 'NORMALE',
+      'title': 'Rupture câbles',
+      'isRead': false,
+      'operationType': 'CONVERSATION',
+      'operationId': 'c1',
+      'createdAt': '2026-09-24T09:00:00.000Z',
+    });
+
+    expect(parsed.type, NotificationKind.message);
+    expect(destinationFor(parsed.operationType), 'Messages');
+  });
+
   testWidgets('une alerte urgente se distingue des autres', (tester) async {
     expect(
       toneOf(_notification(priority: NotificationPriority.urgent)),

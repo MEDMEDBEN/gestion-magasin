@@ -22,6 +22,7 @@ String? destinationFor(NotificationTarget? target) => switch (target) {
   NotificationTarget.inventory => 'Inventaire',
   NotificationTarget.sale || NotificationTarget.quote => 'Vente',
   NotificationTarget.product => 'Catalogue',
+  NotificationTarget.conversation => 'Messages',
   _ => null,
 };
 

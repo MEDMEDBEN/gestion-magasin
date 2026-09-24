@@ -8,6 +8,7 @@ import '../features/auth/presentation/profile_screen.dart';
 import '../features/catalog/presentation/catalog_screen.dart';
 import '../features/home/presentation/home_screen.dart';
 import '../features/inventory/presentation/inventory_screen.dart';
+import '../features/messaging/presentation/conversations_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
@@ -159,6 +160,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       label: 'Historique',
       builder: (context, _) => const AuditScreen(),
     ),
+  // `/conversations` : les trois rôles, aucune permission — échanger fait
+  // partie du métier. Le serveur ne rend que les fils dont je suis
+  // PARTICIPANT ; un autre fil répond 404, l'admin compris.
+  AppDestination(
+    icon: LucideIcons.messagesSquare,
+    label: 'Messages',
+    builder: (context, user) => ConversationsScreen(user: user),
+  ),
   // `/notifications` : les trois rôles, aucune permission — recevoir les
   // alertes de son propre travail fait partie du métier. Le serveur ne rend
   // que celles du compte connecté.

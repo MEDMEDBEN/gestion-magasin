@@ -15,6 +15,7 @@ import { ProductsModule } from './products/products.module';
 import { CustomersModule } from './customers/customers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
+import { MessagingModule } from './messaging/messaging.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
@@ -58,6 +59,7 @@ import { UsersModule } from './users/users.module';
     ProductsModule,
     LocationsModule,
     ReportsModule,
+    MessagingModule,
     NotificationsModule,
     SyncModule,
   ],

@@ -11,9 +11,9 @@
 // AUCUNE logique métier ici — uniquement la structure.
 
 generator client {
-  provider     = "prisma-client"
-  output       = "../src/generated/prisma"
-  moduleFormat = "cjs"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
   // Imports SANS extension : le client généré s'importait en `./internal/class.ts`,
   // extension que le JS compilé gardait telle quelle — l'application ne démarrait
   // donc pas en production. Sans extension, tsc, ts-node et jest résolvent tous
@@ -71,6 +71,7 @@ enum OperationType {
   SUPPLIER_PAYMENT
   CASH_SESSION
   PRODUCT
+  CONVERSATION
   MANUAL
 }
 
@@ -202,6 +203,8 @@ enum NotificationType {
   ECART_DETECTE
   TACHE_DU_JOUR
   TACHE_EN_RETARD
+  /// Nouveau message dans un fil dont je suis participant (P1 n°17).
+  MESSAGE
 }
 
 enum AuditAction {
@@ -247,45 +250,49 @@ enum SyncMutationStatus {
 
 /// Pas d'inscription publique : l'admin crée les comptes.
 model User {
-  id                String    @id @default(uuid(7)) @db.Uuid
-  email             String?   @unique
-  phone             String?   @unique
-  fullName          String
-  passwordHash      String
-  isActive          Boolean   @default(true)
+  id                 String    @id @default(uuid(7)) @db.Uuid
+  email              String?   @unique
+  phone              String?   @unique
+  fullName           String
+  passwordHash       String
+  isActive           Boolean   @default(true)
   /// Force le changement de mot de passe à la première connexion (spec §2bis).
-  mustChangePassword Boolean  @default(true)
-  lastLoginAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   roles       Role[]       @relation("UserRoles")
   /// Permissions accordées en plus de celles des rôles (un membre peut cumuler).
   permissions Permission[] @relation("UserPermissions")
 
-  refreshTokens       RefreshToken[]
-  sales               Sale[]
-  quotes              Quote[]
-  customerPayments    CustomerPayment[]
-  supplierPayments    SupplierPayment[]
-  cashSessions        CashSession[]
-  cashMovements       CashMovement[]
-  stockMovements      StockMovement[]
-  stockLossesDeclared StockLossDeclaration[] @relation("StockLossDeclaredBy")
-  stockLossesDecided  StockLossDeclaration[] @relation("StockLossDecidedBy")
-  receptions          Reception[]
-  purchaseOrdersCreated   PurchaseOrder[] @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersConfirmed PurchaseOrder[] @relation("PurchaseOrderConfirmedBy")
-  transfersRequested  Transfer[]      @relation("TransferRequestedBy")
-  transfersPrepared   Transfer[]      @relation("TransferPreparedBy")
-  transfersReceived   Transfer[]      @relation("TransferReceivedBy")
-  inventoriesCreated  Inventory[]     @relation("InventoryCreatedBy")
-  inventoriesValidated Inventory[]    @relation("InventoryValidatedBy")
-  planningTasksAssigned PlanningTask[] @relation("PlanningTaskAssignedTo")
-  planningTasksCreated  PlanningTask[] @relation("PlanningTaskCreatedBy")
-  notifications       Notification[]
-  auditLogs           AuditLog[]
-  syncMutations       SyncMutation[]
+  refreshTokens           RefreshToken[]
+  sales                   Sale[]
+  quotes                  Quote[]
+  customerPayments        CustomerPayment[]
+  supplierPayments        SupplierPayment[]
+  cashSessions            CashSession[]
+  cashMovements           CashMovement[]
+  stockMovements          StockMovement[]
+  stockLossesDeclared     StockLossDeclaration[]    @relation("StockLossDeclaredBy")
+  stockLossesDecided      StockLossDeclaration[]    @relation("StockLossDecidedBy")
+  receptions              Reception[]
+  purchaseOrdersCreated   PurchaseOrder[]           @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersConfirmed PurchaseOrder[]           @relation("PurchaseOrderConfirmedBy")
+  transfersRequested      Transfer[]                @relation("TransferRequestedBy")
+  transfersPrepared       Transfer[]                @relation("TransferPreparedBy")
+  transfersReceived       Transfer[]                @relation("TransferReceivedBy")
+  inventoriesCreated      Inventory[]               @relation("InventoryCreatedBy")
+  inventoriesValidated    Inventory[]               @relation("InventoryValidatedBy")
+  planningTasksAssigned   PlanningTask[]            @relation("PlanningTaskAssignedTo")
+  planningTasksCreated    PlanningTask[]            @relation("PlanningTaskCreatedBy")
+  notifications           Notification[]
+  conversationsCreated    Conversation[]            @relation("ConversationCreatedBy")
+  conversationsClosed     Conversation[]            @relation("ConversationClosedBy")
+  conversations           ConversationParticipant[]
+  messages                Message[]
+  auditLogs               AuditLog[]
+  syncMutations           SyncMutation[]
 
   @@index([isActive])
 }
@@ -316,20 +323,20 @@ model Permission {
 
 /// Session persistante révocable (90 j glissants). Le token n'est stocké que HASHÉ.
 model RefreshToken {
-  id         String    @id @default(uuid(7)) @db.Uuid
-  userId     String    @db.Uuid
-  tokenHash  String    @unique
-  deviceId   String?
-  deviceName String?
-  expiresAt  DateTime
-  revokedAt  DateTime?
+  id            String                     @id @default(uuid(7)) @db.Uuid
+  userId        String                     @db.Uuid
+  tokenHash     String                     @unique
+  deviceId      String?
+  deviceName    String?
+  expiresAt     DateTime
+  revokedAt     DateTime?
   /// Pourquoi la session a été fermée. Seul `ROTATION` (token remplacé par un
   /// refresh) fait d'un rejeu un signal de VOL : les autres fermetures (logout,
   /// reset, révocation, reconnexion) rendent un simple 401, sans cascade —
   /// sinon un vieux token volé permettrait de déconnecter la victime indéfiniment.
   revokedReason RefreshTokenRevokedReason?
-  lastUsedAt DateTime?
-  createdAt  DateTime  @default(now())
+  lastUsedAt    DateTime?
+  createdAt     DateTime                   @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -360,64 +367,64 @@ model Category {
 /// MAGASIN / DEPOT / TRANSIT portent les projections de stock.
 /// EMPLACEMENT = position physique dans le dépôt, rattachée au DEPOT via parentId.
 model Location {
-  id       String       @id @default(uuid(7)) @db.Uuid
-  code     String       @unique
-  name     String
-  type     LocationType
-  parentId String?      @db.Uuid
-  zone     String?
-  aisle    String?
-  shelf    String?
-  position String?
-  isActive Boolean      @default(true)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  id        String       @id @default(uuid(7)) @db.Uuid
+  code      String       @unique
+  name      String
+  type      LocationType
+  parentId  String?      @db.Uuid
+  zone      String?
+  aisle     String?
+  shelf     String?
+  position  String?
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   parent   Location?  @relation("LocationTree", fields: [parentId], references: [id])
   children Location[] @relation("LocationTree")
 
-  stocks              Stock[]
-  storedProducts      Product[]       @relation("ProductStorageLocation")
-  stockMovements      StockMovement[] @relation("StockMovementLocation")
-  stockLosses         StockLossDeclaration[]
-  movementsFrom       StockMovement[] @relation("StockMovementSource")
-  movementsTo         StockMovement[] @relation("StockMovementDestination")
-  sales               Sale[]
-  cashSessions        CashSession[]
-  receptions          Reception[]
-  transfersFrom       Transfer[]      @relation("TransferFrom")
-  transfersTo         Transfer[]      @relation("TransferTo")
-  inventories         Inventory[]
-  planningTasks       PlanningTask[]
+  stocks         Stock[]
+  storedProducts Product[]              @relation("ProductStorageLocation")
+  stockMovements StockMovement[]        @relation("StockMovementLocation")
+  stockLosses    StockLossDeclaration[]
+  movementsFrom  StockMovement[]        @relation("StockMovementSource")
+  movementsTo    StockMovement[]        @relation("StockMovementDestination")
+  sales          Sale[]
+  cashSessions   CashSession[]
+  receptions     Reception[]
+  transfersFrom  Transfer[]             @relation("TransferFrom")
+  transfersTo    Transfer[]             @relation("TransferTo")
+  inventories    Inventory[]
+  planningTasks  PlanningTask[]
 
   @@index([type])
   @@index([parentId])
 }
 
 model Product {
-  id          String      @id @default(uuid(7)) @db.Uuid
-  sku         String      @unique
+  id                  String      @id @default(uuid(7)) @db.Uuid
+  sku                 String      @unique
   /// Code fabricant scanné s'il existe, sinon code interne généré — UNIQUE (CLAUDE.md règle 15).
-  barcode     String      @unique
-  name        String
-  description String?
-  brand       String?
-  unit        ProductUnit @default(PIECE)
-  categoryId  String?     @db.Uuid
-  taxRateId   String?     @db.Uuid
-  mainSupplierId String?  @db.Uuid
+  barcode             String      @unique
+  name                String
+  description         String?
+  brand               String?
+  unit                ProductUnit @default(PIECE)
+  categoryId          String?     @db.Uuid
+  taxRateId           String?     @db.Uuid
+  mainSupplierId      String?     @db.Uuid
   /// Emplacement physique au dépôt (Location de type EMPLACEMENT).
-  storageLocationId String? @db.Uuid
-  imageUrl    String?
-  minThreshold Decimal    @default(0) @db.Decimal(14, 3)
-  safetyStock  Decimal    @default(0) @db.Decimal(14, 3)
+  storageLocationId   String?     @db.Uuid
+  imageUrl            String?
+  minThreshold        Decimal     @default(0) @db.Decimal(14, 3)
+  safetyStock         Decimal     @default(0) @db.Decimal(14, 3)
   /// Coût = dernier prix d'achat réceptionné, en centimes (CLAUDE.md règle 5).
   lastPurchasePriceHt Int?
   /// Autorise une opération qui rendrait le stock négatif (CLAUDE.md règle 9).
-  allowBackorder Boolean  @default(false)
-  isActive    Boolean     @default(true)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  allowBackorder      Boolean     @default(false)
+  isActive            Boolean     @default(true)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   category        Category? @relation(fields: [categoryId], references: [id])
   taxRate         TaxRate?  @relation(fields: [taxRateId], references: [id])
@@ -563,20 +570,20 @@ model StockMovement {
 /// `PERTE_CASSE` (operationType MANUAL, operationId = id de la déclaration).
 /// Une déclaration refusée reste en historique (règle 7 : jamais supprimée).
 model StockLossDeclaration {
-  id            String          @id @default(uuid(7)) @db.Uuid
-  productId     String          @db.Uuid
-  locationId    String          @db.Uuid
+  id           String          @id @default(uuid(7)) @db.Uuid
+  productId    String          @db.Uuid
+  locationId   String          @db.Uuid
   /// Quantité perdue, POSITIVE — le mouvement appliqué est son opposé.
-  quantity      Decimal         @db.Decimal(14, 3)
-  comment       String?
-  status        StockLossStatus @default(EN_ATTENTE)
-  declaredById  String          @db.Uuid
-  decidedById   String?         @db.Uuid
-  decidedAt     DateTime?
-  decisionNote  String?
-  movementId    String?         @unique @db.Uuid
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  quantity     Decimal         @db.Decimal(14, 3)
+  comment      String?
+  status       StockLossStatus @default(EN_ATTENTE)
+  declaredById String          @db.Uuid
+  decidedById  String?         @db.Uuid
+  decidedAt    DateTime?
+  decisionNote String?
+  movementId   String?         @unique @db.Uuid
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   product    Product  @relation(fields: [productId], references: [id])
   location   Location @relation(fields: [locationId], references: [id])
@@ -614,35 +621,35 @@ model Customer {
 /// Une vente VALIDEE crée ses lignes + ses mouvements de stock dans UNE transaction.
 /// La dette n'est pas stockée : reste = totalTtc − paidAmount − Σ(CustomerPayment).
 model Sale {
-  id            String     @id @default(uuid(7)) @db.Uuid
+  id               String         @id @default(uuid(7)) @db.Uuid
   /// Numéro de ticket (séquentiel applicatif) — toujours présent.
-  number        String     @unique
+  number           String         @unique
   /// Numéro légal de facture (FA-AAAA-NNNNNN) — attribué SERVEUR, en ligne uniquement.
-  invoiceNumber String?    @unique
+  invoiceNumber    String?        @unique
   /// Date de facturation (attribution du numéro) : c'est elle qui date la facture,
   /// dans l'ordre des numéros — pas la date de vente.
-  invoicedAt    DateTime?
-  type          SaleType   @default(TICKET)
-  status        SaleStatus @default(VALIDEE)
-  customerId    String?    @db.Uuid
-  userId        String     @db.Uuid
-  locationId    String     @db.Uuid
-  cashSessionId String?    @db.Uuid
-  quoteId       String?    @unique @db.Uuid
-  totalHt       Int
-  totalTax      Int
-  totalTtc      Int
+  invoicedAt       DateTime?
+  type             SaleType       @default(TICKET)
+  status           SaleStatus     @default(VALIDEE)
+  customerId       String?        @db.Uuid
+  userId           String         @db.Uuid
+  locationId       String         @db.Uuid
+  cashSessionId    String?        @db.Uuid
+  quoteId          String?        @unique @db.Uuid
+  totalHt          Int
+  totalTax         Int
+  totalTtc         Int
   /// Montant encaissé au moment de la vente (centimes). Les règlements ultérieurs = CustomerPayment.
-  paidAmount    Int        @default(0)
-  paymentMethod PaymentMethod?
-  dueDate       DateTime?
-  soldAt        DateTime   @default(now())
-  cancelledAt   DateTime?
-  note          String?
+  paidAmount       Int            @default(0)
+  paymentMethod    PaymentMethod?
+  dueDate          DateTime?
+  soldAt           DateTime       @default(now())
+  cancelledAt      DateTime?
+  note             String?
   /// Idempotence sync (docs/context.md §3).
-  clientMutationId String? @unique @db.Uuid
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  clientMutationId String?        @unique @db.Uuid
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   customer    Customer?    @relation(fields: [customerId], references: [id])
   user        User         @relation(fields: [userId], references: [id])
@@ -690,23 +697,23 @@ model SaleLine {
 }
 
 model CustomerPayment {
-  id         String        @id @default(uuid(7)) @db.Uuid
-  customerId String        @db.Uuid
-  saleId     String?       @db.Uuid
-  userId     String        @db.Uuid
-  amount     Int
-  method     PaymentMethod @default(ESPECES)
-  paidAt     DateTime      @default(now())
-  note       String?
-  clientMutationId String?  @unique @db.Uuid
+  id                String        @id @default(uuid(7)) @db.Uuid
+  customerId        String        @db.Uuid
+  saleId            String?       @db.Uuid
+  userId            String        @db.Uuid
+  amount            Int
+  method            PaymentMethod @default(ESPECES)
+  paidAt            DateTime      @default(now())
+  note              String?
+  clientMutationId  String?       @unique @db.Uuid
   /// Contre-passation : ce règlement ANNULE le règlement référencé (montant
   /// opposé). Jamais de suppression (règle 7) ; un règlement ne s'annule qu'une fois.
-  reversesPaymentId String? @unique @db.Uuid
-  createdAt  DateTime      @default(now())
+  reversesPaymentId String?       @unique @db.Uuid
+  createdAt         DateTime      @default(now())
 
-  customer Customer @relation(fields: [customerId], references: [id])
-  sale     Sale?    @relation(fields: [saleId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  customer   Customer         @relation(fields: [customerId], references: [id])
+  sale       Sale?            @relation(fields: [saleId], references: [id])
+  user       User             @relation(fields: [userId], references: [id])
   reverses   CustomerPayment? @relation("CustomerPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
   reversedBy CustomerPayment? @relation("CustomerPaymentReversal")
 
@@ -733,11 +740,11 @@ model Quote {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 
-  customer      Customer? @relation(fields: [customerId], references: [id])
-  user          User      @relation(fields: [userId], references: [id])
+  customer      Customer?   @relation(fields: [customerId], references: [id])
+  user          User        @relation(fields: [userId], references: [id])
   lines         QuoteLine[]
   /// Vente issue de la conversion du devis.
-  convertedSale Sale?     @relation("QuoteConvertedSale")
+  convertedSale Sale?       @relation("QuoteConvertedSale")
 
   @@index([customerId])
   @@index([status])
@@ -769,30 +776,30 @@ model QuoteLine {
 
 /// Pas d'encaissement espèces hors session ouverte (CLAUDE.md règle 12).
 model CashSession {
-  id             String            @id @default(uuid(7)) @db.Uuid
-  userId         String            @db.Uuid
-  locationId     String            @db.Uuid
-  status         CashSessionStatus @default(OUVERTE)
+  id              String            @id @default(uuid(7)) @db.Uuid
+  userId          String            @db.Uuid
+  locationId      String            @db.Uuid
+  status          CashSessionStatus @default(OUVERTE)
   /// Fond de caisse à l'ouverture (centimes).
-  openingFloat   Int               @default(0)
-  openedAt       DateTime          @default(now())
-  closedAt       DateTime?
+  openingFloat    Int               @default(0)
+  openedAt        DateTime          @default(now())
+  closedAt        DateTime?
   /// Attendu / compté / écart, renseignés à la clôture (rapport Z).
-  expectedAmount Int?
-  countedAmount  Int?
-  difference     Int?
-  note           String?
+  expectedAmount  Int?
+  countedAmount   Int?
+  difference      Int?
+  note            String?
   /// Idempotence de l'ouverture et de la clôture (docs/context.md §3).
-  openMutationId  String?          @unique @db.Uuid
-  closeMutationId String?          @unique @db.Uuid
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  openMutationId  String?           @unique @db.Uuid
+  closeMutationId String?           @unique @db.Uuid
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  user      User           @relation(fields: [userId], references: [id])
-  location  Location       @relation(fields: [locationId], references: [id])
-  sales     Sale[]
+  user             User              @relation(fields: [userId], references: [id])
+  location         Location          @relation(fields: [locationId], references: [id])
+  sales            Sale[]
   supplierPayments SupplierPayment[]
-  movements CashMovement[]
+  movements        CashMovement[]
 
   @@index([userId])
   @@index([status])
@@ -822,20 +829,20 @@ model CashMovement {
 // ───────────────────────────────────────────────────────────
 
 model Supplier {
-  id          String   @id @default(uuid(7)) @db.Uuid
-  code        String?  @unique
-  name        String
-  phone       String?
-  email       String?
-  address     String?
-  contactName String?
-  notes       String?
+  id             String   @id @default(uuid(7)) @db.Uuid
+  code           String?  @unique
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  contactName    String?
+  notes          String?
   /// Dette REPRISE à la mise en service (centimes) : ce qui était déjà dû avant
   /// le logiciel. Fixée par l'admin ; les achats (P0 #6) s'y ajouteront.
-  openingBalance Int   @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  openingBalance Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
@@ -846,29 +853,29 @@ model Supplier {
 }
 
 model SupplierPayment {
-  id              String        @id @default(uuid(7)) @db.Uuid
-  supplierId      String        @db.Uuid
-  purchaseOrderId String?       @db.Uuid
+  id                String        @id @default(uuid(7)) @db.Uuid
+  supplierId        String        @db.Uuid
+  purchaseOrderId   String?       @db.Uuid
   /// Session de caisse d'où l'argent est sorti ; NULL = payé hors caisse
   /// (virement, espèces hors tiroir) — la caisse n'est alors pas touchée.
-  cashSessionId   String?       @db.Uuid
-  userId          String        @db.Uuid
-  amount          Int
-  method          PaymentMethod @default(ESPECES)
-  paidAt          DateTime      @default(now())
-  note            String?
+  cashSessionId     String?       @db.Uuid
+  userId            String        @db.Uuid
+  amount            Int
+  method            PaymentMethod @default(ESPECES)
+  paidAt            DateTime      @default(now())
+  note              String?
   /// Idempotence : clé stable de l'intention de paiement (docs/context.md §3).
-  clientMutationId String?      @unique @db.Uuid
+  clientMutationId  String?       @unique @db.Uuid
   /// Contre-passation du paiement référencé (montant opposé), jamais suppression.
-  reversesPaymentId String?     @unique @db.Uuid
-  createdAt       DateTime      @default(now())
+  reversesPaymentId String?       @unique @db.Uuid
+  createdAt         DateTime      @default(now())
 
   reverses      SupplierPayment? @relation("SupplierPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
   reversedBy    SupplierPayment? @relation("SupplierPaymentReversal")
-  supplier      Supplier       @relation(fields: [supplierId], references: [id])
-  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  cashSession   CashSession?   @relation(fields: [cashSessionId], references: [id])
-  user          User           @relation(fields: [userId], references: [id])
+  supplier      Supplier         @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
+  cashSession   CashSession?     @relation(fields: [cashSessionId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
 
   @@index([supplierId])
   @@index([purchaseOrderId])
@@ -932,24 +939,24 @@ model PurchaseLine {
 
 /// Une commande peut avoir PLUSIEURS réceptions (partielles) — CLAUDE.md règle 6.
 model Reception {
-  id              String   @id @default(uuid(7)) @db.Uuid
-  number          String   @unique
-  purchaseOrderId String?  @db.Uuid
-  supplierId      String   @db.Uuid
-  locationId      String   @db.Uuid
-  userId          String   @db.Uuid
-  receivedAt      DateTime @default(now())
-  note            String?
+  id               String   @id @default(uuid(7)) @db.Uuid
+  number           String   @unique
+  purchaseOrderId  String?  @db.Uuid
+  supplierId       String   @db.Uuid
+  locationId       String   @db.Uuid
+  userId           String   @db.Uuid
+  receivedAt       DateTime @default(now())
+  note             String?
   /// Somme TTC des lignes, figée à la réception : c'est ce montant qui s'ajoute
   /// à la dette fournisseur (projection, pour la sommer sans charger les lignes).
-  totalTtc        Int      @default(0)
-  clientMutationId String? @unique @db.Uuid
-  createdAt       DateTime @default(now())
+  totalTtc         Int      @default(0)
+  clientMutationId String?  @unique @db.Uuid
+  createdAt        DateTime @default(now())
 
-  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Supplier       @relation(fields: [supplierId], references: [id])
-  location      Location       @relation(fields: [locationId], references: [id])
-  user          User           @relation(fields: [userId], references: [id])
+  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier        @relation(fields: [supplierId], references: [id])
+  location      Location        @relation(fields: [locationId], references: [id])
+  user          User            @relation(fields: [userId], references: [id])
   lines         ReceptionLine[]
 
   @@index([purchaseOrderId])
@@ -984,32 +991,32 @@ model ReceptionLine {
 
 /// DEMANDEE → ACCEPTEE → EN_PREPARATION → PREPAREE → EN_TRANSIT → RECUE (+ REFUSEE, ANNULEE).
 model Transfer {
-  id             String         @id @default(uuid(7)) @db.Uuid
-  number         String         @unique
-  status         TransferStatus @default(DEMANDEE)
-  priority       Priority       @default(NORMALE)
-  fromLocationId String         @db.Uuid
-  toLocationId   String         @db.Uuid
-  requestedById  String         @db.Uuid
-  preparedById   String?        @db.Uuid
-  receivedById   String?        @db.Uuid
-  requestedAt    DateTime       @default(now())
-  acceptedAt     DateTime?
-  preparedAt     DateTime?
-  shippedAt      DateTime?
-  receivedAt     DateTime?
-  refusedAt      DateTime?
-  cancelledAt    DateTime?
-  comment        String?
-  clientMutationId String?      @unique @db.Uuid
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  id               String         @id @default(uuid(7)) @db.Uuid
+  number           String         @unique
+  status           TransferStatus @default(DEMANDEE)
+  priority         Priority       @default(NORMALE)
+  fromLocationId   String         @db.Uuid
+  toLocationId     String         @db.Uuid
+  requestedById    String         @db.Uuid
+  preparedById     String?        @db.Uuid
+  receivedById     String?        @db.Uuid
+  requestedAt      DateTime       @default(now())
+  acceptedAt       DateTime?
+  preparedAt       DateTime?
+  shippedAt        DateTime?
+  receivedAt       DateTime?
+  refusedAt        DateTime?
+  cancelledAt      DateTime?
+  comment          String?
+  clientMutationId String?        @unique @db.Uuid
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  fromLocation Location @relation("TransferFrom", fields: [fromLocationId], references: [id])
-  toLocation   Location @relation("TransferTo", fields: [toLocationId], references: [id])
-  requestedBy  User     @relation("TransferRequestedBy", fields: [requestedById], references: [id])
-  preparedBy   User?    @relation("TransferPreparedBy", fields: [preparedById], references: [id])
-  receivedBy   User?    @relation("TransferReceivedBy", fields: [receivedById], references: [id])
+  fromLocation Location       @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location       @relation("TransferTo", fields: [toLocationId], references: [id])
+  requestedBy  User           @relation("TransferRequestedBy", fields: [requestedById], references: [id])
+  preparedBy   User?          @relation("TransferPreparedBy", fields: [preparedById], references: [id])
+  receivedBy   User?          @relation("TransferReceivedBy", fields: [receivedById], references: [id])
   lines        TransferLine[]
 
   @@index([status])
@@ -1039,22 +1046,22 @@ model TransferLine {
 // ───────────────────────────────────────────────────────────
 
 model Inventory {
-  id             String          @id @default(uuid(7)) @db.Uuid
-  number         String          @unique
-  type           InventoryType   @default(COMPLET)
-  status         InventoryStatus @default(EN_COURS)
-  locationId     String          @db.Uuid
+  id               String          @id @default(uuid(7)) @db.Uuid
+  number           String          @unique
+  type             InventoryType   @default(COMPLET)
+  status           InventoryStatus @default(EN_COURS)
+  locationId       String          @db.Uuid
   /// Zone comptée pour un inventaire tournant.
-  zone           String?
-  createdById    String          @db.Uuid
-  validatedById  String?         @db.Uuid
-  startedAt      DateTime        @default(now())
-  completedAt    DateTime?
-  validatedAt    DateTime?
-  note           String?
-  clientMutationId String?       @unique @db.Uuid
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  zone             String?
+  createdById      String          @db.Uuid
+  validatedById    String?         @db.Uuid
+  startedAt        DateTime        @default(now())
+  completedAt      DateTime?
+  validatedAt      DateTime?
+  note             String?
+  clientMutationId String?         @unique @db.Uuid
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   location    Location        @relation(fields: [locationId], references: [id])
   createdBy   User            @relation("InventoryCreatedBy", fields: [createdById], references: [id])
@@ -1182,4 +1189,68 @@ model SyncMutation {
 
   @@index([userId, processedAt])
   @@index([deviceId])
+}
+
+// ───────────────────────────────────────────────────────────
+// COMMUNICATION INTERNE (P1 n°17, spec §25)
+// ───────────────────────────────────────────────────────────
+
+/// Fil de discussion entre membres (magasin ↔ dépôt, admin ↔ membres).
+///
+/// Volontairement MINIMAL : un sujet, des participants, des messages. La spec
+/// §25 est explicite — « une opération métier structurée ne doit jamais être
+/// remplacée par un message » : demander 20 LED reste une demande de transfert,
+/// pas une conversation. Ce module sert à la question et à la consigne, pas à
+/// faire circuler du stock.
+model Conversation {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  subject       String
+  createdById   String    @db.Uuid
+  /// Fil clos : lecture seule. Jamais de suppression (règle 7).
+  closedAt      DateTime?
+  closedById    String?   @db.Uuid
+  /// Date du dernier message — tri des fils sans charger les messages.
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  createdBy    User                      @relation("ConversationCreatedBy", fields: [createdById], references: [id])
+  closedBy     User?                     @relation("ConversationClosedBy", fields: [closedById], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt])
+}
+
+/// Qui participe à un fil — c'est CETTE table qui donne le droit de lire et
+/// d'écrire dedans. Un non-participant n'y a pas accès, l'admin compris tant
+/// qu'il ne s'y est pas ajouté.
+model ConversationParticipant {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  conversationId String    @db.Uuid
+  userId         String    @db.Uuid
+  /// Dernier message lu par ce participant — base du compteur de non-lus.
+  lastReadAt     DateTime?
+  joinedAt       DateTime  @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+/// Un message. Immuable : ni modification ni suppression (règle 7) — une
+/// erreur se corrige par un message suivant, comme dans la vraie vie.
+model Message {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  conversationId String   @db.Uuid
+  authorId       String   @db.Uuid
+  body           String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User         @relation(fields: [authorId], references: [id])
+
+  @@index([conversationId, createdAt])
 }
