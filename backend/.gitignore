@@ -10,3 +10,4 @@ node_modules
 .windsurf/
 skills-lock.json
 tsconfig.build.tsbuildinfo
+var/

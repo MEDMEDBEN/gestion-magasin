@@ -2,22 +2,16 @@ import { intFromEnv, validateEnv } from './env';
 
 /// Audit M8 : refuser de démarrer sur une configuration dangereuse.
 describe('validateEnv — configuration refusée au démarrage', () => {
+  /// Depuis le 2026-09-24, les fichiers joints vivent sur le disque du serveur :
+  /// il n'y a plus d'identifiants de stockage à fournir, donc une configuration
+  /// MINIME suffit à démarrer.
   const valid = {
     DATABASE_URL: 'postgresql://dev:dev@localhost:5432/db',
     JWT_ACCESS_SECRET: 'x'.repeat(48),
-    MINIO_ENDPOINT: 'localhost',
-    MINIO_ACCESS_KEY: 'access',
-    MINIO_SECRET_KEY: 'secret-123',
-    MINIO_BUCKET: 'produits',
   };
 
-  it('refuse un stockage absent ou resté à la valeur d’exemple', () => {
-    expect(() => validateEnv({ ...valid, MINIO_BUCKET: undefined })).toThrow(
-      /MINIO_BUCKET est absent/,
-    );
-    expect(() =>
-      validateEnv({ ...valid, MINIO_SECRET_KEY: 'CHANGER_CE_SECRET' }),
-    ).toThrow(/valeur d’exemple/);
+  it('démarre sans aucune variable de stockage', () => {
+    expect(validateEnv({ ...valid })).toMatchObject(valid);
   });
 
   it('accepte une configuration saine', () => {

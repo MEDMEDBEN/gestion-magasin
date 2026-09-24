@@ -7,7 +7,7 @@
 | **VPS** | Minimum recommandé pour ce volume : 2 vCPU / 4 Go RAM / 50-80 Go SSD (ex: offre "starter" chez OVH, Hetzner, DigitalOcean) | Héberge tout (backend + DB + fichiers) |
 | **Système du VPS** | Ubuntu 22.04 LTS (le plus simple à supporter) | — |
 | **Nom de domaine** | 1 domaine acheté (ex: chez OVH, Namecheap) — ex: `tondomaine.com` | HTTPS + accès stable (pas juste une IP) |
-| **Sous-domaine DNS** | `api.tondomaine.com` → IP du VPS (enregistrement DNS de type A) | Seul le backend est publié. MinIO n'est PAS exposé : le backend sert les fichiers lui-même |
+| **Sous-domaine DNS** | `api.tondomaine.com` → IP du VPS (enregistrement DNS de type A) | Seul le backend est publié |
 | **Accès SSH au VPS** | Clé SSH générée par toi, ajoutée au VPS à la création | Pour déployer et administrer |
 | **Email valide** | Pour Let's Encrypt (certificats HTTPS gratuits) | Notifications d'expiration de certificat |
 
@@ -16,14 +16,19 @@
 ```
 infra/
 ├── docker-compose.yml         ← production (VPS uniquement)
-├── docker-compose.dev.yml     ← dev local (PostgreSQL/Redis/MinIO seulement)
-├── .env.example               ← variables à remplir, copier en `.env`
-└── .env.minio-root.example    ← compte ADMIN de MinIO, copier en `.env.minio-root`
+├── docker-compose.dev.yml     ← dev local (PostgreSQL seulement)
+└── .env.example               ← variables à remplir, copier en `.env`
 ```
 
-Le compte **root** de MinIO est dans un fichier SÉPARÉ, chargé uniquement par MinIO et par le service
-de provisionnement `minio-init`. Le backend ne le reçoit jamais : il utilise un **compte de service
-limité au seul bucket**, créé automatiquement au premier démarrage.
+**Un seul service externe : PostgreSQL.** Les fichiers joints (photos de produits et de signalements)
+sont écrits sur le DISQUE du backend, dans le volume Docker `backend_storage` (`STORAGE_DIR`).
+À SAUVEGARDER avec la base — c.est là que vivent les photos.
+
+> Historique : le projet utilisait MinIO (stockage objet S3). Abandonné le 2026-09-24, pour deux raisons.
+> Ses images ont cessé d.être publiquement téléchargeables, rendant le projet impossible à installer de
+> zéro ; et pour UN magasin et UN dépôt, un serveur d.objets — avec son conteneur, ses identifiants et son
+> provisionnement de bucket — coûtait plus cher qu.il ne rapportait. Redis a disparu au passage : aucune
+> ligne de code ne l.utilisait.
 
 **Traefik** gère automatiquement le HTTPS (renouvellement de certificat inclus) — pas besoin de configurer nginx/certbot à la main.
 
@@ -41,13 +46,12 @@ Traefik (ports 80/443, HTTPS auto)
    └── api.tondomaine.com → backend NestJS (port 3000 interne)
                                 │
                 backend ────────┼──── PostgreSQL (jamais exposé publiquement)
-                                ├──── Redis      (jamais exposé publiquement)
-                                └──── MinIO      (jamais exposé publiquement)
+                                └──── volume disque `backend_storage` (photos)
 ```
 
-PostgreSQL, Redis et MinIO ne sont **jamais accessibles depuis l'extérieur** — uniquement via le réseau
-interne Docker, seul le backend leur parle. Les images de produits transitent par le backend, qui vérifie
-les droits : aucune URL de stockage n'est distribuée. Un seul port ouvert sur Internet, c'est autant de
+PostgreSQL n.est **jamais accessible depuis l.extérieur** — uniquement via le réseau interne Docker, seul
+le backend lui parle. Les photos transitent par le backend, qui vérifie les droits : aucun fichier n.est
+servi directement. Un seul port ouvert sur Internet, c'est autant de
 surface d'attaque en moins.
 
 ## Étapes de déploiement (une fois le code prêt)

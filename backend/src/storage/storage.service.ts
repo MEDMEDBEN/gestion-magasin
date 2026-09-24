@@ -1,75 +1,83 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Client } from 'minio';
+import { createReadStream } from 'fs';
+import { mkdir, rm, writeFile } from 'fs/promises';
+import { dirname, join, resolve, sep } from 'path';
 import { Readable } from 'stream';
 
-/// Stockage de fichiers S3-compatible (MinIO) — SEUL point d'accès aux objets.
-/// Le bucket est PRIVÉ : les fichiers ne sortent que par une route authentifiée
-/// qui vérifie les droits, jamais par une URL publique.
+/// Fichiers joints (photos de produits, de signalements) — SEUL point d'accès.
+///
+/// Stockés sur le DISQUE du serveur, dans un dossier privé : les fichiers ne
+/// sortent que par une route authentifiée qui vérifie les droits, jamais par
+/// une URL publique.
+///
+/// Pourquoi pas S3/MinIO : le projet vise UN magasin et UN dépôt. Un serveur
+/// d'objets ajoutait un conteneur, des identifiants, un provisionnement de
+/// bucket — et le 2026-09-24 les images MinIO ont cessé d'être publiquement
+/// téléchargeables, rendant le projet impossible à installer de zéro. Un
+/// dossier sauvegardé avec la base fait le même travail, sans dépendance.
+/// À reconsidérer seulement si plusieurs serveurs doivent partager les fichiers.
 @Injectable()
 export class StorageService implements OnModuleInit {
-  private readonly client: Client;
-  private readonly bucket: string;
+  private readonly root: string;
 
   constructor(config: ConfigService) {
-    this.client = new Client({
-      endPoint: config.getOrThrow<string>('MINIO_ENDPOINT'),
-      port: Number(config.get('MINIO_PORT') ?? 9000),
-      useSSL: config.get('MINIO_USE_SSL') === 'true',
-      accessKey: config.getOrThrow<string>('MINIO_ACCESS_KEY'),
-      secretKey: config.getOrThrow<string>('MINIO_SECRET_KEY'),
-    });
-    this.bucket = config.getOrThrow<string>('MINIO_BUCKET');
+    // Chemin ABSOLU résolu une fois : tout le reste s'y compare pour interdire
+    // qu'une clé malformée écrive ailleurs sur le disque.
+    this.root = resolve(config.get<string>('STORAGE_DIR') ?? './var/storage');
   }
 
-  /// Le bucket est créé par le PROVISIONNEMENT (`minio-init`), pas par
-  /// l'application : son compte de service est volontairement limité au seul
-  /// bucket et n'a pas le droit d'en créer. On vérifie donc seulement qu'il est
-  /// là, et on refuse de démarrer à l'aveugle si ce n'est pas le cas.
+  /// Le dossier est créé au démarrage : contrairement à un bucket distant, il
+  /// n'y a ni compte de service ni provisionnement séparé à faire échouer.
   async onModuleInit(): Promise<void> {
-    // Le compte de service étant limité à CE bucket, un bucket absent ou mal
-    // nommé ne renvoie pas « false » mais une erreur d'autorisation illisible
-    // (« Valid and authorized credentials required »). On la traduit.
-    let present: boolean;
-    try {
-      present = await this.client.bucketExists(this.bucket);
-    } catch (cause) {
-      throw new Error(
-        `Stockage inaccessible : bucket « ${this.bucket} » introuvable ou hors ` +
-          'des droits du compte de service — lancez le provisionnement MinIO ' +
-          '(service `minio-init`) et vérifiez MINIO_BUCKET / MINIO_ACCESS_KEY',
-        { cause },
-      );
-    }
-    if (!present) {
-      throw new Error(
-        `Bucket de stockage « ${this.bucket} » introuvable — lancez le ` +
-          'provisionnement MinIO (service `minio-init`) avant le backend',
-      );
-    }
+    await mkdir(this.root, { recursive: true });
   }
 
   async put(key: string, content: Buffer, contentType: string): Promise<void> {
-    await this.client.putObject(this.bucket, key, content, content.length, {
-      'Content-Type': contentType,
-    });
+    const path = this.pathOf(key);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, content);
+    // Le type est déduit de l'extension à la lecture (`get`) : les clés sont
+    // fabriquées par le serveur à partir du format RÉEL des octets, jamais du
+    // nom envoyé par le client.
+    void contentType;
   }
 
   async get(key: string): Promise<{ stream: Readable; contentType: string }> {
-    const [stat, stream] = await Promise.all([
-      this.client.statObject(this.bucket, key),
-      this.client.getObject(this.bucket, key),
-    ]);
+    const path = this.pathOf(key);
     return {
-      stream,
-      contentType:
-        (stat.metaData?.['content-type'] as string | undefined) ??
-        'application/octet-stream',
+      stream: createReadStream(path),
+      contentType: StorageService.contentTypeOf(key),
     };
   }
 
-  /// Suppression tolérante : un objet déjà absent n'est pas une erreur.
+  /// Suppression tolérante : un fichier déjà absent n'est pas une erreur.
   async remove(key: string): Promise<void> {
-    await this.client.removeObject(this.bucket, key).catch(() => undefined);
+    await rm(this.pathOf(key), { force: true }).catch(() => undefined);
+  }
+
+  /// Chemin sur disque d'une clé, BORNÉ au dossier de stockage.
+  ///
+  /// Les clés viennent du serveur (`products/<id>/<uuid>.jpg`), mais la garde
+  /// est ici : une clé contenant `..` ou un chemin absolu écrirait n'importe où
+  /// — et cette fonction est le seul endroit par lequel tout passe.
+  private pathOf(key: string): string {
+    const path = resolve(join(this.root, key));
+    if (path !== this.root && !path.startsWith(this.root + sep)) {
+      throw new Error(`Clé de stockage hors du dossier autorisé : ${key}`);
+    }
+    return path;
+  }
+
+  private static contentTypeOf(key: string): string {
+    const extension = key.slice(key.lastIndexOf('.') + 1).toLowerCase();
+    return (
+      {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+      }[extension] ?? 'application/octet-stream'
+    );
   }
 }

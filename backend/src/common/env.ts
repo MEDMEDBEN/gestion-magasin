@@ -23,17 +23,7 @@ const INTEGER_VARIABLES: Record<string, number> = {
   API_RATE_LIMIT: 1,
   TRUST_PROXY_HOPS: 0,
   PORT: 1,
-  MINIO_PORT: 1,
 };
-
-/// Stockage des photos (MinIO, S3-compatible) : obligatoire, jamais une valeur
-/// d'exemple (`CHANGER_*` de `.env.example`).
-const REQUIRED_STORAGE_VARIABLES = [
-  'MINIO_ENDPOINT',
-  'MINIO_ACCESS_KEY',
-  'MINIO_SECRET_KEY',
-  'MINIO_BUCKET',
-];
 
 function isIntegerAtLeast(raw: unknown, min: number): boolean {
   if (typeof raw === 'number') return Number.isInteger(raw) && raw >= min;
@@ -64,14 +54,9 @@ export function validateEnv(
     );
   }
 
-  for (const name of REQUIRED_STORAGE_VARIABLES) {
-    const value = config[name];
-    if (typeof value !== 'string' || value.trim() === '') {
-      errors.push(`${name} est absent`);
-    } else if (value.startsWith('CHANGER')) {
-      errors.push(`${name} vaut la valeur d’exemple de .env.example`);
-    }
-  }
+  // Plus aucune variable de stockage à valider : les fichiers joints vivent
+  // sur le DISQUE du serveur (voir `StorageService`). `STORAGE_DIR` est
+  // facultatif — le service crée le dossier au démarrage.
 
   for (const [name, min] of Object.entries(INTEGER_VARIABLES)) {
     const raw = config[name];

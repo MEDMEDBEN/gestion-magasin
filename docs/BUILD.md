@@ -4,7 +4,8 @@ Ce fichier se suffit à lui-même. **Tu n'as rien à analyser dans le projet** :
 de l'installation des outils jusqu'à l'exécutable Windows, puis l'application mobile.
 
 - Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — version à compiler : le tag **`v0.2.0-rc1`**
-- Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android)
+- Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android).
+  Un SEUL service externe : PostgreSQL. Les fichiers joints vivent sur le disque du serveur.
 - Résultat attendu : un **`.exe` Windows** qui s'ouvre et se connecte à un vrai serveur local, puis un **APK**
 
 **Machine cible** : Windows 10 ou 11 (64 bits), droits administrateur, connexion Internet, et **15 Go libres pour les OUTILS de compilation** (Visual Studio, SDK Flutter, Docker, dépendances). L'application produite, elle, pèse 25 à 45 Mo — ces 15 Go sont le coût de l'atelier, pas du produit.
@@ -29,7 +30,7 @@ Dans un PowerShell **administrateur** :
 
 ```powershell
 winget install --id Git.Git -e
-winget install --id OpenJS.NodeJS.LTS -e
+winget install --id OpenJS.NodeJS.LTS -e   # si une autre version est déjà là : désinstalle-la d'abord
 winget install --id Docker.DockerDesktop -e
 ```
 
@@ -37,7 +38,7 @@ Ferme et rouvre PowerShell, puis vérifie :
 
 ```powershell
 git --version          # ≥ 2.40
-node --version         # v20 ou v22 — v18 ne suffit PAS
+node --version         # v20 ou v22 EXACTEMENT — ni v18, ni v24 (non testées)
 npm --version
 ```
 
@@ -88,7 +89,7 @@ git checkout v0.2.0-rc1   # version figée et testée ; « develop » bouge pend
 
 ---
 
-## 3. Démarrer la base de données et le stockage de fichiers
+## 3. Démarrer la base de données
 
 ```powershell
 cd C:\gestion-magasin\infra
@@ -96,19 +97,23 @@ docker compose -f docker-compose.dev.yml up -d
 docker ps
 ```
 
-Tu dois voir **trois** conteneurs en marche : PostgreSQL (port **5432**), Redis (**6379**), MinIO
-(**9000** et **9001**). Ils se téléchargent au premier lancement (quelques minutes).
+Tu dois voir **un seul** conteneur en marche : PostgreSQL, port **5432**. Il se télécharge au premier
+lancement (une minute environ).
+
+> Un seul service, c'est voulu. Les photos sont écrites sur le disque du serveur, il n'y a plus de
+> service de stockage à installer. Si tu trouves de vieilles instructions parlant de MinIO ou de Redis,
+> elles sont périmées : ce fichier fait foi.
 
 ---
 
-## 4. Configurer le backend — PIÈGE N°2
+## 4. Configurer le backend — PIÈGE N°2 : la clé JWT
 
 ```powershell
 cd C:\gestion-magasin\backend
 Copy-Item .env.example .env
 ```
 
-Le serveur **refuse volontairement de démarrer** avec la clé d'exemple. Génère une vraie clé :
+Le serveur **refuse volontairement de démarrer** tant que la clé d'exemple est en place. Génère la tienne :
 
 ```powershell
 $b = New-Object byte[] 48
@@ -116,13 +121,16 @@ $b = New-Object byte[] 48
 [Convert]::ToBase64String($b)
 ```
 
-Ouvre `C:\gestion-magasin\backend\.env` dans un éditeur et remplace **uniquement** la ligne :
+Ouvre `C:\gestion-magasin\backend\.env` et remplace **uniquement** la ligne :
 
 ```
 JWT_ACCESS_SECRET=CHANGER_CETTE_CLE_ALEATOIRE
 ```
 
-par la valeur affichée. **Ne touche à aucune autre ligne** : elles correspondent déjà aux conteneurs de l'étape 3.
+par la valeur affichée. C'est la **seule** valeur à changer : toutes les autres correspondent déjà au
+conteneur de l'étape 3. Il n'y a aucun autre secret à obtenir, aucun compte à créer nulle part.
+
+Ce fichier `.env` t'appartient : il n'est pas dans Git et ne doit jamais y être ajouté.
 
 ---
 

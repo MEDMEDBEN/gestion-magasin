@@ -1,8 +1,15 @@
 # ─────────────────────────────────────────────────────────
 # Développement local (machine de chaque dev)
-# Seulement les services d'infra — le backend NestJS et
-# l'app Flutter tournent en direct (npm run start:dev / flutter run)
-# pour un rechargement rapide, pas dans Docker.
+#
+# UNIQUEMENT PostgreSQL : le backend NestJS et l'app Flutter tournent en direct
+# (npm run start:dev / flutter run) pour un rechargement rapide.
+#
+# Ni MinIO ni Redis :
+#  - les fichiers joints (photos) vivent sur le DISQUE du serveur depuis le
+#    2026-09-24 (voir backend/src/storage/storage.service.ts) — les images MinIO
+#    ont cessé d'être publiquement téléchargeables, ce qui rendait le projet
+#    impossible à installer de zéro ;
+#  - Redis n'est utilisé par aucune ligne de code : il ne servait à rien.
 # ─────────────────────────────────────────────────────────
 
 services:
@@ -18,25 +25,5 @@ services:
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-
-  minio:
-    image: quay.io/minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: devaccess
-      MINIO_ROOT_PASSWORD: devsecret123
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_dev_data:/data
-
 volumes:
   postgres_dev_data:
-  minio_dev_data:
