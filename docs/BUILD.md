@@ -7,7 +7,7 @@ de l'installation des outils jusqu'à l'exécutable Windows, puis l'application 
 - Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android)
 - Résultat attendu : un **`.exe` Windows** qui s'ouvre et se connecte à un vrai serveur local, puis un **APK**
 
-**Machine cible** : Windows 10 ou 11 (64 bits), **15 Go libres**, droits administrateur, connexion Internet.
+**Machine cible** : Windows 10 ou 11 (64 bits), droits administrateur, connexion Internet, et **15 Go libres pour les OUTILS de compilation** (Visual Studio, SDK Flutter, Docker, dépendances). L'application produite, elle, pèse 25 à 45 Mo — ces 15 Go sont le coût de l'atelier, pas du produit.
 
 ---
 
@@ -242,7 +242,7 @@ seulement l'ouverture de la fenêtre.
 ## 9. Application mobile (APK) — après la build Windows
 
 > **À ne faire que si l'APK est explicitement demandée.** C'est nettement plus lourd que le desktop :
-> compte **15 à 20 Go de disque en plus** (Android Studio, SDK, éventuellement NDK, cache Gradle),
+> compte **15 à 20 Go de disque en plus POUR LES OUTILS** (Android Studio, SDK, éventuellement NDK, cache Gradle ; l'APK produite fait 20 à 70 Mo),
 > **10 à 25 minutes pour le premier build** (surtout du téléchargement) puis 1 à 3 minutes,
 > et **8 Go de RAM minimum** — Gradle en prend 2 à 4 à lui seul.
 > Le desktop suffit à juger les écrans et les enchaînements ; l'APK n'ajoute que le scanner de
