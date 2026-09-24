@@ -3,7 +3,7 @@
 Ce fichier se suffit à lui-même. **Tu n'as rien à analyser dans le projet** : suis les étapes dans l'ordre,
 de l'installation des outils jusqu'à l'exécutable Windows, puis l'application mobile.
 
-- Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — branche **`develop`**
+- Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — version à compiler : le tag **`v0.2.0-rc1`**
 - Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android)
 - Résultat attendu : un **`.exe` Windows** qui s'ouvre et se connecte à un vrai serveur local, puis un **APK**
 
@@ -15,7 +15,7 @@ de l'installation des outils jusqu'à l'exécutable Windows, puis l'application 
 
 1. **Ne modifie aucun fichier source du projet.** Si quelque chose ne compile pas, arrête-toi et rapporte
    (§10). Tout ce qui suit fonctionne sans retoucher une ligne de code.
-2. **Trois pièges connus**, traités aux étapes 1, 6 et 7. Si tu les sautes, la compilation échoue avec des
+2. **Quatre pièges connus**, traités aux étapes 1, 6, 7 et 9.3. Si tu les sautes, la compilation échoue avec des
    messages trompeurs.
 3. Rends compte avec les **sorties réelles** collées, jamais « ça devrait marcher ».
 
@@ -83,7 +83,7 @@ que tu es à l'étape Windows ; elle ne concerne que l'APK (§9).
 cd C:\
 git clone https://github.com/MEDMEDBEN/gestion-magasin.git
 cd gestion-magasin
-git checkout develop
+git checkout v0.2.0-rc1   # version figée et testée ; « develop » bouge pendant que tu travailles
 ```
 
 ---
@@ -180,7 +180,7 @@ flutter analyze
 flutter test
 ```
 
-Attendu : `No issues found!` puis **345 tests passés** (≈ 46 ignorés — normal, ce sont les captures d'écran,
+Attendu : `No issues found!` puis **354 tests passés** (≈ 46 ignorés — normal, ce sont les captures d'écran,
 désactivées par défaut).
 
 ---
@@ -216,7 +216,7 @@ Lance **`gestion_magasin.exe`** depuis ce dossier (le serveur de l'étape 5 doit
 ### Ce que tu dois voir
 
 Un thème sombre, en français, avec une barre latérale gauche : Accueil, Vente, Catalogue, Stock, Tâches,
-Transferts, Achats, Inventaire, Fournisseurs, Utilisateurs, Historique, Notifications, Mon profil. L'accueil
+Transferts, Achats, Inventaire, Fournisseurs, Utilisateurs, Historique, Messages, Notifications, Mon profil. L'accueil
 affiche un tableau de bord. **La base est neuve : tous les chiffres sont à zéro et les listes vides. C'est
 normal, ce n'est pas une panne.**
 
@@ -240,6 +240,13 @@ seulement l'ouverture de la fenêtre.
 ---
 
 ## 9. Application mobile (APK) — après la build Windows
+
+> **À ne faire que si l'APK est explicitement demandée.** C'est nettement plus lourd que le desktop :
+> compte **15 à 20 Go de disque en plus** (Android Studio, SDK, éventuellement NDK, cache Gradle),
+> **10 à 25 minutes pour le premier build** (surtout du téléchargement) puis 1 à 3 minutes,
+> et **8 Go de RAM minimum** — Gradle en prend 2 à 4 à lui seul.
+> Le desktop suffit à juger les écrans et les enchaînements ; l'APK n'ajoute que le scanner de
+> codes-barres et l'ergonomie tactile.
 
 ### 9.1 Outils Android
 
@@ -266,21 +273,32 @@ Deux solutions, au choix :
   winget install --id Cloudflare.cloudflared -e
   cloudflared tunnel --url http://localhost:3000
   ```
-  Il affiche une adresse `https://xxxxx.trycloudflare.com`. Utilise-la telle quelle :
-  ```powershell
-  cd C:\gestion-magasin\app
-  flutter build apk --release --dart-define=API_BASE_URL=https://xxxxx.trycloudflare.com/api
-  ```
-- **Sinon** : un vrai serveur en HTTPS, et la même commande avec son adresse.
+  Il affiche une adresse `https://xxxxx.trycloudflare.com`. Utilise-la telle quelle à l'étape 9.3.
+  **Laisse ce terminal ouvert** : si le tunnel se ferme, l'APK ne joint plus rien.
+- **Sinon** : un vrai serveur en HTTPS, et son adresse à la place.
+
+### 9.3 Construire l'APK — PIÈGE N°4 : `--release` est VOLONTAIREMENT bloqué
+
+Le projet **refuse** de produire une APK `--release` sans clé de signature (`android/key.properties`, jamais
+commité) : une application signée avec la clé de debug ne doit jamais sortir. Pour un test, c'est donc
+`--profile` — build optimisée, aucune clé nécessaire :
+
+```powershell
+cd C:\gestion-magasin\app
+flutter build apk --profile --dart-define=API_BASE_URL=https://xxxxx.trycloudflare.com/api
+```
 
 L'APK sort dans :
 
 ```
-C:\gestion-magasin\app\build\app\outputs\flutter-apk\app-release.apk
+C:\gestion-magasin\app\build\app\outputs\flutter-apk\app-profile.apk
 ```
 
-Transfère-le sur le téléphone et installe-le (« Sources inconnues » à autoriser). Le scanner de codes-barres
-demandera l'accès à la caméra au premier usage.
+Environ 30 à 60 Mo. Transfère-le sur le téléphone et installe-le (« Sources inconnues » à autoriser). Le
+scanner de codes-barres demandera l'accès à la caméra au premier usage.
+
+> Une vraie APK `--release` (pour distribuer l'application) exige un magasin de clés et un
+> `android/key.properties` : ce n'est pas l'objet de ce test, ne le contourne pas.
 
 ---
 
@@ -295,7 +313,7 @@ Colle les sorties réelles :
 5. **Une capture d'écran de l'application ouverte, après connexion.**
 6. Le résultat de la vérification §8 (le produit créé apparaît-il ?).
 7. Le mot de passe administrateur que tu as défini.
-8. Pour l'APK : le chemin du fichier, et si tu as pu l'installer et te connecter.
+8. Pour l'APK : le chemin du fichier, sa taille, et si tu as pu l'installer et te connecter.
 9. **Tout message d'erreur, complet et tel quel.**
 
 ### Pannes connues
