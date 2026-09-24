@@ -72,6 +72,7 @@ enum OperationType {
   CASH_SESSION
   PRODUCT
   CONVERSATION
+  PROBLEM
   MANUAL
 }
 
@@ -205,6 +206,8 @@ enum NotificationType {
   TACHE_EN_RETARD
   /// Nouveau message dans un fil dont je suis participant (P1 n°17).
   MESSAGE
+  /// Signalement de problème : ouvert, pris en charge ou résolu (P1 n°18).
+  PROBLEME
 }
 
 enum AuditAction {
@@ -291,6 +294,8 @@ model User {
   conversationsClosed     Conversation[]            @relation("ConversationClosedBy")
   conversations           ConversationParticipant[]
   messages                Message[]
+  problemsReported        Problem[]                 @relation("ProblemReportedBy")
+  problemsAssigned        Problem[]                 @relation("ProblemAssignedTo")
   auditLogs               AuditLog[]
   syncMutations           SyncMutation[]
 
@@ -397,6 +402,8 @@ model Location {
   inventories    Inventory[]
   planningTasks  PlanningTask[]
 
+  problems Problem[]
+
   @@index([type])
   @@index([parentId])
 }
@@ -441,6 +448,7 @@ model Product {
   receptionLines ReceptionLine[]
   transferLines  TransferLine[]
   inventoryLines InventoryLine[]
+  problems       Problem[]
 
   @@index([categoryId])
   @@index([mainSupplierId])
@@ -1253,4 +1261,64 @@ model Message {
   author       User         @relation(fields: [authorId], references: [id])
 
   @@index([conversationId, createdAt])
+}
+
+// ───────────────────────────────────────────────────────────
+// SIGNALEMENT DE PROBLÈME (P1 n°18, spec §26)
+// ───────────────────────────────────────────────────────────
+
+/// Ce qu'un membre constate sur le terrain et que personne ne peut corriger
+/// seul : stock faux, produit abîmé, poste en panne.
+///
+/// N'AJUSTE RIEN par lui-même — un stock incorrect se corrige par un inventaire
+/// ou un ajustement tracé (règle 2). Le signalement sert à ce que quelqu'un le
+/// SACHE et s'en occupe, pas à contourner le journal de stock.
+enum ProblemCategory {
+  STOCK_INCORRECT
+  PRODUIT_MANQUANT
+  PRODUIT_ENDOMMAGE
+  PROBLEME_INFORMATIQUE
+  PROBLEME_MATERIEL
+  AUTRE
+}
+
+enum ProblemStatus {
+  OUVERT
+  EN_COURS
+  RESOLU
+  FERME
+}
+
+model Problem {
+  id           String          @id @default(uuid(7)) @db.Uuid
+  title        String
+  category     ProblemCategory
+  description  String
+  priority     Priority        @default(NORMALE)
+  status       ProblemStatus   @default(OUVERT)
+  /// Photo facultative (clé MinIO, jamais une URL publique) : « le produit est
+  /// abîmé » se conteste, une photo non.
+  photoKey     String?
+  /// Produit concerné, quand le signalement en vise un (stock faux, casse).
+  productId    String?         @db.Uuid
+  /// Emplacement concerné (magasin, dépôt, position précise).
+  locationId   String?         @db.Uuid
+  reportedById String          @db.Uuid
+  /// Qui s'en occupe. Nul tant que personne ne l'a pris.
+  assignedToId String?         @db.Uuid
+  /// Ce qui a été fait — exigé pour passer à RESOLU : un problème clos sans
+  /// explication ne sert à personne six mois plus tard.
+  resolution   String?
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  reportedBy User      @relation("ProblemReportedBy", fields: [reportedById], references: [id])
+  assignedTo User?     @relation("ProblemAssignedTo", fields: [assignedToId], references: [id])
+  product    Product?  @relation(fields: [productId], references: [id])
+  location   Location? @relation(fields: [locationId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([reportedById])
 }

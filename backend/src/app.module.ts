@@ -17,6 +17,7 @@ import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
 import { MessagingModule } from './messaging/messaging.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { ProblemsModule } from './problems/problems.module';
 import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -61,6 +62,7 @@ import { UsersModule } from './users/users.module';
     ReportsModule,
     MessagingModule,
     NotificationsModule,
+    ProblemsModule,
     SyncModule,
   ],
   controllers: [AppController],
