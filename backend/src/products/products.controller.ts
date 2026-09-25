@@ -37,6 +37,7 @@ import {
   Roles,
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { IMAGE_UPLOAD_LIMITS } from '../common/uploads';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import { PERMISSIONS } from '../common/permissions';
 import { CatalogService } from './catalog.service';
@@ -55,9 +56,6 @@ import {
   UpdateProductDto,
 } from './dto/product.dto';
 import { ProductsService } from './products.service';
-
-/// Photo déjà compressée par l'app (≤ 1024 px) : 2 Mo suffisent largement.
-export const PRODUCT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -161,7 +159,7 @@ export class ProductsController {
   @Post(':id/image')
   @UseInterceptors(
     FileInterceptor('image', {
-      limits: { fileSize: PRODUCT_IMAGE_MAX_BYTES, files: 1, fields: 0 },
+      limits: IMAGE_UPLOAD_LIMITS,
     }),
   )
   @ApiConsumes('multipart/form-data')
@@ -223,6 +221,11 @@ export class ProductsController {
     // Clé versionnée : l'app peut garder la photo en cache sans risque.
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // `pipe` ne transmet PAS l'erreur de la source : un `error` sur le flux de
+    // lecture (fichier disparu entre-temps, EIO, volume démonté) sans écouteur
+    // devient une `uncaughtException` et tue le processus — aucun filtre Nest
+    // ne l'attrape. On coupe la réponse, la requête seule échoue.
+    stream.on('error', () => res.destroy());
     stream.pipe(res);
   }
 

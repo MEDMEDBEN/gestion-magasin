@@ -131,7 +131,7 @@ Pour éviter que deux agents utilisent des outils différents pour le même beso
 - **Excel / CSV** : `exceljs`, centralisé dans `common/export/`.
 - **Codes-barres** (image EAN-13 / Code128) : `bwip-js`, centralisé dans `common/barcode/`. La **génération du code interne** (si le produit n'en a pas) passe par un service unique qui garantit l'unicité (séquence + contrainte DB, retry sur collision).
 - **Étiquettes** : composition (nom, prix, image code-barres) en PDF via le même moteur PDF ; deux gabarits — planche A4 et rouleau thermique.
-- Documents volumineux archivés (factures) → MinIO ; sinon génération à la demande.
+- **Fichiers joints** (photos, documents archivés) : uniquement via `StorageService` (`backend/src/storage/`), qui écrit dans un dossier privé du serveur — jamais d'URL publique, jamais d'accès direct au disque ailleurs. Les documents non archivés sont générés à la demande.
 
 ## Git
 - Branche unique `develop` (voir CLAUDE.md).

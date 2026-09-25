@@ -114,7 +114,7 @@ Traçabilité / système
 15. Dashboard (KPI + graphiques + alertes) desktop et mobile _(2026-09-23 : `GET /api/dashboard` + écran d'accueil livrés et prouvés — un bloc par permission, `null` si interdit ; graphiques repoussés au module Rapports n°21)_
 16. Notifications (temps réel via WebSocket) _(2026-09-23 : boîte par compte + alertes des transferts, réceptions, commandes confirmées et écarts d'inventaire, livrées et prouvées ; rafraîchies par le battement de synchro (30 s) et NON par WebSocket — à trancher. Alertes pilotées par une date : avec le n°19 et le planning, un ordonnanceur est nécessaire)_
 17. Communication interne (Conversation/Message) _(2026-09-24 : fils, messages, non-lus et alertes livrés et prouvés — garde sur la PARTICIPATION, 404 pour un fil étranger. Volontairement pauvre : ni pièce jointe ni statut, pour qu'un message ne remplace jamais une opération métier)_
-18. Signalement de problème
+18. Signalement de problème _(2026-09-25 : signaler, prendre en charge, résoudre avec explication, fermer (admin), photo et attribution livrés et prouvés. Visible de TOUTE l'équipe — information opérationnelle, contrairement aux n°16/17 cloisonnés. Ne touche jamais au stock)_
 19. Réapprovisionnement (seuils, suggestions)
 20. Produits dormants / produits demandés
 21. Rapports (ventes, stock, achats) + **exports Excel/CSV & PDF d'historique**

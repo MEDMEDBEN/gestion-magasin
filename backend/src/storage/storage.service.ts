@@ -1,9 +1,11 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream } from 'fs';
-import { mkdir, rm, writeFile } from 'fs/promises';
+import { mkdir, rm, stat, writeFile } from 'fs/promises';
 import { dirname, join, resolve, sep } from 'path';
 import { Readable } from 'stream';
+import { BusinessException } from '../common/business.exception';
+import { ErrorCode } from '../common/error-codes';
 
 /// Fichiers joints (photos de produits, de signalements) — SEUL point d'accès.
 ///
@@ -43,8 +45,21 @@ export class StorageService implements OnModuleInit {
     void contentType;
   }
 
+  /// Le fichier est vérifié AVANT d'ouvrir le flux : un `ENOENT` émis sur un
+  /// flux déjà rendu à l'appelant n'a pas d'écouteur et fait tomber le
+  /// processus. Le cas arrive pour de bon — base restaurée sans le dossier de
+  /// stockage, écriture interrompue (audit sécurité P1 n°18).
   async get(key: string): Promise<{ stream: Readable; contentType: string }> {
     const path = this.pathOf(key);
+    try {
+      await stat(path);
+    } catch {
+      throw new BusinessException(
+        ErrorCode.NOT_FOUND,
+        'Fichier introuvable dans le stockage du serveur',
+        HttpStatus.NOT_FOUND,
+      );
+    }
     return {
       stream: createReadStream(path),
       contentType: StorageService.contentTypeOf(key),

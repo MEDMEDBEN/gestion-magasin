@@ -40,8 +40,11 @@ const SORT_FIELDS = ['createdAt', 'priority', 'status'] as const;
 /// signalement. Il sert à ce que le problème soit SU, attribué et clos avec une
 /// explication — c'est tout, et c'est déjà beaucoup.
 ///
-/// Machine à états : OUVERT → EN_COURS → RESOLU → FERME. On n'en saute aucune,
-/// et rien ne se supprime (règle 7).
+/// Machine à états : OUVERT → EN_COURS → RESOLU → FERME. `EN_COURS` est
+/// FACULTATIF — un problème réglé sur le champ se résout directement, exiger un
+/// clic administratif ferait mentir les statuts. En revanche FERME exige RESOLU
+/// (sinon un problème jamais traité sortirait de la liste), et rien ne se
+/// supprime ni ne se rouvre (règle 7).
 @Injectable()
 export class ProblemsService {
   constructor(
@@ -61,7 +64,6 @@ export class ProblemsService {
       const created = await tx.problem.create({
         include: PROBLEM_INCLUDE,
         data: {
-          id: dto.id,
           title: dto.title,
           category: dto.category,
           description: dto.description,
@@ -111,7 +113,7 @@ export class ProblemsService {
     const where: Prisma.ProblemWhereInput = {
       ...(query.status && { status: query.status }),
       ...(query.category && { category: query.category }),
-      ...(query.mine === 'true' && { reportedById: user.id }),
+      ...(query.mine && { reportedById: user.id }),
     };
     const [rows, total] = await Promise.all([
       this.prisma.problem.findMany({
@@ -158,6 +160,7 @@ export class ProblemsService {
       );
     }
     return this.transition(id, actor, user, {
+      from: ['OUVERT', 'EN_COURS'],
       data: { assignedToId: assignee.id },
       notify: {
         userIds: [assignee.id],
@@ -179,6 +182,7 @@ export class ProblemsService {
     ProblemsService.assertCanWork(before, user);
     if (before.status === 'EN_COURS') return ProblemsService.toDto(before);
     return this.transition(id, actor, user, {
+      from: ['OUVERT'],
       data: {
         status: 'EN_COURS',
         assignedToId: before.assignedToId ?? user.id,
@@ -199,6 +203,7 @@ export class ProblemsService {
     ProblemsService.assertOpen(before);
     ProblemsService.assertCanWork(before, user);
     return this.transition(id, actor, user, {
+      from: ['OUVERT', 'EN_COURS'],
       data: {
         status: 'RESOLU',
         resolution: dto.resolution,
@@ -231,6 +236,7 @@ export class ProblemsService {
       );
     }
     return this.transition(id, actor, user, {
+      from: ['RESOLU'],
       data: { status: 'FERME', closedAt: new Date() },
     });
   }
@@ -239,7 +245,7 @@ export class ProblemsService {
   /// « Le produit est abîmé » se conteste, une photo non.
   async attachPhoto(
     id: string,
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<ProblemDto> {
@@ -269,10 +275,25 @@ export class ProblemsService {
     await this.storage.put(key, file.buffer, format.contentType);
     try {
       const after = await this.prisma.$transaction(async (tx) => {
-        const updated = await tx.problem.update({
+        // Statut REVÉRIFIÉ ici, pas seulement plus haut : écrire 2 Mo sur le
+        // disque prend du temps, et l'admin peut fermer le signalement pendant
+        // ce temps-là. `photoKey` est le dernier champ mutable — sans cette
+        // garde, une photo se poserait encore sur un signalement clos
+        // (règle 7). `updateMany` conditionnel : la base tranche, pas nous.
+        const locked = await tx.problem.updateMany({
+          where: { id, status: { in: ['OUVERT', 'EN_COURS'] } },
+          data: { photoKey: key },
+        });
+        if (locked.count === 0) {
+          const current = await tx.problem.findUniqueOrThrow({
+            where: { id },
+            select: { status: true },
+          });
+          throw ProblemsService.wrongState(current.status);
+        }
+        const updated = await tx.problem.findUniqueOrThrow({
           where: { id },
           include: PROBLEM_INCLUDE,
-          data: { photoKey: key },
         });
         await writeAudit(tx, actor, {
           action: 'UPDATE',
@@ -316,10 +337,21 @@ export class ProblemsService {
     change: {
       data: Prisma.ProblemUncheckedUpdateInput;
       notify?: { userIds: string[]; title: string };
+      /// Statuts depuis lesquels la transition est permise. Vérifiés SUR LA
+      /// LIGNE RELUE DANS LA TRANSACTION : les contrôles faits avant ouvrent
+      /// une fenêtre où une fermeture concurrente passerait entre les deux, et
+      /// un signalement clos serait réécrit (règle 7).
+      from: ProblemStatus[];
     },
   ): Promise<ProblemDto> {
     const after = await this.prisma.$transaction(async (tx) => {
       const before = await tx.problem.findUniqueOrThrow({ where: { id } });
+      if (!change.from.includes(before.status)) {
+        throw ProblemsService.wrongState(before.status);
+      }
+      // Même relecture pour le responsable : deux membres qui prennent en même
+      // temps un signalement libre ne doivent pas s'écraser l'un l'autre.
+      ProblemsService.assertCanWork(before, user);
       const updated = await tx.problem.update({
         where: { id },
         include: PROBLEM_INCLUDE,
@@ -372,12 +404,21 @@ export class ProblemsService {
   /// nouveau si le problème revient (règle 7 — pas de réécriture du passé).
   private static assertOpen(problem: { status: ProblemStatus }): void {
     if (problem.status === 'FERME' || problem.status === 'RESOLU') {
-      throw new BusinessException(
-        ErrorCode.INVALID_STATE_TRANSITION,
-        'Signalement clos : rouvrez-en un nouveau si le problème persiste',
-        HttpStatus.CONFLICT,
-      );
+      throw ProblemsService.wrongState(problem.status);
     }
+  }
+
+  /// Refus d'une transition depuis un état qui ne la permet pas. Le message
+  /// distingue les deux cas : clos (on en rouvre un autre) ou pas encore traité
+  /// (il faut le résoudre avant de le fermer).
+  private static wrongState(status: ProblemStatus): BusinessException {
+    return new BusinessException(
+      ErrorCode.INVALID_STATE_TRANSITION,
+      status === 'FERME' || status === 'RESOLU'
+        ? 'Signalement clos : rouvrez-en un nouveau si le problème persiste'
+        : 'Seul un signalement RÉSOLU se ferme : faites-le traiter d’abord',
+      HttpStatus.CONFLICT,
+    );
   }
 
   /// Qui travaille dessus : le membre assigné, l'admin, ou n'importe qui tant

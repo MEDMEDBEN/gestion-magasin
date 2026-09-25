@@ -11,6 +11,7 @@ import '../features/inventory/presentation/inventory_screen.dart';
 import '../features/messaging/presentation/conversations_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
+import '../features/problems/presentation/problems_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/scan/presentation/scan_screen.dart';
@@ -160,6 +161,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       label: 'Historique',
       builder: (context, _) => const AuditScreen(),
     ),
+  // `/problems` : les trois rôles, aucune permission — celui qui VOIT le
+  // problème est rarement celui qui a le droit de le corriger. Attribuer et
+  // fermer restent à l'admin, le serveur le vérifie.
+  AppDestination(
+    icon: LucideIcons.triangleAlert,
+    label: 'Signalements',
+    builder: (context, user) => ProblemsScreen(user: user),
+  ),
   // `/conversations` : les trois rôles, aucune permission — échanger fait
   // partie du métier. Le serveur ne rend que les fils dont je suis
   // PARTICIPANT ; un autre fil répond 404, l'admin compris.

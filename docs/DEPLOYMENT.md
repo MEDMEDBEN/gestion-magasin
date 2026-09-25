@@ -59,8 +59,7 @@ surface d'attaque en moins.
 1. Créer le VPS, pointer le DNS des deux sous-domaines vers son IP
 2. `ssh` sur le VPS, installer Docker + Docker Compose
 3. Cloner le repo Git sur le VPS
-4. Copier `infra/.env.example` → `infra/.env` ET `infra/.env.minio-root.example` → `infra/.env.minio-root`,
-   remplir toutes les valeurs (mots de passe, clés JWT générées aléatoirement). **`STORE_NAME`, `STORE_NIF`, `STORE_RC`** (et NIS/AI/adresse/téléphone) : sans NIF ni RC, les factures PDF sont refusées.
+4. Copier `infra/.env.example` → `infra/.env` et remplir toutes les valeurs (mots de passe, clés JWT générées aléatoirement). **`STORE_NAME`, `STORE_NIF`, `STORE_RC`** (et NIS/AI/adresse/téléphone) : sans NIF ni RC, les factures PDF sont refusées.
    Le backend **refuse de démarrer** si `JWT_ACCESS_SECRET` vaut la valeur d'exemple ou fait moins de 32 octets
    (`openssl rand -base64 48`). Garder **`TRUST_PROXY_HOPS=1`** (Traefik est le seul proxy) : sans lui, le quota
    anti-brute-force est partagé par tous les clients et l'audit enregistre l'IP de Traefik ; ne jamais mettre plus

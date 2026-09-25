@@ -455,7 +455,7 @@ describe('Catalogue (e2e)', () => {
     });
   });
 
-  describe('photo du produit (MinIO privé)', () => {
+  describe('photo du produit (stockage privé du serveur)', () => {
     /// PNG 1×1 réel.
     const PNG = Buffer.from(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',

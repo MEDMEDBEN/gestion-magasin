@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/photos.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
@@ -122,7 +123,7 @@ void main() {
           ],
         ),
         catalogActionsProvider.overrideWithValue(actions),
-        pickProductPhotoProvider.overrideWithValue(() async => pickedPhoto),
+        pickPhotoProvider.overrideWithValue(() async => pickedPhoto),
       ],
       child: MaterialApp(
         theme: desktop
@@ -285,11 +286,11 @@ void main() {
 
   test('photo : compressée en JPEG ≤ 1024 px ; fichier illisible refusé', () {
     final big = img.Image(width: 3000, height: 1500);
-    final jpeg = compressProductPhoto(Uint8List.fromList(img.encodePng(big)))!;
+    final jpeg = compressPhoto(Uint8List.fromList(img.encodePng(big)))!;
     expect(jpeg.sublist(0, 3), [0xff, 0xd8, 0xff]);
     final decoded = img.decodeJpg(jpeg)!;
     expect((decoded.width, decoded.height), (1024, 512));
-    expect(compressProductPhoto(Uint8List.fromList([1, 2, 3])), isNull);
+    expect(compressPhoto(Uint8List.fromList([1, 2, 3])), isNull);
   });
 
   testWidgets('ADMIN : la photo choisie part avec l’enregistrement', (
@@ -404,13 +405,12 @@ void main() {
     final admin = authUser(
       permissions: const [..._allProductPermissions, 'user.manage'],
     );
-    // Accueil, Catalogue, Utilisateurs, Messages, Notifications, Mon profil :
-    // 6 entrées
-    // au POSTE (le scanner est mobile : il lui faut une caméra), 6 sur mobile
-    // où les suivantes passent dans « Plus » (AMPÈRE §7).
+    // Accueil, Catalogue, Utilisateurs, Signalements, Messages, Notifications,
+    // Mon profil : 7 entrées au POSTE (le scanner est mobile, il lui faut une
+    // caméra), 8 sur mobile — les suivantes passent dans « Plus » (AMPÈRE §7).
     final entries = destinationsFor(admin);
-    expect(entries.where((d) => !d.mobileOnly), hasLength(6));
-    expect(entries, hasLength(7));
+    expect(entries.where((d) => !d.mobileOnly), hasLength(7));
+    expect(entries, hasLength(8));
   });
 
   test('changedFields ne garde que ce qui a bougé, `null` compris', () {

@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Ip,
   Param,
   Post,
@@ -11,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -27,10 +30,12 @@ import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RoleCode,
   Roles,
 } from '../common/auth.decorators';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { IMAGE_UPLOAD_LIMITS } from '../common/uploads';
 import {
   AssignProblemDto,
   CreateProblemDto,
@@ -41,6 +46,9 @@ import {
 } from './dto/problem.dto';
 import { ProblemsService } from './problems.service';
 
+/// `@HttpCode(OK)` sur les transitions : un POST rend 201 Created par defaut,
+/// or aucune de ces routes ne cree de ressource — elles modifient celle qui
+/// existe. Sans ca, le contrat OpenAPI (`@ApiOkResponse`) mentait.
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
 /// Qui agit, et depuis où — même forme que les autres contrôleurs.
@@ -65,6 +73,7 @@ export class ProblemsController {
   constructor(private readonly problems: ProblemsService) {}
 
   @Roles(...ALL_ROLES)
+  @RequireFreshAccess()
   @Get()
   @ApiOperation({
     summary: 'Les signalements de l’équipe',
@@ -80,6 +89,7 @@ export class ProblemsController {
   }
 
   @Roles(...ALL_ROLES)
+  @RequireFreshAccess()
   @Get(':id')
   @ApiOperation({ summary: 'Un signalement' })
   @ApiOkResponse({ type: ProblemDto })
@@ -87,6 +97,9 @@ export class ProblemsController {
     return this.problems.findOne(id);
   }
 
+  // Débit bridé : chaque signalement notifie TOUS les admins. Sans borne, un
+  // compte peut noyer leur boîte et enterrer les vrais signalements.
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Roles(...ALL_ROLES)
   @Post()
   @ApiOperation({
@@ -105,6 +118,7 @@ export class ProblemsController {
   }
 
   @Roles(RoleCode.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @Post(':id/assign')
   @ApiOperation({ summary: 'Confier le signalement à un membre (admin)' })
   @ApiOkResponse({ type: ProblemDto })
@@ -118,6 +132,7 @@ export class ProblemsController {
   }
 
   @Roles(...ALL_ROLES)
+  @HttpCode(HttpStatus.OK)
   @Post(':id/start')
   @ApiOperation({
     summary: 'Je m’en occupe',
@@ -135,6 +150,7 @@ export class ProblemsController {
   }
 
   @Roles(...ALL_ROLES)
+  @HttpCode(HttpStatus.OK)
   @Post(':id/resolve')
   @ApiOperation({
     summary: 'Marquer résolu, en disant ce qui a été fait',
@@ -151,6 +167,7 @@ export class ProblemsController {
   }
 
   @Roles(RoleCode.ADMIN)
+  @HttpCode(HttpStatus.OK)
   @Post(':id/close')
   @ApiOperation({
     summary: 'Fermer (admin) — seulement ce qui est RÉSOLU',
@@ -165,9 +182,14 @@ export class ProblemsController {
     return this.problems.close(id, user, actorOf(user, ip));
   }
 
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Roles(...ALL_ROLES)
+  @HttpCode(HttpStatus.OK)
   @Post(':id/photo')
-  @UseInterceptors(FileInterceptor('file'))
+  // BORNES obligatoires : le corps JSON est limité par Express, pas le
+  // multipart. Sans elles, un fichier de plusieurs centaines de Mo est chargé
+  // ENTIÈREMENT en mémoire avant le moindre contrôle (audit sécurité).
+  @UseInterceptors(FileInterceptor('file', { limits: IMAGE_UPLOAD_LIMITS }))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
     summary: 'Joindre une photo (auteur du signalement ou admin)',
@@ -180,10 +202,11 @@ export class ProblemsController {
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<ProblemDto> {
-    return this.problems.attachPhoto(id, file!, user, actorOf(user, ip));
+    return this.problems.attachPhoto(id, file, user, actorOf(user, ip));
   }
 
   @Roles(...ALL_ROLES)
+  @RequireFreshAccess()
   @Get(':id/photo')
   @ApiOperation({
     summary: 'Photo du signalement (authentifiée)',
@@ -199,6 +222,11 @@ export class ProblemsController {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=86400');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // `pipe` ne transmet PAS l'erreur de la source : un `error` sur le flux de
+    // lecture (fichier disparu entre-temps, EIO, volume démonté) sans écouteur
+    // devient une `uncaughtException` et tue le processus — aucun filtre Nest
+    // ne l'attrape. On coupe la réponse, la requête seule échoue.
+    stream.on('error', () => res.destroy());
     stream.pipe(res);
   }
 }

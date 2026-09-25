@@ -38,3 +38,6 @@ app/lib/**/*.freezed.dart
 app/android/key.properties
 *.jks
 *.keystore
+
+# Réglages d'éditeur locaux : chemins absolus de LA machine, jamais partageables
+.vscode/

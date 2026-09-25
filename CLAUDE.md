@@ -27,7 +27,7 @@ Un membre peut **cumuler** des fonctions : l'admin lui attribue **plusieurs rôl
 ## Stack technique
 - **Frontend (desktop + mobile, un seul code)** : Flutter, Riverpod (state), go_router (navigation), Dio (HTTP), Freezed (modèles), Drift (SQLite local / offline)
 - **Backend** : NestJS (TypeScript), Prisma (ORM), REST + OpenAPI, WebSocket (Socket.IO) pour le temps réel
-- **Base de données** : PostgreSQL (source de vérité serveur), Redis (cache/queues), MinIO (fichiers/images, S3-compatible)
+- **Base de données** : PostgreSQL (source de vérité serveur). Fichiers/images : disque du serveur via `StorageService` (MinIO et Redis retirés le 2026-09-24 — voir `backend/src/storage/storage.service.ts`)
 - **Auth** : JWT (access 15min + refresh révocable en table), argon2 pour les mots de passe
 - **Hébergement** : VPS + Docker, CI/CD via GitHub Actions
 
@@ -56,7 +56,7 @@ app/  (Flutter, desktop + mobile)
 
 infra/                  ← déploiement (voir docs/DEPLOYMENT.md)
 ├── docker-compose.yml       (production, VPS)
-├── docker-compose.dev.yml   (dev local : PostgreSQL/Redis/MinIO)
+├── docker-compose.dev.yml   (dev local : PostgreSQL)
 └── .env.example
 ```
 

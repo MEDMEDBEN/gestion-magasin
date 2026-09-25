@@ -1296,7 +1296,8 @@ model Problem {
   description  String
   priority     Priority        @default(NORMALE)
   status       ProblemStatus   @default(OUVERT)
-  /// Photo facultative (clé MinIO, jamais une URL publique) : « le produit est
+  /// Photo facultative (clé de stockage serveur, jamais une URL publique) :
+  /// « le produit est
   /// abîmé » se conteste, une photo non.
   photoKey     String?
   /// Produit concerné, quand le signalement en vise un (stock faux, casse).

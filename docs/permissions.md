@@ -169,6 +169,34 @@ le cloisonnement. Si un besoin de modération apparaît, il faudra le trancher i
 L'annuaire des destinataires est une route **dédiée** (`GET /conversations/recipients`, id et nom seulement) :
 `/users` reste réservé à l'admin, alors que les trois rôles doivent pouvoir ouvrir un fil.
 
+## Signalements (P1 n°18, ajouté le 2026-09-25)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Signaler un problème | ✅ | ✅ | ✅ |
+| Lire les signalements de toute l'équipe | ✅ | ✅ | ✅ |
+| « Je m'en occupe » / marquer résolu | ✅ | ✅ (si libre ou confié à lui) | ✅ (idem) |
+| Joindre une photo | ✅ | ✅ (sur SON signalement) | ✅ (sur SON signalement) |
+| Confier le signalement à un membre | ✅ | ❌ | ❌ |
+| Fermer un signalement | ✅ | ❌ | ❌ |
+| Modifier un signalement clos | ❌ | ❌ | ❌ |
+
+**Décision figée : PAS de cloisonnement — un signalement est visible de toute l'équipe.** C'est l'inverse des
+notifications et des fils de discussion, et c'est voulu : un signalement est de l'information **opérationnelle**
+(un stock faux, une étagère abîmée, un poste en panne), ni argent ni donnée personnelle. Le cacher à celui qui
+va vendre l'article annule l'intérêt de l'avoir signalé. Ce qui est gardé, ce sont les **décisions** : attribuer
+et fermer restent à l'admin.
+
+**Signaler n'exige aucune permission**, volontairement : celui qui voit le problème est rarement celui qui a le
+droit de le corriger, et un signalement qu'on ne peut pas déposer ne remonte jamais. Le débit est bridé
+(20/min) parce que chaque signalement notifie **tous** les admins.
+
+**Un signalement ne touche JAMAIS au stock** — « stock faux » se corrige par un inventaire ou un ajustement
+tracé, jamais par l'écran de signalement. Éprouvé par un test e2e dédié.
+
+La photo ne sort que par une route **authentifiée** (`GET /problems/:id/photo`) : le stockage serveur est privé,
+il n'existe aucune URL publique. Taille bornée à 2 Mo **avant** lecture complète du corps, type vérifié sur les
+OCTETS et non sur le nom du fichier.
+
 ## Notifications (P1 n°16, ajouté le 2026-09-23)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

@@ -174,7 +174,7 @@ Le logiciel génère des fichiers selon la fonctionnalité (nécessaire pour un 
 
 - **PDF** : ticket de caisse, facture, devis, bon de livraison / bon de transfert, bon de commande fournisseur, rapports.
 - **Excel / CSV** : exports d'historique et de listes — ventes, stock, mouvements, inventaires, achats, réceptions, clients, fournisseurs, dettes.
-- Génération **côté serveur** (rendu déterministe et identique pour tous). Les factures peuvent être **archivées** (MinIO) ; les autres documents sont générés à la demande.
+- Génération **côté serveur** (rendu déterministe et identique pour tous). Les factures peuvent être **archivées** (dossier de stockage du serveur, via `StorageService`) ; les autres documents sont générés à la demande.
 - **Mobile** : partage / impression directe du PDF (ticket, devis).
 - **Import** (P1) : produits, clients, fournisseurs, stock initial via Excel/CSV.
 - Une seule bibliothèque par besoin (PDF, Excel, code-barres) — voir `CONVENTIONS.md`.
@@ -408,7 +408,7 @@ Champs clés :
 ## 32. Architecture technique
 
 **Frontend** : Flutter, Riverpod, go_router, Dio, Freezed, Drift (offline).
-**Backend** : NestJS, Prisma, PostgreSQL, Redis (si nécessaire), MinIO, Docker.
+**Backend** : NestJS, Prisma, PostgreSQL, Docker. Fichiers joints sur le disque du serveur (pas de stockage objet — décision du 2026-09-24, voir `backend/src/storage/storage.service.ts`).
 **API** : REST + OpenAPI ; WebSocket (Socket.IO) pour le temps réel.
 
 Couches : `Presentation → Application/Use Cases → Domain/Business Rules → Infrastructure → DB/Services`. Le domaine ne dépend pas directement de Flutter/PostgreSQL/fournisseur externe. Les règles critiques sont **côté backend**.

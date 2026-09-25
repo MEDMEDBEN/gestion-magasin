@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -12,7 +13,7 @@ import {
   PaginationQueryDto,
 } from '../../common/dto/pagination.dto';
 import {
-  ClientGeneratedId,
+  booleanQuery,
   IsCanonicalUuid,
   IsOptionalNotNull,
 } from '../../common/validation';
@@ -26,10 +27,6 @@ const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
 export class CreateProblemDto {
-  @ApiPropertyOptional({ description: 'UUID généré par le client.' })
-  @ClientGeneratedId()
-  id?: string;
-
   @ApiProperty({ example: 'Stock faux sur le câble 2,5 mm²' })
   @Transform(trim)
   @IsString()
@@ -97,9 +94,13 @@ export class ProblemListQueryDto extends PaginationQueryDto {
   category?: ProblemCategory;
 
   @ApiPropertyOptional({ description: 'Ne rendre que ceux que J’AI signalés.' })
+  // `booleanQuery` : le MÊME décodage que partout ailleurs (un paramètre
+  // d'URL est une chaîne). Le décoder ici et non dans le service évite qu'un
+  // module accepte `1` et l'autre non.
+  @Transform(booleanQuery)
+  @IsBoolean()
   @IsOptional()
-  @IsString()
-  mine?: string;
+  mine?: boolean;
 }
 
 export class ProblemDto {

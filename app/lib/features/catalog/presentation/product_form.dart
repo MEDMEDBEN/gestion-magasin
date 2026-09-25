@@ -6,6 +6,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
+import '../../../core/photos.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -358,7 +359,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   }
 
   Future<void> _pickPhoto() async {
-    final photo = await ref.read(pickProductPhotoProvider)();
+    final photo = await ref.read(pickPhotoProvider)();
     if (!mounted) return;
     if (photo == null) return;
     setState(() {

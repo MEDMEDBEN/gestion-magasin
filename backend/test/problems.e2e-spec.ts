@@ -126,7 +126,7 @@ describe('Signalements (e2e)', () => {
     const encours = (
       await as(tokens.magasinier)
         .post(`/api/problems/${problem.id}/start`)
-        .expect(201)
+        .expect(200)
     ).body;
     expect(encours.status).toBe('EN_COURS');
     // Le prendre se l'attribue : pas d'« en cours » sans responsable.
@@ -138,7 +138,7 @@ describe('Signalements (e2e)', () => {
         .send({
           resolution: 'Inventaire tournant fait, écart ajusté par l’admin.',
         })
-        .expect(201)
+        .expect(200)
     ).body;
     expect(resolu.status).toBe('RESOLU');
     expect(resolu.resolution).toContain('Inventaire tournant');
@@ -147,7 +147,7 @@ describe('Signalements (e2e)', () => {
     const ferme = (
       await as(tokens.admin)
         .post(`/api/problems/${problem.id}/close`)
-        .expect(201)
+        .expect(200)
     ).body;
     expect(ferme.status).toBe('FERME');
     expect(ferme.closedAt).not.toBeNull();
@@ -190,7 +190,7 @@ describe('Signalements (e2e)', () => {
       await as(tokens.admin)
         .post(`/api/problems/${problem.id}/assign`)
         .send({ assignedToId: ids.magasinier })
-        .expect(201)
+        .expect(200)
     ).body;
     expect(assigne.assignedToId).toBe(ids.magasinier);
     // Le membre désigné est prévenu.
@@ -206,7 +206,7 @@ describe('Signalements (e2e)', () => {
     // L'admin, lui, peut toujours agir.
     await as(tokens.admin)
       .post(`/api/problems/${problem.id}/start`)
-      .expect(201);
+      .expect(200);
   });
 
   it('celui qui a signalé apprend que c’est résolu', async () => {
@@ -218,7 +218,7 @@ describe('Signalements (e2e)', () => {
     await as(tokens.admin)
       .post(`/api/problems/${problem.id}/resolve`)
       .send({ resolution: 'Poste redémarré, l’imprimante répond.' })
-      .expect(201);
+      .expect(200);
 
     expect(
       await prisma.notification.count({
@@ -232,7 +232,7 @@ describe('Signalements (e2e)', () => {
     await as(tokens.admin)
       .post(`/api/problems/${problem.id}/resolve`)
       .send({ resolution: 'Corrigé.' })
-      .expect(201);
+      .expect(200);
 
     await as(tokens.magasinier)
       .post(`/api/problems/${problem.id}/start`)
@@ -274,6 +274,81 @@ describe('Signalements (e2e)', () => {
         productId: '01920000-0000-7000-8000-000000000000',
       })
       .expect(422);
+  });
+
+  /// PNG 1×1 réel : le serveur lit le format dans les OCTETS, un buffer bidon
+  /// ne passerait pas la vérification de type.
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==',
+    'base64',
+  );
+
+  it('photo : l’auteur la joint, toute l’équipe la lit, les octets sont intacts', async () => {
+    const problem = await report();
+    const posee = (
+      await as(tokens.magasinier)
+        .post(`/api/problems/${problem.id}/photo`)
+        .attach('file', PNG, 'photo.png')
+        .expect(200)
+    ).body;
+    expect(posee.hasPhoto).toBe(true);
+
+    for (const who of ['admin', 'vendeur', 'magasinier']) {
+      const image = await as(tokens[who])
+        .get(`/api/problems/${problem.id}/photo`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      expect(image.headers['content-type']).toBe('image/png');
+      expect(image.headers['x-content-type-options']).toBe('nosniff');
+      expect(Buffer.compare(image.body as Buffer, PNG)).toBe(0);
+    }
+    // Le stockage est privé : aucune URL publique.
+    await request(server).get(`/api/problems/${problem.id}/photo`).expect(401);
+  });
+
+  it('photo : au-delà de 2 Mo, refusée AVANT d’être lue en entier', async () => {
+    const problem = await report();
+    const enorme = Buffer.concat([PNG, Buffer.alloc(2 * 1024 * 1024)]);
+    await as(tokens.magasinier)
+      .post(`/api/problems/${problem.id}/photo`)
+      .attach('file', enorme, 'enorme.png')
+      .expect(413);
+    await as(tokens.magasinier)
+      .get(`/api/problems/${problem.id}/photo`)
+      .expect(404);
+  });
+
+  /// Règle 7 : un signalement clos ne se retouche plus, `photoKey` compris. La
+  /// garde est DANS la transaction, parce qu'écrire 2 Mo sur le disque laisse
+  /// tout le temps à l'admin de fermer entre-temps.
+  it('photo : refusée sur un signalement déjà résolu', async () => {
+    const problem = await report();
+    await as(tokens.admin)
+      .post(`/api/problems/${problem.id}/resolve`)
+      .send({ resolution: 'Corrigé par inventaire.' })
+      .expect(200);
+
+    await as(tokens.magasinier)
+      .post(`/api/problems/${problem.id}/photo`)
+      .attach('file', PNG, 'photo.png')
+      .expect(409);
+    // Et rien n'a été posé : la lecture répond toujours 404.
+    await as(tokens.magasinier)
+      .get(`/api/problems/${problem.id}/photo`)
+      .expect(404);
+  });
+
+  it('photo : un tiers ne joint rien au signalement d’un autre', async () => {
+    const problem = await report();
+    await as(tokens.autre)
+      .post(`/api/problems/${problem.id}/photo`)
+      .attach('file', PNG, 'photo.png')
+      .expect(403);
   });
 
   it('photo : un fichier qui n’est pas une image est refusé', async () => {

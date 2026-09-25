@@ -203,6 +203,90 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #18 SIGNALEMENT DE PROBLÈME — SERVEUR + ÉCRAN LIVRÉS (2026-09-25 · **MEDMEDBEN**)
+Spec §26. Ce que l'équipe constate sur le terrain et que personne ne peut corriger seul. Migrations **additives**
+`20260924181629_problems` et `20260924183258_problem_notification_enums` (1 table, 2 enums, 2 valeurs
+d'enum de notification). Matrice figée dans `docs/permissions.md`.
+- **Visible de TOUTE l'équipe — l'inverse des n°16 et n°17, et c'est voulu.** Un signalement est de
+  l'information opérationnelle (stock faux, poste en panne), ni argent ni donnée personnelle : le cacher à
+  celui qui va vendre l'article annule l'intérêt de l'avoir signalé. Ce qui est gardé, ce sont les
+  **décisions** — attribuer et fermer restent à l'admin.
+- **Ne corrige RIEN par lui-même** : un stock faux se répare par un inventaire ou un ajustement tracé.
+  Un test e2e dédié vérifie qu'un signalement ne crée **aucun** mouvement de stock.
+- **États gardés DANS la transaction** (correction de l'audit) : `transition()` relit la ligne, vérifie le
+  statut de départ ET le droit d'y toucher sur la ligne relue. Deux clics simultanés ne peuvent plus faire
+  passer un signalement deux fois. `EN_COURS` est facultatif ; seul `FERME` exige d'être passé par `RESOLU`.
+- **Photo bornée AVANT lecture** (bloquant des deux audits) : `common/uploads.ts` (2 Mo, 1 fichier, 0 champ)
+  câblé sur les signalements **et** sur les produits, qui avaient le même trou. Sans cette borne, un fichier
+  de plusieurs centaines de Mo était chargé entièrement en mémoire avant le moindre contrôle.
+  **Contre-épreuve faite** : borne retirée → le test « au-delà de 2 Mo » échoue.
+- **`StorageService.get` ne peut plus tomber le processus** : un `ENOENT` émis sur un flux déjà rendu à
+  l'appelant n'a pas d'écouteur. Le fichier est vérifié avant d'ouvrir le flux → 404 propre. Le cas arrive
+  pour de bon : base restaurée sans le dossier de stockage.
+- **Code mort éliminé en le câblant, pas en le supprimant** : `attachPhoto` et `assign` existaient côté app
+  sans aucun bouton. La photo est dans la spec §26 et le serveur prévient l'admin **précisément** pour qu'il
+  attribue — les deux sont donc dans la fiche. L'annuaire réutilise `GET /conversations/recipients` (n°17) :
+  `/users` est réservé à l'admin, or l'écran doit nommer des membres.
+- **Sélecteur de photo sorti du catalogue** vers `app/lib/core/photos.dart` (`pickPhotoProvider`,
+  `compressPhoto`) : deux features l'utilisent, même limite serveur, même compression.
+- **Vrai défaut trouvé par le nouveau test d'écran** : la photo en `width: double.infinity` dans un dialogue
+  faisait échouer le calcul de mise en page (`input.isFinite`) — la fiche plantait à l'ouverture dès qu'un
+  signalement portait une photo. Taille fixe 240×160.
+- **Statut inconnu du serveur** : `ProblemStatus.unknown.wire` renvoyait `'FERME'` — filtrer dessus aurait
+  rapporté les mauvais signalements. Il renvoie `null` (pas de filtre) ; même classe de bug que la régression
+  d'enum du n°17.
+- **Ménage MinIO fini** : les dernières références qui auraient envoyé un relais installer un service disparu
+  sont parties (`CLAUDE.md`, `CONVENTIONS.md`, `schema.prisma`, `spec-fonctionnelle.md`, `DEPLOYMENT.md`,
+  `infra/.env.example`). Les documents datés (revues, `plan.md`) gardent leur texte : c'est de l'histoire.
+- **La photo était le SEUL chemin d'écriture non gardé dans la transaction** (bloquant, trouvé par les deux
+  audits en second tour) : `attachPhoto` ne passe pas par `transition()`. Il lisait le statut, écrivait 2 Mo
+  sur le disque, puis mettait à jour sans condition — une photo pouvait donc se poser sur un signalement
+  fermé entre-temps (règle 7 cassée sur le dernier champ mutable). Remplaçé par un `updateMany` conditionnel :
+  la base tranche. **Contre-épreuve isolante** : contrôle hors transaction retiré → le test passe encore
+  (c'est bien la garde de transaction qui travaille) ; garde de transaction retirée aussi → il échoue.
+- **`stream.pipe(res)` pouvait tuer le PROCESSUS** (moyen) : `pipe` ne transmet pas l'erreur de la source, et
+  un `error` sans écouteur devient une `uncaughtException` qu'aucun filtre Nest n'attrape. Le `stat()` ferme le
+  cas fréquent, pas la course (fichier disparu après ouverture, EIO, volume démonté). `stream.on('error', ...)`
+  ajouté sur les **deux** routes de photo — celle des signalements et celle des produits, même motif.
+- **Photos gardées en mémoire après déconnexion** (important) : `problemPhotoProvider` avait `keepAlive()`, ce
+  qui annule l'`autoDispose` — interdit par `CONVENTIONS.md` sur un poste partagé. Retiré : recharger une
+  image à la réouverture d'une fiche est un aller-retour, pas un problème.
+- **Le correctif de `StorageService` n'était prouvé par RIEN** : les deux `404` de l'e2e passaient par la
+  branche « pas de photo » et n'atteignaient jamais le `stat()`. `src/storage/storage.service.spec.ts` ajouté
+  (5 tests) : fichier absent → 404 métier, et la garde de traversée de chemin de `pathOf` éprouvée pour de bon
+  (`../`, chemin remontant par le milieu, vérification qu'aucun fichier n'est écrit dehors).
+- **Contrat OpenAPI qui mentait** : les 5 transitions rendaient 201 Created tout en documentant 200 — aucune
+  ne crée de ressource. `@HttpCode(HttpStatus.OK)` posé, e2e alignés.
+- **Audits** : `security-reviewer` — aucun critique ni élevé ; 2 moyens (photo hors transaction,
+  `pipe` sans écouteur), 3 faibles. `reviewer` — 2 bloquants (photo hors transaction ;
+  `.claude/settings.json` dans le commit, voir ci-dessous), 3 importants, 7 mineurs. Tout appliqué sauf ce qui
+  est listé en dette juste en dessous.
+- ⚠️ **`.claude/settings.json` N'EST PAS dans ce commit et reste modifié en local.** Le diff élargit les
+  permissions d'outils et ajoute un `additionalDirectories` sur la racine du projet ; il garde aussi des
+  autorisations sur `.env.minio-root.example`, fichier supprimé le 2026-09-24. Un changement de configuration
+  de permissions ne doit pas voyager dans un commit de feature : à trancher par **MEDMEDBEN** à part.
+- **Preuve (2026-09-25, après le second tour d'audits)** : backend `lint:check` **0** · `tsc` propre ·
+  **89 unit** · **434 e2e** (32 suites, **un seul passage**) dont **17** de signalements ;
+  app `flutter analyze` propre · **+368 ~46** dont **14** de signalements (fiche, photo, attribution,
+  formulaire). **Trois contre-épreuves** : borne de 2 Mo retirée → le test échoue ; garde « auteur ou
+  admin » retirée → « un tiers ne peut pas joindre de photo » échoue ; garde de statut retirée de la
+  transaction → « photo refusée sur un signalement déjà résolu » échoue (et passe encore quand seul le
+  contrôle hors transaction manque — c'est bien la garde de transaction qui tient).
+- **Reste à faire / dette assumée** :
+  - aucune épreuve sur appareil (l'écran n'a jamais été ouvert par un humain, comme le reste de P1) ;
+  - pas de « charger plus » au-delà de la première page (50) ;
+  - le menu « produit concerné » du formulaire s'arrête à 200 produits **sans le dire** et sans recherche :
+    au-delà, un produit devient insélectionnable. À traiter avec la recherche du catalogue ;
+  - remplacement simultané de photo : deux envois en même temps laissent un fichier orphelin sur le disque
+    (aucune perte, aucune fuite — du disque). Pas de balayage prévu ;
+  - l'admin ne peut pas SE confier un signalement depuis l'écran : l'annuaire réutilisé
+    (`GET /conversations/recipients`) exclut l'appelant, alors que le serveur l'accepterait. Sens inoffensif
+    (l'UI refuse ce que le serveur permet), et « Je m'en occupe » fait déjà le geste.
+
+**Prochaine étape précise** : P1 **n°19 Réapprovisionnement** (`docs/plan.md`). Elle emporte le reste de la
+liste §18 tranchée plus haut : les alertes `STOCK_FAIBLE` / `RUPTURE` partent avec elle, pas avec le n°16.
+Commencer par le seuil de réapprovisionnement sur `Product` (migration additive, subagent `db-migrator`).
+
 ### 🚧 P1 #17 COMMUNICATION INTERNE — SERVEUR + ÉCRAN LIVRÉS (2026-09-24 · **MEDMEDBEN**)
 Spec §25. Fils de discussion magasin ↔ dépôt et admin ↔ membres. Migration **additive** créée par le subagent
 `db-migrator` : `20260923231224_conversations_messages` (3 tables, 2 valeurs d'enum, aucune perte possible).
@@ -1640,7 +1724,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Tableau de bord (P1 #15) | 🟡 **Code livré** (2026-09-23) | 🟢 Un bloc par permission, `null` si interdit | 🟢 Accueil desktop + mobile | 🟢 12 e2e · 8 widget | 🟢 corrigé (2 moyens) |
 | Notifications (P1 #16) | 🟡 **Code livré** (2026-09-23) | 🟢 Alertes dans la transaction de l'opération | 🟢 Boîte + badge des 2 coquilles | 🟢 11 e2e · 8 widget | 🟢 corrigé (2 moyens) |
 | Communication interne (P1 #17) | 🟡 **Code livré** (2026-09-24) | 🟢 Fils, garde sur la PARTICIPATION (404) | 🟢 Liste, fil, formulaire | 🟢 10 e2e · 7 widget | 🟢 corrigé (1 élevé) |
-| Signalement de problème (P1 #18) | 🔴 Non commencé | — | — | — | — |
+| Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🔴 Non commencé | — | — | — | — |
 | Rapports, devis, étiquettes, PDF/Excel (P1 #20-21c) | 🔴 Non commencé | — | — | — | — |
 
