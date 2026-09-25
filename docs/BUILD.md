@@ -16,8 +16,10 @@ de l'installation des outils jusqu'à l'exécutable Windows, puis l'application 
 
 1. **Ne modifie aucun fichier source du projet.** Si quelque chose ne compile pas, arrête-toi et rapporte
    (§10). Tout ce qui suit fonctionne sans retoucher une ligne de code.
-2. **Quatre pièges connus**, traités aux étapes 1, 6, 7 et 9.3. Si tu les sautes, la compilation échoue avec des
-   messages trompeurs.
+2. **Cinq pièges connus**, traités aux étapes 1, 4, 6, 7 (deux) et 9.3. Si tu les sautes, la compilation
+   échoue avec des messages trompeurs. Les étapes 1 à 6 ont été **rejouées entièrement sur un clone neuf le
+   2026-09-25** : elles passent. La compilation Windows elle-même n'a pas pu être vérifiée, faute d'ATL sur
+   la machine de développement — c'est justement ce que tu vas prouver.
 3. Rends compte avec les **sorties réelles** collées, jamais « ça devrait marcher ».
 
 ---
@@ -59,6 +61,19 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--quie
 
 L'installation prend 10 à 20 minutes. Si Visual Studio est déjà présent : ouvre « Visual Studio Installer » →
 **Modifier** → onglet **Composants individuels** → coche **`C++ ATL pour les outils de build v143 (x86/x64)`**.
+
+⚠️ **`flutter doctor` vert sur « Visual Studio » NE PROUVE PAS qu'ATL est installé.** Il vérifie le
+compilateur, pas ce composant. Vérifié le 2026-09-25 : une machine avec Build Tools 2019 sans ATL affiche
+`[√] Visual Studio` et échoue quand même à la compilation. Le seul contrôle fiable :
+
+```powershell
+# Doit renvoyer au moins un chemin. Rien = ATL absent = la compilation échouera.
+Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC" -Recurse -Filter atlstr.h -ErrorAction SilentlyContinue | Select-Object -First 1 FullName
+```
+
+Le plugin qui l'exige est `flutter_secure_storage_windows` (il stocke les jetons de session dans le coffre
+Windows). Sa **dernière version inclut toujours `atlstr.h`** : il n'y a pas de contournement par mise à jour,
+et le composant ATL n'est pas optionnel.
 
 ### 1.3 Flutter
 
@@ -153,7 +168,7 @@ npm run build
 npm test
 ```
 
-Attendu : build sans erreur, puis **84 tests passés**.
+Attendu : build sans erreur, puis **89 tests passés** (16 suites).
 
 Laisse maintenant le serveur tourner dans **ce terminal, ouvert** :
 
@@ -176,10 +191,14 @@ Ouvre un **deuxième** terminal PowerShell :
 ```powershell
 cd C:\gestion-magasin\app
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs
+dart run build_runner build
 ```
 
-La dernière commande dure 1 à 2 minutes et se termine par `Built with build_runner`.
+La dernière commande dure **2 à 4 minutes** (la moitié à compiler les générateurs) et se termine par
+`Built with build_runner`. Elle écrit environ **426 fichiers**.
+
+> N'ajoute pas `--delete-conflicting-outputs` : l'option a été **retirée** de `build_runner`, elle est ignorée
+> avec un avertissement. Si tu la vois dans de vieilles instructions, elle est périmée.
 
 Vérification :
 
@@ -188,8 +207,8 @@ flutter analyze
 flutter test
 ```
 
-Attendu : `No issues found!` puis **354 tests passés** (≈ 46 ignorés — normal, ce sont les captures d'écran,
-désactivées par défaut).
+Attendu : `No issues found!` puis **368 tests passés, 46 ignorés** (les ignorés sont les captures d'écran,
+désactivées par défaut — ce n'est pas un échec). `flutter analyze` prend 2 à 3 minutes la première fois.
 
 ---
 
@@ -203,6 +222,31 @@ build optimisée, sans les outils de débogage, et qui accepte `http://localhost
 cd C:\gestion-magasin\app
 flutter build windows --profile
 ```
+
+### PIÈGE N°5 : le build télécharge pdfium, et ne réessaie pas
+
+La génération des PDF (tickets, factures) passe par le paquet `printing`, qui **télécharge une bibliothèque
+pdfium (2,6 Mo) depuis GitHub pendant la configuration CMake** — pas au moment du `pub get`, mais du build.
+C'est le seul téléchargement réseau de cette étape, et **CMake ne réessaie pas** : une seule coupure donne ce
+message, qui ne dit pas qu'il s'agit du réseau :
+
+```
+CMake Error at flutter/ephemeral/.plugin_symlinks/printing/windows/DownloadProject.cmake:179 (message):
+  Build step for pdfium failed: 1
+...
+Unable to generate build files
+```
+
+**Que faire** : relancer `flutter build windows --profile`, simplement. Une fois l'archive récupérée, elle est
+mise en cache et le problème ne revient pas. Vu le 2026-09-25 : trois tentatives ont été nécessaires.
+Pour vérifier que c'est bien le réseau et non l'URL :
+
+```powershell
+curl.exe -sIL -o NUL -w "%{http_code}`n" https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/5200/pdfium-win-x64.tgz
+```
+
+`200` = l'URL est bonne, relance le build. `000` = ta connexion vers GitHub tombe ; réessaie.
+Si l'archive est arrivée mais vide, supprime `app\build\windows` et relance.
 
 L'exécutable et ses DLL sont dans :
 
@@ -328,7 +372,9 @@ Colle les sorties réelles :
 
 | Message | Cause | Action |
 |---|---|---|
-| `atlstr.h: No such file or directory` | composant ATL manquant | §1.2 |
+| `atlstr.h: No such file or directory` | composant ATL manquant — **même si `flutter doctor` est vert** | §1.2 |
+| `Build step for pdfium failed: 1` puis `Unable to generate build files` | téléchargement de pdfium interrompu | relancer le build (§7, piège n°5) |
+| `These options have been removed and were ignored: --delete-conflicting-outputs` | option retirée de `build_runner` | simple avertissement, à ignorer (§6) |
 | Beaucoup de `isn't a type` / `Target of URI doesn't exist` | `build_runner` non lancé | §6 |
 | `API_BASE_URL doit être en https://` | build `--release` sur `http://` | compiler en `--profile` (§7) |
 | Le serveur refuse de démarrer, parle de `JWT_ACCESS_SECRET` | clé d'exemple ou trop courte | §4 |

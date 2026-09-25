@@ -209,6 +209,52 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🔧 RÉPÉTITION COMPLÈTE DE LA RECETTE DE BUILD (2026-09-25 · **MEDMEDBEN**)
+
+La recette `docs/BUILD.md` n'avait **jamais été exécutée** — elle était écrite, pas éprouvée. Rejouée entièrement
+sur un **clone neuf du tag `v0.4.0-rc1`** (`git clone` réel, donc sans `.env`, sans `node_modules`, sans client
+Prisma et **sans les fichiers Dart générés**) et sur une **base PostgreSQL vide** créée pour l'occasion, afin de
+ne pas toucher la base de développement.
+
+**Ce qui passe (étapes 2 à 6, sorties réelles)**
+- `npm ci` : 897 paquets, **0 vulnérabilité**.
+- `prisma migrate deploy` sur base vide : **toutes les migrations appliquées** (jusqu'à
+  `20260924183258_problem_notification_enums`).
+- `prisma generate` → client 7.10.0. `npm run seed` : 39 permissions, 3 rôles, emplacements, tarifs,
+  TVA, et l'admin `admin@magasin.dz` avec `mustChangePassword = true`.
+- `npm run build` → `dist/main.js`. `npm test` → **89 passés** (16 suites).
+- Le serveur **compilé** (`start:prod`) démarre, `Connexion PostgreSQL établie`, `/docs` répond **200**.
+- **Chaîne complète éprouvée par l'API**, ce que fera l'écran : connexion admin → 200 avec
+  `mustChangePassword` → changement de mot de passe obligatoire → 200 → création d'un produit → **201 avec
+  code-barres interne généré** (`2000000000015`) → relu dans la liste. C'est le contrôle du §8, fait côté
+  serveur.
+- `flutter pub get`, puis `dart run build_runner build` : **426 fichiers écrits en 181 s**.
+- `flutter analyze` : **propre**. `flutter test` : **368 passés, 46 ignorés**.
+
+**DEUX erreurs réelles à l'étape 7, dont une que la recette ne mentionnait pas**
+
+1. **`Build step for pdfium failed: 1` → `Unable to generate build files`** (nouveau piège n°5).
+   Le paquet `printing` **télécharge pdfium (2,6 Mo) depuis GitHub pendant la configuration CMake**, et
+   **CMake ne réessaie pas**. L'archive reçue faisait **0 octet** ; le message ne parle pas du réseau. Cause
+   établie à la main : `curl` sur la même URL rend `000` deux fois puis **`200` avec 2,6 Mo à la troisième** —
+   l'URL est bonne, la liaison vers GitHub est intermittente. **Il suffit de relancer le build.**
+   Écrit dans `BUILD.md` avec la commande de diagnostic. **C'est très probablement ce qui a bloqué l'agent de
+   build**, et rien ne le lui disait.
+
+2. **`fatal error C1083: 'atlstr.h'`** dans `flutter_secure_storage_windows` (piège n°1, déjà documenté — la
+   recette avait raison). Vérifié : la **dernière** version du plugin (4.2.2) inclut toujours `atlstr.h`, donc
+   **aucune mise à jour ne contourne ATL**. Ce poste n'a que Build Tools **2019 sans ATL**, d'où l'échec.
+   ⚠️ **Et `flutter doctor` affiche `[√] Visual Studio` quand même** : il ne contrôle pas ATL. Le piège était
+   donc indétectable avant la compilation. `BUILD.md` donne maintenant la commande qui cherche `atlstr.h`.
+
+**Conclusion** : la chaîne backend + génération Dart + tests est **prouvée reproductible depuis zéro**. Il ne
+reste qu'un **prérequis de machine** (le composant ATL) entre le tag et un `.exe`. Rien à corriger dans le
+code : les deux corrections sont allées dans la recette.
+
+**Reste à faire** : installer le composant ATL sur une machine (ici ou sur le poste de build) et finir
+`flutter build windows --profile`. Tant que ce n'est pas fait, **aucun écran n'a été ouvert par un humain** et
+la condition de merge sur `main` (en tête de ce fichier) n'est pas remplie.
+
 ### 🚧 P1 #18 SIGNALEMENT DE PROBLÈME — SERVEUR + ÉCRAN LIVRÉS (2026-09-25 · **MEDMEDBEN**)
 Spec §26. Ce que l'équipe constate sur le terrain et que personne ne peut corriger seul. Migrations **additives**
 `20260924181629_problems` et `20260924183258_problem_notification_enums` (1 table, 2 enums, 2 valeurs
