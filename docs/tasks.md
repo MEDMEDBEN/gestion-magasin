@@ -211,6 +211,88 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #19 RÉAPPROVISIONNEMENT — SERVEUR + ÉCRAN LIVRÉS (2026-09-25 · **MEDMEDBEN**)
+Spec §19. Ce qu'il faut racheter, et les alertes `STOCK_FAIBLE` / `RUPTURE` que le n°16 avait explicitement
+reportées ici. **Aucune migration** : `minThreshold`, `safetyStock` et les deux valeurs d'enum existaient déjà
+au schéma — vérifié avant d'appeler `db-migrator`.
+
+- **La règle vit en UN seul endroit** : `backend/src/common/replenishment.ts` (`isLowStock`, `isOutOfStock`,
+  `suggestedOrderQuantity`, `STOCK_BEARING_LOCATIONS`). Le tableau de bord avait déjà sa propre copie de
+  « stock <= seuil » : elle a été remplacée par un appel. Trois consommateurs, une définition — sinon ils
+  finissent par ne plus dire la même chose.
+- **Quantité proposée = 2 × seuil + stock de sécurité − stock, plancher d'une unité.** Le double, pour que le
+  produit ne redevienne pas « à racheter » à la vente suivante. ⚠️ **Le multiplicateur est un CHOIX, à
+  confirmer par MEDMEDBEN** : la spec §19 illustre « stock 8, seuil 20 → 50 », soit un facteur plus large, et
+  rien en base ne permet de le calculer (vitesse de vente et délai fournisseur sont remis à P2 n°22). Le
+  changer ne touche qu'une fonction.
+- **L'alerte ne part qu'au FRANCHISSEMENT**, et seulement sur une sortie. Contre-épreuve : garde retirée →
+  **3 alertes identiques au lieu d'une**.
+- **Le montant estimé a été RETIRÉ du DTO serveur** après l'avoir écrit : la quantité est modifiable à
+  l'écran, un montant précalculé est faux dès la première frappe. Le client le calcule, une seule fois, là où
+  la quantité vit.
+- **L'écran ne commande RIEN** : la commande passe par `purchases/`. Sa préparation automatique est le n°22.
+
+**Corrections des deux audits (second tour compris)**
+- 🔴 **BLOQUANT, trouvé par les DEUX audits : un transfert déclenchait une fausse « RUPTURE URGENTE ».**
+  Mon commentaire affirmait l'inverse. La première jambe d'une expédition est une **sortie du dépôt** (le
+  transit ne reçoit que la seconde) : le total MAGASIN + DÉPÔT baissait donc vraiment, pour toute la durée du
+  trajet. Un invariant écrit comme vrai et faux est le pire des défauts — un relais le croit. Corrigé en
+  sortant sur `operationType === 'TRANSFER'` (un transfert déplace, il ne change pas ce qu'il faut racheter),
+  avec le test e2e qui l'atteste.
+- 🔴 **BLOQUANT, trouvé par la revue : une quantité saisie pouvait être attribuée à UN AUTRE PRODUIT.**
+  Les tuiles n'avaient pas de `key` ; la liste se rafraîchit au battement de synchro et son ordre dépend de
+  l'urgence, donc Flutter réassociait l'état des champs **par position**. Une commande fausse et invisible.
+  `key: ValueKey(line.productId)` + `didUpdateWidget` pour reprendre une nouvelle proposition **sans jamais
+  écraser une saisie**. Deux tests, et contre-épreuve : clé retirée → le « 50 » saisi reste sur l'autre ligne.
+- **Mon propre test a rattrapé ma correction** : la déduplication « une alerte non lue suffit » étouffait la
+  RUPTURE derrière un STOCK_FAIBLE non lu. Elle est désormais **par type** — une aggravation passe toujours.
+- **Un catalogue importé remontait ENTIER en tête de liste** : tout produit actif sans ligne de stock compte
+  zéro, donc « en rupture », en urgence maximale. Un produit qui n'a **jamais** eu de stock est désormais
+  exclu — il n'est pas en rupture, il n'est pas encore entré au magasin. Deux tests.
+- **Amplification de notifications** (audit sécurité) : une boucle sortie → correction → sortie réarmait le
+  franchissement à chaque tour. Déduplication sur une alerte non lue du même type, dans la transaction.
+- **Coût ajouté sur le chemin de TOUS les mouvements** (audit sécurité : une validation d'inventaire va jusqu'à
+  1000 lignes dans UNE transaction, risque de dépasser le délai et de tout annuler). Court-circuit avant toute
+  requête : le total est supérieur ou égal au stock de ce seul emplacement dès qu'aucun autre ne peut être
+  négatif — donc si cet emplacement reste au-dessus du seuil et de zéro, aucun agrégat n'est fait. Le
+  catalogue par défaut (seuil à 0) ne paie plus rien tant que le stock reste positif.
+- Aussi : produit désactivé → aucune alerte (il n'est pas dans la liste) ; `STOCK_BEARING_LOCATIONS` utilisée
+  **dans le SQL** au lieu d'une copie en dur ; `safetyStock` mort retiré du journal ; `sort` et `q` ne sont plus
+  hérités puis ignorés (un paramètre annoncé dans l'OpenAPI et sans effet est un mensonge de contrat) ; libellé
+  d'unité par la table du catalogue (« m » et non « metre ») ; champ `user` mort retiré de l'écran.
+- **Deux de mes tests ne prouvaient rien**, corrigés : le test « décimales » calculait un résultat ENTIER (il
+  passait même en tronquant) ; le test « une entrée n'alerte jamais » envoyait une perte négative, recevait un
+  422 qu'il n'assertait pas, et passait **à VIDE**. L'entrée passe maintenant par le journal, et le refus de la
+  perte négative est asserté. La suite e2e est aussi bornée au fournisseur du test : la base est partagée, et
+  les résidus des autres suites repoussaient nos produits hors de la première page.
+- **Audits** : `security-reviewer` — aucun critique ni élevé ; 3 moyens, 5 faibles. `reviewer` — 1 bloquant,
+  4 importants, 9 mineurs. Tout appliqué sauf ce qui est en dette ci-dessous.
+
+**Preuve (2026-09-25)** : backend `lint:check` **0** · `tsc` propre · **98 unit** · **458 e2e** (33 suites, un
+seul passage) dont **24** de réapprovisionnement ; app `flutter analyze` propre · **+381 ~46** dont **13** de
+réapprovisionnement. **Quatre contre-épreuves** : garde de franchissement, exclusion du TRANSIT, permission de
+navigation, clé de tuile — les quatre échouent quand on retire la garde.
+
+**Reste à faire / dette assumée**
+- **À trancher par MEDMEDBEN** : le multiplicateur de la quantité proposée (ci-dessus) ; et le fait que la
+  liste ignore `reservedQuantity` alors que l'anti-stock-négatif s'appuie dessus — un produit entièrement
+  réservé est invendable mais n'est ni listé ni signalé. La réservation n'est pas encore utilisée (décision en
+  attente plus haut dans ce fichier), donc aucun effet aujourd'hui.
+- Pas de « charger plus » au-delà de 50 lignes, alors que cette liste est justement celle qui peut être longue
+  au démarrage ; le compteur annonce le total sans l'indiquer.
+- Le filtre `supplierId` existe côté API et n'est pas encore exposé à l'écran (il servira à préparer la
+  commande d'un fournisseur, et la suite e2e s'appuie dessus pour être déterministe).
+- Le débit est bridé **par IP** et non par compte, comme partout dans le projet : plusieurs postes du magasin
+  partagent l'IP sortante, et l'écran se rafraîchit au battement de synchro. Si un 429 apparaît en usage réel,
+  passer à un tracker par `user.id` pour les routes authentifiées (concerne tout le projet, pas cette feature).
+- Aucune épreuve sur appareil, comme tout P1 : l'écran n'a jamais été ouvert par un humain.
+
+**Prochaine étape précise** : P1 **n°20 Produits dormants / produits demandés** (`docs/plan.md`, spec §20).
+Deux lectures à construire : les plus vendus / les plus demandés au dépôt / demandés mais indisponibles, et les
+dormants (sans mouvement depuis une durée **configurable**, ex. 120 jours). Commencer par le service de lecture
+dans un nouveau module `backend/src/reports/` (il porte déjà le tableau de bord) plutôt qu'un module à part :
+ce sont des rapports, pas une entité. Aucune migration attendue — tout se déduit de `StockMovement`.
+
 ### 🔧 RÉPÉTITION COMPLÈTE DE LA RECETTE DE BUILD (2026-09-25 · **MEDMEDBEN**)
 
 La recette `docs/BUILD.md` n'avait **jamais été exécutée** — elle était écrite, pas éprouvée. Rejouée entièrement
@@ -1779,7 +1861,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Notifications (P1 #16) | 🟡 **Code livré** (2026-09-23) | 🟢 Alertes dans la transaction de l'opération | 🟢 Boîte + badge des 2 coquilles | 🟢 11 e2e · 8 widget | 🟢 corrigé (2 moyens) |
 | Communication interne (P1 #17) | 🟡 **Code livré** (2026-09-24) | 🟢 Fils, garde sur la PARTICIPATION (404) | 🟢 Liste, fil, formulaire | 🟢 10 e2e · 7 widget | 🟢 corrigé (1 élevé) |
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
-| Réapprovisionnement (P1 #19) | 🔴 Non commencé | — | — | — | — |
+| Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
 | Rapports, devis, étiquettes, PDF/Excel (P1 #20-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture

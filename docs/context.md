@@ -45,7 +45,8 @@ Pour chaque mutation, le serveur, dans une transaction :
 3. Applique la règle métier et **valide** :
    - **Anti-stock-négatif** : si l'opération rend le stock disponible < 0 → **REJET** (sauf produit « backorder autorisé »).
    - Autres invariants métier (produit actif, montants cohérents, etc.).
-4. Si OK : applique le(s) mouvement(s) additif(s) + met à jour les projections + écrit l'audit. Renvoie `confirmée` + l'état serveur.
+4. Si OK : applique le(s) mouvement(s) additif(s) + met à jour les projections + écrit l'audit **+ écrit les alertes de stock** (P1 n°19, depuis le 2026-09-25 : `STOCK_FAIBLE` / `RUPTURE` quand le mouvement fait franchir le seuil du produit). Renvoie `confirmée` + l'état serveur.
+   > Conséquence à connaître : une vente faite hors-ligne il y a trois jours produit son alerte **au moment du sync**, pas au moment de la vente. L'alerte dit l'état du stock MAINTENANT, ce qui est bien ce qu'on veut pour décider un rachat — mais sa date n'est pas celle de l'opération. Elle porte le lien vers le produit, jamais vers la vente.
 5. Si rejet : n'applique rien, renvoie `rejetée` + un motif lisible.
 
 ## 5. Résolution des divergences

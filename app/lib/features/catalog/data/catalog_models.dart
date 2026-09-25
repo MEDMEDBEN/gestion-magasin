@@ -51,6 +51,18 @@ extension ProductUnitLabel on ProductUnit {
   };
 }
 
+/// Abrégé d'une unité reçue en CHAÎNE (ce que rend l'API hors du catalogue).
+///
+/// Une unité inconnue de cette version est rendue telle quelle, en minuscules,
+/// plutôt que ramenée de force à « pce » : un libellé faux est pire qu'un
+/// libellé brut.
+String productUnitShort(String code) {
+  for (final unit in ProductUnit.values) {
+    if (unit.code == code) return unit.short;
+  }
+  return code.toLowerCase();
+}
+
 /// Miroir de `ProductDto`. Quantités en `Decimal` (règle 10), montants en
 /// centimes `int` (règle 4).
 @freezed

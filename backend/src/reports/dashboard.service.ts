@@ -4,6 +4,11 @@ import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { localDate, startOfLocalDay } from '../common/document-number';
 import { PERMISSIONS } from '../common/permissions';
 import { formatQuantity } from '../common/quantity';
+import {
+  isLowStock,
+  isOutOfStock,
+  STOCK_BEARING_LOCATIONS,
+} from '../common/replenishment';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DashboardDto, DashboardLowStockDto } from './dto/dashboard.dto';
@@ -75,9 +80,10 @@ export class DashboardService {
     return { count: totals._count, revenueTtc: totals._sum.totalTtc ?? 0 };
   }
 
-  /// Alertes de stock. La comparaison porte sur le stock RÉEL en magasin et au
-  /// dépôt : les emplacements TRANSIT sont exclus, une marchandise en route
-  /// n'est pas encore disponible.
+  /// Alertes de stock. La règle (« stock <= seuil ») et la liste des
+  /// emplacements qui portent du stock vivent dans `common/replenishment.ts` :
+  /// le tableau de bord, la liste de réapprovisionnement (n°19) et l'alerte du
+  /// journal de stock doivent dire la MÊME chose.
   ///
   /// ponytail : parcourt le catalogue actif en mémoire (un magasin, quelques
   /// milliers de références) ; à passer en SQL agrégé si le catalogue grossit.
@@ -89,7 +95,7 @@ export class DashboardService {
         name: true,
         minThreshold: true,
         stocks: {
-          where: { location: { type: { in: ['MAGASIN', 'DEPOT'] } } },
+          where: { location: { type: { in: [...STOCK_BEARING_LOCATIONS] } } },
           select: { quantity: true },
         },
       },
@@ -101,11 +107,8 @@ export class DashboardService {
         (sum, row) => sum.add(row.quantity),
         new Prisma.Decimal(0),
       );
-      if (quantity.lessThanOrEqualTo(0)) outOfStockCount++;
-      if (
-        product.minThreshold.greaterThan(0) &&
-        quantity.lessThanOrEqualTo(product.minThreshold)
-      ) {
+      if (isOutOfStock(quantity)) outOfStockCount++;
+      if (isLowStock(quantity, product.minThreshold)) {
         low.push({
           productId: product.id,
           name: product.name,

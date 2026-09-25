@@ -13,6 +13,7 @@ import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/problems/presentation/problems_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
+import '../features/replenishment/presentation/replenishment_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/scan/presentation/scan_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
@@ -129,6 +130,16 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.clipboardList,
       label: 'Achats',
       builder: (context, user) => PurchasesScreen(user: user),
+    ),
+  // `/replenishment` : ADMIN|MAGASINIER + purchase.create — MÊME règle que le
+  // guard serveur. Fermé au vendeur, qui ne peut pas commander et n'a pas accès
+  // aux fournisseurs : la liste porte les derniers prix d'achat.
+  if ((user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+      user.can('purchase.create'))
+    AppDestination(
+      icon: LucideIcons.packagePlus,
+      label: 'Réappro',
+      builder: (context, _) => const ReplenishmentScreen(),
     ),
   // `/inventories` : ADMIN|MAGASINIER + inventory.create (la VALIDATION des
   // ajustements reste l'admin seul, vérifiée par le serveur).

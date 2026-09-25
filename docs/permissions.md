@@ -169,6 +169,33 @@ le cloisonnement. Si un besoin de modération apparaît, il faudra le trancher i
 L'annuaire des destinataires est une route **dédiée** (`GET /conversations/recipients`, id et nom seulement) :
 `/users` reste réservé à l'admin, alors que les trois rôles doivent pouvoir ouvrir un fil.
 
+## Réapprovisionnement (P1 n°19, ajouté le 2026-09-25)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Lire la liste « à racheter » | ✅ | ❌ | ✅ |
+| Recevoir les alertes STOCK_FAIBLE / RUPTURE | ✅ | ❌ | ✅ |
+| Commander (depuis la liste ou ailleurs) | ✅ | ❌ | ✅ |
+| Régler le seuil minimum d'un produit | ✅ | ❌ | ❌ |
+
+**Gardé par `purchase.create`, pas par le rôle seul** : ceux qui peuvent AGIR. Le vendeur est exclu pour deux
+raisons qui vont ensemble — il ne peut pas passer de commande, et la liste porte le **fournisseur principal** et
+le **dernier prix d'achat** de chaque produit, alors que la matrice lui ferme les fournisseurs (`supplier.read`).
+Lui montrer cette liste serait lui montrer une porte fermée, avec les prix d'achat par-dessus.
+
+> Le coût d'achat est visible des trois rôles (décision du 2026-09-22) — mais **sur la fiche produit et en
+> vente**, là où il sert de plancher au vendeur. Ce n'est pas un droit d'accès à la liste d'achats à faire.
+
+Lecture **sensible** (`@RequireFreshAccess`) : les droits sont relus en base, pas pris dans le token. Sans cela
+un compte rétrogradé continuerait de lire coûts et fournisseurs pendant les 15 minutes de son access token.
+
+**Les alertes ne partent qu'au FRANCHISSEMENT du seuil**, jamais à chaque mouvement, et jamais à l'auteur du
+mouvement. Sans cette garde, chaque vente d'un produit déjà sous son seuil réécrit la même alerte et enterre les
+autres — contre-épreuve faite : garde retirée, trois alertes identiques au lieu d'une.
+
+Le contenu de l'alerte (nom du produit, quantité restante, seuil) respecte la règle gravée aux notifications :
+**rien qu'un magasinier ne pourrait lire à l'écran**. Aucun prix, aucun fournisseur dans le message — une
+notification survit à un changement de rôle et n'est jamais re-filtrée à la lecture.
+
 ## Signalements (P1 n°18, ajouté le 2026-09-25)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
