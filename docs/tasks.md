@@ -4,10 +4,12 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
-## 🏷️ Repère de compilation — `v0.4.0-rc1` (2026-09-25)
+## 🏷️ Repère de compilation — `v0.4.0-rc2` (2026-09-25)
 
 > Tags précédents, à ne PLUS utiliser : `v0.2.0-rc1` (elle précède le retrait de MinIO — l'agent de build
-> tombe sur un `401 UNAUTHORIZED` en téléchargeant l'image, voir plus bas) et `v0.3.0-rc1` (avant P1 n°18).
+> tombe sur un `401 UNAUTHORIZED` en téléchargeant l'image, voir plus bas), `v0.3.0-rc1` (avant P1 n°18) et
+> `v0.4.0-rc1` (avant la répétition de la recette : son `BUILD.md` ignore le piège pdfium et annonce de faux
+> comptes de tests).
 > `docs/BUILD.md` pointe sur le tag courant ; le mettre à jour EN MÊME TEMPS que le tag, sinon la recette
 > envoie compiler une version périmée.
 

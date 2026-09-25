@@ -3,7 +3,7 @@
 Ce fichier se suffit à lui-même. **Tu n'as rien à analyser dans le projet** : suis les étapes dans l'ordre,
 de l'installation des outils jusqu'à l'exécutable Windows, puis l'application mobile.
 
-- Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — version à compiler : le tag **`v0.4.0-rc1`**
+- Dépôt : `https://github.com/MEDMEDBEN/gestion-magasin.git` — version à compiler : le tag **`v0.4.0-rc2`**
 - Pile : backend **NestJS + Prisma + PostgreSQL**, application **Flutter** (Windows et Android).
   Un SEUL service externe : PostgreSQL. Les fichiers joints vivent sur le disque du serveur.
 - Résultat attendu : un **`.exe` Windows** qui s'ouvre et se connecte à un vrai serveur local, puis un **APK**
@@ -99,7 +99,7 @@ que tu es à l'étape Windows ; elle ne concerne que l'APK (§9).
 cd C:\
 git clone https://github.com/MEDMEDBEN/gestion-magasin.git
 cd gestion-magasin
-git checkout v0.4.0-rc1   # version figée et testée ; « develop » bouge pendant que tu travailles
+git checkout v0.4.0-rc2   # version figée et testée ; « develop » bouge pendant que tu travailles
 ```
 
 ---
