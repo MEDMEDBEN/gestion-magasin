@@ -4,13 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
-## 🏷️ Repère de compilation — `v0.2.0-rc1` (2026-09-24)
+## 🏷️ Repère de compilation — `v0.4.0-rc1` (2026-09-25)
 
-`main` est resté au **21/09** volontairement, avec 21 commits de retard. Sa seule valeur est d'être un point de
+> Tags précédents, à ne PLUS utiliser : `v0.2.0-rc1` (elle précède le retrait de MinIO — l'agent de build
+> tombe sur un `401 UNAUTHORIZED` en téléchargeant l'image, voir plus bas) et `v0.3.0-rc1` (avant P1 n°18).
+> `docs/BUILD.md` pointe sur le tag courant ; le mettre à jour EN MÊME TEMPS que le tag, sinon la recette
+> envoie compiler une version périmée.
+
+`main` est resté au **21/09** volontairement, avec une trentaine de commits de retard. Sa seule valeur est d'être un point de
 retour dont on sait qu'il fonctionne : le merger avant la première compilation le ferait perdre au moment
 précis où on en aurait besoin.
 
-- **Ce que contient le tag** : P0 complète (dont le hors-ligne) + P1 n°13 à 17. Tests et audits passés.
+- **Ce que contient le tag** : P0 complète (dont le hors-ligne) + P1 n°13 à 18, MinIO et Redis retirés
+  (un seul service externe : PostgreSQL ; un seul secret à générer : la clé JWT). Tests et audits passés.
   **Jamais compilé, jamais ouvert par un humain.**
 - **Ce qu'il sert** : l'agent de build compile CE tag (voir `docs/BUILD.md`), pas une branche qui bouge.
 - **Condition pour merger sur `main`** : l'application s'ouvre ET le contrôle du §8 de `BUILD.md` passe
