@@ -1,5 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
 import { IsOptional, Matches } from 'class-validator';
+import { ExportFormatQueryDto } from '../../common/export/export';
 
 /// Un JOUR, pas un instant : une heure avec fuseau rendrait `days` et les bornes
 /// incohérents.
@@ -205,3 +210,9 @@ export class PurchasesReportDto {
   })
   bySupplier!: PurchasesBySupplierDto[];
 }
+
+/// Export d'un rapport : la même période, plus le format du fichier.
+export class ReportExportQueryDto extends IntersectionType(
+  ReportPeriodQueryDto,
+  ExportFormatQueryDto,
+) {}

@@ -1,15 +1,29 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, StreamableFile } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
 import { RequireFreshAccess, RoleCode, Roles } from '../common/auth.decorators';
+import { localDate } from '../common/document-number';
+import {
+  EXPORT_TYPES,
+  ExportFormatQueryDto,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
+import {
+  purchasesReportDocument,
+  salesReportDocument,
+  stockReportDocument,
+} from './business-report.export';
 import { BusinessReportService } from './business-report.service';
 import {
   PurchasesReportDto,
+  ReportExportQueryDto,
   ReportPeriodQueryDto,
   SalesReportDto,
   StockReportDto,
@@ -84,5 +98,61 @@ export class BusinessReportController {
   @ApiOkResponse({ type: PurchasesReportDto })
   purchases(@Query() query: ReportPeriodQueryDto): Promise<PurchasesReportDto> {
     return this.reports.purchases(query);
+  }
+
+  // ── Exports (spec §8quinquies) ─────────────────────────────────────────
+  // Les MÊMES gardes que la lecture, décorateur pour décorateur : un fichier
+  // n'est pas un contournement de permission. Bridés plus serré — un rendu de
+  // fichier coûte plus qu'une réponse JSON.
+
+  @Roles(RoleCode.ADMIN)
+  @RequireFreshAccess()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Get('sales/export')
+  @ApiOperation({ summary: 'Rapport des ventes en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async salesExport(
+    @Query() query: ReportExportQueryDto,
+  ): Promise<StreamableFile> {
+    const report = await this.reports.sales(query);
+    return exportResponse(
+      await renderExport(salesReportDocument(report), query.format),
+    );
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequireFreshAccess()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Get('stock/export')
+  @ApiOperation({ summary: 'Rapport de stock en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async stockExport(
+    @Query() query: ExportFormatQueryDto,
+  ): Promise<StreamableFile> {
+    const report = await this.reports.stock();
+    return exportResponse(
+      await renderExport(
+        stockReportDocument(report, localDate(new Date())),
+        query.format,
+      ),
+    );
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequireFreshAccess()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Get('purchases/export')
+  @ApiOperation({ summary: 'Rapport des achats en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async purchasesExport(
+    @Query() query: ReportExportQueryDto,
+  ): Promise<StreamableFile> {
+    const report = await this.reports.purchases(query);
+    return exportResponse(
+      await renderExport(purchasesReportDocument(report), query.format),
+    );
   }
 }

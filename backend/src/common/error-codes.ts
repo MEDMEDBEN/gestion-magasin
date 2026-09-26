@@ -31,6 +31,8 @@ export enum ErrorCode {
   NOT_IMPLEMENTED = 'NOT_IMPLEMENTED',
   /// Trop de requêtes dans la fenêtre (anti-brute-force) : réessayer plus tard.
   RATE_LIMITED = 'RATE_LIMITED',
+  /// Export de plus de `MAX_EXPORT_ROWS` lignes : resserrer le filtre.
+  EXPORT_TOO_LARGE = 'EXPORT_TOO_LARGE',
 
   // Stock (règles 2, 9 de CLAUDE.md)
   STOCK_NEGATIVE = 'STOCK_NEGATIVE',

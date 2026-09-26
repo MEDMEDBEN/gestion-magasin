@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { Workbook } from 'exceljs';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { localDate } from '../src/common/document-number';
@@ -603,6 +604,131 @@ describe('Rapports d’activité (e2e)', () => {
       const body = await purchasesReport(`?from=${iso(361)}&to=${iso(359)}`);
       expect(body.orderCount).toBe(0);
       expect(body.orderedHt).toBe(0);
+    });
+  });
+
+  /// Les fichiers disent les MÊMES chiffres que l'écran, et ne s'ouvrent pas à
+  /// plus de monde que lui.
+  describe('exports', () => {
+    const EXPORTS = ['sales', 'stock', 'purchases'].map(
+      (route) => `/api/reports/${route}/export`,
+    );
+
+    const download = (token: string, url: string) =>
+      request(server)
+        .get(url)
+        .set('Authorization', `Bearer ${token}`)
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+
+    it('ventes en Excel : les chiffres du rapport, en nombres', async () => {
+      const id = await product({ lastPurchasePriceHt: 1_000 });
+      await sell([{ productId: id, quantity: '2.000', lineTotalHt: 12_345 }], {
+        tax: 2_345,
+        daysAgo: 400,
+      });
+      const range = `from=${iso(401)}&to=${iso(399)}`;
+
+      const res = await download(
+        tokens.admin,
+        `/api/reports/sales/export?format=xlsx&${range}`,
+      ).expect(200);
+      expect(res.headers['content-type']).toContain('spreadsheetml');
+      expect(res.headers['content-disposition']).toBe(
+        `attachment; filename="rapport-ventes_${iso(401)}_${iso(399)}.xlsx"`,
+      );
+
+      const book = new Workbook();
+      await book.xlsx.load(res.body as ArrayBuffer);
+      const values = book.worksheets[0]
+        .getSheetValues()
+        .flatMap((row) => (Array.isArray(row) ? row : []));
+      // Les MÊMES chiffres que l'écran sur la même période (la base e2e est
+      // partagée : on compare au rapport, pas à une fenêtre supposée vide).
+      const { totals } = await salesReport(`?${range}`);
+      expect(totals.revenueHt).toBeGreaterThanOrEqual(12_345);
+      expect(values).toEqual(
+        expect.arrayContaining(
+          [totals.revenueHt, totals.costHt, totals.marginHt].map(
+            (centimes: number) => centimes / 100,
+          ),
+        ),
+      );
+    });
+
+    it('achats en CSV : montants exacts à la française', async () => {
+      const fournisseur = await prisma.supplier.create({
+        data: { name: `Fournisseur export ${suffix}` },
+      });
+      supplierIds.push(fournisseur.id);
+      await order(fournisseur.id, 150_075, { daysAgo: 410 });
+
+      const res = await download(
+        tokens.admin,
+        `/api/reports/purchases/export?format=csv&from=${iso(411)}&to=${iso(409)}`,
+      ).expect(200);
+      const text = (res.body as Buffer).toString('utf8');
+      expect(text).toContain(`Fournisseur export ${suffix};1;1500,75;0,00`);
+    });
+
+    it('stock en PDF : un vrai PDF', async () => {
+      const res = await download(
+        tokens.admin,
+        '/api/reports/stock/export?format=pdf',
+      ).expect(200);
+      expect((res.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+      expect(res.headers['content-disposition']).toMatch(
+        /^attachment; filename="rapport-stock_\d{4}-\d{2}-\d{2}\.pdf"$/,
+      );
+    });
+
+    it('format absent ou inconnu : refusé', async () => {
+      for (const url of EXPORTS) {
+        await as(tokens.admin).get(url).expect(400);
+        await as(tokens.admin).get(`${url}?format=docx`).expect(400);
+      }
+      // La période est validée comme pour la lecture.
+      await as(tokens.admin)
+        .get('/api/reports/sales/export?format=csv&from=pas-une-date')
+        .expect(400);
+    });
+
+    it('un fichier n’ouvre pas plus de portes que l’écran', async () => {
+      for (const url of EXPORTS) {
+        for (const who of ['vendeur', 'magasinier']) {
+          await as(tokens[who]).get(`${url}?format=csv`).expect(403);
+        }
+        await request(server).get(`${url}?format=csv`).expect(401);
+      }
+    });
+
+    it('admin rétrogradé : plus aucun export, avec le même jeton', async () => {
+      const email = `e2e-brp-retro-export-${suffix}@test.local`;
+      const user = await createTestUser(prisma, {
+        email,
+        password: PASSWORD,
+        roles: [RoleCode.ADMIN],
+      });
+      userIds.push(user.id);
+      const token = (
+        await request(server)
+          .post('/api/auth/login')
+          .send({ identifier: email, password: PASSWORD })
+          .expect(200)
+      ).body.accessToken;
+
+      await as(token).get(`${EXPORTS[0]}?format=csv`).expect(200);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { roles: { set: [{ code: RoleCode.VENDEUR }] } },
+      });
+      for (const url of EXPORTS) {
+        await as(token).get(`${url}?format=csv`).expect(403);
+      }
     });
   });
 

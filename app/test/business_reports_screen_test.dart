@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
+import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
@@ -41,6 +45,21 @@ class _FakeApi extends BusinessReportsApi {
   Future<PurchasesReport> purchases({String? from, String? to}) async {
     return purchasesData ?? const PurchasesReport(period: _period);
   }
+
+  final exports = <String>[];
+  ApiException? exportError;
+
+  @override
+  Future<ExportedFile> export(
+    String report,
+    ExportFormat format, {
+    String? from,
+    String? to,
+  }) async {
+    exports.add('$report ${format.name} $from..$to');
+    if (exportError case final error?) throw error;
+    return ExportedFile(Uint8List(3), 'rapport-$report.${format.name}');
+  }
 }
 
 const _period = ReportPeriod(from: '2026-08-28', to: '2026-09-26', days: 30);
@@ -55,6 +74,7 @@ Future<_FakeApi> _pump(
   SalesReport? sales,
   StockReport? stock,
   PurchasesReport? purchases,
+  List<String>? saved,
 }) async {
   useScreenSize(tester, const Size(1000, 1600));
   final api = _FakeApi(
@@ -67,6 +87,10 @@ Future<_FakeApi> _pump(
       overrides: [
         businessReportsApiProvider.overrideWithValue(api),
         currentUserIdProvider.overrideWithValue('chef'),
+        saveExportProvider.overrideWithValue((file) async {
+          saved?.add(file.filename);
+          return 'C:/Téléchargements/${file.filename}';
+        }),
       ],
       child: MaterialApp(
         theme: AppTheme.mobile(dark: true),
@@ -79,6 +103,67 @@ Future<_FakeApi> _pump(
 }
 
 void main() {
+  group('exports', () {
+    testWidgets('exporte la fenêtre AFFICHÉE et dit où est le fichier', (
+      tester,
+    ) async {
+      final saved = <String>[];
+      final api = await _pump(tester, saved: saved);
+
+      await tester.tap(find.byTooltip('Exporter').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Excel').last);
+      await tester.pumpAndSettle();
+
+      final range = rangeFor(30);
+      expect(api.exports, ['sales xlsx ${range.from}..${range.to}']);
+      expect(saved, ['rapport-sales.xlsx']);
+      expect(
+        find.text('Enregistré : C:/Téléchargements/rapport-sales.xlsx'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('un refus du serveur s’affiche tel quel', (tester) async {
+      final api = await _pump(tester);
+      api.exportError = const ApiException(
+        statusCode: 400,
+        message: 'Export trop volumineux : resserrez la période',
+        code: 'EXPORT_TOO_LARGE',
+      );
+
+      await tester.tap(find.byTooltip('Exporter').at(1));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CSV').last);
+      await tester.pumpAndSettle();
+
+      expect(api.exports.single, startsWith('stock csv'));
+      expect(
+        find.text('Export trop volumineux : resserrez la période'),
+        findsOneWidget,
+      );
+    });
+
+    test('nom de fichier : celui du serveur, sans chemin', () {
+      expect(
+        exportFilename(
+          'attachment; filename="rapport-ventes_2026-09-01_2026-09-30.csv"',
+          fallback: 'export.csv',
+        ),
+        'rapport-ventes_2026-09-01_2026-09-30.csv',
+      );
+      expect(
+        exportFilename('attachment; filename="../../x.csv"', fallback: 'f'),
+        'f',
+      );
+      expect(
+        exportFilename('attachment; filename="a/b.csv"', fallback: 'f'),
+        'a_b.csv',
+      );
+      expect(exportFilename(null, fallback: 'export.pdf'), 'export.pdf');
+    });
+  });
+
   testWidgets('les ventes affichent CA, TVA et période appliquée', (
     tester,
   ) async {

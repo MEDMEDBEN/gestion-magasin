@@ -300,15 +300,47 @@ réseau sans compte peut épuiser les 30/min de l'admin) ; consultation des rapp
 exigée) ; la marge d'une période passée bouge quand une réception change le dernier prix d'achat (règle 5 telle
 qu'écrite — l'écran dit « marge au dernier prix d'achat »).
 
+**Tranche B — exports, partie 1 : les trois rapports (2026-09-26)**
+- **`backend/src/common/export/export.ts`** = le SEUL écrivain Excel/CSV du projet (`exceljs`, qui écrit aussi le
+  CSV) ; le PDF passe par `renderPdf`. Un export n'est qu'une MISE EN FORME d'une lecture existante :
+  `renderExport(document, format)` prend des sections `{ colonnes typées, lignes }`, et `collectAll()` relit
+  toutes les pages d'une liste paginée EXISTANTE — c'est ce qui fera suivre le cloisonnement aux listes.
+  - Types de cellule : `money` (centimes → dinars calculés en ENTIERS pour le CSV), `quantity` (décimale en
+    chaîne, jamais un flottant en entrée), `date` (heure d'Alger ; un jour pur `AAAA-MM-JJ` reste tel quel).
+  - CSV « à la française » : `;`, virgule décimale, BOM (accents). **Injection de formule neutralisée** : un nom
+    commençant par `= + - @` reçoit une apostrophe (contre-éprouvé). Excel : vrais nombres et vraies dates.
+  - Plafond `MAX_EXPORT_ROWS` = 10 000 → 400 `EXPORT_TOO_LARGE` (« resserrez le filtre »), jamais une troncature
+    silencieuse.
+  - `exceljs` tirait `uuid@8` (2 vulnérabilités modérées) → `overrides` `uuid ^11.1.1` : `npm audit` à **0**,
+    écriture XLSX/CSV vérifiée.
+- **`GET /api/reports/{sales,stock,purchases}/export?format=xlsx|csv|pdf`** (+ période) : **mêmes décorateurs que
+  la lecture** (ADMIN, `@RequireFreshAccess`), débit plus serré (10/min). `Content-Disposition: attachment` avec
+  un nom daté (`rapport-ventes_2026-09-01_2026-09-30.xlsx`).
+- **App** : `core/file_export.dart` (téléchargement, nom annoncé par le serveur réduit à un nom SANS chemin,
+  enregistrement dans Téléchargements sans écraser) + `ui/widgets/export_button.dart` (menu Excel/CSV/PDF), posé
+  sur les trois cartes d'« Activité » ; il exporte la fenêtre affichée. Une erreur d'un téléchargement en octets
+  arrive AUSSI en octets : elle est décodée, sinon `EXPORT_TOO_LARGE` s'afficherait « Erreur inattendue ».
+- **Contre-épreuves** : `@RequireFreshAccess` retiré des exports → « admin rétrogradé » échoue ; vendeur ajouté
+  au `@Roles` des exports → « un fichier n'ouvre pas plus de portes » échoue ; neutralisation des formules
+  retirée → échoue ; décodage de l'erreur en octets retiré → échoue.
+- **Un test à moi qui ne tenait pas** : « ventes en Excel » supposait une fenêtre vide, vrai seul, faux dans la
+  suite complète (base e2e partagée). Il compare maintenant le fichier au rapport JSON de la même période.
+- **Preuve** : backend lint 0 · `tsc` propre · **105 unit** (dont 7 d'export) · **513 e2e** (35 suites, un
+  passage) ; app analyze propre · **+412 ~46**. **Aucun fichier ouvert dans un vrai tableur par un humain.**
+- Limite connue : sur Android, « Téléchargements » est le dossier propre à l'app (peu visible) ; l'écran est
+  ADMIN, pensé pour le poste fixe.
+
 **PROCHAINE ÉTAPE PRÉCISE**
 1. ~~Audits de la tranche A~~ → **faits**, voir ci-dessus.
-2. **Tranche B — exports.** `exceljs` **n'est pas installé** (`npm i exceljs`) et `backend/src/common/export/`
-   **reste à créer** : `CONVENTIONS.md` §131 impose **une seule** bibliothèque Excel/CSV, centralisée là. Ne pas
-   ajouter de bibliothèque CSV séparée : `exceljs` écrit aussi le CSV. Le PDF passe par
-   `common/pdf/pdf.ts` (`renderPdf`), **déjà en place** — ne pas en introduire un second.
-   À exporter, dans l'ordre d'utilité : les trois rapports ci-dessus, puis les listes d'historique que la spec
-   §8quinquies énumère (ventes, stock, mouvements, inventaires, achats, réceptions, clients, fournisseurs,
-   dettes). **Le cloisonnement doit suivre l'export** : un fichier n'est pas un contournement de permission.
+2. ~~Exports des trois rapports~~ → **faits**, voir ci-dessus.
+3. **Tranche B, partie 2 — exports des listes d'historique** (spec §8quinquies) : ventes, stock, mouvements,
+   inventaires, achats, réceptions, clients, fournisseurs, dettes. Recette pour chaque liste : route
+   `GET /<liste>/export?format=…&<mêmes filtres>` dans le contrôleur de la liste, **avec les décorateurs de la
+   route `GET` de la liste, recopiés à l'identique** ; lignes lues par `collectAll()` sur le `findAll(query, user)`
+   EXISTANT (donc même cloisonnement : un vendeur n'exporte que SES ventes) ; colonnes dans un
+   `<feature>.export.ts` construit à partir du DTO de liste (un champ absent du DTO n'est pas exportable) ; un e2e
+   « même refus que la liste » par route + une contre-épreuve. Côté app, `ExportButton` sur l'écran de la liste.
+4. Puis les deux audits de la tranche B (`reviewer`, `security-reviewer`).
 
 ### 🚧 P1 #20 PRODUITS DORMANTS / PRODUITS DEMANDÉS — LIVRÉS (2026-09-26 · **MEDMEDBEN**)
 Spec §20. Deux questions opposées dans un seul écran — « qu'est-ce qui ne part pas ? » et « qu'est-ce qu'on me

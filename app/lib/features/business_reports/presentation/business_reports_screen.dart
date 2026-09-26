@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/money.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../application/business_reports_controller.dart';
 import '../data/business_report_models.dart';
+import '../data/business_reports_api.dart';
 
 /// Rapports ventes / stock / achats (spec §21).
 ///
@@ -73,9 +76,11 @@ class _ReportCard<T> extends StatelessWidget {
     required this.value,
     required this.onRetry,
     required this.builder,
+    required this.onExport,
   });
 
   final String title;
+  final Future<ExportedFile> Function(ExportFormat format) onExport;
   final AsyncValue<T> value;
   final VoidCallback onRetry;
   final Widget Function(BuildContext context, T data) builder;
@@ -88,8 +93,13 @@ class _ReportCard<T> extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title, style: AmpereType.rowTitle),
-            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: Text(title, style: AmpereType.rowTitle)),
+                ExportButton(fetch: onExport),
+              ],
+            ),
+            const SizedBox(height: 4),
             value.when(
               loading: () => const _CardSkeleton(),
               error: (error, _) => ScreenStateView(
@@ -164,6 +174,18 @@ class _Figure extends StatelessWidget {
   }
 }
 
+/// Exporte la fenêtre CHOISIE à l'écran, celle que la carte affiche.
+Future<ExportedFile> _exportForRange(
+  WidgetRef ref,
+  String report,
+  ExportFormat format,
+) {
+  final range = rangeFor(ref.read(reportRangeProvider));
+  return ref
+      .read(businessReportsApiProvider)
+      .export(report, format, from: range.from, to: range.to);
+}
+
 String _moneyOrDash(int? centimes) =>
     centimes == null ? '—' : formatDA(centimes);
 
@@ -177,6 +199,7 @@ class _SalesCard extends ConsumerWidget {
       title: 'Ventes',
       value: ref.watch(salesReportProvider),
       onRetry: () => ref.invalidate(salesReportProvider),
+      onExport: (format) => _exportForRange(ref, 'sales', format),
       builder: (context, data) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -217,8 +240,7 @@ class _SalesCard extends ConsumerWidget {
           ),
           // Sans ce rappel, une marge calculée sur une partie du CA se lirait
           // comme la marge de toute la période.
-          if (data.totals.marginHt != null &&
-              data.totals.uncostedRevenueHt > 0)
+          if (data.totals.marginHt != null && data.totals.uncostedRevenueHt > 0)
             Text(
               'Marge calculée hors ${formatDA(data.totals.uncostedRevenueHt)} '
               'de ventes sans coût d’achat connu.',
@@ -263,6 +285,8 @@ class _StockCard extends ConsumerWidget {
       title: 'Stock',
       value: ref.watch(stockReportProvider),
       onRetry: () => ref.invalidate(stockReportProvider),
+      onExport: (format) =>
+          ref.read(businessReportsApiProvider).export('stock', format),
       builder: (context, data) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -316,6 +340,7 @@ class _PurchasesCard extends ConsumerWidget {
       title: 'Achats',
       value: ref.watch(purchasesReportProvider),
       onRetry: () => ref.invalidate(purchasesReportProvider),
+      onExport: (format) => _exportForRange(ref, 'purchases', format),
       builder: (context, data) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'business_report_models.dart';
 
@@ -37,6 +38,22 @@ class BusinessReportsApi {
       );
       return PurchasesReport.fromJson(response.data!);
     });
+  }
+
+  /// Fichier d'un rapport (`sales`, `stock`, `purchases`), rendu serveur, avec
+  /// la même garde ADMIN que la lecture. Le stock ignore la période.
+  Future<ExportedFile> export(
+    String report,
+    ExportFormat format, {
+    String? from,
+    String? to,
+  }) {
+    return fetchExport(
+      _dio,
+      '/reports/$report/export',
+      format,
+      query: {'from': ?from, 'to': ?to},
+    );
   }
 }
 
