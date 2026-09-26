@@ -88,6 +88,10 @@ class _FakeQuotesApi extends QuotesApi {
       'paidAmount': paidAmount,
       'cash': cashSessionId,
     });
+    if (failNext case final error?) {
+      failNext = null;
+      throw error;
+    }
     return Sale(
       id: 's1',
       number: 'TK-2026-000042',
@@ -187,7 +191,31 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Imprimer / partager le PDF'), findsOneWidget);
     expect(find.text('Le client accepte'), findsNothing);
+    expect(find.text('Marquer comme envoyé au client'), findsNothing);
     expect(find.textContaining('Convertir en vente'), findsNothing);
+    expect(find.text('Le client refuse'), findsOneWidget);
+  });
+
+  /// Coupure pendant la conversion : on ne sait pas si la vente est faite. Le
+  /// nouvel essai porte la MÊME clé, le serveur rend la vente déjà faite.
+  test('conversion : la clé survit à une coupure', () async {
+    final api = _FakeQuotesApi([]);
+    final container = ProviderContainer(
+      overrides: _overrides(api, cash: _openCash),
+    );
+    addTearDown(container.dispose);
+    final quote = _quote('2', QuoteStatus.accepted);
+    final actions = container.read(quoteActionsProvider);
+
+    api.failNext = const ApiException(statusCode: 0, message: 'coupure');
+    await expectLater(
+      actions.convert(quote, paidAmount: 119000),
+      throwsA(isA<ApiException>()),
+    );
+    await actions.convert(quote, paidAmount: 119000);
+
+    expect(api.converted, hasLength(2));
+    expect(api.converted[1]['key'], api.converted[0]['key']);
   });
 
   testWidgets('conversion : encaissement dans la caisse ouverte', (

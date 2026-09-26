@@ -211,7 +211,7 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #21a DEVIS — CODE LIVRÉ, **AUDITS EN COURS** (2026-09-26 · **MEDMEDBEN**)
+### 🚧 P1 #21a DEVIS — LIVRÉ ET AUDITÉ (2026-09-26 · **MEDMEDBEN**)
 Spec §8quater. **Aucune migration** : `Quote`, `QuoteLine`, `QuoteStatus`, `Sale.quoteId` et `DocumentType.DEVIS`
 existaient depuis la Phase 0 — vérifié avant d'appeler `db-migrator`.
 - **Une règle de prix, un endroit** : `SalesService.priceCart()` extrait de la vente (tarif du client, plancher du
@@ -241,10 +241,30 @@ existaient depuis la Phase 0 — vérifié avant d'appeler `db-migrator`.
 - **À confirmer par MEDMEDBEN** : visibilité PARTAGÉE des devis entre vendeurs (inverse des ventes) — écrit dans
   `docs/permissions.md`.
 
-**Prochaine étape précise** : passer `reviewer` puis `security-reviewer` sur le n°21a (`backend/src/sales/quotes.*`,
-`dto/quote.dto.ts`, `priceCart`/`storeIdentity`/`renderA4Document`, `test/quotes.e2e-spec.ts`,
-`app/lib/features/quotes/**`, le bouton « Faire un devis » de `sales_screen.dart`), appliquer, puis **P1 n°21b
-Étiquettes code-barres**.
+**Corrections des deux audits (2026-09-26)** — `reviewer` : **PAS OK** (2 bloquants, 2 importants, 6 mineurs) ;
+`security-reviewer` : **NON CONFORME** (1 élevé, 1 moyen = la décision de visibilité, 3 faibles). Recoupés et
+vérifiés dans le code ; tout appliqué.
+- 🔴 **Deux envois SIMULTANÉS de la même conversion** : le second attendait le verrou du devis, lisait CONVERTI et
+  répondait une erreur — alors que la vente était faite. Le verrou l'empêchait d'atteindre la contrainte unique que
+  `runOnce` sait relire. Il rend maintenant la vente déjà faite. **Contre-épreuve 3/3.**
+- 🔴 **Tests de concurrence manquants** (règle 6) : deux clés différentes → UNE vente, le stock sort une fois ;
+  même clé en même temps → la même vente aux deux ; clé déjà utilisée pour un autre devis → refusée.
+- 🟠 **Un prix baissé passait par le devis sans trace pour l'admin** (règle 13, trouvé par LES DEUX audits) :
+  `POST /sales` et la synchro tracent les prix modifiés, la conversion non. Tracé désormais sur le devis (à sa
+  création) ET sur la vente issue du devis ; un devis au tarif n'écrit rien.
+- 🟠 **Réponse de création perdue → second devis** : le renvoi du même id recevait 409 `CONFLICT`, l'app libérait
+  la clé et le clic suivant créait un second devis. Le même compte retrouve maintenant SON devis ; un id pris
+  par un autre compte reste refusé.
+- Mineurs : un devis expiré ne s'envoie plus (seul « refusé » reste possible, et l'app le propose) ; TVA changée
+  entre devis et vente → message qui dit d'établir un nouveau devis ; plafond de crédit réellement éprouvé ;
+  mouvement de caisse vérifié à la conversion ; garde du magasinier éprouvée route par route ; clé de conversion
+  gardée après une coupure (test app) ; un seul tampon rouge dans les PDF.
+- **Preuve (après corrections)** : backend lint 0 · `tsc` propre · **120 unit** · **553 e2e** (37 suites, un passage) dont
+  **22** de devis ; app `flutter analyze` propre · **+422 ~46** dont **7** de devis. Aucun écran vu par un humain.
+
+**Prochaine étape précise** : P1 **n°21b Étiquettes code-barres** imprimables (nom, prix, code-barres ; planche A4
+et rouleau thermique — spec §8ter, `CONVENTIONS.md` : `bwip-js` dans `common/barcode/`, PDF par `renderPdf`).
+Vérifier d'abord ce que `common/barcode/barcode.ts` sait déjà faire.
 
 ### 🚧 P1 #21 RAPPORTS VENTES / STOCK / ACHATS — **TRANCHE A** LIVRÉE ET AUDITÉE (2026-09-26 · **MEDMEDBEN**)
 Spec §21. **Aucune migration.** Trois lectures de synthèse, **ADMIN seul**, dans `backend/src/reports/`.
@@ -2191,7 +2211,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
 | Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranches A et B livrées et auditées** (2026-09-26) | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
-| Devis (P1 #21a) | 🟡 **Code livré** (2026-09-26), audits en cours | 🟢 Prix partagé avec la vente, conversion atomique | 🟢 Panier → devis, écran Devis | 🟢 16 e2e · 6 widget | 🔴 audits à passer |
+| Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
 | Étiquettes, documents, import (P1 #21b-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture

@@ -237,6 +237,9 @@ de la vente. Mutation d'argent : dans `MONEY_ROUTES`, clé d'idempotence obligat
 ⚠️ **À confirmer par MEDMEDBEN — visibilité PARTAGÉE** : tout vendeur voit et convertit les devis de tous
 (un client qui revient ne retombe pas toujours sur le même vendeur). C'est l'inverse des ventes, où le
 vendeur ne voit que les siennes. Revenir au cloisonnement = une ligne dans `QuotesService`.
+Conséquences à connaître : un vendeur peut aussi REFUSER le devis d'un collègue (tracé dans l'Historique avec
+son auteur) ; et si un collègue convertit mon devis, la vente est à SON nom — je vois qu'elle existe, mais
+`GET /sales/:id` me la refuse (les ventes restent cloisonnées).
 
 ## Rapports produits (P1 n°20, ajouté le 2026-09-26)
 | Action | Admin | Vendeur/Caissier | Magasinier |

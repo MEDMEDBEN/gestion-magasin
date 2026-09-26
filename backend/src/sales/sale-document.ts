@@ -55,13 +55,13 @@ export function renderSaleDocument(data: SaleDocumentData): Promise<Buffer> {
   return data.sale.invoiceNumber ? renderInvoice(data) : renderTicket(data);
 }
 
-function stampCancelled(doc: PdfDoc, sale: SaleDto, x: number, width: number) {
-  if (sale.status !== 'ANNULEE') return;
+/// Mention en rouge, centrée (vente annulée, devis refusé…).
+function stamp(doc: PdfDoc, text: string, x: number, width: number) {
   doc
     .moveDown(0.5)
     .font('Helvetica-Bold')
     .fillColor('#b00020')
-    .text('VENTE ANNULÉE', x, doc.y, { width, align: 'center' })
+    .text(text, x, doc.y, { width, align: 'center' })
     .fillColor('black');
 }
 
@@ -153,7 +153,7 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
       if (sale.remainingAmount > 0) {
         row('Reste dû (crédit)', formatDA(sale.remainingAmount), true);
       }
-      stampCancelled(doc, sale, x, w);
+      if (sale.status === 'ANNULEE') stamp(doc, 'VENTE ANNULÉE', x, w);
       rule();
       doc
         .font('Helvetica')
@@ -337,14 +337,7 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
       total('Total TTC', formatDA(input.totalTtc), true);
       if (input.after.length > 0) doc.moveDown(0.5);
       for (const [label, amount] of input.after) total(label, amount);
-      if (input.stamp) {
-        doc
-          .moveDown(0.5)
-          .font('Helvetica-Bold')
-          .fillColor('#b00020')
-          .text(input.stamp, left, doc.y, { width: w, align: 'center' })
-          .fillColor('black');
-      }
+      if (input.stamp) stamp(doc, input.stamp, left, w);
       doc
         .font('Helvetica')
         .fontSize(8)

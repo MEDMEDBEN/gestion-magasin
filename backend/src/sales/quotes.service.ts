@@ -74,12 +74,23 @@ export class QuotesService {
   ): Promise<QuoteDto> {
     const validUntil = QuotesService.validUntil(dto.validUntil);
     return this.prisma.$transaction(async (tx) => {
-      if (dto.id && (await tx.quote.findUnique({ where: { id: dto.id } }))) {
-        throw new BusinessException(
-          ErrorCode.CONFLICT,
-          'Ce devis existe déjà',
-          HttpStatus.CONFLICT,
-        );
+      // Renvoi (réponse perdue) : le MÊME compte retrouve SON devis, jamais un
+      // second. Un id déjà pris par un autre compte reste un conflit.
+      const existing = dto.id
+        ? await tx.quote.findUnique({
+            where: { id: dto.id },
+            include: QUOTE_INCLUDE,
+          })
+        : null;
+      if (existing) {
+        if (existing.userId !== user.id) {
+          throw new BusinessException(
+            ErrorCode.CONFLICT,
+            'Cet identifiant de devis est déjà pris',
+            HttpStatus.CONFLICT,
+          );
+        }
+        return QuotesService.toDto(existing);
       }
       const customer = dto.customerId
         ? await tx.customer.findFirst({
@@ -130,7 +141,13 @@ export class QuotesService {
         action: 'CREATE',
         entityType: 'Quote',
         entityId: quote.id,
-        newValue: { number: quote.number, totalTtc: quote.totalTtc },
+        newValue: {
+          number: quote.number,
+          totalTtc: quote.totalTtc,
+          // Même trace que `POST /sales` (décision 2026-09-22) : le prix
+          // promis au client, s'il n'est pas celui du tarif.
+          priceOverrides: QuotesService.overrides(priced.lines),
+        },
       });
       return QuotesService.toDto(quote);
     });
@@ -184,7 +201,7 @@ export class QuotesService {
     return this.prisma.$transaction(async (tx) => {
       const quote = await QuotesService.lock(tx, id);
       const status = QuotesService.effectiveStatus(quote);
-      if (status === 'EXPIRE' && action === 'accept') {
+      if (status === 'EXPIRE' && action !== 'refuse') {
         throw QuotesService.expired(quote.number);
       }
       if (!rule.from.includes(quote.status)) {
@@ -265,6 +282,19 @@ export class QuotesService {
       () =>
         this.prisma.$transaction(async (tx) => {
           const quote = await QuotesService.lock(tx, id);
+          // Deux envois SIMULTANÉS de la même clé : le second a attendu le
+          // verrou pendant que le premier convertissait. Il rend la vente déjà
+          // faite, comme un renvoi — le verrou l'empêche d'atteindre la
+          // contrainte unique que `runOnce` sait relire.
+          if (quote.status === 'CONVERTI') {
+            const done = await tx.sale.findUnique({
+              where: { clientMutationId: dto.clientMutationId },
+              select: { quoteId: true },
+            });
+            if (done?.quoteId === id) {
+              return (await this.sales.replay(tx, saleDto(quote), user))!;
+            }
+          }
           if (QuotesService.effectiveStatus(quote) === 'EXPIRE') {
             throw QuotesService.expired(quote.number);
           }
@@ -277,14 +307,26 @@ export class QuotesService {
               HttpStatus.CONFLICT,
             );
           }
-          const sale = await this.sales.createInTx(
-            tx,
-            saleDto(quote),
-            user,
-            new Date(),
-            false,
-            { quoteId: id },
-          );
+          const sale = await this.sales
+            .createInTx(tx, saleDto(quote), user, new Date(), false, {
+              quoteId: id,
+            })
+            .catch((error: unknown) => {
+              // Les prix du devis sont figés ; seul un taux de TVA changé depuis
+              // fait bouger le total. Le devis ne peut plus être tenu tel quel.
+              if (
+                error instanceof BusinessException &&
+                (error.getResponse() as { code?: string }).code ===
+                  ErrorCode.SALE_TOTAL_CHANGED
+              ) {
+                throw new BusinessException(
+                  ErrorCode.SALE_TOTAL_CHANGED,
+                  `Devis ${quote.number} : la TVA a changé depuis, le total n’est plus le même — établissez un nouveau devis`,
+                  HttpStatus.CONFLICT,
+                );
+              }
+              throw error;
+            });
           await tx.quote.update({
             where: { id },
             data: { status: 'CONVERTI' },
@@ -296,6 +338,21 @@ export class QuotesService {
             oldValue: { status: 'ACCEPTE' },
             newValue: { status: 'CONVERTI', sale: sale.number },
           });
+          // Même trace que `POST /sales` : un prix promis sous (ou sur) le
+          // tarif du jour est une vente à prix modifié, que l'admin doit voir.
+          const overrides = QuotesService.overrides(sale.lines);
+          if (overrides.length > 0) {
+            await writeAudit(tx, actor, {
+              action: 'CREATE',
+              entityType: 'Sale',
+              entityId: sale.id,
+              newValue: {
+                number: sale.number,
+                quote: quote.number,
+                priceOverrides: overrides,
+              },
+            });
+          }
           return sale;
         }),
     );
@@ -406,6 +463,24 @@ export class QuotesService {
     });
     if (!quote) throw QuotesService.notFound();
     return quote;
+  }
+
+  /// Lignes dont le prix appliqué n'est pas celui du tarif (même forme que
+  /// `SalesService.priceOverrides`).
+  private static overrides(
+    lines: {
+      productId: string;
+      unitPriceHt: number;
+      tariffPriceHt: number | null;
+    }[],
+  ) {
+    return lines
+      .filter((l) => l.unitPriceHt !== l.tariffPriceHt)
+      .map((l) => ({
+        productId: l.productId,
+        tariffPriceHt: l.tariffPriceHt,
+        unitPriceHt: l.unitPriceHt,
+      }));
   }
 
   private static notFound() {

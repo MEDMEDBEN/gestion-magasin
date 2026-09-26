@@ -249,6 +249,20 @@ describe('Devis (e2e)', () => {
       await createQuote(tokens.magasinier, body).expect(403);
       await as(tokens.magasinier).get('/api/quotes').expect(403);
       await request(server).get('/api/quotes').expect(401);
+      // Garde de CLASSE : aucune route du contrôleur n'y échappe.
+      const quote = (await createQuote(tokens.vendeur, body).expect(201)).body;
+      for (const url of [
+        `/api/quotes/${quote.id}`,
+        `/api/quotes/${quote.id}/pdf`,
+      ]) {
+        await as(tokens.magasinier).get(url).expect(403);
+      }
+      for (const action of ['send', 'accept', 'refuse', 'convert']) {
+        await as(tokens.magasinier)
+          .post(`/api/quotes/${quote.id}/${action}`)
+          .send({ clientMutationId: randomUUID(), paidAmount: 0 })
+          .expect(403);
+      }
     });
   });
 
@@ -325,6 +339,10 @@ describe('Devis (e2e)', () => {
         .post(`/api/quotes/${brouillon.id}/accept`)
         .expect(409);
       expect(accept.body.code).toBe('QUOTE_EXPIRED');
+      const send = await as(tokens.vendeur)
+        .post(`/api/quotes/${brouillon.id}/send`)
+        .expect(409);
+      expect(send.body.code).toBe('QUOTE_EXPIRED');
       const conv = await convert(tokens.vendeur, accepte.id, {
         paidAmount: 0,
       }).expect(409);
@@ -362,6 +380,11 @@ describe('Devis (e2e)', () => {
         where: { id: sale.id },
       });
       expect(row.quoteId).toBe(quote.id);
+      // Les espèces sont entrées dans la caisse de celui qui convertit.
+      const cash = await prisma.cashMovement.findMany({
+        where: { saleId: sale.id },
+      });
+      expect(cash.map((m) => m.amount)).toEqual([quote.totalTtc]);
     });
 
     it('renvoi de la même clé : la même vente ; autre clé : refusée', async () => {
@@ -462,6 +485,22 @@ describe('Devis (e2e)', () => {
       ).body;
       expect(sale.customerId).toBe(c);
       expect(sale.remainingAmount).toBe(client.totalTtc);
+
+      // Au-delà du plafond du client : refusée, le devis reste ACCEPTÉ.
+      const petit = await customer(1_000);
+      const tropCher = await accepted({
+        customerId: petit,
+        lines: [{ productId: p, quantity: '1' }],
+      });
+      const plafond = await convert(tokens.vendeur, tropCher.id, {
+        paidAmount: 0,
+        dueDate: '2099-12-31',
+      }).expect(422);
+      expect(plafond.body.code).toBe('CREDIT_LIMIT_EXCEEDED');
+      expect(
+        (await as(tokens.vendeur).get(`/api/quotes/${tropCher.id}`)).body
+          .status,
+      ).toBe('ACCEPTE');
     });
 
     it('seul un devis ACCEPTÉ se convertit', async () => {
@@ -496,5 +535,124 @@ describe('Devis (e2e)', () => {
       .expect(200);
     expect((res.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
     expect(res.headers['content-disposition']).toContain(`${quote.number}.pdf`);
+  });
+
+  /// Réponse perdue, même id renvoyé : le même devis, jamais un second.
+  it('création renvoyée avec le même id : le même devis ; id d’un autre compte : refusé', async () => {
+    const p = await product('1.000');
+    const id = randomUUID();
+    const body = { id, lines: [{ productId: p, quantity: '1' }] };
+    const first = await createQuote(tokens.vendeur, body).expect(201);
+    const again = await createQuote(tokens.vendeur, body).expect(201);
+    expect(again.body.number).toBe(first.body.number);
+    expect(await prisma.quote.count({ where: { id } })).toBe(1);
+    await createQuote(tokens.autreVendeur, body).expect(409);
+  });
+
+  /// Décision 2026-09-22 : une vente à prix modifié est tracée pour l'admin —
+  /// y compris quand le prix a transité par un devis.
+  it('prix modifié : tracé sur le devis ET sur la vente issue du devis', async () => {
+    const p = await product('5.000');
+    const quote = await accepted({
+      lines: [
+        { productId: p, quantity: '1', unitPriceHt: 130000, priceEdited: true },
+      ],
+    });
+    const created = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: 'Quote', entityId: quote.id, action: 'CREATE' },
+    });
+    expect(created.newValue).toMatchObject({
+      priceOverrides: [
+        { productId: p, tariffPriceHt: 145000, unitPriceHt: 130000 },
+      ],
+    });
+
+    const sale = (
+      await convert(tokens.vendeur, quote.id, {
+        paidAmount: quote.totalTtc,
+      }).expect(201)
+    ).body;
+    const traced = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: 'Sale', entityId: sale.id },
+    });
+    expect(traced.newValue).toMatchObject({
+      quote: quote.number,
+      priceOverrides: [
+        { productId: p, tariffPriceHt: 145000, unitPriceHt: 130000 },
+      ],
+    });
+  });
+
+  it('au tarif : aucune trace de prix modifié sur la vente', async () => {
+    const p = await product('5.000');
+    const quote = await accepted({ lines: [{ productId: p, quantity: '1' }] });
+    const sale = (
+      await convert(tokens.vendeur, quote.id, {
+        paidAmount: quote.totalTtc,
+      }).expect(201)
+    ).body;
+    expect(
+      await prisma.auditLog.count({
+        where: { entityType: 'Sale', entityId: sale.id },
+      }),
+    ).toBe(0);
+  });
+
+  /// Règle 6 de CONVENTIONS.md : tout chemin argent/stock a son test de
+  /// concurrence. Le verrou du devis tient la conversion unique.
+  describe('conversions simultanées', () => {
+    it('deux clés différentes : UNE vente, le stock sort une fois', async () => {
+      const p = await product('10.000');
+      const quote = await accepted({
+        lines: [{ productId: p, quantity: '2' }],
+      });
+      const [a, b] = await Promise.all([
+        convert(tokens.vendeur, quote.id, { paidAmount: quote.totalTtc }),
+        convert(tokens.autreVendeur, quote.id, { paidAmount: quote.totalTtc }),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([201, 409]);
+      expect(await prisma.sale.count({ where: { quoteId: quote.id } })).toBe(1);
+      expect(await stockOf(p)).toBe('8.000');
+    });
+
+    it('la même clé en même temps : la même vente aux deux', async () => {
+      const p = await product('10.000');
+      const quote = await accepted({
+        lines: [{ productId: p, quantity: '1' }],
+      });
+      const body = {
+        clientMutationId: randomUUID(),
+        paidAmount: quote.totalTtc,
+      };
+      const [a, b] = await Promise.all([
+        as(tokens.vendeur).post(`/api/quotes/${quote.id}/convert`).send(body),
+        as(tokens.vendeur).post(`/api/quotes/${quote.id}/convert`).send(body),
+      ]);
+      expect([a.status, b.status]).toEqual([201, 201]);
+      expect(a.body.id).toBe(b.body.id);
+      expect(await stockOf(p)).toBe('9.000');
+    });
+
+    it('une clé déjà utilisée pour un AUTRE devis : refusée', async () => {
+      const p = await product('10.000');
+      const first = await accepted({
+        lines: [{ productId: p, quantity: '1' }],
+      });
+      const second = await accepted({
+        lines: [{ productId: p, quantity: '1' }],
+      });
+      const key = randomUUID();
+      await as(tokens.vendeur)
+        .post(`/api/quotes/${first.id}/convert`)
+        .send({ clientMutationId: key, paidAmount: first.totalTtc })
+        .expect(201);
+      await as(tokens.vendeur)
+        .post(`/api/quotes/${second.id}/convert`)
+        .send({ clientMutationId: key, paidAmount: second.totalTtc })
+        .expect(409);
+      expect(
+        (await as(tokens.vendeur).get(`/api/quotes/${second.id}`)).body.status,
+      ).toBe('ACCEPTE');
+    });
   });
 });

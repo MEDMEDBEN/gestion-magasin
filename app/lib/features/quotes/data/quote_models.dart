@@ -30,7 +30,11 @@ enum QuoteStatus {
   /// Mêmes transitions que le serveur (`QuotesService`).
   bool get canSend => this == QuoteStatus.draft;
   bool get canAccept => this == QuoteStatus.draft || this == QuoteStatus.sent;
-  bool get canRefuse => canAccept || this == QuoteStatus.accepted;
+
+  /// Un devis expiré se clôt encore en « refusé » (le serveur l'accepte) : il
+  /// ne s'envoie ni ne s'accepte plus.
+  bool get canRefuse =>
+      canAccept || this == QuoteStatus.accepted || this == QuoteStatus.expired;
   bool get canConvert => this == QuoteStatus.accepted;
 }
 
