@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'purchases_models.dart';
 
@@ -53,6 +54,17 @@ class PurchasesApi {
       );
       return PurchaseOrder.fromJson(response.data!);
     });
+  }
+
+  /// Commandes fournisseurs des 12 derniers mois.
+  Future<ExportedFile> exportOrders(ExportFormat format) {
+    final window = lastYearWindow();
+    return fetchExport(
+      _dio,
+      '/purchase-orders/export',
+      format,
+      query: {'from': window.from, 'to': window.to},
+    );
   }
 }
 

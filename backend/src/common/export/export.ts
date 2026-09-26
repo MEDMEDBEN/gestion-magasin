@@ -3,6 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 import { Workbook } from 'exceljs';
 import { BusinessException } from '../business.exception';
+import { intFromEnv } from '../env';
 import { ErrorCode } from '../error-codes';
 import { formatDA, PdfDoc, renderPdf } from '../pdf/pdf';
 
@@ -17,6 +18,12 @@ import { formatDA, PdfDoc, renderPdf } from '../pdf/pdf';
 
 export const EXPORT_FORMATS = ['xlsx', 'csv', 'pdf'] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+/// Débit des exports, par IP et par route : un rendu de fichier coûte plus
+/// qu'une réponse JSON. Une seule définition pour toutes les routes d'export.
+export const EXPORT_THROTTLE = {
+  default: { ttl: 60_000, limit: intFromEnv('EXPORT_RATE_LIMIT', 10) },
+};
 
 /// Types MIME des trois formats, pour le contrat OpenAPI (`@ApiProduces`).
 export const EXPORT_TYPES = [
@@ -177,6 +184,18 @@ function algiersParts(value: Date | string) {
     hh: get('hour'),
     mm: get('minute'),
   };
+}
+
+/// Période annoncée dans le sous-titre et le nom de fichier d'un export.
+export function periodLabel(from?: string, to?: string): string {
+  if (from && to) return `du ${frenchDay(from)} au ${frenchDay(to)}`;
+  if (from) return `depuis le ${frenchDay(from)}`;
+  if (to) return `jusqu’au ${frenchDay(to)}`;
+  return 'tout l’historique';
+}
+
+export function periodSlug(from?: string, to?: string): string {
+  return from || to ? `_${from ?? 'debut'}_${to ?? 'fin'}` : '';
 }
 
 /// `AAAA-MM-JJ` → `JJ/MM/AAAA`, pour un sous-titre de période.

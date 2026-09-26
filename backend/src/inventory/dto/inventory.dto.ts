@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -161,6 +166,11 @@ export class InventoryListQueryDto extends PaginationQueryDto {
   @IsOptional()
   status?: string;
 }
+
+export class InventoryExportQueryDto extends IntersectionType(
+  InventoryListQueryDto,
+  ExportFormatQueryDto,
+) {}
 
 export class InventoryListDto {
   @ApiProperty({ type: [InventoryDto] }) data!: InventoryDto[];

@@ -7,12 +7,15 @@ import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../../receptions/application/receptions_controller.dart';
+import '../../receptions/data/receptions_api.dart';
 import '../../receptions/presentation/reception_form.dart';
 import '../application/purchases_controller.dart';
+import '../data/purchases_api.dart';
 import '../data/purchases_models.dart';
 import 'purchase_order_form.dart';
 
@@ -75,19 +78,35 @@ class PurchasesScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (rights.canWrite)
-          Padding(
-            padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: () =>
-                    openFormPanel<void>(context, const PurchaseOrderForm()),
-                icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('Nouvelle commande'),
-              ),
-            ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              // Miroirs des gardes serveur de `GET /purchase-orders/export` et
+              // `GET /receptions/export`.
+              if (rights.canWrite)
+                ExportButton(
+                  tooltip: 'Exporter les commandes (12 mois)',
+                  fetch: ref.read(purchasesApiProvider).exportOrders,
+                ),
+              if (rights.canReceive)
+                ExportButton(
+                  tooltip: 'Exporter les réceptions (12 mois)',
+                  fetch: ref.read(receptionsApiProvider).exportReceptions,
+                ),
+              if (rights.canWrite) ...[
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: () =>
+                      openFormPanel<void>(context, const PurchaseOrderForm()),
+                  icon: const Icon(LucideIcons.plus, size: 17),
+                  label: const Text('Nouvelle commande'),
+                ),
+              ],
+            ],
           ),
+        ),
         Expanded(
           child: orders.when(
             loading: () => const AmpereSkeletonList(rows: 5),

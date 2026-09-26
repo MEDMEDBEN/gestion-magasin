@@ -8,11 +8,13 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/offline_documents_notice.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../application/inventory_controller.dart';
+import '../data/inventory_api.dart';
 import '../data/inventory_models.dart';
 import 'inventory_count_form.dart';
 import 'inventory_start_form.dart';
@@ -88,19 +90,28 @@ class InventoryScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (rights.canCount)
-          Padding(
-            padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: () =>
-                    openFormPanel<void>(context, const InventoryStartForm()),
-                icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('Lancer un inventaire'),
-              ),
-            ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              // Même garde que la liste affichée ici (`inventory.create`).
+              if (rights.canCount) ...[
+                ExportButton(
+                  tooltip: 'Exporter les inventaires',
+                  fetch: ref.read(inventoryApiProvider).exportInventories,
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: () =>
+                      openFormPanel<void>(context, const InventoryStartForm()),
+                  icon: const Icon(LucideIcons.plus, size: 17),
+                  label: const Text('Lancer un inventaire'),
+                ),
+              ],
+            ],
           ),
+        ),
         Expanded(
           child: inventories.when(
             loading: () => const AmpereSkeletonList(rows: 5),

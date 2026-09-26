@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { BusinessException } from '../common/business.exception';
-import { startOfLocalDayOf } from '../common/document-number';
+import { localDayRange } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
-import { ErrorCode } from '../common/error-codes';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -29,28 +27,14 @@ export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: AuditLogQueryDto): Promise<AuditLogListDto> {
-    const from = query.from ? startOfLocalDayOf(query.from, 'from') : undefined;
-    // `to` INCLUS : on s'arrête au début du lendemain.
-    const until = query.to
-      ? new Date(startOfLocalDayOf(query.to, 'to').getTime() + 86_400_000)
-      : undefined;
-    if (from && until && from >= until) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'Période vide : « du » doit précéder ou égaler « au »',
-      );
-    }
+    // Jours civils d'Alger, `to` INCLUS.
+    const createdAt = localDayRange(query.from, query.to);
     const where: Prisma.AuditLogWhereInput = {
       ...(query.entityType && { entityType: query.entityType }),
       ...(query.entityId && { entityId: query.entityId }),
       ...(query.userId && { userId: query.userId }),
       ...(query.action && { action: query.action }),
-      ...((from || until) && {
-        createdAt: {
-          ...(from && { gte: from }),
-          ...(until && { lt: until }),
-        },
-      }),
+      ...(createdAt && { createdAt }),
     };
     const [rows, total] = await Promise.all([
       this.prisma.auditLog.findMany({

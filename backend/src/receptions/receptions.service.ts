@@ -17,8 +17,18 @@ import {
   CreateReceptionDto,
   ReceptionDto,
   ReceptionListDto,
+  ReceptionExportQueryDto,
   ReceptionListQueryDto,
 } from './dto/reception.dto';
+import { localDayRange } from '../common/document-number';
+import {
+  collectAll,
+  ExportDocument,
+  periodLabel,
+  periodSlug,
+  section,
+} from '../common/export/export';
+import { loadExportNames } from '../common/export/export-names';
 
 type Db = Prisma.TransactionClient;
 type ReceptionWithLines = Reception & { lines: ReceptionLine[] };
@@ -244,10 +254,52 @@ export class ReceptionsService {
     };
   }
 
+  /// Export (spec §8quinquies) : les bons de `findAll`, mêmes filtres.
+  async exportDocument(
+    query: ReceptionExportQueryDto,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }),
+    );
+    const names = await loadExportNames(this.prisma, {
+      suppliers: rows.map((r) => r.supplierId),
+      locations: rows.map((r) => r.locationId),
+      users: rows.map((r) => r.userId),
+    });
+    return {
+      title: 'Réceptions',
+      subtitle: `${rows.length} bon(s) de réception ${periodLabel(query.from, query.to)}`,
+      filename: `receptions${periodSlug(query.from, query.to)}`,
+      sections: [
+        section({
+          columns: [
+            { header: 'Numéro', value: (r) => r.number },
+            { header: 'Reçue le', kind: 'date', value: (r) => r.receivedAt },
+            {
+              header: 'Fournisseur',
+              value: (r) => names.supplier(r.supplierId),
+            },
+            {
+              header: 'Emplacement',
+              value: (r) => names.location(r.locationId),
+            },
+            { header: 'Lignes', kind: 'integer', value: (r) => r.lines.length },
+            { header: 'TTC', kind: 'money', value: (r) => r.totalTtc },
+            { header: 'Reçue par', value: (r) => names.user(r.userId) },
+            { header: 'Note', value: (r) => r.note },
+          ],
+          rows,
+        }),
+      ],
+    };
+  }
+
   async findAll(query: ReceptionListQueryDto): Promise<ReceptionListDto> {
+    const receivedAt = localDayRange(query.from, query.to);
     const where: Prisma.ReceptionWhereInput = {
       ...(query.supplierId && { supplierId: query.supplierId }),
       ...(query.purchaseOrderId && { purchaseOrderId: query.purchaseOrderId }),
+      ...(receivedAt && { receivedAt }),
     };
     const [rows, total] = await Promise.all([
       this.prisma.reception.findMany({

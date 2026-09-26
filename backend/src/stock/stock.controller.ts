@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -17,7 +18,9 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnprocessableEntityResponse,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
@@ -32,14 +35,22 @@ import { PERMISSIONS } from '../common/permissions';
 import {
   DeclareLossDto,
   LossQueryDto,
+  MovementExportQueryDto,
   MovementQueryDto,
   RejectLossDto,
   StockListDto,
   StockLossDto,
   StockLossListDto,
   StockMovementListDto,
+  StockExportQueryDto,
   StockQueryDto,
 } from './dto/stock.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { StockService } from './stock.service';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
@@ -71,6 +82,26 @@ export class StockController {
     return this.stockService.findStock(query, user);
   }
 
+  /// Export : MÊMES gardes que `GET /stock`, mêmes emplacements visibles.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({ summary: 'Stock en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async exportStock(
+    @Query() query: StockExportQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.stockService.exportStock(query, user),
+        query.format,
+      ),
+    );
+  }
+
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
   @Get('movements')
@@ -84,6 +115,26 @@ export class StockController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<StockMovementListDto> {
     return this.stockService.findMovements(query, user);
+  }
+
+  /// Export : MÊMES gardes que `GET /stock/movements`, mêmes filtres.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('movements/export')
+  @ApiOperation({ summary: 'Mouvements de stock en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async exportMovements(
+    @Query() query: MovementExportQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.stockService.exportMovements(query, user),
+        query.format,
+      ),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

@@ -10,11 +10,13 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../application/stock_controller.dart';
+import '../data/stock_api.dart';
 import '../data/stock_models.dart';
 import 'loss_form.dart';
 import 'stock_status.dart';
@@ -144,20 +146,34 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection> {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 10),
-          child: TextField(
-            controller: _search,
-            autocorrect: false,
-            style: AmpereType.input.copyWith(color: colors.ink),
-            decoration: InputDecoration(
-              hintText: 'Nom, référence, code-barres',
-              prefixIcon: const Icon(LucideIcons.search, size: 17),
-              suffixIcon: IconButton(
-                tooltip: 'Actualiser le stock',
-                icon: const Icon(LucideIcons.refreshCw, size: 17),
-                onPressed: () => ref.invalidate(stockByProductProvider),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _search,
+                  autocorrect: false,
+                  style: AmpereType.input.copyWith(color: colors.ink),
+                  decoration: InputDecoration(
+                    hintText: 'Nom, référence, code-barres',
+                    prefixIcon: const Icon(LucideIcons.search, size: 17),
+                    suffixIcon: IconButton(
+                      tooltip: 'Actualiser le stock',
+                      icon: const Icon(LucideIcons.refreshCw, size: 17),
+                      onPressed: () => ref.invalidate(stockByProductProvider),
+                    ),
+                  ),
+                  onChanged: ref.read(productFilterProvider.notifier).setSearch,
+                ),
               ),
-            ),
-            onChanged: ref.read(productFilterProvider.notifier).setSearch,
+              ExportButton(
+                tooltip: 'Exporter le stock',
+                fetch: ref.read(stockApiProvider).exportLevels,
+              ),
+              ExportButton(
+                tooltip: 'Exporter les mouvements (12 mois)',
+                fetch: ref.read(stockApiProvider).exportMovements,
+              ),
+            ],
           ),
         ),
         Expanded(

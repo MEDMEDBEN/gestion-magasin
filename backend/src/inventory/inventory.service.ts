@@ -16,10 +16,13 @@ import {
   CreateInventoryDto,
   InventoryDto,
   InventoryListDto,
+  InventoryExportQueryDto,
   InventoryListQueryDto,
   InventoryTypeDto,
   SubmitCountDto,
 } from './dto/inventory.dto';
+import { collectAll, ExportDocument, section } from '../common/export/export';
+import { loadExportNames } from '../common/export/export-names';
 
 type Db = Prisma.TransactionClient;
 type InventoryWithLines = Inventory & { lines: InventoryLine[] };
@@ -286,6 +289,78 @@ export class InventoryService {
       });
       return InventoryService.toDto(after);
     });
+  }
+
+  /// Export (spec §8quinquies) : les inventaires de `findAll`, mêmes filtres,
+  /// puis le détail de leurs lignes — c'est l'écart qu'on veut relire.
+  async exportDocument(
+    query: InventoryExportQueryDto,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }),
+    );
+    const lines = rows.flatMap((inventory) =>
+      inventory.lines.map((line) => ({ inventory, line })),
+    );
+    const names = await loadExportNames(this.prisma, {
+      locations: rows.map((r) => r.locationId),
+      users: rows.flatMap((r) => [r.createdById, r.validatedById]),
+      products: lines.map((l) => l.line.productId),
+    });
+    return {
+      title: 'Inventaires',
+      subtitle: `${rows.length} inventaire(s)`,
+      filename: 'inventaires',
+      sections: [
+        section({
+          title: 'Inventaires',
+          columns: [
+            { header: 'Numéro', value: (i) => i.number },
+            { header: 'Type', value: (i) => i.type },
+            { header: 'Statut', value: (i) => i.status },
+            {
+              header: 'Emplacement',
+              value: (i) => names.location(i.locationId),
+            },
+            { header: 'Zone', value: (i) => i.zone },
+            { header: 'Commencé le', kind: 'date', value: (i) => i.startedAt },
+            { header: 'Terminé le', kind: 'date', value: (i) => i.completedAt },
+            { header: 'Validé le', kind: 'date', value: (i) => i.validatedAt },
+            { header: 'Créé par', value: (i) => names.user(i.createdById) },
+            { header: 'Validé par', value: (i) => names.user(i.validatedById) },
+          ],
+          rows,
+        }),
+        section({
+          title: 'Lignes comptées',
+          columns: [
+            { header: 'Inventaire', value: (l) => l.inventory.number },
+            { header: 'Référence', value: (l) => names.sku(l.line.productId) },
+            {
+              header: 'Produit',
+              value: (l) => names.product(l.line.productId),
+            },
+            {
+              header: 'Théorique',
+              kind: 'quantity',
+              value: (l) => l.line.theoreticalQuantity,
+            },
+            {
+              header: 'Compté',
+              kind: 'quantity',
+              value: (l) => l.line.countedQuantity,
+            },
+            {
+              header: 'Écart',
+              kind: 'quantity',
+              value: (l) => l.line.difference,
+            },
+            { header: 'État', value: (l) => l.line.state },
+          ],
+          rows: lines,
+        }),
+      ],
+    };
   }
 
   async findAll(query: InventoryListQueryDto): Promise<InventoryListDto> {

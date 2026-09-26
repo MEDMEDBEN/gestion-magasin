@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   DeclareLossDto,
   LossQueryDto,
+  MovementExportQueryDto,
   MovementQueryDto,
   RejectLossDto,
   StockListDto,
@@ -26,8 +27,11 @@ import {
   StockMovementDto,
   StockMovementListDto,
   StockMovementTypeDto,
+  StockExportQueryDto,
   StockQueryDto,
 } from './dto/stock.dto';
+import { collectAll, ExportDocument, section } from '../common/export/export';
+import { loadExportNames } from '../common/export/export-names';
 import { StockLedgerService } from './stock-ledger.service';
 
 type Db = Prisma.TransactionClient;
@@ -42,6 +46,94 @@ export class StockService {
 
   /// Stock par produit × emplacement. Le stock du dépôt (tout ce qui n'est pas le
   /// MAGASIN) exige en plus `stock.read.warehouse` (docs/permissions.md).
+  /// Export du stock (spec §8quinquies) : les lignes de `findStock`, donc les
+  /// MÊMES emplacements visibles (le dépôt exige `stock.read.warehouse`).
+  async exportStock(
+    query: StockExportQueryDto,
+    viewer: Viewer,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findStock({ ...query, page, limit }, viewer),
+    );
+    const names = await loadExportNames(this.prisma, {
+      products: rows.map((r) => r.productId),
+      locations: rows.map((r) => r.locationId),
+    });
+    return {
+      title: 'Stock',
+      subtitle: `${rows.length} ligne(s) produit × emplacement`,
+      filename: 'stock',
+      sections: [
+        section({
+          columns: [
+            { header: 'Référence', value: (r) => names.sku(r.productId) },
+            { header: 'Produit', value: (r) => names.product(r.productId) },
+            { header: 'Unité', value: (r) => names.unit(r.productId) },
+            {
+              header: 'Emplacement',
+              value: (r) => names.location(r.locationId),
+            },
+            { header: 'Quantité', kind: 'quantity', value: (r) => r.quantity },
+            {
+              header: 'Réservé',
+              kind: 'quantity',
+              value: (r) => r.reservedQuantity,
+            },
+            {
+              header: 'Disponible',
+              kind: 'quantity',
+              value: (r) => r.availableQuantity,
+            },
+            { header: 'Mis à jour', kind: 'date', value: (r) => r.updatedAt },
+          ],
+          rows,
+        }),
+      ],
+    };
+  }
+
+  /// Export du journal des mouvements : les lignes de `findMovements`, mêmes
+  /// filtres (période en instants ISO, `to` exclu, comme la liste) et mêmes
+  /// emplacements visibles.
+  async exportMovements(
+    query: MovementExportQueryDto,
+    viewer: Viewer,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findMovements({ ...query, page, limit }, viewer),
+    );
+    const names = await loadExportNames(this.prisma, {
+      products: rows.map((m) => m.productId),
+      locations: rows.map((m) => m.locationId),
+      users: rows.map((m) => m.userId),
+    });
+    return {
+      title: 'Mouvements de stock',
+      subtitle: `${rows.length} mouvement(s) · journal immuable, source de vérité du stock`,
+      filename: 'mouvements',
+      sections: [
+        section({
+          columns: [
+            { header: 'Date', kind: 'date', value: (m) => m.createdAt },
+            { header: 'Type', value: (m) => m.type },
+            { header: 'Référence', value: (m) => names.sku(m.productId) },
+            { header: 'Produit', value: (m) => names.product(m.productId) },
+            {
+              header: 'Emplacement',
+              value: (m) => names.location(m.locationId),
+            },
+            { header: 'Quantité', kind: 'quantity', value: (m) => m.quantity },
+            { header: 'Unité', value: (m) => names.unit(m.productId) },
+            { header: 'Opération', value: (m) => m.operationType },
+            { header: 'Par', value: (m) => names.user(m.userId) },
+            { header: 'Commentaire', value: (m) => m.comment },
+          ],
+          rows,
+        }),
+      ],
+    };
+  }
+
   async findStock(query: StockQueryDto, viewer: Viewer): Promise<StockListDto> {
     const where: Prisma.StockWhereInput = {
       ...(query.productId && { productId: query.productId }),

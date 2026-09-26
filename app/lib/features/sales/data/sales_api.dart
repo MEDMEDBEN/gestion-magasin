@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import '../../payments/data/payment_models.dart';
 import 'sales_models.dart';
@@ -165,6 +166,29 @@ class SalesApi {
       return decode(response.data!);
     });
   }
+
+  /// Ventes des 12 derniers mois — le serveur n'en rend au vendeur que les
+  /// siennes, comme la liste.
+  Future<ExportedFile> exportSales(ExportFormat format) {
+    final window = lastYearWindow();
+    return fetchExport(
+      _dio,
+      '/sales/export',
+      format,
+      query: {'from': window.from, 'to': window.to},
+    );
+  }
+
+  /// Clients, ou seulement ceux qui ont une dette (`debtOnly`).
+  Future<ExportedFile> exportCustomers(
+    ExportFormat format, {
+    bool debtOnly = false,
+  }) => fetchExport(
+    _dio,
+    '/customers/export',
+    format,
+    query: {if (debtOnly) 'debtOnly': true},
+  );
 }
 
 final salesApiProvider = Provider<SalesApi>(

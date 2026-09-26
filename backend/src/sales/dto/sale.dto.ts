@@ -1,5 +1,11 @@
 import { ClientMutationId } from '../../common/idempotency';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Type } from 'class-transformer';
 import {
   PaginationMetaDto,
@@ -225,9 +231,18 @@ export class SaleDto {
   @ApiProperty({ nullable: true }) cancelledAt!: Date | null;
 }
 
-export class SaleListQueryDto extends PaginationQueryDto {
+export class SaleListQueryDto extends IntersectionType(
+  PaginationQueryDto,
+  DayPeriodQueryDto,
+) {
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() customerId?: string;
 }
+
+/// Export de la liste : ses filtres, plus le format du fichier.
+export class SaleExportQueryDto extends IntersectionType(
+  SaleListQueryDto,
+  ExportFormatQueryDto,
+) {}
 
 export class SaleListDto {
   @ApiProperty({ type: [SaleDto] }) data!: SaleDto[];

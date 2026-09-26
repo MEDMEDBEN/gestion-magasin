@@ -25,9 +25,19 @@ import {
   PurchaseLineInputDto,
   PurchaseOrderDto,
   PurchaseOrderListDto,
+  PurchaseOrderExportQueryDto,
   PurchaseOrderListQueryDto,
   UpdatePurchaseOrderDto,
 } from './dto/purchase-order.dto';
+import { localDayRange } from '../common/document-number';
+import {
+  collectAll,
+  ExportDocument,
+  periodLabel,
+  periodSlug,
+  section,
+} from '../common/export/export';
+import { loadExportNames } from '../common/export/export-names';
 
 type Db = Prisma.TransactionClient;
 
@@ -149,12 +159,55 @@ export class PurchaseOrdersService {
     });
   }
 
+  /// Export (spec §8quinquies) : les commandes de `findAll`, mêmes filtres.
+  async exportDocument(
+    query: PurchaseOrderExportQueryDto,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }),
+    );
+    const names = await loadExportNames(this.prisma, {
+      suppliers: rows.map((r) => r.supplierId),
+      users: rows.map((r) => r.createdById),
+    });
+    return {
+      title: 'Commandes fournisseurs',
+      subtitle: `${rows.length} commande(s) ${periodLabel(query.from, query.to)}`,
+      filename: `commandes${periodSlug(query.from, query.to)}`,
+      sections: [
+        section({
+          columns: [
+            { header: 'Numéro', value: (o) => o.number },
+            { header: 'Date', kind: 'date', value: (o) => o.orderDate },
+            {
+              header: 'Fournisseur',
+              value: (o) => names.supplier(o.supplierId),
+            },
+            { header: 'Statut', value: (o) => o.status },
+            { header: 'HT', kind: 'money', value: (o) => o.totalHt },
+            { header: 'TVA', kind: 'money', value: (o) => o.totalTax },
+            { header: 'TTC', kind: 'money', value: (o) => o.totalTtc },
+            {
+              header: 'Livraison prévue',
+              kind: 'date',
+              value: (o) => o.expectedDate?.toISOString().slice(0, 10) ?? null,
+            },
+            { header: 'Créée par', value: (o) => names.user(o.createdById) },
+          ],
+          rows,
+        }),
+      ],
+    };
+  }
+
   async findAll(
     query: PurchaseOrderListQueryDto,
   ): Promise<PurchaseOrderListDto> {
+    const orderDate = localDayRange(query.from, query.to);
     const where: Prisma.PurchaseOrderWhereInput = {
       ...(query.supplierId && { supplierId: query.supplierId }),
       ...(query.status && { status: query.status }),
+      ...(orderDate && { orderDate }),
     };
     const [rows, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({

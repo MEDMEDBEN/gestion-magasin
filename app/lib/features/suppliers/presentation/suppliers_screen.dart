@@ -8,9 +8,11 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
+import '../data/suppliers_api.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
 
@@ -79,6 +81,16 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                   ),
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
+              ),
+              ExportButton(
+                tooltip: 'Exporter les fournisseurs',
+                fetch: ref.read(suppliersApiProvider).exportSuppliers,
+              ),
+              ExportButton(
+                tooltip: 'Exporter les dettes fournisseurs',
+                fetch: (format) => ref
+                    .read(suppliersApiProvider)
+                    .exportSuppliers(format, debtOnly: true),
               ),
               if (rights.canWrite) ...[
                 const SizedBox(width: 12),

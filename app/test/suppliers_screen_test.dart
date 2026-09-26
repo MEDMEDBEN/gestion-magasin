@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
+import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
@@ -87,6 +90,17 @@ class _FakeSuppliersApi extends SuppliersApi {
     saved = fields;
     return _suppliers.first;
   }
+
+  final exports = <String>[];
+
+  @override
+  Future<ExportedFile> exportSuppliers(
+    ExportFormat format, {
+    bool debtOnly = false,
+  }) async {
+    exports.add('${format.name} debtOnly=$debtOnly');
+    return ExportedFile(Uint8List(1), 'dettes-fournisseurs.${format.name}');
+  }
 }
 
 AuthUser _admin() => authUser(
@@ -104,7 +118,12 @@ Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
   final api = _FakeSuppliersApi();
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [suppliersApiProvider.overrideWithValue(api)],
+      overrides: [
+        suppliersApiProvider.overrideWithValue(api),
+        saveExportProvider.overrideWithValue(
+          (file) async => 'C:/Téléchargements/${file.filename}',
+        ),
+      ],
       child: MaterialApp(
         theme: AppTheme.mobile(dark: true),
         home: Scaffold(body: SuppliersScreen(user: user)),
@@ -116,6 +135,25 @@ Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
 }
 
 void main() {
+  /// Le vendeur n'accède pas à cet écran ; ici, l'export des dettes demande
+  /// bien le filtre au SERVEUR, qui applique la garde de la liste.
+  testWidgets('export des dettes fournisseurs : filtre demandé au serveur', (
+    tester,
+  ) async {
+    final api = await _pump(tester, _admin());
+
+    await tester.tap(find.byTooltip('Exporter les dettes fournisseurs'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CSV').last);
+    await tester.pumpAndSettle();
+
+    expect(api.exports, ['csv debtOnly=true']);
+    expect(
+      find.text('Enregistré : C:/Téléchargements/dettes-fournisseurs.csv'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('liste : dette affichée, « à jour » sans dette', (tester) async {
     await _pump(tester, _admin());
 

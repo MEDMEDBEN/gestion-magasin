@@ -67,6 +67,32 @@ export function startOfLocalDayOf(day: string, field: string): Date {
   return startOfLocalDay(new Date(noon));
 }
 
+/// Filtre Prisma d'une période en jours civils d'Alger, `to` INCLUS (la borne
+/// haute est le début du lendemain). Seule définition du projet : listes,
+/// rapports, journal d'audit. Rien de demandé → aucun filtre.
+export function localDayRange(
+  from?: string,
+  to?: string,
+): { gte?: Date; lt?: Date } | undefined {
+  if (!from && !to) return undefined;
+  const gte = from ? startOfLocalDayOf(from, 'from') : undefined;
+  let lt: Date | undefined;
+  if (to) {
+    const dayAfter = new Date(
+      startOfLocalDayOf(to, 'to').getTime() + 36 * 60 * 60 * 1000,
+    );
+    lt = startOfLocalDay(dayAfter);
+  }
+  if (gte && lt && gte >= lt) {
+    throw new BusinessException(
+      ErrorCode.VALIDATION_FAILED,
+      'Période vide : « du » doit précéder ou égaler « au »',
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  return { ...(gte && { gte }), ...(lt && { lt }) };
+}
+
 /// Numéro séquentiel d'un document, attribué SERVEUR dans la transaction de
 /// l'appelant (règle 11) : le compteur de l'année est verrouillé par l'UPDATE,
 /// donc deux demandes simultanées ne peuvent pas obtenir le même numéro ni

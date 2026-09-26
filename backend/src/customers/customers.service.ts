@@ -20,11 +20,13 @@ import {
   CreateCustomerDto,
   CustomerDto,
   CustomerListDto,
+  CustomerExportQueryDto,
   CustomerListQueryDto,
   CustomerPaymentDto,
   CreateCustomerPaymentDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
+import { collectAll, ExportDocument, section } from '../common/export/export';
 
 type Db = Prisma.TransactionClient;
 
@@ -35,6 +37,45 @@ const PAYMENT_SORT_FIELDS = ['paidAt', 'amount'] as const;
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /// Export de la liste (spec §8quinquies) : les lignes de `findAll`, avec ses
+  /// filtres. `debtOnly` en fait l'export des dettes clients.
+  async exportDocument(query: CustomerExportQueryDto): Promise<ExportDocument> {
+    const all = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }),
+    );
+    const rows = query.debtOnly ? all.filter((c) => c.balanceDue > 0) : all;
+    return {
+      title: query.debtOnly ? 'Dettes clients' : 'Clients',
+      subtitle: query.debtOnly
+        ? `${rows.length} client(s) avec une dette`
+        : `${rows.length} client(s)`,
+      filename: query.debtOnly ? 'dettes-clients' : 'clients',
+      sections: [
+        section({
+          columns: [
+            { header: 'Code', value: (c) => c.code },
+            { header: 'Nom', value: (c) => c.name },
+            { header: 'Téléphone', value: (c) => c.phone },
+            { header: 'E-mail', value: (c) => c.email },
+            { header: 'Adresse', value: (c) => c.address },
+            {
+              header: 'Plafond de crédit',
+              kind: 'money',
+              value: (c) => c.creditLimit,
+            },
+            { header: 'Dette', kind: 'money', value: (c) => c.balanceDue },
+            {
+              header: 'Dont en retard',
+              kind: 'money',
+              value: (c) => c.overdueAmount,
+            },
+          ],
+          rows,
+        }),
+      ],
+    };
+  }
 
   async findAll(query: CustomerListQueryDto): Promise<CustomerListDto> {
     const where: Prisma.CustomerWhereInput = {

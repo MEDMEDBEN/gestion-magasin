@@ -64,6 +64,15 @@ Future<ExportedFile> fetchExport(
   }
 }
 
+/// Les 12 derniers mois en jours civils, aujourd'hui compris (`to` inclus
+/// côté serveur) : la fenêtre des exports d'historique proposés à l'écran.
+({String from, String to}) lastYearWindow({DateTime? now}) {
+  final today = now ?? DateTime.now();
+  final day = DateTime(today.year, today.month, today.day);
+  String iso(DateTime value) => value.toIso8601String().substring(0, 10);
+  return (from: iso(day.subtract(const Duration(days: 364))), to: iso(day));
+}
+
 /// Nom annoncé par le serveur (`Content-Disposition`), réduit à un nom de
 /// fichier sans chemin : il finit sur le disque.
 String exportFilename(String? disposition, {required String fallback}) {

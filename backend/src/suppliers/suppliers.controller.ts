@@ -7,6 +7,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,7 +16,9 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnprocessableEntityResponse,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -35,11 +38,18 @@ import {
   CreateSupplierDto,
   CreateSupplierPaymentDto,
   SupplierDto,
+  SupplierExportQueryDto,
   SupplierListDto,
   SupplierListQueryDto,
   SupplierPaymentDto,
   UpdateSupplierDto,
 } from './dto/supplier.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { SuppliersService } from './suppliers.service';
 
 @ApiTags('Fournisseurs')
@@ -58,6 +68,28 @@ export class SuppliersController {
   @ApiOkResponse({ type: SupplierListDto })
   findAll(@Query() query: SupplierListQueryDto): Promise<SupplierListDto> {
     return this.suppliers.findAll(query);
+  }
+
+  /// Export : MÊMES gardes que `GET /suppliers` (jamais le vendeur).
+  /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.SUPPLIER_READ)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({
+    summary: 'Fournisseurs (ou dettes fournisseurs) en Excel, CSV ou PDF',
+  })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: SupplierExportQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.suppliers.exportDocument(query),
+        query.format,
+      ),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

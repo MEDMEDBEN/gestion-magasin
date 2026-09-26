@@ -1,5 +1,10 @@
 import { ClientMutationId } from '../../common/idempotency';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
@@ -146,6 +151,21 @@ export class CustomerListQueryDto extends PaginationQueryDto {
   @IsBoolean()
   @IsOptional()
   includeInactive = false;
+}
+
+/// Export de la liste (et des dettes clients avec `debtOnly`).
+export class CustomerExportQueryDto extends IntersectionType(
+  CustomerListQueryDto,
+  ExportFormatQueryDto,
+) {
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Seulement ceux qui ont une dette (export « dettes »).',
+  })
+  @Transform(booleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  debtOnly = false;
 }
 
 export class CustomerDto {

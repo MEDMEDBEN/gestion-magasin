@@ -1,4 +1,9 @@
-import { localDate, localYear, startOfLocalDay } from './document-number';
+import {
+  localDate,
+  localDayRange,
+  localYear,
+  startOfLocalDay,
+} from './document-number';
 
 describe('dates locales (Africa/Algiers, UTC+1)', () => {
   it('le 31/12 à 23h30 UTC est déjà le 1er janvier à Alger', () => {
@@ -29,5 +34,23 @@ describe('dates locales (Africa/Algiers, UTC+1)', () => {
     expect(
       startOfLocalDay(new Date('2026-09-23T14:00:00Z')).toISOString(),
     ).toBe('2026-09-22T23:00:00.000Z');
+  });
+
+  it('localDayRange : jours d’Alger, `to` inclus', () => {
+    const range = localDayRange('2026-09-01', '2026-09-30')!;
+    expect(range.gte!.toISOString()).toBe('2026-08-31T23:00:00.000Z');
+    expect(range.lt!.toISOString()).toBe('2026-09-30T23:00:00.000Z');
+    expect(localDayRange()).toBeUndefined();
+    expect(localDayRange(undefined, '2026-09-30')).toEqual({
+      lt: new Date('2026-09-30T23:00:00.000Z'),
+    });
+  });
+
+  it('localDayRange : période vide, heure ou jour inexistant refusés', () => {
+    expect(() => localDayRange('2026-09-02', '2026-09-01')).toThrow(
+      'Période vide',
+    );
+    expect(() => localDayRange('2026-09-01T10:00:00Z')).toThrow('AAAA-MM-JJ');
+    expect(() => localDayRange(undefined, '2026-02-30')).toThrow();
   });
 });

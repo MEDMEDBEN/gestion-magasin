@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,7 +17,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -31,9 +34,16 @@ import {
   CreateInventoryDto,
   InventoryDto,
   InventoryListDto,
+  InventoryExportQueryDto,
   InventoryListQueryDto,
   SubmitCountDto,
 } from './dto/inventory.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { InventoryService } from './inventory.service';
 
 @ApiTags('Inventaire')
@@ -74,6 +84,26 @@ export class InventoryController {
   @ApiOkResponse({ type: InventoryListDto })
   findAll(@Query() query: InventoryListQueryDto): Promise<InventoryListDto> {
     return this.inventories.findAll(query);
+  }
+
+  /// Export : MÊMES gardes que `GET /inventories`, mêmes lignes.
+  /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({ summary: 'Inventaires et leurs lignes en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: InventoryExportQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.inventories.exportDocument(query),
+        query.format,
+      ),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

@@ -6,9 +6,12 @@ import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
 import {
   localDate,
+  localDayRange,
   localYear,
   nextDocumentNumber,
 } from '../common/document-number';
+import { collectAll, ExportDocument } from '../common/export/export';
+import { loadExportNames } from '../common/export/export-names';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
@@ -22,12 +25,14 @@ import {
   CreateSaleDto,
   SaleDto,
   SaleListDto,
+  SaleExportQueryDto,
   SaleListQueryDto,
   MAX_MONEY,
   SaleTypeDto,
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
 import { renderSaleDocument } from './sale-document';
+import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
 type SaleWithLines = Sale & { lines: SaleLine[] };
@@ -363,8 +368,10 @@ export class SalesService {
     query: SaleListQueryDto,
     user: AuthenticatedUser,
   ): Promise<SaleListDto> {
+    const soldAt = localDayRange(query.from, query.to);
     const where: Prisma.SaleWhereInput = {
       ...(query.customerId && { customerId: query.customerId }),
+      ...(soldAt && { soldAt }),
       // Le vendeur voit SES ventes ; l'admin toutes.
       ...(!user.roles.includes(RoleCode.ADMIN) && { userId: user.id }),
     };
@@ -392,6 +399,28 @@ export class SalesService {
       SalesService.toDtoWith(row, paidLater.get(row.id) ?? 0),
     );
     return { data, meta: { page: query.page, limit: query.limit, total } };
+  }
+
+  /// Export de la liste (spec §8quinquies) : les lignes viennent de `findAll`,
+  /// avec les MÊMES filtres et le MÊME cloisonnement — un vendeur n'exporte
+  /// que ses ventes. Seuls les noms sont ajoutés.
+  async exportDocument(
+    query: SaleExportQueryDto,
+    user: AuthenticatedUser,
+  ): Promise<ExportDocument> {
+    const rows = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }, user),
+    );
+    const names = await loadExportNames(this.prisma, {
+      customers: rows.map((r) => r.customerId),
+      users: rows.map((r) => r.userId),
+    });
+    return saleListDocument(
+      rows,
+      names,
+      query,
+      !user.roles.includes(RoleCode.ADMIN),
+    );
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<SaleDto> {

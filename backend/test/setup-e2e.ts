@@ -12,6 +12,7 @@ process.env.AUTH_LOGIN_LIMIT = '10000';
 process.env.AUTH_REFRESH_LIMIT = '10000';
 process.env.AUTH_CHANGE_PASSWORD_LIMIT = '10000';
 process.env.API_RATE_LIMIT = '100000';
+process.env.EXPORT_RATE_LIMIT = '100000';
 
 /// Contrat d'idempotence (src/common/idempotency.ts) : les mutations d'argent
 /// EXIGENT un `clientMutationId`. Pour les tests qui ne portent pas sur

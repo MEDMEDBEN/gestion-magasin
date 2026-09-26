@@ -1,4 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -118,13 +124,23 @@ export class ReceptionDto {
   @ApiProperty({ type: [ReceptionLineDto] }) lines!: ReceptionLineDto[];
 }
 
-export class ReceptionListQueryDto extends PaginationQueryDto {
+export class ReceptionListQueryDto extends IntersectionType(
+  PaginationQueryDto,
+  DayPeriodQueryDto,
+) {
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() supplierId?: string;
   @ApiPropertyOptional()
   @IsCanonicalUuid()
   @IsOptional()
   purchaseOrderId?: string;
 }
+
+/// Export de la liste : ses filtres (période sur la date de réception), plus
+/// le format du fichier.
+export class ReceptionExportQueryDto extends IntersectionType(
+  ReceptionListQueryDto,
+  ExportFormatQueryDto,
+) {}
 
 export class ReceptionListDto {
   @ApiProperty({ type: [ReceptionDto] }) data!: ReceptionDto[];

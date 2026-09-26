@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -17,7 +18,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -34,9 +37,16 @@ import {
   CreatePurchaseOrderDto,
   PurchaseOrderDto,
   PurchaseOrderListDto,
+  PurchaseOrderExportQueryDto,
   PurchaseOrderListQueryDto,
   UpdatePurchaseOrderDto,
 } from './dto/purchase-order.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { PurchaseOrdersService } from './purchase-orders.service';
 
 @ApiTags('Achats')
@@ -74,6 +84,23 @@ export class PurchaseOrdersController {
     @Query() query: PurchaseOrderListQueryDto,
   ): Promise<PurchaseOrderListDto> {
     return this.orders.findAll(query);
+  }
+
+  /// Export : MÊMES gardes que `GET /purchase-orders`, mêmes lignes.
+  /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({ summary: 'Commandes fournisseurs en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: PurchaseOrderExportQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(await this.orders.exportDocument(query), query.format),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

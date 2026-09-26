@@ -4,12 +4,8 @@ import {
   IntersectionType,
 } from '@nestjs/swagger';
 import { IsOptional, Matches } from 'class-validator';
+import { DAY_MESSAGE, DAY_PATTERN } from '../../common/dto/day-period.dto';
 import { ExportFormatQueryDto } from '../../common/export/export';
-
-/// Un JOUR, pas un instant : une heure avec fuseau rendrait `days` et les bornes
-/// incohérents.
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const DAY_MESSAGE = 'jour attendu au format AAAA-MM-JJ';
 
 /// Période d'un rapport. Bornes INCLUSIVES sur le jour : `from=2026-09-01` et
 /// `to=2026-09-30` couvrent tout septembre, ce qu'un utilisateur attend quand il
@@ -23,7 +19,7 @@ export class ReportPeriodQueryDto {
       'Début de période (AAAA-MM-JJ), inclus. Défaut : J−29 (30 jours).',
     example: '2026-09-01',
   })
-  @Matches(DAY, { message: DAY_MESSAGE })
+  @Matches(DAY_PATTERN, { message: DAY_MESSAGE })
   @IsOptional()
   from?: string;
 
@@ -31,7 +27,7 @@ export class ReportPeriodQueryDto {
     description: 'Fin de période (AAAA-MM-JJ), INCLUSE. Défaut : aujourd’hui.',
     example: '2026-09-30',
   })
-  @Matches(DAY, { message: DAY_MESSAGE })
+  @Matches(DAY_PATTERN, { message: DAY_MESSAGE })
   @IsOptional()
   to?: string;
 }

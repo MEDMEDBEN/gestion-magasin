@@ -10,6 +10,7 @@ import {
 import { RequireFreshAccess, RoleCode, Roles } from '../common/auth.decorators';
 import { localDate } from '../common/document-number';
 import {
+  EXPORT_THROTTLE,
   EXPORT_TYPES,
   ExportFormatQueryDto,
   exportResponse,
@@ -107,7 +108,7 @@ export class BusinessReportController {
 
   @Roles(RoleCode.ADMIN)
   @RequireFreshAccess()
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle(EXPORT_THROTTLE)
   @Get('sales/export')
   @ApiOperation({ summary: 'Rapport des ventes en Excel, CSV ou PDF' })
   @ApiProduces(...EXPORT_TYPES)
@@ -123,7 +124,7 @@ export class BusinessReportController {
 
   @Roles(RoleCode.ADMIN)
   @RequireFreshAccess()
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle(EXPORT_THROTTLE)
   @Get('stock/export')
   @ApiOperation({ summary: 'Rapport de stock en Excel, CSV ou PDF' })
   @ApiProduces(...EXPORT_TYPES)
@@ -142,7 +143,7 @@ export class BusinessReportController {
 
   @Roles(RoleCode.ADMIN)
   @RequireFreshAccess()
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle(EXPORT_THROTTLE)
   @Get('purchases/export')
   @ApiOperation({ summary: 'Rapport des achats en Excel, CSV ou PDF' })
   @ApiProduces(...EXPORT_TYPES)

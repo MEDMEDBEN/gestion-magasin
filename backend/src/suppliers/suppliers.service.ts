@@ -19,10 +19,12 @@ import {
   CreateSupplierPaymentDto,
   SupplierDto,
   SupplierListDto,
+  SupplierExportQueryDto,
   SupplierListQueryDto,
   SupplierPaymentDto,
   UpdateSupplierDto,
 } from './dto/supplier.dto';
+import { collectAll, ExportDocument, section } from '../common/export/export';
 
 type Db = Prisma.TransactionClient;
 
@@ -55,6 +57,42 @@ export class SuppliersService {
       paidAmount,
       receivedAmount,
       balanceDue: supplier.openingBalance + receivedAmount - paidAmount,
+    };
+  }
+
+  /// Export de la liste (spec §8quinquies) : les lignes de `findAll`, avec ses
+  /// filtres. `debtOnly` en fait l'export des dettes fournisseurs.
+  async exportDocument(query: SupplierExportQueryDto): Promise<ExportDocument> {
+    const all = await collectAll((page, limit) =>
+      this.findAll({ ...query, page, limit }),
+    );
+    const rows = query.debtOnly ? all.filter((s) => s.balanceDue > 0) : all;
+    return {
+      title: query.debtOnly ? 'Dettes fournisseurs' : 'Fournisseurs',
+      subtitle: query.debtOnly
+        ? `${rows.length} fournisseur(s) à qui nous devons`
+        : `${rows.length} fournisseur(s)`,
+      filename: query.debtOnly ? 'dettes-fournisseurs' : 'fournisseurs',
+      sections: [
+        section({
+          columns: [
+            { header: 'Code', value: (s) => s.code },
+            { header: 'Nom', value: (s) => s.name },
+            { header: 'Contact', value: (s) => s.contactName },
+            { header: 'Téléphone', value: (s) => s.phone },
+            { header: 'E-mail', value: (s) => s.email },
+            {
+              header: 'Reprise',
+              kind: 'money',
+              value: (s) => s.openingBalance,
+            },
+            { header: 'Reçu', kind: 'money', value: (s) => s.receivedAmount },
+            { header: 'Payé', kind: 'money', value: (s) => s.paidAmount },
+            { header: 'Dette', kind: 'money', value: (s) => s.balanceDue },
+          ],
+          rows,
+        }),
+      ],
     };
   }
 

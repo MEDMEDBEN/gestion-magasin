@@ -330,17 +330,52 @@ qu'écrite — l'écran dit « marge au dernier prix d'achat »).
 - Limite connue : sur Android, « Téléchargements » est le dossier propre à l'app (peu visible) ; l'écran est
   ADMIN, pensé pour le poste fixe.
 
+**Tranche B — exports, partie 2 : les listes d'historique (2026-09-26)**
+Spec §8quinquies : ventes, stock, mouvements, inventaires, achats, réceptions, clients, fournisseurs, dettes.
+- **Recette unique, appliquée aux huit routes** : `GET /<liste>/export?format=…&<mêmes filtres>`, déclarée AVANT
+  `:id` (sinon « export » est lu comme un identifiant), avec les `@Roles`/`@RequirePermissions` de la route `GET`
+  recopiés ; lignes lues par `collectAll()` sur le `findAll(query, user)` EXISTANT ; document construit dans le
+  SERVICE (`exportDocument()`), le contrôleur ne fait que rendre le fichier.
+  `/sales/export`, `/customers/export`, `/suppliers/export`, `/stock/export`, `/stock/movements/export`,
+  `/inventories/export`, `/purchase-orders/export`, `/receptions/export`.
+- **Dettes** = `debtOnly=true` sur clients et fournisseurs (pas de route à part : même garde que la liste).
+- **Noms joints** par UN chargeur partagé, `common/export/export-names.ts` (produits, emplacements, membres,
+  fournisseurs, clients) — les DTO de liste ne portent que des identifiants.
+- **Filtre de période ajouté aux listes ventes, commandes et réceptions** (elles n'en avaient AUCUN : au-delà de
+  10 000 lignes, l'export aurait été impossible). Jours civils d'Alger, `to` inclus, par `DayPeriodQueryDto`
+  (`common/dto/day-period.dto.ts`) et **`localDayRange()`, désormais la seule définition** : rapports et journal
+  d'audit l'utilisent aussi (la borne « +86 400 000 » d'`AuditService` a disparu). Les mouvements et la caisse
+  gardent leur contrat existant (INSTANTS ISO, `to` exclu) — non touché.
+- **Débit des exports** : UNE constante `EXPORT_THROTTLE` (`EXPORT_RATE_LIMIT`, défaut 10/min/IP/route, dans
+  `common/env.ts` et `infra/.env.example`), au lieu de 11 limites en dur.
+- **App** : `ExportButton` (infobulle qui dit CE qui est exporté) sur Stock (stock, mouvements 12 mois),
+  Vente (ventes 12 mois, si `sale.create`), Clients (clients, dettes), Fournisseurs (fournisseurs, dettes),
+  Inventaires, Achats (commandes et réceptions 12 mois, chacun selon sa permission). Pas d'écran d'historique des
+  ventes ni de journal global des mouvements dans l'app : l'API accepte toute période, l'écran propose 12 mois.
+- **Tests** : suite `test/list-exports.e2e-spec.ts` (16) — **pour CHAQUE rôle, l'export répond le même statut que
+  la liste** (8 paires), vendeur limité à SES ventes, période appliquée à la liste ET au fichier, dettes, dépôt
+  retiré du fichier quand `stock.read.warehouse` est retiré du rôle ; 2 unitaires `localDayRange`.
+- **Contre-épreuves** : export lu avec les droits admin → « SES ventes » échoue ; période ignorée → échoue ;
+  stock exporté avec `stock.read.warehouse` forcé → échoue ; `debtOnly` ignoré → échoue ; fournisseurs ouverts
+  au vendeur → 2 échecs. **Une contre-épreuve était d'abord NON CONCLUANTE** : ajouter le vendeur au `@Roles` ne
+  cassait rien, parce que `@RequirePermissions(SUPPLIER_READ)` le bloque de toute façon — refaite en ouvrant les
+  deux.
+- **Un faux échec à moi** : 429 dans la suite — la limite d'export en dur était épuisée par les tests
+  précédents, et le bridage passe AVANT l'authentification. D'où la constante configurable.
+- **Preuve** : backend lint 0 · `tsc` propre · **107 unit** · **529 e2e** (36 suites, un passage) · `npm audit` 0 ;
+  app analyze propre · **+414 ~46**. **Aucun fichier ouvert dans un tableur par un humain, aucun bouton vu.**
+- Limites connues : sur téléphone, la barre Clients (recherche + 2 exports + « Nouveau client ») est serrée ;
+  un export n'embarque pas les LIGNES des ventes, commandes et réceptions (seulement les en-têtes) — à ajouter si
+  un comptable le demande.
+
 **PROCHAINE ÉTAPE PRÉCISE**
-1. ~~Audits de la tranche A~~ → **faits**, voir ci-dessus.
-2. ~~Exports des trois rapports~~ → **faits**, voir ci-dessus.
-3. **Tranche B, partie 2 — exports des listes d'historique** (spec §8quinquies) : ventes, stock, mouvements,
-   inventaires, achats, réceptions, clients, fournisseurs, dettes. Recette pour chaque liste : route
-   `GET /<liste>/export?format=…&<mêmes filtres>` dans le contrôleur de la liste, **avec les décorateurs de la
-   route `GET` de la liste, recopiés à l'identique** ; lignes lues par `collectAll()` sur le `findAll(query, user)`
-   EXISTANT (donc même cloisonnement : un vendeur n'exporte que SES ventes) ; colonnes dans un
-   `<feature>.export.ts` construit à partir du DTO de liste (un champ absent du DTO n'est pas exportable) ; un e2e
-   « même refus que la liste » par route + une contre-épreuve. Côté app, `ExportButton` sur l'écran de la liste.
-4. Puis les deux audits de la tranche B (`reviewer`, `security-reviewer`).
+1. ~~Audits de la tranche A~~ → faits. 2. ~~Exports des rapports~~ → faits. 3. ~~Exports des listes~~ → faits.
+4. **Passer les deux audits de la tranche B** (`reviewer` puis `security-reviewer`) sur `backend/src/common/export/`,
+   les routes `export` des huit contrôleurs et leurs `exportDocument()`, `localDayRange`/`DayPeriodQueryDto`,
+   `test/list-exports.e2e-spec.ts`, et côté app `core/file_export.dart`, `ui/widgets/export_button.dart` et les
+   écrans touchés. Leur signaler : injection de formule CSV, nom de fichier écrit sur disque, plafond 10 000
+   lignes (mémoire), débit par IP avant authentification, le magasinier qui exporte les dettes clients.
+5. Puis clore P1 n°21 et passer à **P1 n°21a Devis** (`docs/plan.md`).
 
 ### 🚧 P1 #20 PRODUITS DORMANTS / PRODUITS DEMANDÉS — LIVRÉS (2026-09-26 · **MEDMEDBEN**)
 Spec §20. Deux questions opposées dans un seul écran — « qu'est-ce qui ne part pas ? » et « qu'est-ce qu'on me
@@ -2070,8 +2105,9 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
-| Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranche A livrée et auditée** (2026-09-26) ; exports en cours | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
-| Exports Excel/CSV + PDF, devis, étiquettes (P1 #21 tranche B, #21a-21c) | 🔴 Non commencé | — | — | — | — |
+| Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranche A auditée ; exports livrés** (2026-09-26), audits de la tranche B à passer | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
+| Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste | 🟢 Bouton Exporter sur 6 écrans | 🟢 22 e2e · 9 unit · 5 widget | 🔴 audits à passer |
+| Devis, étiquettes, documents (P1 #21a-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

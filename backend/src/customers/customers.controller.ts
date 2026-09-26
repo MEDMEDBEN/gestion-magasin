@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,7 +17,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -36,11 +39,18 @@ import {
   CreateCustomerDto,
   CreateCustomerPaymentDto,
   CustomerDto,
+  CustomerExportQueryDto,
   CustomerListDto,
   CustomerListQueryDto,
   CustomerPaymentDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -59,6 +69,26 @@ export class CustomersController {
   @ApiOkResponse({ type: CustomerListDto })
   findAll(@Query() query: CustomerListQueryDto): Promise<CustomerListDto> {
     return this.customers.findAll(query);
+  }
+
+  /// Export : MÊMES gardes que `GET /customers`, mêmes lignes.
+  /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({ summary: 'Clients (ou dettes clients) en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: CustomerExportQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.customers.exportDocument(query),
+        query.format,
+      ),
+    );
   }
 
   @Roles(...ALL_ROLES)

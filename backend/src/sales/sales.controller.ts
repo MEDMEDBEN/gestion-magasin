@@ -34,9 +34,16 @@ import { PERMISSIONS } from '../common/permissions';
 import {
   CreateSaleDto,
   SaleDto,
+  SaleExportQueryDto,
   SaleListDto,
   SaleListQueryDto,
 } from './dto/sale.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { SalesService } from './sales.service';
 
 @ApiTags('Ventes')
@@ -79,6 +86,30 @@ export class SalesController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<SaleListDto> {
     return this.sales.findAll(query, user);
+  }
+
+  /// Export de la liste : MÊMES gardes que `GET /sales`, et les lignes passent
+  /// par le même `findAll` — un vendeur n'exporte que SES ventes. Déclarée
+  /// AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({
+    summary: 'Ventes en Excel, CSV ou PDF (mêmes filtres que la liste)',
+  })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: SaleExportQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.sales.exportDocument(query, user),
+        query.format,
+      ),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)

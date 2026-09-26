@@ -7,10 +7,17 @@ import '../../core/file_export.dart';
 /// « Exporter » : Excel, CSV ou PDF, enregistré sur le poste. Le serveur rend
 /// le fichier et applique la garde de l'écran : ce bouton n'ouvre rien de plus.
 class ExportButton extends ConsumerStatefulWidget {
-  const ExportButton({required this.fetch, super.key});
+  const ExportButton({
+    required this.fetch,
+    this.tooltip = 'Exporter',
+    super.key,
+  });
 
   /// Télécharge le fichier dans le format choisi (client d'API de la feature).
   final Future<ExportedFile> Function(ExportFormat format) fetch;
+
+  /// Dit CE QUI est exporté quand un écran en propose plusieurs.
+  final String tooltip;
 
   @override
   ConsumerState<ExportButton> createState() => _ExportButtonState();
@@ -51,7 +58,7 @@ class _ExportButtonState extends ConsumerState<ExportButton> {
       );
     }
     return PopupMenuButton<ExportFormat>(
-      tooltip: 'Exporter',
+      tooltip: widget.tooltip,
       icon: const Icon(Icons.file_download_outlined),
       onSelected: _export,
       itemBuilder: (context) => [

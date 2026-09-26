@@ -194,9 +194,27 @@ garde — un test e2e vérifie que fermer l'une n'a pas fermé l'autre.
 
 Si MEDMEDBEN veut ouvrir le rapport de STOCK au magasinier, c'est une ligne (voir l'avertissement ci-dessus).
 
-**Exports (tranche B)** : un fichier suit EXACTEMENT la garde de l'écran ou de la liste qu'il exporte — même
-route, même rôle, même cloisonnement (un vendeur n'exporte que SES ventes). Un fichier n'est pas un contournement
-de permission.
+**Exports (tranche B, livrée le 2026-09-26)** : un fichier suit EXACTEMENT la garde de la liste qu'il exporte —
+mêmes `@Roles` et `@RequirePermissions` que la route `GET` de la liste, et les lignes passent par le MÊME
+`findAll` (donc même cloisonnement : un vendeur n'exporte que SES ventes ; sans `stock.read.warehouse`, le dépôt
+n'apparaît pas). Un fichier n'est pas un contournement de permission. Un test e2e compare, pour chaque rôle, le
+statut de la liste et celui de l'export.
+
+| Export (`?format=xlsx\|csv\|pdf`) | Garde = celle de | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|---|
+| `GET /reports/{sales,stock,purchases}/export` | rapport correspondant | ✅ | ❌ | ❌ |
+| `GET /sales/export` | `GET /sales` | ✅ (toutes) | ✅ (les siennes) | ❌ |
+| `GET /customers/export` (`debtOnly` = dettes clients) | `GET /customers` | ✅ | ✅ | ✅ |
+| `GET /suppliers/export` (`debtOnly` = dettes fournisseurs) | `GET /suppliers` | ✅ | ❌ | ✅ |
+| `GET /stock/export`, `GET /stock/movements/export` | `GET /stock`, `GET /stock/movements` | ✅ | ✅ | ✅ |
+| `GET /inventories/export` | `GET /inventories` | ✅ | ❌ | ✅ |
+| `GET /purchase-orders/export` | `GET /purchase-orders` | ✅ | ❌ | ✅ |
+| `GET /receptions/export` | `GET /receptions` | ✅ | ❌ | ✅ |
+
+⚠️ Conséquence à connaître : ce que la LISTE montre, le fichier le montre aussi — par exemple le magasinier lit
+déjà les dettes clients dans la liste des clients (écart (1) du n°15, en attente de décision) ; il peut donc
+aussi exporter les dettes clients. Fermer l'un sans l'autre serait incohérent : c'est la liste qu'il faudrait
+fermer.
 
 Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
 attendre l'expiration de son jeton.

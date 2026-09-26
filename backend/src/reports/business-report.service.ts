@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
-import { localDate, startOfLocalDayOf } from '../common/document-number';
+import { localDate, localDayRange } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { formatQuantity } from '../common/quantity';
 import {
@@ -370,15 +370,13 @@ export class BusinessReportService {
     }
 
     const day = (date: Date) => date.toISOString().slice(0, 10);
-    // Les bornes sont des jours CIVILS d'Alger comparés à des horodatages
-    // réels : minuit UTC serait 01 h à Alger — la vente de 00 h 30 le 1er
-    // sortirait du mois, celle du 1er du mois suivant y entrerait.
+    // Jours CIVILS d'Alger comparés à des horodatages réels : minuit UTC serait
+    // 01 h à Alger — la vente de 00 h 30 le 1er sortirait du mois, celle du 1er
+    // du mois suivant y entrerait.
+    const range = localDayRange(day(from), day(to))!;
     return {
-      from: startOfLocalDayOf(day(from), 'from'),
-      toExclusive: startOfLocalDayOf(
-        day(new Date(to.getTime() + DAY_MS)),
-        'to',
-      ),
+      from: range.gte!,
+      toExclusive: range.lt!,
       dto: { from: day(from), to: day(to), days },
     };
   }

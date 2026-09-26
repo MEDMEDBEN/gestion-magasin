@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
@@ -39,6 +44,11 @@ export class StockQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() locationId?: string;
 }
 
+export class StockExportQueryDto extends IntersectionType(
+  StockQueryDto,
+  ExportFormatQueryDto,
+) {}
+
 export class StockDto {
   @ApiProperty() productId!: string;
   @ApiProperty() locationId!: string;
@@ -75,6 +85,11 @@ export class MovementQueryDto extends PaginationQueryDto {
   @IsOptional()
   to?: string;
 }
+
+export class MovementExportQueryDto extends IntersectionType(
+  MovementQueryDto,
+  ExportFormatQueryDto,
+) {}
 
 export class StockMovementDto {
   @ApiProperty() id!: string;

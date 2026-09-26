@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'receptions_models.dart';
 
@@ -30,6 +31,17 @@ class ReceptionsApi {
       );
       return Reception.fromJson(response.data!);
     });
+  }
+
+  /// Bons de réception des 12 derniers mois.
+  Future<ExportedFile> exportReceptions(ExportFormat format) {
+    final window = lastYearWindow();
+    return fetchExport(
+      _dio,
+      '/receptions/export',
+      format,
+      query: {'from': window.from, 'to': window.to},
+    );
   }
 }
 

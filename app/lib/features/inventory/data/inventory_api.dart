@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'inventory_models.dart';
 
@@ -40,6 +41,10 @@ class InventoryApi {
       return Inventory.fromJson(response.data!);
     });
   }
+
+  /// Inventaires et leurs lignes comptées.
+  Future<ExportedFile> exportInventories(ExportFormat format) =>
+      fetchExport(_dio, '/inventories/export', format);
 }
 
 final inventoryApiProvider = Provider<InventoryApi>(

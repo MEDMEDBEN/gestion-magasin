@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Ip, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Ip,
+  Param,
+  Post,
+  Query,
+  StreamableFile,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -6,7 +15,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -21,8 +32,15 @@ import {
   CreateReceptionDto,
   ReceptionDto,
   ReceptionListDto,
+  ReceptionExportQueryDto,
   ReceptionListQueryDto,
 } from './dto/reception.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 import { ReceptionsService } from './receptions.service';
 
 @ApiTags('Réceptions')
@@ -65,6 +83,26 @@ export class ReceptionsController {
   @ApiOkResponse({ type: ReceptionListDto })
   findAll(@Query() query: ReceptionListQueryDto): Promise<ReceptionListDto> {
     return this.receptions.findAll(query);
+  }
+
+  /// Export : MÊMES gardes que `GET /receptions`, mêmes lignes.
+  /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.RECEPTION_CREATE)
+  @Throttle(EXPORT_THROTTLE)
+  @Get('export')
+  @ApiOperation({ summary: 'Réceptions en Excel, CSV ou PDF' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async export(
+    @Query() query: ReceptionExportQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.receptions.exportDocument(query),
+        query.format,
+      ),
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

@@ -78,4 +78,10 @@ void main() {
       ),
     );
   });
+
+  test('fenêtre des exports : 365 jours, aujourd’hui compris', () {
+    final window = lastYearWindow(now: DateTime(2026, 9, 26, 23, 59));
+    expect(window.to, '2026-09-26');
+    expect(window.from, '2025-09-27');
+  });
 }

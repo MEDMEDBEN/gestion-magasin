@@ -11,6 +11,7 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -19,6 +20,7 @@ import '../../scan/presentation/scanned_product_sheet.dart';
 import '../../catalog/data/catalog_repository.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
 import '../application/sales_controller.dart';
+import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 
 /// Droits de la vente, MIROIRS des guards serveur (`docs/permissions.md`).
@@ -128,6 +130,13 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                 onSelectionChanged: (s) => setState(() => _section = s.first),
               ),
               if (rights.canManageCash) const _CashBar(),
+              // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
+              // Le vendeur n'y trouve que SES ventes (le serveur filtre).
+              if (rights.canSell)
+                ExportButton(
+                  tooltip: 'Exporter les ventes (12 mois)',
+                  fetch: ref.read(salesApiProvider).exportSales,
+                ),
             ],
           ),
         ),
@@ -1253,6 +1262,16 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                   ),
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
+              ),
+              ExportButton(
+                tooltip: 'Exporter les clients',
+                fetch: ref.read(salesApiProvider).exportCustomers,
+              ),
+              ExportButton(
+                tooltip: 'Exporter les dettes clients',
+                fetch: (format) => ref
+                    .read(salesApiProvider)
+                    .exportCustomers(format, debtOnly: true),
               ),
               if (widget.rights.canWriteCustomers) ...[
                 const SizedBox(width: 12),

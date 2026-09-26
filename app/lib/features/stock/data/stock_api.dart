@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'stock_models.dart';
 
@@ -95,6 +96,22 @@ class StockApi {
       );
       return StockLoss.fromJson(response.data!);
     });
+  }
+
+  /// Fichiers rendus serveur, avec les gardes de la liste : un emplacement
+  /// que ce compte ne voit pas n'y figure pas.
+  Future<ExportedFile> exportLevels(ExportFormat format) =>
+      fetchExport(_dio, '/stock/export', format);
+
+  /// Journal des 12 derniers mois (la liste prend des INSTANTS, `to` exclu).
+  Future<ExportedFile> exportMovements(ExportFormat format) {
+    final since = DateTime.now().subtract(const Duration(days: 365));
+    return fetchExport(
+      _dio,
+      '/stock/movements/export',
+      format,
+      query: {'from': since.toUtc().toIso8601String()},
+    );
   }
 }
 

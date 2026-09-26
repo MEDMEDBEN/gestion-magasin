@@ -1,4 +1,10 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
+import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
+import { ExportFormatQueryDto } from '../../common/export/export';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -199,7 +205,10 @@ export class PurchaseOrderDto {
   @ApiProperty({ type: [PurchaseLineDto] }) lines!: PurchaseLineDto[];
 }
 
-export class PurchaseOrderListQueryDto extends PaginationQueryDto {
+export class PurchaseOrderListQueryDto extends IntersectionType(
+  PaginationQueryDto,
+  DayPeriodQueryDto,
+) {
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() supplierId?: string;
 
   @ApiPropertyOptional({ enum: PURCHASE_STATUSES })
@@ -207,6 +216,13 @@ export class PurchaseOrderListQueryDto extends PaginationQueryDto {
   @IsOptional()
   status?: (typeof PURCHASE_STATUSES)[number];
 }
+
+/// Export de la liste : ses filtres (période sur la date de commande), plus
+/// le format du fichier.
+export class PurchaseOrderExportQueryDto extends IntersectionType(
+  PurchaseOrderListQueryDto,
+  ExportFormatQueryDto,
+) {}
 
 export class PurchaseOrderListDto {
   @ApiProperty({ type: [PurchaseOrderDto] }) data!: PurchaseOrderDto[];

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import '../../payments/data/payment_models.dart';
 import 'suppliers_models.dart';
@@ -81,6 +82,17 @@ class SuppliersApi {
       return Supplier.fromJson(response.data!);
     });
   }
+
+  /// Fournisseurs, ou seulement ceux à qui l'on doit (`debtOnly`).
+  Future<ExportedFile> exportSuppliers(
+    ExportFormat format, {
+    bool debtOnly = false,
+  }) => fetchExport(
+    _dio,
+    '/suppliers/export',
+    format,
+    query: {if (debtOnly) 'debtOnly': true},
+  );
 }
 
 final suppliersApiProvider = Provider<SuppliersApi>(
