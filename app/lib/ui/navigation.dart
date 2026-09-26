@@ -12,6 +12,7 @@ import '../features/messaging/presentation/conversations_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/problems/presentation/problems_screen.dart';
+import '../features/product_reports/presentation/product_reports_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/replenishment/presentation/replenishment_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
@@ -130,6 +131,17 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.clipboardList,
       label: 'Achats',
       builder: (context, user) => PurchasesScreen(user: user),
+    ),
+  // `/reports/products` : les TROIS rôles + product.read, comme le tableau de
+  // bord. Chacun en fait quelque chose : l'admin achète, le magasinier
+  // transfère, le vendeur pousse ce qui dort (« promotion », spec §20). Cette
+  // liste ne porte ni fournisseur ni chemin vers une commande — contrairement au
+  // réapprovisionnement, rien n'y justifie de la fermer au vendeur.
+  if (user.can('product.read'))
+    AppDestination(
+      icon: LucideIcons.chartNoAxesColumn,
+      label: 'Rapports',
+      builder: (context, _) => const ProductReportsScreen(),
     ),
   // `/replenishment` : ADMIN|MAGASINIER + purchase.create — MÊME règle que le
   // guard serveur. Fermé au vendeur, qui ne peut pas commander et n'a pas accès

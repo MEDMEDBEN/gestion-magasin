@@ -211,6 +211,82 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #20 PRODUITS DORMANTS / PRODUITS DEMANDÉS — LIVRÉS (2026-09-26 · **MEDMEDBEN**)
+Spec §20. Deux questions opposées dans un seul écran — « qu'est-ce qui ne part pas ? » et « qu'est-ce qu'on me
+réclame ? ». **Aucune migration** : tout se déduit de `Sale`/`SaleLine`, `StockMovement` et `TransferLine`.
+
+- **`GET /api/reports/dormant-products`** : produits qui ont du stock et ne se vendent plus, classés par
+  **valeur immobilisée** décroissante, avec le total. Seuil configurable (`days`, 7 à 730, défaut 120).
+- **`GET /api/reports/product-demand`** : trois classements de 10 — les plus vendus, les plus demandés au dépôt,
+  et **les demandés NON servis**.
+- Écran « Rapports » à deux onglets, branché sur `product.read`.
+
+**Trois décisions, toutes contre-éprouvées**
+1. **« Sans mouvement » est lu comme « sans VENTE VALIDÉE ».** Une réception ne remet PAS l'horloge à zéro :
+   racheter un produit qui ne part pas est précisément le problème cherché, et faire repartir le compteur à
+   l'achat le cacherait. C'est une **réinterprétation assumée** du mot « mouvement » de la spec.
+2. **La demande non servie se déduit de l'écart `requestedQuantity − preparedQuantity`** des transferts,
+   bornée à ceux **réellement préparés** : sur une demande en attente, `preparedQuantity` vaut 0 et l'écart
+   serait la demande entière — on lirait « rupture » là où rien n'a encore été fait. Aucune table ajoutée pour
+   mesurer ce que la spec appelle « demandés mais indisponibles ».
+3. **Seuls les produits QUI ONT du stock** remontent chez les dormants : un dormant sans stock ne coûte rien, et
+   les trois usages de la spec (promotion, transfert, analyse) supposent de la marchandise.
+
+**La fuite que j'ai trouvée avant les audits, et qu'ils ont confirmée comme leur point le plus grave**
+Le **chiffre d'affaires par produit** était rendu à tout porteur de `product.read`. Or le tableau de bord ne
+montre à un vendeur que **SES** ventes, et aucun CA au magasinier. Ce rapport contournait les deux
+cloisonnements d'un coup. Le CA est désormais **réservé à l'ADMIN** (`null` sinon, jamais zéro) ; les quantités
+restent visibles. J'ai vérifié moi-même comment le n°15 cloisonne avant de conclure.
+
+**Corrections des deux audits**
+- **Deux agrégations NON BORNÉES de `StockMovement` à chaque appel** (audit sécurité, moyen) : c'était un scan
+  complet d'un journal qui ne cesse de grossir, sans index sur `type`. Réécrit : une requête bornée à la date de
+  coupure donne les produits **non** dormants, et les dates exactes ne sont lues que pour les **retenus**.
+- **Une vente ANNULÉE comptait comme une vente** (revue, important) : l'horloge lisait les mouvements de type
+  `VENTE`, que l'annulation ne supprime pas (elle pose un `RETOUR_CLIENT` inverse) — le produit sortait de la
+  liste pour rien, alors que le rapport de demande filtrait `VALIDEE`. **Les deux moitiés de la feature ne
+  disaient pas la même chose du même événement.** L'horloge lit maintenant `Sale`/`SaleLine` VALIDÉES.
+- **`lastMovementAt` était calculé et affiché nulle part** (revue, important) : un parcours d'historique complet
+  pour du code mort. Il est maintenant **montré**, et seulement quand il diffère de la dernière vente — « reçu
+  hier, dernière vente en mars » est exactement ce qui explique la présence du produit dans la liste.
+- **Tri non déterministe** (revue, important) : toutes les lignes sans prix d'achat sont à égalité de valeur et
+  `findMany` n'avait pas d'`orderBy` — deux pages pouvaient doublonner ou sauter une ligne. Tri secondaire
+  stable sur le SKU, plus un `orderBy` en base.
+- **Aucun test ne prouvait que la permission SERVEUR mord** (revue, important) : la contre-épreuve portait sur le
+  menu Flutter, c'est-à-dire sur l'UI — ce que la règle 1 refuse comme preuve. Les trois rôles portant
+  `cost.read`, un 403 était inatteignable avec un compte normal : le test **retire la permission du rôle** en
+  base (ce qu'un admin peut faire pour de bon), attend 403, et restaure en `finally`.
+- **Permissions cumulatives** ajoutées sur le rapport dormant : `cost.read` et les deux `stock.read.*`.
+- **Un retour magasin → dépôt se lisait « demandé au dépôt »** : filtre sur le sens du transfert.
+- **La liste tronquée à 50 ne le disait pas** : l'écran annonce « 50 sur 137 ».
+- **Un de mes tests ne prouvait pas son titre** : « tous les seuils sont dans les bornes » énumérait des
+  libellés codés en dur, donc il serait resté vert si quelqu'un ajoutait une puce « 3 j ». Il LIT maintenant les
+  puces présentes et vérifie l'intervalle.
+- **Audits** : `security-reviewer` — aucun critique ; 1 élevé (le CA, déjà corrigé de mon côté avant son rapport),
+  2 moyens, 2 faibles. `reviewer` — 2 bloquants (dont un hors feature : `.claude/settings.json`), 5 importants,
+  7 mineurs. Tout appliqué sauf la dette ci-dessous.
+
+**Preuve (2026-09-26)** : backend `lint:check` **0** · `tsc` propre · **98 unit** · **481 e2e** (34 suites, un
+seul passage) dont **23** de rapports produits ; app `flutter analyze` propre · **+395 ~46** dont **14** de
+rapports. **Cinq contre-épreuves** : horloge sur tout mouvement, restriction aux transferts préparés,
+cloisonnement du CA, filtre `VALIDEE` de l'horloge, permission de navigation — les cinq échouent quand on
+retire la garde.
+
+**Reste à faire / dette assumée**
+- Pas de « charger plus » au-delà de 50 dormants ; l'écran annonce le total, il ne le déroule pas.
+- Les trois classements ne filtrent pas `isActive` (la demande passée est un fait) ; les dormants oui.
+  L'asymétrie est commentee dans le code.
+- Le libellé de menu « Rapports » est large pour un écran qui ne couvre que les produits : à revoir quand le
+  n°21 (Rapports ventes/stock/achats) arrivera, probablement dans le même écran.
+- Le débit est bridé **par IP** et non par compte, comme partout dans le projet.
+- Aucune épreuve sur appareil pour CET écran.
+
+**Prochaine étape précise** : P1 **n°21 Rapports (ventes, stock, achats) + exports Excel/CSV & PDF**
+(`docs/plan.md`, spec §21). Commencer par le SERVICE de lecture des trois rapports dans
+`backend/src/reports/`, avant tout export : les utilitaires imposés par `CONVENTIONS.md` existent déjà
+(`common/export/` pour Excel/CSV via `exceljs`, `common/pdf/pdf.ts` pour le PDF) — **ne pas en introduire
+d'autres**. Attention au cloisonnement du CA, même règle que ci-dessus.
+
 ### 🚧 P1 #19 RÉAPPROVISIONNEMENT — SERVEUR + ÉCRAN LIVRÉS (2026-09-25 · **MEDMEDBEN**)
 Spec §19. Ce qu'il faut racheter, et les alertes `STOCK_FAIBLE` / `RUPTURE` que le n°16 avait explicitement
 reportées ici. **Aucune migration** : `minThreshold`, `safetyStock` et les deux valeurs d'enum existaient déjà
@@ -1862,7 +1938,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Communication interne (P1 #17) | 🟡 **Code livré** (2026-09-24) | 🟢 Fils, garde sur la PARTICIPATION (404) | 🟢 Liste, fil, formulaire | 🟢 10 e2e · 7 widget | 🟢 corrigé (1 élevé) |
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
-| Rapports, devis, étiquettes, PDF/Excel (P1 #20-21c) | 🔴 Non commencé | — | — | — | — |
+| Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
+| Rapports, devis, étiquettes, PDF/Excel (P1 #21-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

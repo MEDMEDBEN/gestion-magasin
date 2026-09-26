@@ -116,7 +116,7 @@ Traçabilité / système
 17. Communication interne (Conversation/Message) _(2026-09-24 : fils, messages, non-lus et alertes livrés et prouvés — garde sur la PARTICIPATION, 404 pour un fil étranger. Volontairement pauvre : ni pièce jointe ni statut, pour qu'un message ne remplace jamais une opération métier)_
 18. Signalement de problème _(2026-09-25 : signaler, prendre en charge, résoudre avec explication, fermer (admin), photo et attribution livrés et prouvés. Visible de TOUTE l'équipe — information opérationnelle, contrairement aux n°16/17 cloisonnés. Ne touche jamais au stock)_
 19. Réapprovisionnement (seuils, suggestions) _(2026-09-25 : liste « à racheter » triée par urgence avec quantité proposée modifiable, + alertes STOCK_FAIBLE / RUPTURE au FRANCHISSEMENT du seuil écrites dans la transaction du mouvement. La règle `stock <= seuil` vit en UN seul endroit, `common/replenishment.ts`, partagée avec le tableau de bord. Aucune migration : les seuils et les enums existaient. La commande reste le chemin `purchases/` — sa préparation automatique est le n°22)_
-20. Produits dormants / produits demandés
+20. Produits dormants / produits demandés _(2026-09-26 : dormants (sans VENTE VALIDÉE depuis N jours, seuil configurable, classés par valeur immobilisée) + trois classements de demande (plus vendus, plus demandés au dépôt, demandés NON servis) livrés et prouvés. La demande non servie se déduit de l'écart demandé/préparé des transferts — aucune table ajoutée. CA réservé à l'admin)_
 21. Rapports (ventes, stock, achats) + **exports Excel/CSV & PDF d'historique**
 21a. **Devis** (création, PDF, conversion en vente)
 21b. **Étiquettes code-barres** imprimables (nom, prix, code-barres — planche A4 / thermique)

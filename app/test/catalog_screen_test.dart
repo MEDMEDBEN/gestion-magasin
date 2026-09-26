@@ -405,12 +405,16 @@ void main() {
     final admin = authUser(
       permissions: const [..._allProductPermissions, 'user.manage'],
     );
-    // Accueil, Catalogue, Utilisateurs, Signalements, Messages, Notifications,
-    // Mon profil : 7 entrées au POSTE (le scanner est mobile, il lui faut une
-    // caméra), 8 sur mobile — les suivantes passent dans « Plus » (AMPÈRE §7).
+    // Accueil, Catalogue, Rapports, Utilisateurs, Signalements, Messages,
+    // Notifications, Mon profil : 8 entrées au POSTE (le scanner est mobile, il
+    // lui faut une caméra), 9 sur mobile — les suivantes passent dans « Plus »
+    // (AMPÈRE §7). « Rapports » suit `product.read` (P1 n°20) ; « Réappro »
+    // n'est pas là, ce compte n'a pas `purchase.create`.
     final entries = destinationsFor(admin);
-    expect(entries.where((d) => !d.mobileOnly), hasLength(7));
-    expect(entries, hasLength(8));
+    expect(entries.where((d) => !d.mobileOnly), hasLength(8));
+    expect(entries, hasLength(9));
+    expect(entries.map((d) => d.label), contains('Rapports'));
+    expect(entries.map((d) => d.label), isNot(contains('Réappro')));
   });
 
   test('changedFields ne garde que ce qui a bougé, `null` compris', () {

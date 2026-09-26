@@ -169,6 +169,36 @@ le cloisonnement. Si un besoin de modération apparaît, il faudra le trancher i
 L'annuaire des destinataires est une route **dédiée** (`GET /conversations/recipients`, id et nom seulement) :
 `/users` reste réservé à l'admin, alors que les trois rôles doivent pouvoir ouvrir un fil.
 
+## Rapports produits (P1 n°20, ajouté le 2026-09-26)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Lire les produits dormants (et la valeur immobilisée) | ✅ | ✅ | ✅ |
+| Lire les plus vendus / plus demandés / non servis, en QUANTITÉS | ✅ | ✅ | ✅ |
+| Voir le CHIFFRE D'AFFAIRES par produit | ✅ | ❌ | ❌ |
+
+**Ouvert aux trois rôles, contrairement au réapprovisionnement (n°19)** : cette liste ne porte NI fournisseur NI
+chemin vers une commande. Chacun en fait quelque chose — l'admin achète, le magasinier transfère, le vendeur
+pousse ce qui dort (« promotion », spec §20).
+
+⚠️ **Le chiffre d'affaires est RÉSERVÉ à l'ADMIN**, et c'est une fuite qui a été rattrapée avant commit. Le
+tableau de bord (n°15) ne montre à un vendeur que **SES** ventes, et ne montre aucun CA au magasinier (il n'a
+pas `sale.create`). Rendre ici le CA global par produit à tout porteur de `product.read` contournait ces deux
+cloisonnements d'un coup — le top 10 sommé approche même le CA du magasin. Les **quantités** restent visibles :
+« ce qui part » est une information de rayon. Un montant interdit vaut `null`, **jamais zéro** (un zéro se
+lirait « rien vendu »).
+
+> La décision du 2026-09-22 ouvre le **coût d'achat** aux trois rôles, pas le chiffre d'affaires. Les deux ne
+> se confondent pas : le coût est le plancher de vente dont le vendeur a besoin, le CA est un résultat.
+
+Les permissions du rapport dormant sont **cumulatives** : `product.read` **ET** `cost.read` (il rend une valeur
+de stock au coût, comme la fiche produit) **ET** les deux `stock.read.*` (le chiffre couvre le magasin **et** le
+dépôt, même exigence que le tableau de bord). Les trois rôles les portent aujourd'hui ; ces permissions
+existent pour pouvoir être **retirées**, et ce rapport ne doit pas devenir le contournement du jour où elles le
+seront. Éprouvé pour de bon : un test e2e retire `cost.read` du rôle VENDEUR et attend un **403**.
+
+Lecture **sensible** (`@RequireFreshAccess`) : les droits sont relus en base, donc un compte rétrogradé cesse
+aussitôt de lire coûts et CA au lieu d'attendre l'expiration de son jeton.
+
 ## Réapprovisionnement (P1 n°19, ajouté le 2026-09-25)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
