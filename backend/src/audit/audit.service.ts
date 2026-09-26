@@ -1,6 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
-import { parseApiDate } from '../common/api-date';
+import { Injectable } from '@nestjs/common';
 import { BusinessException } from '../common/business.exception';
+import { startOfLocalDayOf } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import { Prisma } from '../generated/prisma/client';
@@ -29,14 +29,10 @@ export class AuditService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: AuditLogQueryDto): Promise<AuditLogListDto> {
-    const from = query.from
-      ? AuditService.startOfLocalDay(query.from, 'from')
-      : undefined;
+    const from = query.from ? startOfLocalDayOf(query.from, 'from') : undefined;
     // `to` INCLUS : on s'arrête au début du lendemain.
     const until = query.to
-      ? new Date(
-          AuditService.startOfLocalDay(query.to, 'to').getTime() + 86_400_000,
-        )
+      ? new Date(startOfLocalDayOf(query.to, 'to').getTime() + 86_400_000)
       : undefined;
     if (from && until && from >= until) {
       throw new BusinessException(
@@ -84,20 +80,6 @@ export class AuditService {
       })),
       meta: { page: query.page, limit: query.limit, total },
     };
-  }
-
-  /// Minuit à Alger. L'Algérie est en UTC+1 toute l'année (pas d'heure d'été).
-  /// ponytail: décalage fixe ; passer par Intl si le magasin changeait de fuseau.
-  private static startOfLocalDay(raw: string, field: string): Date {
-    parseApiDate(raw, field);
-    if (raw.length !== 10) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        `${field} : jour attendu au format AAAA-MM-JJ`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-    return new Date(`${raw}T00:00:00+01:00`);
   }
 
   /// Les valeurs tracées sont des objets JSON ; tout autre forme (valeur

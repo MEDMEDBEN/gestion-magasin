@@ -211,12 +211,12 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #21 RAPPORTS VENTES / STOCK / ACHATS — **TRANCHE A** LIVRÉE (2026-09-26 · **MEDMEDBEN**)
+### 🚧 P1 #21 RAPPORTS VENTES / STOCK / ACHATS — **TRANCHE A** LIVRÉE ET AUDITÉE (2026-09-26 · **MEDMEDBEN**)
 Spec §21. **Aucune migration.** Trois lectures de synthèse, **ADMIN seul**, dans `backend/src/reports/`.
 
-⚠️ **CETTE FEATURE N'EST PAS TERMINÉE** : la tranche A (les rapports de lecture) est livrée et prouvée, la
-**tranche B (exports Excel/CSV et PDF) reste entièrement à faire**, et **les deux audits obligatoires n'ont PAS
-été passés sur cette tranche** — la session a été close avant. Voir « prochaine étape ».
+⚠️ **CETTE FEATURE N'EST PAS TERMINÉE** : la tranche A (les rapports de lecture) est livrée, prouvée **et
+auditée** (voir « Corrections des deux audits » plus bas) ; la **tranche B (exports Excel/CSV et PDF) est en
+cours**. Voir « prochaine étape ».
 
 - **`GET /api/reports/sales?from=&to=`** : nombre de ventes, CA HT/TTC, TVA, remises, coût, **marge**, tendance
   par jour, ventilation par catégorie. Ventes **VALIDÉES** seulement.
@@ -252,12 +252,56 @@ seul passage) dont **19** de rapports d'activité ; app `flutter analyze` propre
 rapports d'activité. **Trois contre-épreuves** : borne haute inclusive, marge `null`, garde ADMIN — les trois
 échouent quand on retire la garde.
 
-**PROCHAINE ÉTAPE PRÉCISE, dans cet ordre**
-1. **Passer les deux audits obligatoires sur la tranche A** (`reviewer` puis `security-reviewer`), appliquer les
-   trouvailles, contre-éprouver. Ils n'ont PAS été passés. Points à leur signaler : le cloisonnement du CA et
-   de la marge ; le coût des requêtes (`saleLine.findMany` charge toutes les lignes de la période en mémoire pour
-   calculer coût et catégories — borné par la période, mais à 730 jours ça peut faire beaucoup) ; le
-   `ponytail:` du parcours catalogue dans `stock()`.
+**Corrections des deux audits de la tranche A (2026-09-26, seconde session)**
+`reviewer` : **PAS OK**, 1 bloquant, 3 importants, 7 mineurs. `security-reviewer` : **CONFORME**, 3 moyens,
+4 faibles. Tout vérifié dans le code avant correction ; tout appliqué sauf ce qui est tracé en dette.
+- 🔴 **BLOQUANT — la marge soustrayait un coût PARTIEL d'un CA COMPLET.** Un produit sans coût vendu 1 000 DA à
+  côté d'un produit à 10 DA de coût vendu 100 DA donnait « marge 1 090 DA ». Or au démarrage une bonne partie du
+  catalogue n'a pas de coût : c'était le cas COURANT. La marge ne porte plus que sur le CA des produits au coût
+  connu ; le reste est rendu à part (`uncostedRevenueHt`) et l'écran le dit (« Marge calculée hors X DA de ventes
+  sans coût d'achat connu »).
+- **Bornes de période en minuit UTC** (01 h à Alger) : la vente de 00 h 30 le 1er sortait du mois, celle du 1er
+  du mois suivant y entrait. Bornes désormais en jours civils d'Alger par `startOfLocalDayOf()`
+  (`common/document-number.ts`), **seule définition** du projet : la copie privée de `AuditService` (tracée ici
+  le 2026-09-23) est supprimée et le journal d'audit l'utilise.
+- **Défaut que ni la revue ni l'audit n'avaient vu : la courbe par jour décalait d'une heure dans le MAUVAIS
+  sens.** `soldAt` est un `timestamp` SANS fuseau ; `AT TIME ZONE 'Africa/Algiers'` le lit comme une heure
+  d'Alger (23 h 30 UTC → 22 h 30 au lieu de 00 h 30 le lendemain). Vérifié en base, puis corrigé en
+  `("soldAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Algiers'`. **À retenir pour tout `$queryRaw` futur.**
+- **Coût mémoire** : `saleLine.findMany` (une ligne par ligne de vente, des centaines de milliers sur 730 jours)
+  remplacé par un `groupBy` par produit (quelques milliers). `ponytail:` de `stock()` et `purchases()` complétés
+  (plafond ET piste d'évolution).
+- Période par défaut : **30** jours comme annoncé (elle en faisait 31) ; `from`/`to` n'acceptent plus qu'un
+  jour `AAAA-MM-JJ` (une date-heure avec fuseau rendait `days` incohérent).
+- Valeur totale du stock sur la quantité **nette** du produit (magasin −2 + dépôt 5 = 3 unités, pas 5).
+- Tests renforcés : égalités exactes en fenêtre isolée au lieu de « au moins », séparation magasin/dépôt
+  prouvée par emplacement, arrondi d'une quantité décimale (0,333 × 10,01 DA → 333 centimes), jours d'Alger
+  (bornes ET courbe), **admin rétrogradé refusé avec le même jeton** (prouve `@RequireFreshAccess`, que rien
+  n'éprouvait : le 403 du vendeur venait déjà du jeton), cumul vendeur + magasinier refusé, période invalide sur
+  les achats, `iso()` du test en jours d'Alger (il aurait vacillé entre 23 h et minuit UTC).
+- Doc : `docs/permissions.md` et `common/permissions.ts` disaient encore « coût d'achat : jamais le vendeur » —
+  faux depuis le 2026-09-22.
+
+**Contre-épreuves (garde retirée → test en échec, code restauré à l'identique)** : marge sur le CA complet ;
+bornes en minuit UTC ; courbe en une seule conversion de fuseau ; `@RequireFreshAccess` retiré ; total valorisé
+sur les emplacements positifs ; mention « ventes sans coût » retirée de l'écran. **Les six échouent.**
+
+**Preuve (2026-09-26, après corrections)** : backend `lint:check` **0** · `tsc` propre · **98 unit** · **507 e2e**
+(35 suites, un seul passage) dont **26** de rapports d'activité ; app `flutter analyze` propre · **+407 ~46** dont
+**12** de rapports d'activité. **Aucun écran vu par un humain.**
+
+**À trancher par MEDMEDBEN (relevé par l'audit sécurité)** : la **valeur du stock au coût n'est PAS un secret** —
+les trois rôles lisent coût (`GET /products`) et quantités (`GET /stock`) depuis la décision du 2026-09-22. Le
+rapport de stock reste admin par cohérence d'écran. Soit on l'accepte, soit c'est `cost.read` des rôles
+non-admin qu'il faut revoir. Écrit dans `docs/permissions.md`.
+
+**Dette tracée, non faite** : débit bridé par IP et avant authentification (transverse au projet : un poste du
+réseau sans compte peut épuiser les 30/min de l'admin) ; consultation des rapports non journalisée (lecture, non
+exigée) ; la marge d'une période passée bouge quand une réception change le dernier prix d'achat (règle 5 telle
+qu'écrite — l'écran dit « marge au dernier prix d'achat »).
+
+**PROCHAINE ÉTAPE PRÉCISE**
+1. ~~Audits de la tranche A~~ → **faits**, voir ci-dessus.
 2. **Tranche B — exports.** `exceljs` **n'est pas installé** (`npm i exceljs`) et `backend/src/common/export/`
    **reste à créer** : `CONVENTIONS.md` §131 impose **une seule** bibliothèque Excel/CSV, centralisée là. Ne pas
    ajouter de bibliothèque CSV séparée : `exceljs` écrit aussi le CSV. Le PDF passe par
@@ -1994,7 +2038,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
-| Rapports ventes/stock/achats (P1 #21) | 🟠 **Tranche A livrée, AUDITS NON PASSÉS** (2026-09-26) | 🟢 3 lectures, ADMIN seul, période bornée | 🟢 Écran « Activité » | 🟢 19 e2e · 10 widget | 🔴 à faire |
+| Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranche A livrée et auditée** (2026-09-26) ; exports en cours | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
 | Exports Excel/CSV + PDF, devis, étiquettes (P1 #21 tranche B, #21a-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture

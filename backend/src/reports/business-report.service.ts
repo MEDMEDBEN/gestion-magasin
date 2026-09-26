@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
-import { localDate } from '../common/document-number';
+import { localDate, startOfLocalDayOf } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { formatQuantity } from '../common/quantity';
 import {
@@ -47,33 +47,27 @@ export class BusinessReportService {
       soldAt: { gte: period.from, lt: period.toExclusive },
     };
 
-    const [totals, lines, byDay] = await Promise.all([
+    const [totals, perProduct, byDay] = await Promise.all([
       this.prisma.sale.aggregate({
         where,
         _count: true,
         _sum: { totalHt: true, totalTax: true, totalTtc: true },
       }),
-      // Les lignes portent le produit : c'est par elles que passent le coût et la
-      // ventilation par catégorie.
-      this.prisma.saleLine.findMany({
+      // Une ligne PAR PRODUIT vendu, pas par ligne de vente : sur 730 jours,
+      // les lignes se comptent en centaines de milliers, les produits en
+      // milliers. C'est par le produit que passent le coût et la catégorie.
+      this.prisma.saleLine.groupBy({
+        by: ['productId'],
         where: { sale: where },
-        select: {
-          quantity: true,
-          lineTotalHt: true,
-          // La remise est portée par la LIGNE, pas par la vente : il n'existe
-          // aucun champ de remise sur `Sale`.
-          discountAmount: true,
-          product: {
-            select: {
-              lastPurchasePriceHt: true,
-              categoryId: true,
-              category: { select: { name: true } },
-            },
-          },
-        },
+        // La remise est portée par la LIGNE : `Sale` n'a aucun champ de remise.
+        _sum: { quantity: true, lineTotalHt: true, discountAmount: true },
       }),
+      // `soldAt` est un TIMESTAMP SANS fuseau qui contient de l'UTC : il faut
+      // d'abord le déclarer UTC, PUIS le passer à l'heure d'Alger. En une seule
+      // conversion, Postgres le lit comme une heure d'Alger et décale d'une
+      // heure dans le mauvais sens (une vente de 01 h 30 tombait sur la veille).
       this.prisma.$queryRaw<{ day: string; count: bigint; revenue: bigint }[]>`
-        SELECT to_char("soldAt" AT TIME ZONE 'Africa/Algiers', 'YYYY-MM-DD') AS "day",
+        SELECT to_char(("soldAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Algiers', 'YYYY-MM-DD') AS "day",
                COUNT(*) AS "count",
                COALESCE(SUM("totalHt"), 0) AS "revenue"
         FROM "Sale"
@@ -85,45 +79,68 @@ export class BusinessReportService {
       `,
     ]);
 
+    const products = new Map(
+      (
+        await this.prisma.product.findMany({
+          where: { id: { in: perProduct.map((row) => row.productId) } },
+          select: {
+            id: true,
+            lastPurchasePriceHt: true,
+            categoryId: true,
+            category: { select: { name: true } },
+          },
+        })
+      ).map((product) => [product.id, product]),
+    );
+
     // Coût des marchandises vendues : quantité × DERNIER prix d'achat (règle 5).
-    // Les lignes dont le produit n'a pas de coût connu sont COMPTÉES à part au
-    // lieu d'être traitées comme gratuites — sinon la marge serait flatteuse.
+    // La marge ne se calcule que sur le CA des produits dont le coût est CONNU :
+    // retrancher un coût partiel d'un CA complet compterait les ventes sans coût
+    // comme de la marge pure — un chiffre faux et flatteur. Le CA sans coût est
+    // rendu à part pour que l'écran le dise.
     let cost: number | null = null;
+    let costedRevenueHt = 0;
+    let uncostedRevenueHt = 0;
     let discount = 0;
     const categories = new Map<
       string,
       { name: string; revenueHt: number; quantity: Prisma.Decimal }
     >();
 
-    for (const line of lines) {
-      const unitCost = line.product.lastPurchasePriceHt;
-      if (unitCost !== null) {
-        cost = (cost ?? 0) + line.quantity.times(unitCost).round().toNumber();
+    for (const row of perProduct) {
+      const product = products.get(row.productId);
+      const quantity = row._sum.quantity ?? new Prisma.Decimal(0);
+      const revenue = row._sum.lineTotalHt ?? 0;
+      const unitCost = product?.lastPurchasePriceHt ?? null;
+      if (unitCost === null) {
+        uncostedRevenueHt += revenue;
+      } else {
+        cost = (cost ?? 0) + quantity.times(unitCost).round().toNumber();
+        costedRevenueHt += revenue;
       }
-      const key = line.product.categoryId ?? '';
+      const key = product?.categoryId ?? '';
       const bucket = categories.get(key) ?? {
-        name: line.product.category?.name ?? 'Sans catégorie',
+        name: product?.category?.name ?? 'Sans catégorie',
         revenueHt: 0,
         quantity: new Prisma.Decimal(0),
       };
-      bucket.revenueHt += line.lineTotalHt;
-      bucket.quantity = bucket.quantity.add(line.quantity);
+      bucket.revenueHt += revenue;
+      bucket.quantity = bucket.quantity.add(quantity);
       categories.set(key, bucket);
-      discount += line.discountAmount;
+      discount += row._sum.discountAmount ?? 0;
     }
-
-    const revenueHt = totals._sum.totalHt ?? 0;
 
     return {
       period: period.dto,
       totals: {
         count: totals._count,
-        revenueHt,
+        revenueHt: totals._sum.totalHt ?? 0,
         taxAmount: totals._sum.totalTax ?? 0,
         revenueTtc: totals._sum.totalTtc ?? 0,
         discountAmount: discount,
         costHt: cost,
-        marginHt: cost === null ? null : revenueHt - cost,
+        marginHt: cost === null ? null : costedRevenueHt - cost,
+        uncostedRevenueHt,
       },
       byDay: byDay.map((row) => ({
         date: row.day,
@@ -145,8 +162,10 @@ export class BusinessReportService {
   /// flux — « la valeur du stock en septembre » n'a pas de sens ici, c'est
   /// l'historique des mouvements qui le dirait.
   ///
-  /// ponytail : parcourt le catalogue actif en mémoire, comme le tableau de bord
-  /// et les autres rapports produits.
+  /// ponytail: ~2 lignes `Stock` par produit actif chargées en mémoire à chaque
+  /// appel (quelques milliers de références pour un magasin, admin seul, bridé à
+  /// 30/min) ; passer à un agrégat SQL `SUM(quantité × coût) GROUP BY
+  /// emplacement` si le catalogue dépasse ~50 000 références.
   async stock(): Promise<StockReportDto> {
     const products = await this.prisma.product.findMany({
       where: { isActive: true },
@@ -191,6 +210,11 @@ export class BusinessReportService {
       referenceCount++;
       const unitCost = product.lastPurchasePriceHt;
       if (unitCost === null) withoutCostCount++;
+      // Le total valorise la quantité NETTE du produit, comme le compteur de
+      // références : magasin −2 (vendu d'avance) et dépôt 5 valent 3 unités, pas 5.
+      if (unitCost !== null) {
+        total = (total ?? 0) + quantity.times(unitCost).round().toNumber();
+      }
 
       for (const row of product.stocks) {
         if (row.quantity.lessThanOrEqualTo(0)) continue;
@@ -203,9 +227,9 @@ export class BusinessReportService {
         };
         bucket.referenceCount++;
         if (unitCost !== null) {
-          const value = row.quantity.times(unitCost).round().toNumber();
-          bucket.valueHt = (bucket.valueHt ?? 0) + value;
-          total = (total ?? 0) + value;
+          bucket.valueHt =
+            (bucket.valueHt ?? 0) +
+            row.quantity.times(unitCost).round().toNumber();
         }
         byLocation.set(row.location.id, bucket);
       }
@@ -228,6 +252,10 @@ export class BusinessReportService {
   /// Commandé et reçu sont comptés SÉPARÉMENT et ne s'équilibrent pas : une
   /// commande de septembre peut être reçue en octobre. Les mélanger donnerait un
   /// chiffre qui ne veut rien dire.
+  ///
+  /// ponytail: charge les lignes de réception de la période (quelques réceptions
+  /// par jour, donc quelques milliers de lignes sur 730 jours) ; passer à un
+  /// `$queryRaw` agrégé par fournisseur si le volume d'achats explose.
   async purchases(query: ReportPeriodQueryDto): Promise<PurchasesReportDto> {
     const period = BusinessReportService.period(query);
 
@@ -319,11 +347,11 @@ export class BusinessReportService {
   /// `to` est INCLUS pour l'utilisateur : la borne interne est le lendemain à
   /// 0 h. Sans cela, « du 1er au 30 septembre » perdrait toutes les ventes du 30.
   private static period(query: ReportPeriodQueryDto): Period {
-    const today = parseApiDate(localDate(new Date()), 'to');
-    const to = query.to ? parseApiDate(query.to, 'to') : today;
+    const to = parseApiDate(query.to ?? localDate(new Date()), 'to');
+    // 30 jours bornes INCLUSES : aujourd'hui et les 29 précédents.
     const from = query.from
       ? parseApiDate(query.from, 'from')
-      : new Date(to.getTime() - 30 * DAY_MS);
+      : new Date(to.getTime() - 29 * DAY_MS);
 
     if (from.getTime() > to.getTime()) {
       throw new BusinessException(
@@ -341,14 +369,17 @@ export class BusinessReportService {
       );
     }
 
+    const day = (date: Date) => date.toISOString().slice(0, 10);
+    // Les bornes sont des jours CIVILS d'Alger comparés à des horodatages
+    // réels : minuit UTC serait 01 h à Alger — la vente de 00 h 30 le 1er
+    // sortirait du mois, celle du 1er du mois suivant y entrerait.
     return {
-      from,
-      toExclusive: new Date(to.getTime() + DAY_MS),
-      dto: {
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
-        days,
-      },
+      from: startOfLocalDayOf(day(from), 'from'),
+      toExclusive: startOfLocalDayOf(
+        day(new Date(to.getTime() + DAY_MS)),
+        'to',
+      ),
+      dto: { from: day(from), to: day(to), days },
     };
   }
 }

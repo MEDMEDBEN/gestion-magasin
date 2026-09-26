@@ -1,18 +1,24 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsISO8601, IsOptional } from 'class-validator';
+import { IsOptional, Matches } from 'class-validator';
+
+/// Un JOUR, pas un instant : une heure avec fuseau rendrait `days` et les bornes
+/// incohérents.
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MESSAGE = 'jour attendu au format AAAA-MM-JJ';
 
 /// Période d'un rapport. Bornes INCLUSIVES sur le jour : `from=2026-09-01` et
 /// `to=2026-09-30` couvrent tout septembre, ce qu'un utilisateur attend quand il
 /// demande « le mois de septembre ».
 ///
-/// Absentes : les 30 derniers jours. Un rapport sans période serait un rapport
-/// sur tout l'historique, donc un scan complet à chaque appel.
+/// Jours civils d'Alger. Absentes : les 30 derniers jours, aujourd'hui compris —
+/// un rapport sans période serait un scan de tout l'historique à chaque appel.
 export class ReportPeriodQueryDto {
   @ApiPropertyOptional({
-    description: 'Début de période (AAAA-MM-JJ), inclus. Défaut : J−30.',
+    description:
+      'Début de période (AAAA-MM-JJ), inclus. Défaut : J−29 (30 jours).',
     example: '2026-09-01',
   })
-  @IsISO8601()
+  @Matches(DAY, { message: DAY_MESSAGE })
   @IsOptional()
   from?: string;
 
@@ -20,7 +26,7 @@ export class ReportPeriodQueryDto {
     description: 'Fin de période (AAAA-MM-JJ), INCLUSE. Défaut : aujourd’hui.',
     example: '2026-09-30',
   })
-  @IsISO8601()
+  @Matches(DAY, { message: DAY_MESSAGE })
   @IsOptional()
   to?: string;
 }
@@ -55,10 +61,21 @@ export class SalesReportTotalsDto {
   @ApiProperty({
     nullable: true,
     description:
-      'Marge HT en centimes = CA HT − coût. `null` quand le coût est inconnu : ' +
-      'une marge égale au CA serait un chiffre faux et flatteur.',
+      'Marge HT en centimes = CA HT des produits AYANT un coût connu − leur ' +
+      'coût. Les ventes sans coût connu n’y entrent pas (voir ' +
+      '`uncostedRevenueHt`) : les compter donnerait une marge fausse et ' +
+      'flatteuse. `null` si aucun produit vendu n’a de coût. Le coût étant le ' +
+      'DERNIER prix d’achat, la marge d’une période passée bouge quand une ' +
+      'réception change ce prix.',
   })
   marginHt!: number | null;
+
+  @ApiProperty({
+    description:
+      'CA HT des produits vendus SANS coût connu, en centimes : exclu de la ' +
+      'marge. À 0, la marge porte sur tout le CA.',
+  })
+  uncostedRevenueHt!: number;
 }
 
 export class SalesByDayDto {
@@ -120,8 +137,11 @@ export class StockReportDto {
   @ApiProperty({
     nullable: true,
     description:
-      'Valeur totale du stock au dernier prix d’achat, en centimes. Les ' +
-      'produits sans coût connu n’y entrent pas — `null` si aucun n’en a.',
+      'Valeur totale du stock au dernier prix d’achat, en centimes, sur la ' +
+      'quantité NETTE de chaque produit (magasin −2 et dépôt 5 valent 3). ' +
+      'Les produits sans coût connu n’y entrent pas — `null` si aucun n’en ' +
+      'a. Elle peut donc être inférieure à la somme de `byLocation`, qui ne ' +
+      'compte que les emplacements en positif.',
   })
   valueHt!: number | null;
 

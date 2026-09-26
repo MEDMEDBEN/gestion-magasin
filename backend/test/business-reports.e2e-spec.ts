@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
-import { Prisma } from '../src/generated/prisma/client';
+import { localDate } from '../src/common/document-number';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
@@ -35,10 +35,14 @@ describe('Rapports d’activité (e2e)', () => {
       request(server).get(url).set('Authorization', `Bearer ${token}`),
   });
 
+  const DAY = 24 * 60 * 60 * 1000;
+  /// Jour CIVIL d'Alger d'il y a N jours — le serveur borne les périodes en
+  /// jours d'Alger ; un jour UTC ferait vaciller les tests entre 23 h et minuit.
   const iso = (daysAgo: number) =>
-    new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
+    localDate(new Date(Date.now() - daysAgo * DAY));
+  /// Lendemain d'un jour `AAAA-MM-JJ`.
+  const nextDay = (day: string) =>
+    new Date(Date.parse(`${day}T00:00:00Z`) + DAY).toISOString().slice(0, 10);
 
   const product = async (opts: {
     lastPurchasePriceHt?: number;
@@ -79,6 +83,7 @@ describe('Rapports d’activité (e2e)', () => {
       status?: 'VALIDEE' | 'ANNULEE';
       tax?: number;
       discount?: number;
+      soldAt?: Date;
     } = {},
   ) => {
     const n = ++counter;
@@ -93,9 +98,9 @@ describe('Rapports d’activité (e2e)', () => {
         totalHt,
         totalTax: tax,
         totalTtc: totalHt + tax,
-        soldAt: new Date(
-          Date.now() - (opts.daysAgo ?? 1) * 24 * 60 * 60 * 1000,
-        ),
+        soldAt:
+          opts.soldAt ??
+          new Date(Date.now() - (opts.daysAgo ?? 1) * 24 * 60 * 60 * 1000),
         lines: {
           create: lines.map((line) => ({
             productId: line.productId,
@@ -229,14 +234,16 @@ describe('Rapports d’activité (e2e)', () => {
       await sell([{ productId: id, quantity: '2.000', lineTotalHt: 5_000 }], {
         tax: 950,
         discount: 200,
-        daysAgo: 2,
+        daysAgo: 340,
       });
 
-      const body = await salesReport(`?from=${iso(3)}&to=${iso(0)}`);
-      expect(body.totals.count).toBeGreaterThanOrEqual(1);
-      expect(body.totals.revenueHt).toBeGreaterThanOrEqual(5_000);
-      expect(body.totals.taxAmount).toBeGreaterThanOrEqual(950);
-      expect(body.totals.discountAmount).toBeGreaterThanOrEqual(200);
+      // Fenêtre isolée : des égalités exactes, pas des « au moins ».
+      const body = await salesReport(`?from=${iso(341)}&to=${iso(339)}`);
+      expect(body.totals.count).toBe(1);
+      expect(body.totals.revenueHt).toBe(5_000);
+      expect(body.totals.taxAmount).toBe(950);
+      expect(body.totals.revenueTtc).toBe(5_950);
+      expect(body.totals.discountAmount).toBe(200);
     });
 
     it('une vente ANNULÉE n’est pas du chiffre d’affaires', async () => {
@@ -303,6 +310,73 @@ describe('Rapports d’activité (e2e)', () => {
       // 3 × 15,00 DA = 45,00 DA de coût ; 90,00 − 45,00 = 45,00 de marge.
       expect(body.totals.costHt).toBe(4_500);
       expect(body.totals.marginHt).toBe(4_500);
+      expect(body.totals.uncostedRevenueHt).toBe(0);
+    });
+
+    /// Le piège du coût PARTIEL : retrancher le coût des seuls produits connus
+    /// du CA de TOUS les produits compte les ventes sans coût comme de la marge
+    /// pure. Au démarrage, une bonne partie du catalogue n'a pas de coût.
+    it('coût PARTIEL : la marge ne porte que sur le CA des produits au coût connu', async () => {
+      const avecCout = await product({ lastPurchasePriceHt: 1_000 });
+      const sansCout = await product({});
+      await sell(
+        [
+          { productId: avecCout, quantity: '1.000', lineTotalHt: 10_000 },
+          { productId: sansCout, quantity: '1.000', lineTotalHt: 100_000 },
+        ],
+        { daysAgo: 370 },
+      );
+
+      const body = await salesReport(`?from=${iso(371)}&to=${iso(369)}`);
+      expect(body.totals.revenueHt).toBe(110_000);
+      expect(body.totals.costHt).toBe(1_000);
+      // 100,00 − 10,00 DA, et non 1 100,00 − 10,00.
+      expect(body.totals.marginHt).toBe(9_000);
+      expect(body.totals.uncostedRevenueHt).toBe(100_000);
+    });
+
+    it('coût d’une quantité décimale : arrondi au centime entier', async () => {
+      // 0,333 m × 10,01 DA = 3,33333 DA → 333 centimes.
+      const cable = await product({ lastPurchasePriceHt: 1_001 });
+      await sell([{ productId: cable, quantity: '0.333', lineTotalHt: 500 }], {
+        daysAgo: 380,
+      });
+
+      const body = await salesReport(`?from=${iso(381)}&to=${iso(379)}`);
+      expect(body.totals.costHt).toBe(333);
+      expect(body.totals.marginHt).toBe(167);
+    });
+
+    /// Les jours d'une période sont des jours d'ALGER. `soldAt` est en UTC :
+    /// 23 h 30 UTC est déjà le lendemain à Alger, 00 h 30 UTC est 01 h 30 le
+    /// même jour. Les totaux ET la courbe doivent le dire.
+    it('jours civils d’Alger : bornes et courbe', async () => {
+      const x = iso(390);
+      const y = nextDay(nextDay(nextDay(x)));
+      const id = await product({});
+      // X à 23 h 30 UTC = X+1 à 00 h 30 à Alger.
+      await sell([{ productId: id, quantity: '1.000', lineTotalHt: 1_100 }], {
+        soldAt: new Date(`${x}T23:30:00Z`),
+      });
+      // Y à 00 h 30 UTC = Y à 01 h 30 à Alger.
+      await sell([{ productId: id, quantity: '1.000', lineTotalHt: 2_200 }], {
+        soldAt: new Date(`${y}T00:30:00Z`),
+      });
+
+      const surX = await salesReport(`?from=${x}&to=${x}`);
+      expect(surX.totals.revenueHt).toBe(0);
+
+      const lendemain = await salesReport(
+        `?from=${nextDay(x)}&to=${nextDay(x)}`,
+      );
+      expect(lendemain.totals.revenueHt).toBe(1_100);
+      expect(lendemain.byDay).toEqual([
+        { date: nextDay(x), count: 1, revenueHt: 1_100 },
+      ]);
+
+      const surY = await salesReport(`?from=${y}&to=${y}`);
+      expect(surY.totals.revenueHt).toBe(2_200);
+      expect(surY.byDay).toEqual([{ date: y, count: 1, revenueHt: 2_200 }]);
     });
 
     it('ventile par catégorie, et nomme celle qui manque', async () => {
@@ -361,11 +435,22 @@ describe('Rapports d’activité (e2e)', () => {
       await as(tokens.admin)
         .get('/api/reports/sales?from=pas-une-date')
         .expect(400);
+      // Un JOUR, pas un instant : l'heure et le fuseau rendraient les bornes
+      // et le nombre de jours incohérents.
+      await as(tokens.admin)
+        .get('/api/reports/sales?from=2026-09-01T15:00:00%2B05:00')
+        .expect(400);
+      // Les achats passent par la même validation.
+      await as(tokens.admin)
+        .get('/api/reports/purchases?from=pas-une-date')
+        .expect(400);
     });
 
-    it('sans période : les 30 derniers jours', async () => {
+    it('sans période : les 30 derniers jours, aujourd’hui compris', async () => {
       const body = await salesReport();
-      expect(body.period.days).toBe(31);
+      expect(body.period.days).toBe(30);
+      expect(body.period.to).toBe(iso(0));
+      expect(body.period.from).toBe(iso(29));
     });
   });
 
@@ -373,24 +458,57 @@ describe('Rapports d’activité (e2e)', () => {
     const stockReport = async () =>
       (await as(tokens.admin).get('/api/reports/stock').expect(200)).body;
 
+    const valueAt = (
+      body: { byLocation: { locationId: string; valueHt: number | null }[] },
+      locationId: string,
+    ) => body.byLocation.find((r) => r.locationId === locationId)?.valueHt ?? 0;
+
     it('valorise au dernier prix d’achat, magasin et dépôt séparés', async () => {
-      const id = await product({
+      const avant = await stockReport();
+      await product({
         lastPurchasePriceHt: 2_000,
         stock: [
           { locationId: magasinId, quantity: '3.000' },
           { locationId: depotId, quantity: '2.000' },
         ],
       });
+      const apres = await stockReport();
 
-      const body = await stockReport();
-      expect(body.valueHt).toBeGreaterThanOrEqual(10_000);
-      const types = body.byLocation.map(
-        (r: { locationType: string }) => r.locationType,
-      );
-      expect(types).toContain('MAGASIN');
-      expect(types).toContain('DEPOT');
-      expect(body.referenceCount).toBeGreaterThanOrEqual(1);
-      void id;
+      // 3 × 20,00 DA au magasin, 2 × 20,00 DA au dépôt.
+      expect(valueAt(apres, magasinId) - valueAt(avant, magasinId)).toBe(6_000);
+      expect(valueAt(apres, depotId) - valueAt(avant, depotId)).toBe(4_000);
+      expect(apres.valueHt - (avant.valueHt ?? 0)).toBe(10_000);
+      expect(apres.referenceCount).toBe(avant.referenceCount + 1);
+    });
+
+    it('quantité décimale : valeur arrondie au centime entier', async () => {
+      const avant = await stockReport();
+      await product({
+        lastPurchasePriceHt: 1_001,
+        stock: [{ locationId: depotId, quantity: '0.333' }],
+      });
+      const apres = await stockReport();
+
+      expect(apres.valueHt - (avant.valueHt ?? 0)).toBe(333);
+    });
+
+    /// Un emplacement en négatif (vendu d'avance) : le total suit la quantité
+    /// NETTE du produit, comme le compteur de références.
+    it('emplacement négatif : le total valorise la quantité nette', async () => {
+      const avant = await stockReport();
+      await product({
+        lastPurchasePriceHt: 1_000,
+        stock: [
+          { locationId: magasinId, quantity: '-2.000' },
+          { locationId: depotId, quantity: '5.000' },
+        ],
+      });
+      const apres = await stockReport();
+
+      expect(apres.valueHt - (avant.valueHt ?? 0)).toBe(3_000);
+      // L'emplacement, lui, montre ce qu'il a en rayon.
+      expect(valueAt(apres, depotId) - valueAt(avant, depotId)).toBe(5_000);
+      expect(valueAt(apres, magasinId)).toBe(valueAt(avant, magasinId));
     });
 
     /// Valoriser à zéro un produit sans coût connu ferait croire à un stock qui
@@ -502,6 +620,56 @@ describe('Rapports d’activité (e2e)', () => {
     /// Les rapports PRODUITS (n°20) restent ouverts aux trois rôles : les deux
     /// familles ne se confondent pas, et une garde trop large sur `reports/`
     /// aurait fermé les deux.
+    /// Le 403 du vendeur vient déjà du rôle porté par le JETON : ce test prouve
+    /// autre chose — que les droits sont relus EN BASE (`@RequireFreshAccess`).
+    /// Sans cette relecture, un admin rétrogradé lirait CA et marge pendant les
+    /// 15 minutes de son jeton.
+    it('admin rétrogradé : refusé tout de suite, avec le même jeton', async () => {
+      const email = `e2e-brp-retro-${suffix}@test.local`;
+      const user = await createTestUser(prisma, {
+        email,
+        password: PASSWORD,
+        roles: [RoleCode.ADMIN],
+      });
+      userIds.push(user.id);
+      const token = (
+        await request(server)
+          .post('/api/auth/login')
+          .send({ identifier: email, password: PASSWORD })
+          .expect(200)
+      ).body.accessToken;
+
+      for (const route of ['sales', 'stock', 'purchases']) {
+        await as(token).get(`/api/reports/${route}`).expect(200);
+      }
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { roles: { set: [{ code: RoleCode.VENDEUR }] } },
+      });
+      for (const route of ['sales', 'stock', 'purchases']) {
+        await as(token).get(`/api/reports/${route}`).expect(403);
+      }
+    });
+
+    it('cumul vendeur + magasinier : toujours refusé', async () => {
+      const email = `e2e-brp-cumul-${suffix}@test.local`;
+      const user = await createTestUser(prisma, {
+        email,
+        password: PASSWORD,
+        roles: [RoleCode.VENDEUR, RoleCode.MAGASINIER],
+      });
+      userIds.push(user.id);
+      const token = (
+        await request(server)
+          .post('/api/auth/login')
+          .send({ identifier: email, password: PASSWORD })
+          .expect(200)
+      ).body.accessToken;
+      for (const route of ['sales', 'stock', 'purchases']) {
+        await as(token).get(`/api/reports/${route}`).expect(403);
+      }
+    });
+
     it('les rapports produits restent ouverts aux trois rôles', async () => {
       for (const who of ['vendeur', 'magasinier']) {
         await as(tokens[who]).get('/api/reports/dormant-products').expect(200);
@@ -517,6 +685,7 @@ describe('Rapports d’activité (e2e)', () => {
       body.totals.taxAmount,
       body.totals.revenueTtc,
       body.totals.discountAmount,
+      body.totals.uncostedRevenueHt,
     ]) {
       expect(Number.isInteger(value)).toBe(true);
     }
@@ -524,6 +693,5 @@ describe('Rapports d’activité (e2e)', () => {
       .body;
     if (stock.valueHt !== null)
       expect(Number.isInteger(stock.valueHt)).toBe(true);
-    void Prisma;
   });
 });

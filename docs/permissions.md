@@ -48,7 +48,7 @@ aucune migration destructive sans confirmation).
 | Désactiver produit | ✅ | ❌ | ❌ |
 | Modifier prix / tarifs | ✅ | ❌ | ❌ |
 | Voir les prix / tarifs | ✅ | ✅ (lecture directe) | 👁️ |
-| Voir le coût d'achat (marge) | ✅ | ❌ | 👁️ (`cost.read`) |
+| Voir le coût d'achat (marge) | ✅ | 👁️ (`cost.read`, décision du 2026-09-22 : c'est son plancher de prix) | 👁️ (`cost.read`) |
 | Gérer emplacements dépôt | ✅ | ❌ | ✅ |
 
 ## Stock / Mouvements
@@ -177,16 +177,26 @@ L'annuaire des destinataires est une route **dédiée** (`GET /conversations/rec
 | Rapport des achats (commandé, reçu, par fournisseur) | ✅ | ❌ | ❌ |
 
 **ADMIN SEUL**, gardé par le rôle et non par une permission. Deux raisons qui vont ensemble : la spec ne liste
-« rapports » que dans les accès de l'admin (`docs/spec-fonctionnelle.md` §2), et ces trois rapports portent le
-**chiffre d'affaires**, la **marge** et la **valeur du stock au coût** — exactement ce que le tableau de bord
-refuse déjà à un vendeur (il ne lui montre que SES ventes) et au magasinier (aucun CA).
+« rapports » que dans les accès de l'admin (`docs/spec-fonctionnelle.md` §2), et ces rapports portent le
+**chiffre d'affaires** et la **marge** du magasin — exactement ce que le tableau de bord refuse déjà à un vendeur
+(il ne lui montre que SES ventes) et au magasinier (aucun CA).
+
+⚠️ **La valeur du stock au coût, elle, N'EST PAS un secret** (audit sécurité du 2026-09-26) : depuis la décision
+du 2026-09-22, les trois rôles lisent le coût d'achat (`GET /products`) et les quantités (`GET /stock`) — la
+multiplication est à la portée de tous, et le rapport des dormants (n°20) en donne déjà une partie. Le rapport de
+stock reste réservé à l'admin par cohérence de l'écran, pas par confidentialité. **À trancher par MEDMEDBEN** :
+soit on l'accepte (rien à faire), soit la valeur doit redevenir secrète — et c'est alors `cost.read` des rôles
+non-admin qu'il faut revoir, pas ce rapport.
 
 ⚠️ **À ne pas confondre avec les rapports PRODUITS (n°20)**, ouverts aux trois rôles : ceux-là ne rendent que
 des listes et des quantités. Les deux familles vivent sous le même préfixe `reports/` mais n'ont pas la même
 garde — un test e2e vérifie que fermer l'une n'a pas fermé l'autre.
 
-Si MEDMEDBEN veut ouvrir le rapport de STOCK au magasinier, c'est une ligne — mais il faudra d'abord décider ce
-qu'on fait de la valeur au coût qu'il contient.
+Si MEDMEDBEN veut ouvrir le rapport de STOCK au magasinier, c'est une ligne (voir l'avertissement ci-dessus).
+
+**Exports (tranche B)** : un fichier suit EXACTEMENT la garde de l'écran ou de la liste qu'il exporte — même
+route, même rôle, même cloisonnement (un vendeur n'exporte que SES ventes). Un fichier n'est pas un contournement
+de permission.
 
 Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
 attendre l'expiration de son jeton.

@@ -11,8 +11,9 @@ export const PERMISSIONS = {
   /// Prix & tarifs : ADMIN uniquement (décision figée).
   PRICE_MANAGE: 'price.manage',
   PRICE_READ: 'price.read',
-  /// Coût d'achat (dernier prix réceptionné, base de la marge) : ADMIN et
-  /// MAGASINIER — jamais le vendeur (décision MEDMEDBEN 2026-09-14).
+  /// Coût d'achat (dernier prix réceptionné, base de la marge) : les TROIS
+  /// rôles depuis la décision MEDMEDBEN du 2026-09-22 (il est le plancher de
+  /// prix du vendeur), qui remplace le secret du 2026-09-14.
   COST_READ: 'cost.read',
   LOCATION_MANAGE: 'location.manage',
 

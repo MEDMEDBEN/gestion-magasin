@@ -18,7 +18,8 @@ abstract class ReportPeriod with _$ReportPeriod {
 }
 
 /// Montants en centimes entiers (règle 4). `costHt` et `marginHt` sont
-/// NULLABLES : coût inconnu ne veut pas dire coût nul.
+/// NULLABLES : coût inconnu ne veut pas dire coût nul. La marge ne porte que
+/// sur le CA des produits au coût connu ; `uncostedRevenueHt` est le reste.
 @freezed
 abstract class SalesReportTotals with _$SalesReportTotals {
   const factory SalesReportTotals({
@@ -29,6 +30,7 @@ abstract class SalesReportTotals with _$SalesReportTotals {
     @Default(0) int discountAmount,
     int? costHt,
     int? marginHt,
+    @Default(0) int uncostedRevenueHt,
   }) = _SalesReportTotals;
 
   factory SalesReportTotals.fromJson(Map<String, dynamic> json) =>

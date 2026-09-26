@@ -1,4 +1,8 @@
+import { HttpStatus } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
+import { parseApiDate } from './api-date';
+import { BusinessException } from './business.exception';
+import { ErrorCode } from './error-codes';
 
 type Db = Prisma.TransactionClient;
 
@@ -44,6 +48,23 @@ export function startOfLocalDay(now = new Date()): Date {
   );
   const offsetMs = wall.getTime() - now.getTime();
   return new Date(new Date(`${localDate(now)}T00:00:00Z`).getTime() - offsetMs);
+}
+
+/// INSTANT où commence le jour civil algérien `AAAA-MM-JJ` reçu d'un filtre de
+/// période (`from`, ou le lendemain de `to` pour une borne haute inclusive).
+/// Même raison que `startOfLocalDay` : comparé à un horodatage réel, minuit UTC
+/// serait 01 h à Alger. Seule définition du projet (journal d'audit, rapports).
+export function startOfLocalDayOf(day: string, field: string): Date {
+  if (day.length !== 10) {
+    throw new BusinessException(
+      ErrorCode.VALIDATION_FAILED,
+      `${field} : jour attendu au format AAAA-MM-JJ`,
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+  // Midi UTC tombe dans le même jour civil à Alger, quel que soit le décalage.
+  const noon = parseApiDate(day, field).getTime() + 12 * 60 * 60 * 1000;
+  return startOfLocalDay(new Date(noon));
 }
 
 /// Numéro séquentiel d'un document, attribué SERVEUR dans la transaction de

@@ -182,7 +182,8 @@ class _SalesCard extends ConsumerWidget {
         children: [
           Text(
             'Du ${data.period.from} au ${data.period.to} '
-            '(${data.period.days} j) · ventes validées seulement',
+            '(${data.period.days} j) · ventes validées seulement · '
+            'marge au dernier prix d’achat',
             style: AmpereType.meta.copyWith(color: colors.ink3),
           ),
           const SizedBox(height: 10),
@@ -214,6 +215,15 @@ class _SalesCard extends ConsumerWidget {
                 ),
             ],
           ),
+          // Sans ce rappel, une marge calculée sur une partie du CA se lirait
+          // comme la marge de toute la période.
+          if (data.totals.marginHt != null &&
+              data.totals.uncostedRevenueHt > 0)
+            Text(
+              'Marge calculée hors ${formatDA(data.totals.uncostedRevenueHt)} '
+              'de ventes sans coût d’achat connu.',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
           if (data.byCategory.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(

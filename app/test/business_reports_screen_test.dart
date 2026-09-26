@@ -132,6 +132,49 @@ void main() {
     // zéro, c'est l'inconnu — et c'est ce qui est vérifié ci-dessus.
   });
 
+  /// Une marge calculée sur une PARTIE du CA ne doit pas se lire comme la marge
+  /// de toute la période.
+  testWidgets('coût partiel : l’écran dit quelle part du CA est hors marge', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      sales: SalesReport(
+        period: _period,
+        totals: const SalesReportTotals(
+          revenueHt: 110_000,
+          costHt: 1_000,
+          marginHt: 9_000,
+          uncostedRevenueHt: 100_000,
+        ),
+      ),
+    );
+
+    expect(find.text(formatDA(9_000)), findsOneWidget);
+    expect(
+      find.textContaining('hors ${formatDA(100_000)} de ventes sans coût'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('coût connu partout : aucune mention de ventes sans coût', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      sales: SalesReport(
+        period: _period,
+        totals: const SalesReportTotals(
+          revenueHt: 10_000,
+          costHt: 4_000,
+          marginHt: 6_000,
+        ),
+      ),
+    );
+
+    expect(find.textContaining('sans coût d’achat connu'), findsNothing);
+  });
+
   testWidgets('la ventilation par catégorie nomme celle qui manque', (
     tester,
   ) async {

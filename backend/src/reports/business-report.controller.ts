@@ -18,10 +18,11 @@ import {
 /// Rapports ventes / stock / achats (spec §21).
 ///
 /// **ADMIN seul**, et c'est un choix : la spec ne liste « rapports » que dans les
-/// accès de l'admin (`docs/spec-fonctionnelle.md` §2), et ces trois rapports
-/// portent le chiffre d'affaires, la MARGE et la valeur du stock au coût —
-/// exactement ce que le tableau de bord refuse déjà à un vendeur (il ne lui
-/// montre que SES ventes) et au magasinier (aucun CA).
+/// accès de l'admin (`docs/spec-fonctionnelle.md` §2), et ces rapports portent
+/// le chiffre d'affaires et la MARGE — exactement ce que le tableau de bord
+/// refuse déjà à un vendeur (il ne lui montre que SES ventes) et au magasinier
+/// (aucun CA). La valeur du stock au coût, elle, n'est PAS un secret : les trois
+/// rôles lisent coût et quantités (voir `docs/permissions.md`, n°21).
 ///
 /// À ne PAS confondre avec les rapports produits (n°20), ouverts aux trois rôles :
 /// ceux-là ne rendent que des listes et des quantités. Si MEDMEDBEN veut ouvrir
