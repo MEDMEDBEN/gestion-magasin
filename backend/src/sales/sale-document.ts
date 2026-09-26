@@ -38,8 +38,11 @@ function qty(value: string): string {
   return value.replace(/\.?0+$/, '').replace('.', ',');
 }
 
-function designation(data: SaleDocumentData, productId: string) {
-  const p = data.products.get(productId);
+function designation(
+  products: SaleDocumentData['products'],
+  productId: string,
+) {
+  const p = products.get(productId);
   return {
     name: p?.name ?? productId,
     sku: p?.sku ?? '',
@@ -71,7 +74,10 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
   const nameLines = sale.lines.reduce(
     (n, l) =>
       n +
-      Math.max(1, Math.ceil(designation(data, l.productId).name.length / 38)),
+      Math.max(
+        1,
+        Math.ceil(designation(data.products, l.productId).name.length / 38),
+      ),
     0,
   );
   const height =
@@ -121,7 +127,7 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
       rule();
 
       for (const line of sale.lines) {
-        const d = designation(data, line.productId);
+        const d = designation(data.products, line.productId);
         doc.font('Helvetica-Bold').text(d.name, x, doc.y, { width: w });
         // Prix unitaire TTC affiché (le total de ligne, lui, vient du serveur).
         const unitTtc = new Prisma.Decimal(line.unitPriceHt)
@@ -160,18 +166,72 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
 const A4_MARGIN = 40;
 
 function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
-  const { sale, store } = data;
+  const { sale } = data;
+  return renderA4Document({
+    title: 'FACTURE',
+    pdfTitle: `Facture ${sale.invoiceNumber}`,
+    info: [
+      `N° ${sale.invoiceNumber}`,
+      `Date : ${formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))}`,
+      `Ticket ${sale.number} du ${formatDateTime(new Date(sale.soldAt))}`,
+    ],
+    store: data.store,
+    customer: data.customer,
+    products: data.products,
+    lines: sale.lines,
+    totalHt: sale.totalHt,
+    totalTtc: sale.totalTtc,
+    after: [
+      ['Payé (espèces)', formatDA(sale.paidAmount)],
+      ['Reste à payer', formatDA(sale.remainingAmount)],
+    ],
+    stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
+    footer: `Vendeur : ${data.sellerName}`,
+  });
+}
+
+/// Document commercial A4 (facture, devis) : UN gabarit, pour que les deux
+/// documents remis au client aient la même tête, la même table et la même
+/// ventilation de TVA.
+export interface A4Document {
+  /// En gros, en haut à droite : « FACTURE », « DEVIS ».
+  title: string;
+  pdfTitle: string;
+  /// Lignes sous le titre : numéro, dates.
+  info: string[];
+  store: StoreIdentity;
+  customer: SaleDocumentData['customer'];
+  products: SaleDocumentData['products'];
+  lines: {
+    productId: string;
+    quantity: string;
+    unitPriceHt: number;
+    taxRate: string;
+    lineTotalHt: number;
+    lineTaxAmount: number;
+  }[];
+  totalHt: number;
+  totalTtc: number;
+  /// Montants imprimés sous le Total TTC (payé, reste…).
+  after: [string, string][];
+  /// Mention en rouge sous les totaux (annulation).
+  stamp?: string;
+  footer: string;
+}
+
+export function renderA4Document(input: A4Document): Promise<Buffer> {
+  const { store } = input;
   return renderPdf(
     {
       size: 'A4',
       margin: A4_MARGIN,
-      info: { Title: `Facture ${sale.invoiceNumber}` },
+      info: { Title: input.pdfTitle },
     },
     (doc) => {
       const left = A4_MARGIN;
       const w = doc.page.width - 2 * A4_MARGIN;
 
-      // En-tête : vendeur à gauche, n° et date à droite.
+      // En-tête : vendeur à gauche, titre, n° et dates à droite.
       const top = doc.y;
       doc
         .font('Helvetica-Bold')
@@ -187,26 +247,20 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
       doc
         .font('Helvetica-Bold')
         .fontSize(16)
-        .text('FACTURE', left + w / 2, top, { width: w / 2, align: 'right' });
+        .text(input.title, left + w / 2, top, { width: w / 2, align: 'right' });
       doc.font('Helvetica').fontSize(10);
-      doc.text(`N° ${sale.invoiceNumber}`, { width: w / 2, align: 'right' });
-      doc.text(
-        `Date : ${formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))}`,
-        { width: w / 2, align: 'right' },
-      );
-      doc.text(
-        `Ticket ${sale.number} du ${formatDateTime(new Date(sale.soldAt))}`,
-        { width: w / 2, align: 'right' },
-      );
+      for (const line of input.info) {
+        doc.text(line, { width: w / 2, align: 'right' });
+      }
       doc.y = Math.max(leftBottom, doc.y) + 20;
 
       // Client
       doc.font('Helvetica-Bold').fontSize(10).text('Client', left, doc.y);
       doc.font('Helvetica').fontSize(9);
-      if (data.customer) {
-        doc.text(data.customer.name);
-        if (data.customer.address) doc.text(data.customer.address);
-        if (data.customer.phone) doc.text(data.customer.phone);
+      if (input.customer) {
+        doc.text(input.customer.name);
+        if (input.customer.address) doc.text(input.customer.address);
+        if (input.customer.phone) doc.text(input.customer.phone);
       } else {
         doc.text('Client comptoir');
       }
@@ -246,8 +300,8 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
         cols.map((c) => c.title),
         true,
       );
-      for (const line of sale.lines) {
-        const d = designation(data, line.productId);
+      for (const line of input.lines) {
+        const d = designation(input.products, line.productId);
         tableRow([
           d.sku ? `${d.name}\n${d.sku}` : d.name,
           `${qty(line.quantity)} ${d.unit}`,
@@ -260,7 +314,7 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
       // Totaux (TVA ventilée par taux)
       doc.moveDown(1);
       const byRate = new Map<string, number>();
-      for (const line of sale.lines) {
+      for (const line of input.lines) {
         byRate.set(
           line.taxRate,
           (byRate.get(line.taxRate) ?? 0) + line.lineTaxAmount,
@@ -276,19 +330,25 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
         doc.text(amount, totalsX, y, { width: w * 0.5, align: 'right' });
         doc.moveDown(0.2);
       };
-      total('Total HT', formatDA(sale.totalHt));
+      total('Total HT', formatDA(input.totalHt));
       for (const [rate, amount] of byRate) {
         total(`TVA ${qty(rate)} %`, formatDA(amount));
       }
-      total('Total TTC', formatDA(sale.totalTtc), true);
-      doc.moveDown(0.5);
-      total('Payé (espèces)', formatDA(sale.paidAmount));
-      total('Reste à payer', formatDA(sale.remainingAmount));
-      stampCancelled(doc, sale, left, w);
+      total('Total TTC', formatDA(input.totalTtc), true);
+      if (input.after.length > 0) doc.moveDown(0.5);
+      for (const [label, amount] of input.after) total(label, amount);
+      if (input.stamp) {
+        doc
+          .moveDown(0.5)
+          .font('Helvetica-Bold')
+          .fillColor('#b00020')
+          .text(input.stamp, left, doc.y, { width: w, align: 'center' })
+          .fillColor('black');
+      }
       doc
         .font('Helvetica')
         .fontSize(8)
-        .text(`Vendeur : ${data.sellerName}`, left, doc.y + 20, { width: w });
+        .text(input.footer, left, doc.y + 20, { width: w });
     },
   );
 }

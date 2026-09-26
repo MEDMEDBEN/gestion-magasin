@@ -15,6 +15,8 @@ export const MONEY_ROUTES = [
   '/api/payments/supplier/:id/reverse',
   // La réception fait entrer la marchandise ET augmente la dette fournisseur.
   '/api/receptions',
+  // La conversion d'un devis CRÉE une vente : encaissement, crédit, stock.
+  '/api/quotes/:id/convert',
 ] as const;
 
 /// `/api/payments/customer/:id/reverse` → motif de chemin réel.

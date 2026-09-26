@@ -31,7 +31,7 @@ import {
   SaleTypeDto,
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
-import { renderSaleDocument } from './sale-document';
+import { renderSaleDocument, StoreIdentity } from './sale-document';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
@@ -169,6 +169,9 @@ export class SalesService {
     soldAt: Date = new Date(),
     /// Vente venue de la FILE : le prix affiché sur l'appareil fait foi.
     trustDevicePrice = false,
+    /// Conversion d'un devis : la vente lui est rattachée, et une remise que
+    /// l'admin a déjà accordée DANS le devis est reprise telle quelle.
+    fromQuote?: { quoteId: string },
   ): Promise<SaleDto> {
     const store = await tx.location.findFirst({
       where: { type: 'MAGASIN', isActive: true },
@@ -184,49 +187,13 @@ export class SalesService {
     const customer = dto.customerId
       ? await SalesService.lockCustomer(tx, dto.customerId)
       : null;
-    // Tarif du client s'il est encore actif, sinon le tarif par défaut.
-    const customerTier = customer?.priceTierId
-      ? await tx.priceTier.findFirst({
-          where: { id: customer.priceTierId, isActive: true },
-        })
-      : null;
-    const tier =
-      customerTier ??
-      (await tx.priceTier.findFirst({
-        where: { isDefault: true, isActive: true },
-      }));
-    if (!tier) {
-      throw new BusinessException(
-        ErrorCode.PRICE_NOT_DEFINED,
-        'Aucun tarif par défaut : l’administrateur doit en définir un',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-
-    const canDiscount = user.permissions.includes(PERMISSIONS.SALE_DISCOUNT);
-    const lines = [];
-    for (const line of dto.lines) {
-      lines.push(
-        await SalesService.priceLine(
-          tx,
-          line,
-          tier.id,
-          canDiscount,
-          trustDevicePrice,
-        ),
-      );
-    }
-    const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
-    const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
-    const totalTtc = totalHt + totalTax;
-    // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
-    if (totalTtc > MAX_MONEY || lines.some((l) => l.lineTotalTtc > MAX_MONEY)) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'Montant de la vente trop élevé',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    const { lines, totalHt, totalTax, totalTtc } = await SalesService.priceCart(
+      tx,
+      customer,
+      dto.lines,
+      user.permissions.includes(PERMISSIONS.SALE_DISCOUNT) || !!fromQuote,
+      trustDevicePrice,
+    );
 
     if (
       dto.expectedTotalTtc !== undefined &&
@@ -328,6 +295,7 @@ export class SalesService {
         soldAt,
         dueDate,
         note: dto.note ?? null,
+        quoteId: fromQuote?.quoteId ?? null,
         lines: {
           create: lines.map(({ productId, ...rest }) => ({
             productId,
@@ -455,28 +423,11 @@ export class SalesService {
         select: { fullName: true },
       }),
     ]);
-    const env = (key: string) =>
-      this.config.get<string>(key)?.trim() || undefined;
     // Pas de facture sans mentions légales ; un ticket, lui, reste imprimable.
-    if (sale.invoiceNumber && !(env('STORE_NIF') && env('STORE_RC'))) {
-      throw new BusinessException(
-        ErrorCode.STORE_IDENTITY_MISSING,
-        'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
-      const value = env(`STORE_${key}`);
-      return value ? [`${key} : ${value}`] : [];
-    });
+    const store = this.storeIdentity(!!sale.invoiceNumber);
     const pdf = await renderSaleDocument({
       sale,
-      store: {
-        name: env('STORE_NAME') ?? 'Magasin',
-        address: env('STORE_ADDRESS'),
-        phone: env('STORE_PHONE'),
-        legal,
-      },
+      store,
       sellerName: seller?.fullName ?? '',
       customer,
       products: new Map(products.map((p) => [p.id, p])),
@@ -768,6 +719,84 @@ export class SalesService {
       );
     }
     return debts;
+  }
+
+  /// Prix d'un panier — vente ou devis, UNE seule règle (règle 13) : tarif du
+  /// client s'il est encore actif, sinon le tarif par défaut ; prix saisi
+  /// jamais sous le plancher ; remise seulement si `canDiscount`.
+  static async priceCart(
+    tx: Db,
+    customer: { priceTierId: string | null } | null,
+    cart: CreateSaleDto['lines'],
+    canDiscount: boolean,
+    trustDevicePrice = false,
+  ) {
+    const customerTier = customer?.priceTierId
+      ? await tx.priceTier.findFirst({
+          where: { id: customer.priceTierId, isActive: true },
+        })
+      : null;
+    const tier =
+      customerTier ??
+      (await tx.priceTier.findFirst({
+        where: { isDefault: true, isActive: true },
+      }));
+    if (!tier) {
+      throw new BusinessException(
+        ErrorCode.PRICE_NOT_DEFINED,
+        'Aucun tarif par défaut : l’administrateur doit en définir un',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const lines = [];
+    for (const line of cart) {
+      lines.push(
+        await SalesService.priceLine(
+          tx,
+          line,
+          tier.id,
+          canDiscount,
+          trustDevicePrice,
+        ),
+      );
+    }
+    const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
+    const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
+    const totalTtc = totalHt + totalTax;
+    // Colonnes Int : un total démesuré est une saisie invalide, pas une 500.
+    if (totalTtc > MAX_MONEY || lines.some((l) => l.lineTotalTtc > MAX_MONEY)) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Montant trop élevé',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return { lines, totalHt, totalTax, totalTtc };
+  }
+
+  /// Identité du magasin imprimée en tête des documents (variables STORE_*).
+  /// `requireLegal` : une facture exige ses mentions légales ; un ticket ou un
+  /// devis reste imprimable sans.
+  storeIdentity(requireLegal: boolean): StoreIdentity {
+    const env = (key: string) =>
+      this.config.get<string>(key)?.trim() || undefined;
+    if (requireLegal && !(env('STORE_NIF') && env('STORE_RC'))) {
+      throw new BusinessException(
+        ErrorCode.STORE_IDENTITY_MISSING,
+        'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
+      const value = env(`STORE_${key}`);
+      return value ? [`${key} : ${value}`] : [];
+    });
+    return {
+      name: env('STORE_NAME') ?? 'Magasin',
+      address: env('STORE_ADDRESS'),
+      phone: env('STORE_PHONE'),
+      legal,
+    };
   }
 
   private static async priceLine(

@@ -11,6 +11,7 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/amount_dialog.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -19,6 +20,7 @@ import '../../catalog/data/catalog_models.dart';
 import '../../scan/presentation/scanned_product_sheet.dart';
 import '../../catalog/data/catalog_repository.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
+import '../../quotes/application/quotes_controller.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
@@ -220,7 +222,7 @@ class _CashBar extends ConsumerWidget {
       _snack(context, 'Magasin introuvable dans le catalogue local');
       return;
     }
-    final amount = await _askAmount(
+    final amount = await askAmount(
       context,
       title: 'Ouvrir la caisse',
       label: 'Fond de caisse',
@@ -249,7 +251,7 @@ class _CashBar extends ConsumerWidget {
     WidgetRef ref,
     CashSession cash,
   ) async {
-    final counted = await _askAmount(
+    final counted = await askAmount(
       context,
       title: 'Clôturer la caisse',
       label: 'Espèces comptées dans le tiroir',
@@ -392,61 +394,6 @@ class _CashSessionsSection extends ConsumerWidget {
   }
 }
 
-/// Saisie d'un montant en DA (virgule acceptée), renvoyé en centimes.
-Future<int?> _askAmount(
-  BuildContext context, {
-  required String title,
-  required String label,
-  required String confirm,
-  String? help,
-  int? initial,
-}) {
-  final controller = TextEditingController(
-    text: initial == null ? '' : formatDA(initial, withSymbol: false),
-  );
-  return showDialog<int>(
-    context: context,
-    builder: (context) {
-      String? error;
-      return StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text(title),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: label,
-              suffixText: 'DA',
-              helperText: help,
-              errorText: error,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final value = parseDA(controller.text);
-                if (value == null || value < 0) {
-                  setState(
-                    () => error = 'Montant invalide, ex. 5000 ou 1450,50',
-                  );
-                  return;
-                }
-                Navigator.of(context).pop(value);
-              },
-              child: Text(confirm),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
-
 class _SaleSection extends ConsumerStatefulWidget {
   const _SaleSection({required this.margin, required this.rights});
 
@@ -484,6 +431,37 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     _searchFocus.requestFocus();
   }
 
+  /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
+  /// panier est vidé, rien ne sort du stock. En ligne uniquement.
+  Future<void> _makeQuote() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final validUntil = await showDatePicker(
+      context: context,
+      helpText: 'Devis valable jusqu’au',
+      initialDate: today.add(const Duration(days: 30)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+    );
+    if (validUntil == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final quote = await ref
+          .read(quoteActionsProvider)
+          .createFromCart(validUntil: validUntil);
+      if (mounted) {
+        _snack(
+          context,
+          'Devis ${quote.number} enregistré (${formatDA(quote.totalTtc)}) — '
+          'retrouvez-le dans « Devis ».',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _checkout(CartEstimate estimate) async {
     final cart = ref.read(cartProvider);
     // Caisse CONNUE fermée (dernier état lu, même hors ligne) : une vente
@@ -495,7 +473,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       _snack(context, 'Ouvrez la caisse avant d’encaisser des espèces');
       return;
     }
-    final received = await _askAmount(
+    final received = await askAmount(
       context,
       title: 'Encaisser ${formatDA(estimate.totalTtc)}',
       label: 'Espèces reçues',
@@ -747,6 +725,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               label: Text('Encaisser ${formatDA(estimate.totalTtc)}'),
             ),
           ),
+          const SizedBox(height: 8),
+          // Même panier, aucun encaissement, aucun mouvement de stock.
+          OutlinedButton.icon(
+            onPressed: _busy || estimate.missingPrices.isNotEmpty
+                ? null
+                : _makeQuote,
+            icon: const Icon(LucideIcons.fileText, size: 18),
+            label: const Text('Faire un devis'),
+          ),
           TextButton(
             onPressed: _busy
                 ? null
@@ -812,7 +799,7 @@ class _CartLineRow extends ConsumerWidget {
       );
       return;
     }
-    final value = await _askAmount(
+    final value = await askAmount(
       context,
       title: 'Prix de « ${line.product.name} »',
       label: 'Prix unitaire HT',
@@ -1184,7 +1171,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
   }
 
   Future<void> _pay(Customer customer) async {
-    final amount = await _askAmount(
+    final amount = await askAmount(
       context,
       title: 'Règlement de ${customer.name}',
       label: 'Espèces reçues',

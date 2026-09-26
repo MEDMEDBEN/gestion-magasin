@@ -29,6 +29,7 @@ class ErrorCodes {
   static const String notImplemented = 'NOT_IMPLEMENTED';
   static const String rateLimited = 'RATE_LIMITED';
   static const String exportTooLarge = 'EXPORT_TOO_LARGE';
+  static const String quoteExpired = 'QUOTE_EXPIRED';
 
   // Stock
   static const String stockNegative = 'STOCK_NEGATIVE';

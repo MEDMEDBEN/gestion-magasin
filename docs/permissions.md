@@ -221,6 +221,23 @@ fermer.
 Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
 attendre l'expiration de son jeton.
 
+## Devis (P1 n°21a, ajouté le 2026-09-26)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Créer un devis, le lire, son PDF | ✅ | ✅ | ❌ |
+| Envoyer / accepter / refuser | ✅ | ✅ | ❌ |
+| Convertir en vente (`POST /quotes/:id/convert`) | ✅ | ✅ (caisse, crédit : droits de la vente) | ❌ |
+| Remise dans un devis | ✅ | ❌ (reprise à la conversion si l'admin l'a accordée) | ❌ |
+
+Même garde que la vente : ADMIN ou VENDEUR avec `sale.create`, aucune permission nouvelle. La conversion
+passe par le cœur de la vente : `sale.credit` pour un reste à crédit, caisse OUVERTE du convertisseur
+pour les espèces, plafond de crédit, anti-stock-négatif, plancher du coût d'achat — tous vérifiés au jour
+de la vente. Mutation d'argent : dans `MONEY_ROUTES`, clé d'idempotence obligatoire.
+
+⚠️ **À confirmer par MEDMEDBEN — visibilité PARTAGÉE** : tout vendeur voit et convertit les devis de tous
+(un client qui revient ne retombe pas toujours sur le même vendeur). C'est l'inverse des ventes, où le
+vendeur ne voit que les siennes. Revenir au cloisonnement = une ligne dans `QuotesService`.
+
 ## Rapports produits (P1 n°20, ajouté le 2026-09-26)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

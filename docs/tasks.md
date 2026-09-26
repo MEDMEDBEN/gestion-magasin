@@ -211,6 +211,41 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #21a DEVIS — CODE LIVRÉ, **AUDITS EN COURS** (2026-09-26 · **MEDMEDBEN**)
+Spec §8quater. **Aucune migration** : `Quote`, `QuoteLine`, `QuoteStatus`, `Sale.quoteId` et `DocumentType.DEVIS`
+existaient depuis la Phase 0 — vérifié avant d'appeler `db-migrator`.
+- **Une règle de prix, un endroit** : `SalesService.priceCart()` extrait de la vente (tarif du client, plancher du
+  coût, remise réservée à l'admin) et utilisé par le devis. **Un gabarit A4** (`renderA4Document`) pour la facture
+  ET le devis ; `storeIdentity()` partagé (le devis s'imprime sans les mentions légales, pas la facture).
+- **`POST /quotes`**, liste/filtre par statut, détail, PDF, `send`/`accept`/`refuse`, **`POST /quotes/:id/convert`**.
+  Garde de la vente (ADMIN|VENDEUR + `sale.create`), aucune permission nouvelle.
+- **Aucun mouvement de stock** à la création (e2e : stock et nombre de mouvements inchangés ; un devis peut
+  dépasser le stock, il ne réserve rien).
+- **`EXPIRE` n'est jamais écrit** : il est LU (validité passée, jour d'Alger) — pas d'ordonnanceur. Filtre SQL
+  cohérent. Un devis expiré ne s'accepte ni ne se convertit (`QUOTE_EXPIRED`).
+- **Conversion = une vente complète** par le MÊME cœur (`createInTx`) : caisse ouverte, crédit/plafond/échéance,
+  anti-stock-négatif, plancher du coût AU JOUR DE LA VENTE ; prix PROMIS repris même si le tarif a monté ; remise
+  accordée par l'admin dans le devis reprise pour le vendeur. Devis → `CONVERTI` et `Sale.quoteId` dans la MÊME
+  transaction (tout ou rien). Mutation d'argent : ajoutée à `MONEY_ROUTES` (le test « sans clé → 400 » l'a exigé
+  de lui-même), renvoi de la même clé = la même vente.
+- **App** : « Faire un devis » dans le panier de Vente (même recherche, douchette, prix modifié, client ;
+  validité proposée à 30 jours ; panier vidé) ; écran **« Devis »** (filtres, PDF, envoyé/accepté/refusé,
+  conversion avec le même encaissement que la vente). `askAmount` sorti de l'écran Vente
+  (`ui/widgets/amount_dialog.dart`) pour ne pas le recopier.
+- **Défaut trouvé par mon test d'écran** : la conversion lisait l'état de la caisse PENDANT son chargement
+  (l'écran Devis ne le surveillait pas) → « Ouvrez la caisse » systématique, caisse ouverte ou non.
+- **Contre-épreuves** (garde retirée → échec) : prix promis, passage à CONVERTI, remise du devis, expiration à la
+  conversion, statut écrit hors transaction, id stable du devis côté app.
+- **Preuve** : backend lint 0 · `tsc` propre · **120 unit** · **547 e2e** (37 suites, un passage) dont **16** de
+  devis ; app `flutter analyze` propre · **+421 ~46** dont **6** de devis. **Aucun écran vu par un humain.**
+- **À confirmer par MEDMEDBEN** : visibilité PARTAGÉE des devis entre vendeurs (inverse des ventes) — écrit dans
+  `docs/permissions.md`.
+
+**Prochaine étape précise** : passer `reviewer` puis `security-reviewer` sur le n°21a (`backend/src/sales/quotes.*`,
+`dto/quote.dto.ts`, `priceCart`/`storeIdentity`/`renderA4Document`, `test/quotes.e2e-spec.ts`,
+`app/lib/features/quotes/**`, le bouton « Faire un devis » de `sales_screen.dart`), appliquer, puis **P1 n°21b
+Étiquettes code-barres**.
+
 ### 🚧 P1 #21 RAPPORTS VENTES / STOCK / ACHATS — **TRANCHE A** LIVRÉE ET AUDITÉE (2026-09-26 · **MEDMEDBEN**)
 Spec §21. **Aucune migration.** Trois lectures de synthèse, **ADMIN seul**, dans `backend/src/reports/`.
 
@@ -2156,7 +2191,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
 | Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranches A et B livrées et auditées** (2026-09-26) | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
-| Devis, étiquettes, documents (P1 #21a-21c) | 🔴 Non commencé | — | — | — | — |
+| Devis (P1 #21a) | 🟡 **Code livré** (2026-09-26), audits en cours | 🟢 Prix partagé avec la vente, conversion atomique | 🟢 Panier → devis, écran Devis | 🟢 16 e2e · 6 widget | 🔴 audits à passer |
+| Étiquettes, documents, import (P1 #21b-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

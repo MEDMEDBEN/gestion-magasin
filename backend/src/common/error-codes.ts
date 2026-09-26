@@ -78,6 +78,9 @@ export enum ErrorCode {
 
   // Machines à états
   INVALID_STATE_TRANSITION = 'INVALID_STATE_TRANSITION',
+  /// Devis dont la date de validité est passée : il ne s'accepte ni ne se
+  /// convertit plus.
+  QUOTE_EXPIRED = 'QUOTE_EXPIRED',
 
   // Synchronisation offline (docs/context.md)
   SYNC_MUTATION_REJECTED = 'SYNC_MUTATION_REJECTED',

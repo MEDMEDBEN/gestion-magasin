@@ -17,6 +17,7 @@ import '../features/product_reports/presentation/product_reports_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/replenishment/presentation/replenishment_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
+import '../features/quotes/presentation/quotes_screen.dart';
 import '../features/scan/presentation/scan_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
@@ -81,6 +82,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.shoppingCart,
       label: 'Vente',
       builder: (context, user) => SalesScreen(user: user),
+    ),
+  // `/quotes` : même garde que la vente — ADMIN|VENDEUR + sale.create.
+  if ((user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+      user.can('sale.create'))
+    AppDestination(
+      icon: LucideIcons.fileText,
+      label: 'Devis',
+      builder: (context, _) => const QuotesScreen(),
     ),
   // `/products`, `/categories`, `/locations` en lecture : 3 rôles + product.read.
   if (user.can('product.read'))
