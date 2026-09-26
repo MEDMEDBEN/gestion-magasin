@@ -405,15 +405,20 @@ void main() {
     final admin = authUser(
       permissions: const [..._allProductPermissions, 'user.manage'],
     );
-    // Accueil, Catalogue, Rapports, Utilisateurs, Signalements, Messages,
-    // Notifications, Mon profil : 8 entrées au POSTE (le scanner est mobile, il
-    // lui faut une caméra), 9 sur mobile — les suivantes passent dans « Plus »
-    // (AMPÈRE §7). « Rapports » suit `product.read` (P1 n°20) ; « Réappro »
-    // n'est pas là, ce compte n'a pas `purchase.create`.
+    // Accueil, Catalogue, Activité, Rapports, Utilisateurs, Signalements,
+    // Messages, Notifications, Mon profil : 9 entrées au POSTE (le scanner est
+    // mobile, il lui faut une caméra), 10 sur mobile — les suivantes passent
+    // dans « Plus » (AMPÈRE §7).
+    //
+    // « Activité » suit le RÔLE admin (P1 n°21 : CA, marge, valeur du stock au
+    // coût) ; « Rapports » suit `product.read` (P1 n°20 : listes et quantités,
+    // ouvert aux trois rôles) ; « Réappro » n'est pas là, ce compte n'a pas
+    // `purchase.create`.
     final entries = destinationsFor(admin);
-    expect(entries.where((d) => !d.mobileOnly), hasLength(8));
-    expect(entries, hasLength(9));
+    expect(entries.where((d) => !d.mobileOnly), hasLength(9));
+    expect(entries, hasLength(10));
     expect(entries.map((d) => d.label), contains('Rapports'));
+    expect(entries.map((d) => d.label), contains('Activité'));
     expect(entries.map((d) => d.label), isNot(contains('Réappro')));
   });
 

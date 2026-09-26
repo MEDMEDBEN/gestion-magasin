@@ -211,6 +211,61 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #21 RAPPORTS VENTES / STOCK / ACHATS — **TRANCHE A** LIVRÉE (2026-09-26 · **MEDMEDBEN**)
+Spec §21. **Aucune migration.** Trois lectures de synthèse, **ADMIN seul**, dans `backend/src/reports/`.
+
+⚠️ **CETTE FEATURE N'EST PAS TERMINÉE** : la tranche A (les rapports de lecture) est livrée et prouvée, la
+**tranche B (exports Excel/CSV et PDF) reste entièrement à faire**, et **les deux audits obligatoires n'ont PAS
+été passés sur cette tranche** — la session a été close avant. Voir « prochaine étape ».
+
+- **`GET /api/reports/sales?from=&to=`** : nombre de ventes, CA HT/TTC, TVA, remises, coût, **marge**, tendance
+  par jour, ventilation par catégorie. Ventes **VALIDÉES** seulement.
+- **`GET /api/reports/stock`** : valeur du stock au dernier prix d'achat, par emplacement, références, stocks
+  faibles, ruptures. **Sans période** — le stock est un état, pas un flux.
+- **`GET /api/reports/purchases?from=&to=`** : commandé, reçu, par fournisseur.
+- Écran « Activité » (trois cartes, sélecteur de fenêtre), réservé à l'admin.
+
+**Décisions, toutes contre-éprouvées**
+1. **`to` est INCLUS** côté utilisateur : la borne interne est le lendemain à 0 h. Sans cela, « du 1er au
+   30 septembre » perdait **toutes les ventes du 30**. Contre-épreuve : borne remise à `to` → le test échoue.
+2. **La marge vaut `null`, jamais le CA**, quand aucun produit vendu n'a de coût connu. Une marge égale au CA
+   est un chiffre faux et flatteur. La marge utilise le **dernier** prix d'achat (règle 5) : elle bouge donc
+   quand une réception change le coût — c'est la règle telle qu'écrite, pas un défaut.
+3. **ADMIN seul, gardé par le RÔLE** et non par une permission : ces rapports portent CA, marge et valeur du
+   stock au coût. Un test vérifie aussi que cette garde **n'a pas fermé les rapports produits** (n°20), qui
+   vivent sous le même préfixe `reports/` et restent ouverts aux trois rôles.
+4. **Commandé et reçu sont comptés séparément** et ne s'équilibrent pas : une commande de septembre peut être
+   reçue en octobre. L'écran le DIT, sinon on cherche l'erreur.
+5. **Période bornée à 730 jours**, défaut 30 jours. Sans période, un rapport serait un scan de tout l'historique.
+
+**Deux défauts trouvés par mes propres tests**
+- **L'écran plantait à sa première frame** : l'état de chargement des cartes utilisait `AmpereSkeletonList`, qui
+  est un `ListView`, imbriqué dans le `ListView` de l'écran → « Vertical viewport was given unbounded height ».
+  Remplaçé par un squelette **borné** local à la carte.
+- **Une de mes assertions était fausse** : « aucun 0,00 DA à l'écran » — or une TVA nulle ou des achats à zéro
+  sur la période SONT des zéros légitimes. Resserrée sur la seule marge, qui était le propos.
+- Corrections de schéma en cours de route : `Sale` n'a **pas** de champ de remise (elle est portée par
+  `SaleLine.discountAmount`), et `ReceptionLine` n'a **pas** de montant HT (quantité × prix unitaire).
+
+**Preuve (2026-09-26)** : backend `lint:check` **0** · `tsc` propre · **98 unit** · **500 e2e** (35 suites, un
+seul passage) dont **19** de rapports d'activité ; app `flutter analyze` propre · **+405 ~46** dont **10** de
+rapports d'activité. **Trois contre-épreuves** : borne haute inclusive, marge `null`, garde ADMIN — les trois
+échouent quand on retire la garde.
+
+**PROCHAINE ÉTAPE PRÉCISE, dans cet ordre**
+1. **Passer les deux audits obligatoires sur la tranche A** (`reviewer` puis `security-reviewer`), appliquer les
+   trouvailles, contre-éprouver. Ils n'ont PAS été passés. Points à leur signaler : le cloisonnement du CA et
+   de la marge ; le coût des requêtes (`saleLine.findMany` charge toutes les lignes de la période en mémoire pour
+   calculer coût et catégories — borné par la période, mais à 730 jours ça peut faire beaucoup) ; le
+   `ponytail:` du parcours catalogue dans `stock()`.
+2. **Tranche B — exports.** `exceljs` **n'est pas installé** (`npm i exceljs`) et `backend/src/common/export/`
+   **reste à créer** : `CONVENTIONS.md` §131 impose **une seule** bibliothèque Excel/CSV, centralisée là. Ne pas
+   ajouter de bibliothèque CSV séparée : `exceljs` écrit aussi le CSV. Le PDF passe par
+   `common/pdf/pdf.ts` (`renderPdf`), **déjà en place** — ne pas en introduire un second.
+   À exporter, dans l'ordre d'utilité : les trois rapports ci-dessus, puis les listes d'historique que la spec
+   §8quinquies énumère (ventes, stock, mouvements, inventaires, achats, réceptions, clients, fournisseurs,
+   dettes). **Le cloisonnement doit suivre l'export** : un fichier n'est pas un contournement de permission.
+
 ### 🚧 P1 #20 PRODUITS DORMANTS / PRODUITS DEMANDÉS — LIVRÉS (2026-09-26 · **MEDMEDBEN**)
 Spec §20. Deux questions opposées dans un seul écran — « qu'est-ce qui ne part pas ? » et « qu'est-ce qu'on me
 réclame ? ». **Aucune migration** : tout se déduit de `Sale`/`SaleLine`, `StockMovement` et `TransferLine`.
@@ -1939,7 +1994,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
-| Rapports, devis, étiquettes, PDF/Excel (P1 #21-21c) | 🔴 Non commencé | — | — | — | — |
+| Rapports ventes/stock/achats (P1 #21) | 🟠 **Tranche A livrée, AUDITS NON PASSÉS** (2026-09-26) | 🟢 3 lectures, ADMIN seul, période bornée | 🟢 Écran « Activité » | 🟢 19 e2e · 10 widget | 🔴 à faire |
+| Exports Excel/CSV + PDF, devis, étiquettes (P1 #21 tranche B, #21a-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

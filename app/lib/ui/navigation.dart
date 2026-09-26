@@ -12,6 +12,7 @@ import '../features/messaging/presentation/conversations_screen.dart';
 import '../features/notifications/presentation/notifications_screen.dart';
 import '../features/planning/presentation/planning_screen.dart';
 import '../features/problems/presentation/problems_screen.dart';
+import '../features/business_reports/presentation/business_reports_screen.dart';
 import '../features/product_reports/presentation/product_reports_screen.dart';
 import '../features/purchases/presentation/purchases_screen.dart';
 import '../features/replenishment/presentation/replenishment_screen.dart';
@@ -131,6 +132,17 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.clipboardList,
       label: 'Achats',
       builder: (context, user) => PurchasesScreen(user: user),
+    ),
+  // `/reports/business` : ADMIN SEUL — ces rapports portent le chiffre
+  // d'affaires, la MARGE et la valeur du stock au coût. Le tableau de bord ne
+  // montre déjà à un vendeur que SES ventes, et aucun CA au magasinier : cet
+  // écran ne doit pas contourner ce cloisonnement (spec §2, « rapports » ne
+  // figure que dans les accès de l'admin).
+  if (user.hasRole('ADMIN'))
+    AppDestination(
+      icon: LucideIcons.chartLine,
+      label: 'Activité',
+      builder: (context, _) => const BusinessReportsScreen(),
     ),
   // `/reports/products` : les TROIS rôles + product.read, comme le tableau de
   // bord. Chacun en fait quelque chose : l'admin achète, le magasinier

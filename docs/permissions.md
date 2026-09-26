@@ -169,6 +169,28 @@ le cloisonnement. Si un besoin de modération apparaît, il faudra le trancher i
 L'annuaire des destinataires est une route **dédiée** (`GET /conversations/recipients`, id et nom seulement) :
 `/users` reste réservé à l'admin, alors que les trois rôles doivent pouvoir ouvrir un fil.
 
+## Rapports d'activité — ventes / stock / achats (P1 n°21, ajouté le 2026-09-26)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Rapport des ventes (CA, TVA, remises, marge, tendance) | ✅ | ❌ | ❌ |
+| Rapport de stock (valeur au coût, par emplacement) | ✅ | ❌ | ❌ |
+| Rapport des achats (commandé, reçu, par fournisseur) | ✅ | ❌ | ❌ |
+
+**ADMIN SEUL**, gardé par le rôle et non par une permission. Deux raisons qui vont ensemble : la spec ne liste
+« rapports » que dans les accès de l'admin (`docs/spec-fonctionnelle.md` §2), et ces trois rapports portent le
+**chiffre d'affaires**, la **marge** et la **valeur du stock au coût** — exactement ce que le tableau de bord
+refuse déjà à un vendeur (il ne lui montre que SES ventes) et au magasinier (aucun CA).
+
+⚠️ **À ne pas confondre avec les rapports PRODUITS (n°20)**, ouverts aux trois rôles : ceux-là ne rendent que
+des listes et des quantités. Les deux familles vivent sous le même préfixe `reports/` mais n'ont pas la même
+garde — un test e2e vérifie que fermer l'une n'a pas fermé l'autre.
+
+Si MEDMEDBEN veut ouvrir le rapport de STOCK au magasinier, c'est une ligne — mais il faudra d'abord décider ce
+qu'on fait de la valeur au coût qu'il contient.
+
+Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
+attendre l'expiration de son jeton.
+
 ## Rapports produits (P1 n°20, ajouté le 2026-09-26)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
