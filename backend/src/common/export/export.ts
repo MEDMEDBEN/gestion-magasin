@@ -5,7 +5,13 @@ import { Workbook } from 'exceljs';
 import { BusinessException } from '../business.exception';
 import { intFromEnv } from '../env';
 import { ErrorCode } from '../error-codes';
-import { formatDA, PdfDoc, renderPdf } from '../pdf/pdf';
+import {
+  amountText,
+  formatDA,
+  formatDateTime,
+  PdfDoc,
+  renderPdf,
+} from '../pdf/pdf';
 
 /// Exports de fichiers (spec §8quinquies) — le SEUL endroit du projet qui écrit
 /// de l'Excel ou du CSV (CONVENTIONS.md : `exceljs`, qui écrit aussi le CSV). Le
@@ -88,24 +94,22 @@ export interface ExportFile {
 /// filtre plutôt que de tronquer en silence.
 export const MAX_EXPORT_ROWS = 10_000;
 
-/// Lit TOUTES les pages d'une liste paginée existante, avec ses filtres et ses
-/// gardes — c'est ce qui fait suivre le cloisonnement à l'export.
+/// Lit une liste paginée existante, avec ses filtres et ses gardes — c'est ce
+/// qui fait suivre le cloisonnement à l'export.
+///
+/// En UNE SEULE requête, jamais page par page : entre deux pages, une vente
+/// modifie le stock (tri sur `updatedAt`) ou s'ajoute en tête des ventes — une
+/// ligne sortirait en double et une autre disparaîtrait, sans rien dire. Le
+/// service est appelé sans le `@Max(200)` du DTO, qui ne borne que l'écran.
 export async function collectAll<Row>(
   fetchPage: (
     page: number,
     limit: number,
   ) => Promise<{ data: Row[]; meta: { total: number } }>,
 ): Promise<Row[]> {
-  const limit = 200;
-  const first = await fetchPage(1, limit);
-  assertExportable(first.meta.total);
-  const rows = [...first.data];
-  for (let page = 2; rows.length < first.meta.total; page++) {
-    const next = await fetchPage(page, limit);
-    if (next.data.length === 0) break; // lignes supprimées entre deux pages
-    rows.push(...next.data);
-  }
-  return rows;
+  const all = await fetchPage(1, MAX_EXPORT_ROWS);
+  assertExportable(all.meta.total);
+  return all.data;
 }
 
 export function assertExportable(total: number): void {
@@ -118,10 +122,23 @@ export function assertExportable(total: number): void {
   }
 }
 
+/// Le PDF se dessine sur le fil principal de Node : au-delà, un rendu tient le
+/// serveur plusieurs secondes et les ventes des autres postes attendent. Un
+/// tableur s'écrit vite — on y renvoie.
+export const MAX_PDF_ROWS = 2_000;
+
 export async function renderExport(
   doc: ExportDocument,
   format: ExportFormat,
 ): Promise<ExportFile> {
+  const rows = doc.sections.reduce((sum, s) => sum + s.rows.length, 0);
+  if (format === 'pdf' && rows > MAX_PDF_ROWS) {
+    throw new BusinessException(
+      ErrorCode.EXPORT_TOO_LARGE,
+      `PDF trop volumineux : ${rows} lignes, ${MAX_PDF_ROWS} au plus — exportez en Excel ou resserrez le filtre`,
+      HttpStatus.BAD_REQUEST,
+    );
+  }
   switch (format) {
     case 'xlsx':
       return {
@@ -157,15 +174,8 @@ export function exportResponse(file: ExportFile): StreamableFile {
 
 const DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-/// Montant exact en dinars, « 1234,56 », calculé en ENTIERS (jamais `/ 100`
-/// flottant) : c'est le texte qui voyage dans le CSV.
-function dinars(centimes: number): string {
-  const sign = centimes < 0 ? '-' : '';
-  const abs = Math.abs(centimes);
-  return `${sign}${Math.trunc(abs / 100)},${(abs % 100).toString().padStart(2, '0')}`;
-}
-
-/// Parties de l'heure d'Alger d'un horodatage : le serveur tourne en UTC.
+/// Parties de l'heure MURALE d'Alger d'un horodatage, pour une cellule Excel
+/// (qui n'a pas de fuseau) : le serveur tourne en UTC.
 function algiersParts(value: Date | string) {
   const parts = new Intl.DateTimeFormat('fr-FR', {
     timeZone: 'Africa/Algiers',
@@ -208,16 +218,21 @@ function dateText(value: Date | string): string {
     const [y, m, d] = value.split('-');
     return `${d}/${m}/${y}`;
   }
-  const p = algiersParts(value);
-  return `${p.d}/${p.m}/${p.y} ${p.hh}:${p.mm}`;
+  return formatDateTime(new Date(value));
 }
+
+/// Injection de formule : une cellule CSV qui commence par `=`, `+`, `-`, `@`
+/// (ou leurs formes pleine chasse, ou après des blancs) serait EXÉCUTÉE par le
+/// tableur à l'ouverture. L'apostrophe la neutralise — elle reste visible, par
+/// exemple devant un téléphone « +213… » : c'est le prix de la protection.
+const FORMULA_START = /^\s*[=+\-@＝＋－＠]|^[\t\r\n]/;
 
 /// Texte d'une cellule pour le CSV et le PDF.
 function cellText(kind: CellKind, value: CellValue, forCsv: boolean): string {
   if (value === null || value === undefined || value === '') return '';
   switch (kind) {
     case 'money':
-      return forCsv ? dinars(Number(value)) : formatDA(Number(value));
+      return forCsv ? amountText(Number(value)) : formatDA(Number(value));
     case 'quantity':
       // Décimale en chaîne : on change le séparateur, on ne recalcule rien.
       return String(value).replace('.', ',');
@@ -227,9 +242,7 @@ function cellText(kind: CellKind, value: CellValue, forCsv: boolean): string {
       return String(value);
     case 'text': {
       const text = String(value);
-      // Injection de formule : un nom de client « =HYPERLINK(...) » serait
-      // EXÉCUTÉ par le tableur à l'ouverture du CSV. L'apostrophe le neutralise.
-      return forCsv && /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+      return forCsv && FORMULA_START.test(text) ? `'${text}` : text;
     }
   }
 }
@@ -248,6 +261,8 @@ function xlsxValue(kind: CellKind, value: CellValue): CellValue {
   if (value === null || value === undefined || value === '') return null;
   switch (kind) {
     case 'money':
+      // Flottant ASSUMÉ : un affichage qui ne revient jamais dans le système
+      // (la règle 4 porte sur le stockage) ; le CSV, lui, reste exact.
       return Number(value) / 100;
     case 'quantity':
       return Number(value);
@@ -286,7 +301,13 @@ async function toXlsx(doc: ExportDocument): Promise<Buffer> {
         section.columns.map((c) => xlsxValue(c.kind ?? 'text', c.value(row))),
       );
       section.columns.forEach((c, i) => {
-        const format = XLSX_FORMATS[c.kind ?? 'text'];
+        const kind = c.kind ?? 'text';
+        const raw = c.value(row);
+        // Un jour pur (échéance) s'affiche sans heure.
+        const format =
+          kind === 'date' && typeof raw === 'string' && DAY_ONLY.test(raw)
+            ? 'dd/mm/yyyy'
+            : XLSX_FORMATS[kind];
         if (format) added.getCell(i + 1).numFmt = format;
       });
     }

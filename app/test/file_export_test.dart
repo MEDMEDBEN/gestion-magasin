@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/file_export.dart';
 
@@ -79,9 +81,46 @@ void main() {
     );
   });
 
-  test('fenêtre des exports : 365 jours, aujourd’hui compris', () {
-    final window = lastYearWindow(now: DateTime(2026, 9, 26, 23, 59));
+  test('fenêtre des exports : N jours, aujourd’hui compris', () {
+    final window = recentWindow(90, now: DateTime(2026, 9, 26, 23, 59));
     expect(window.to, '2026-09-26');
-    expect(window.from, '2025-09-27');
+    expect(window.from, '2026-06-29');
+  });
+
+  /// Le nom annoncé par le serveur finit sur le disque : frontière de confiance.
+  test(
+    'nom de fichier : jamais de chemin, de caractère interdit ou réservé',
+    () {
+      String name(String raw) =>
+          exportFilename('attachment; filename="$raw"', fallback: 'export.csv');
+      expect(
+        name('ventes_2026-09-01_2026-09-30.csv'),
+        'ventes_2026-09-01_2026-09-30.csv',
+      );
+      expect(name('../../x.csv'), 'export.csv');
+      expect(name('a/b.csv'), 'a_b.csv');
+      expect(name('a\u0007b.csv'), 'a_b.csv');
+      expect(name('rapport.csv. '), 'rapport.csv');
+      expect(name('CON.csv'), 'export.csv');
+      expect(name('nul'), 'export.csv');
+      expect(exportFilename(null, fallback: 'export.pdf'), 'export.pdf');
+    },
+  );
+
+  test('enregistrement : un fichier existant n’est jamais écrasé', () async {
+    final dir = await Directory.systemTemp.createTemp('export_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = ExportedFile(Uint8List.fromList([1]), 'stock.csv');
+
+    final first = await saveWithoutOverwrite(dir, file);
+    final second = await saveWithoutOverwrite(
+      dir,
+      ExportedFile(Uint8List.fromList([2]), 'stock.csv'),
+    );
+
+    expect(p.basename(first), 'stock.csv');
+    expect(p.basename(second), 'stock (2).csv');
+    expect(await File(first).readAsBytes(), [1]);
+    expect(await File(second).readAsBytes(), [2]);
   });
 }

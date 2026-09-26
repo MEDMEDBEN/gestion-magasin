@@ -3,7 +3,9 @@ import {
   collectAll,
   ExportDocument,
   MAX_EXPORT_ROWS,
+  MAX_PDF_ROWS,
   renderExport,
+  section,
 } from './export';
 
 interface Row {
@@ -107,18 +109,17 @@ describe('export', () => {
   });
 
   describe('collectAll', () => {
-    it('lit toutes les pages de la liste existante', async () => {
-      const all = Array.from({ length: 450 }, (_, i) => i);
-      const pages: number[] = [];
+    /// Page par page, une vente passée entre deux lectures ferait sortir une
+    /// ligne en double et en perdrait une autre. Une seule requête lit un état
+    /// cohérent.
+    it('lit la liste en UNE seule requête, jusqu’au plafond', async () => {
+      const calls: [number, number][] = [];
       const rows = await collectAll(async (page, limit) => {
-        pages.push(page);
-        return {
-          data: all.slice((page - 1) * limit, page * limit),
-          meta: { total: all.length },
-        };
+        calls.push([page, limit]);
+        return { data: [1, 2, 3], meta: { total: 3 } };
       });
-      expect(rows).toEqual(all);
-      expect(pages).toEqual([1, 2, 3]);
+      expect(rows).toEqual([1, 2, 3]);
+      expect(calls).toEqual([[1, MAX_EXPORT_ROWS]]);
     });
 
     it('refuse au-delà du plafond au lieu de tronquer en silence', async () => {
@@ -129,15 +130,54 @@ describe('export', () => {
         })),
       ).rejects.toMatchObject({ response: { code: 'EXPORT_TOO_LARGE' } });
     });
+  });
 
-    it('s’arrête si des lignes disparaissent entre deux pages', async () => {
-      let calls = 0;
-      const rows = await collectAll(async (page) => {
-        calls++;
-        return { data: page === 1 ? [1, 2] : [], meta: { total: 5 } };
-      });
-      expect(rows).toEqual([1, 2]);
-      expect(calls).toBe(2);
+  it('PDF : refusé au-delà de MAX_PDF_ROWS, le tableur reste possible', async () => {
+    const big: ExportDocument = {
+      ...doc,
+      sections: [
+        {
+          ...doc.sections[0],
+          rows: Array(MAX_PDF_ROWS + 1).fill(doc.sections[0].rows[0]),
+        },
+      ],
+    };
+    await expect(renderExport(big, 'pdf')).rejects.toMatchObject({
+      response: { code: 'EXPORT_TOO_LARGE' },
     });
+    await expect(renderExport(big, 'csv')).resolves.toBeDefined();
+  });
+
+  it('CSV : formules après des blancs ou en pleine chasse aussi neutralisées', async () => {
+    const names = [' =1+1', '＝1+1', '+213550000000', 'Normal'];
+    const text = (
+      await renderExport(
+        {
+          title: 't',
+          filename: 'f',
+          sections: [
+            section({
+              columns: [{ header: 'Nom', value: (n: string) => n }],
+              rows: names,
+            }),
+          ],
+        },
+        'csv',
+      )
+    ).buffer.toString('utf8');
+    expect(text).toContain("' =1+1");
+    expect(text).toContain("'＝1+1");
+    expect(text).toContain("'+213550000000");
+    expect(text).toMatch(/^Normal$/m);
+  });
+
+  it('Excel : un jour pur s’affiche sans heure', async () => {
+    const book = new Workbook();
+    await book.xlsx.load(
+      (await renderExport(doc, 'xlsx')).buffer as unknown as ArrayBuffer,
+    );
+    const row = book.worksheets[0].getRow(6);
+    expect(row.getCell(5).numFmt).toBe('dd/mm/yyyy');
+    expect(row.getCell(4).numFmt).toBe('dd/mm/yyyy hh:mm');
   });
 });

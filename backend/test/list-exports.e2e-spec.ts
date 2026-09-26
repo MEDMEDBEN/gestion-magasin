@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { localDate } from '../src/common/document-number';
@@ -21,6 +22,9 @@ describe('Exports des listes (e2e)', () => {
   const productIds: string[] = [];
   const customerIds: string[] = [];
   const saleIds: string[] = [];
+  const supplierIds: string[] = [];
+  const orderIds: string[] = [];
+  const receptionIds: string[] = [];
   const tokens: Record<string, string> = {};
   const ids: Record<string, string> = {};
   let magasinId: string;
@@ -130,6 +134,9 @@ describe('Exports des listes (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.reception.deleteMany({ where: { id: { in: receptionIds } } });
+    await prisma.purchaseOrder.deleteMany({ where: { id: { in: orderIds } } });
+    await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
     await prisma.stockMovement.deleteMany({
       where: { productId: { in: productIds } },
     });
@@ -373,5 +380,88 @@ describe('Exports des listes (e2e)', () => {
       expect(fichier).toContain('-2,250');
       expect(fichier).toContain(`Membre magasinier ${suffix}`);
     });
+  });
+
+  /// Le détail d'une perte (constat libre, déclarant) relève de `stock.loss` :
+  /// la liste le masque au vendeur, le fichier aussi.
+  it('mouvements : le vendeur n’obtient pas le détail d’une perte', async () => {
+    await prisma.stockMovement.create({
+      data: {
+        productId: productIds[0],
+        locationId: magasinId,
+        quantity: '-1.000',
+        type: 'PERTE_CASSE',
+        operationType: 'MANUAL',
+        userId: ids.magasinier,
+        comment: `Carton écrasé ${suffix}`,
+      },
+    });
+    const url = `/api/stock/movements/export?format=csv&productId=${productIds[0]}`;
+    const pourMagasinier = await csv(tokens.magasinier, url);
+    expect(pourMagasinier).toContain(`Carton écrasé ${suffix}`);
+
+    const pourVendeur = await csv(tokens.vendeurA, url);
+    expect(pourVendeur).toContain('Perte / casse');
+    expect(pourVendeur).not.toContain(`Carton écrasé ${suffix}`);
+    expect(pourVendeur).not.toContain(`Membre magasinier ${suffix}`);
+  });
+
+  it('commandes et réceptions : la période filtre la liste ET le fichier', async () => {
+    const supplier = await prisma.supplier.create({
+      data: { name: `Fournisseur période ${suffix}` },
+    });
+    supplierIds.push(supplier.id);
+    const commande = async (n: string, daysAgo: number) => {
+      const order = await prisma.purchaseOrder.create({
+        data: {
+          number: `E2E-LEX-C-${suffix}-${n}`,
+          supplierId: supplier.id,
+          status: 'COMMANDEE',
+          createdById: ids.admin,
+          orderDate: new Date(Date.now() - daysAgo * DAY),
+          totalHt: 1_000,
+          totalTax: 0,
+          totalTtc: 1_000,
+        },
+      });
+      orderIds.push(order.id);
+      return order.number;
+    };
+    const reception = async (n: string, daysAgo: number) => {
+      const created = await prisma.reception.create({
+        data: {
+          number: `E2E-LEX-R-${suffix}-${n}`,
+          supplierId: supplier.id,
+          locationId: magasinId,
+          userId: ids.admin,
+          receivedAt: new Date(Date.now() - daysAgo * DAY),
+          clientMutationId: randomUUID(),
+        },
+      });
+      receptionIds.push(created.id);
+      return created.number;
+    };
+    const cDedans = await commande('in', 540);
+    const cDehors = await commande('out', 550);
+    const rDedans = await reception('in', 540);
+    const rDehors = await reception('out', 550);
+    const range = `from=${iso(541)}&to=${iso(540)}&supplierId=${supplier.id}`;
+
+    for (const [route, dedans, dehors] of [
+      ['purchase-orders', cDedans, cDehors],
+      ['receptions', rDedans, rDehors],
+    ]) {
+      const liste = (
+        await as(tokens.magasinier).get(`/api/${route}?${range}`).expect(200)
+      ).body.data.map((r: { number: string }) => r.number);
+      expect(liste).toEqual([dedans]);
+
+      const fichier = await csv(
+        tokens.magasinier,
+        `/api/${route}/export?format=csv&${range}`,
+      );
+      expect(fichier).toContain(dedans);
+      expect(fichier).not.toContain(dehors);
+    }
   });
 });

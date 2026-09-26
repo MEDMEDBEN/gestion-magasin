@@ -83,14 +83,18 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 ),
               ),
               ExportButton(
-                tooltip: 'Exporter les fournisseurs',
-                fetch: ref.read(suppliersApiProvider).exportSuppliers,
-              ),
-              ExportButton(
-                tooltip: 'Exporter les dettes fournisseurs',
-                fetch: (format) => ref
-                    .read(suppliersApiProvider)
-                    .exportSuppliers(format, debtOnly: true),
+                targets: [
+                  ExportTarget(
+                    'Fournisseurs',
+                    ref.read(suppliersApiProvider).exportSuppliers,
+                  ),
+                  ExportTarget(
+                    'Dettes fournisseurs',
+                    (format) => ref
+                        .read(suppliersApiProvider)
+                        .exportSuppliers(format, debtOnly: true),
+                  ),
+                ],
               ),
               if (rights.canWrite) ...[
                 const SizedBox(width: 12),

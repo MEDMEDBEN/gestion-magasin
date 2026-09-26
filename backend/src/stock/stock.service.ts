@@ -30,8 +30,15 @@ import {
   StockExportQueryDto,
   StockQueryDto,
 } from './dto/stock.dto';
-import { collectAll, ExportDocument, section } from '../common/export/export';
+import {
+  collectAll,
+  ExportDocument,
+  periodLabel,
+  periodSlug,
+  section,
+} from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
+import { label } from '../common/export/labels';
 import { StockLedgerService } from './stock-ledger.service';
 
 type Db = Prisma.TransactionClient;
@@ -44,8 +51,6 @@ export class StockService {
     private readonly ledger: StockLedgerService,
   ) {}
 
-  /// Stock par produit × emplacement. Le stock du dépôt (tout ce qui n'est pas le
-  /// MAGASIN) exige en plus `stock.read.warehouse` (docs/permissions.md).
   /// Export du stock (spec §8quinquies) : les lignes de `findStock`, donc les
   /// MÊMES emplacements visibles (le dépôt exige `stock.read.warehouse`).
   async exportStock(
@@ -109,13 +114,14 @@ export class StockService {
     });
     return {
       title: 'Mouvements de stock',
-      subtitle: `${rows.length} mouvement(s) · journal immuable, source de vérité du stock`,
-      filename: 'mouvements',
+      // La liste prend des INSTANTS (`to` exclu) : le fichier dit lesquels.
+      subtitle: `${rows.length} mouvement(s) ${periodLabel(query.from, query.to)} · journal immuable, source de vérité du stock`,
+      filename: `mouvements${periodSlug(query.from?.slice(0, 10), query.to?.slice(0, 10))}`,
       sections: [
         section({
           columns: [
             { header: 'Date', kind: 'date', value: (m) => m.createdAt },
-            { header: 'Type', value: (m) => m.type },
+            { header: 'Type', value: (m) => label(m.type) },
             { header: 'Référence', value: (m) => names.sku(m.productId) },
             { header: 'Produit', value: (m) => names.product(m.productId) },
             {
@@ -124,7 +130,7 @@ export class StockService {
             },
             { header: 'Quantité', kind: 'quantity', value: (m) => m.quantity },
             { header: 'Unité', value: (m) => names.unit(m.productId) },
-            { header: 'Opération', value: (m) => m.operationType },
+            { header: 'Opération', value: (m) => label(m.operationType) },
             { header: 'Par', value: (m) => names.user(m.userId) },
             { header: 'Commentaire', value: (m) => m.comment },
           ],
@@ -134,6 +140,8 @@ export class StockService {
     };
   }
 
+  /// Stock par produit × emplacement. Le stock du dépôt (tout ce qui n'est pas le
+  /// MAGASIN) exige en plus `stock.read.warehouse` (docs/permissions.md).
   async findStock(query: StockQueryDto, viewer: Viewer): Promise<StockListDto> {
     const where: Prisma.StockWhereInput = {
       ...(query.productId && { productId: query.productId }),

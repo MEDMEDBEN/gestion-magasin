@@ -167,10 +167,11 @@ class SalesApi {
     });
   }
 
-  /// Ventes des 12 derniers mois — le serveur n'en rend au vendeur que les
-  /// siennes, comme la liste.
+  /// Ventes des 90 derniers jours — le serveur n'en rend au vendeur que les
+  /// siennes, comme la liste. Au-delà, le plafond de 10 000 serait atteint
+  /// par un magasin actif.
   Future<ExportedFile> exportSales(ExportFormat format) {
-    final window = lastYearWindow();
+    final window = recentWindow(90);
     return fetchExport(
       _dio,
       '/sales/export',

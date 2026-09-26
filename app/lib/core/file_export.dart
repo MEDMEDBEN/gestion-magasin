@@ -64,23 +64,35 @@ Future<ExportedFile> fetchExport(
   }
 }
 
-/// Les 12 derniers mois en jours civils, aujourd'hui compris (`to` inclus
-/// côté serveur) : la fenêtre des exports d'historique proposés à l'écran.
-({String from, String to}) lastYearWindow({DateTime? now}) {
+/// Les `days` derniers jours civils, aujourd'hui compris (`to` inclus côté
+/// serveur) : la fenêtre des exports d'historique proposés à l'écran.
+({String from, String to}) recentWindow(int days, {DateTime? now}) {
   final today = now ?? DateTime.now();
   final day = DateTime(today.year, today.month, today.day);
   String iso(DateTime value) => value.toIso8601String().substring(0, 10);
-  return (from: iso(day.subtract(const Duration(days: 364))), to: iso(day));
+  return (from: iso(day.subtract(Duration(days: days - 1))), to: iso(day));
 }
 
 /// Nom annoncé par le serveur (`Content-Disposition`), réduit à un nom de
 /// fichier sans chemin : il finit sur le disque.
 String exportFilename(String? disposition, {required String fallback}) {
   final name = RegExp(r'filename="([^"]+)"').firstMatch(disposition ?? '');
-  final cleaned = name?.group(1)?.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-  return cleaned == null || cleaned.isEmpty || cleaned.startsWith('.')
-      ? fallback
-      : cleaned;
+  final cleaned = name
+      ?.group(1)
+      // Séparateurs de chemin, caractères interdits et de contrôle.
+      ?.replaceAll(RegExp(r'[\\/:*?"<>|\x00-\x1F]'), '_')
+      // Windows ignore les points et espaces finaux : « a.csv. » = « a.csv ».
+      .replaceAll(RegExp(r'[. ]+$'), '');
+  if (cleaned == null || cleaned.isEmpty || cleaned.startsWith('.')) {
+    return fallback;
+  }
+  // Noms réservés de Windows (CON, NUL, COM1…) : écrire dessus échoue ou
+  // vise un périphérique.
+  final base = p.basenameWithoutExtension(cleaned).toLowerCase();
+  if (RegExp(r'^(con|prn|aux|nul|com\d|lpt\d)$').hasMatch(base)) {
+    return fallback;
+  }
+  return cleaned;
 }
 
 /// Enregistre un export dans « Téléchargements » (à défaut, les documents de
@@ -95,14 +107,22 @@ final saveExportProvider = Provider<Future<String> Function(ExportedFile file)>(
       directory = null;
     }
     directory ??= await getApplicationDocumentsDirectory();
-
-    final base = p.basenameWithoutExtension(file.filename);
-    final extension = p.extension(file.filename);
-    var target = File(p.join(directory.path, file.filename));
-    for (var n = 2; await target.exists(); n++) {
-      target = File(p.join(directory.path, '$base ($n)$extension'));
-    }
-    await target.writeAsBytes(file.bytes, flush: true);
-    return target.path;
+    return saveWithoutOverwrite(directory, file);
   },
 );
+
+/// Écrit `file` dans `directory` sans jamais écraser : « x.csv », puis
+/// « x (2).csv », « x (3).csv »… Rend le chemin écrit.
+Future<String> saveWithoutOverwrite(
+  Directory directory,
+  ExportedFile file,
+) async {
+  final base = p.basenameWithoutExtension(file.filename);
+  final extension = p.extension(file.filename);
+  var target = File(p.join(directory.path, file.filename));
+  for (var n = 2; await target.exists(); n++) {
+    target = File(p.join(directory.path, '$base ($n)$extension'));
+  }
+  await target.writeAsBytes(file.bytes, flush: true);
+  return target.path;
+}

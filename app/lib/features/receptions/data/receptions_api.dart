@@ -35,7 +35,7 @@ class ReceptionsApi {
 
   /// Bons de réception des 12 derniers mois.
   Future<ExportedFile> exportReceptions(ExportFormat format) {
-    final window = lastYearWindow();
+    final window = recentWindow(365);
     return fetchExport(
       _dio,
       '/receptions/export',

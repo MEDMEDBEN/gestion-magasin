@@ -198,7 +198,9 @@ Si MEDMEDBEN veut ouvrir le rapport de STOCK au magasinier, c'est une ligne (voi
 mêmes `@Roles` et `@RequirePermissions` que la route `GET` de la liste, et les lignes passent par le MÊME
 `findAll` (donc même cloisonnement : un vendeur n'exporte que SES ventes ; sans `stock.read.warehouse`, le dépôt
 n'apparaît pas). Un fichier n'est pas un contournement de permission. Un test e2e compare, pour chaque rôle, le
-statut de la liste et celui de l'export.
+statut de la liste et celui de l'export, et un test unitaire compare leurs métadonnées de garde. Les exports de
+listes relisent en plus les droits EN BASE (`@RequireFreshAccess`) : plus strict que la liste, un admin rétrogradé
+n'extrait plus rien.
 
 | Export (`?format=xlsx\|csv\|pdf`) | Garde = celle de | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|---|

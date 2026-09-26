@@ -21,6 +21,7 @@ import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RequirePermissions,
   RoleCode,
   Roles,
@@ -89,6 +90,9 @@ export class ReceptionsController {
   /// Déclarée AVANT `:id`, sinon « export » serait lu comme un identifiant.
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.RECEPTION_CREATE)
+  // Droits relus EN BASE : plus strict que la liste — un admin rétrogradé
+  // n'extrait pas toute la base pendant les 15 min de son jeton.
+  @RequireFreshAccess()
   @Throttle(EXPORT_THROTTLE)
   @Get('export')
   @ApiOperation({ summary: 'Réceptions en Excel, CSV ou PDF' })

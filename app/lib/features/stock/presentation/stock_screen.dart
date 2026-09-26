@@ -166,12 +166,16 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection> {
                 ),
               ),
               ExportButton(
-                tooltip: 'Exporter le stock',
-                fetch: ref.read(stockApiProvider).exportLevels,
-              ),
-              ExportButton(
-                tooltip: 'Exporter les mouvements (12 mois)',
-                fetch: ref.read(stockApiProvider).exportMovements,
+                targets: [
+                  ExportTarget(
+                    'Stock',
+                    ref.read(stockApiProvider).exportLevels,
+                  ),
+                  ExportTarget(
+                    'Mouvements (30 jours)',
+                    ref.read(stockApiProvider).exportMovements,
+                  ),
+                ],
               ),
             ],
           ),

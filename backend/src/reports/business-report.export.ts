@@ -1,4 +1,10 @@
-import { ExportDocument, frenchDay, section } from '../common/export/export';
+import {
+  ExportDocument,
+  frenchDay,
+  periodSlug,
+  section,
+} from '../common/export/export';
+import { label } from '../common/export/labels';
 import {
   PurchasesReportDto,
   ReportPeriodDto,
@@ -12,8 +18,6 @@ import {
 const periodText = (period: ReportPeriodDto) =>
   `Du ${frenchDay(period.from)} au ${frenchDay(period.to)} (${period.days} j)`;
 
-const periodSlug = (period: ReportPeriodDto) => `${period.from}_${period.to}`;
-
 export function salesReportDocument(report: SalesReportDto): ExportDocument {
   const t = report.totals;
   return {
@@ -21,7 +25,7 @@ export function salesReportDocument(report: SalesReportDto): ExportDocument {
     subtitle:
       `${periodText(report.period)} · ventes validées · ` +
       'marge au dernier prix d’achat, hors ventes sans coût connu',
-    filename: `rapport-ventes_${periodSlug(report.period)}`,
+    filename: `rapport-ventes${periodSlug(report.period.from, report.period.to)}`,
     sections: [
       section({
         title: 'Totaux',
@@ -105,7 +109,7 @@ export function stockReportDocument(
         title: 'Par emplacement',
         columns: [
           { header: 'Emplacement', value: (r) => r.locationName },
-          { header: 'Type', value: (r) => r.locationType },
+          { header: 'Type', value: (r) => label(r.locationType) },
           {
             header: 'Références',
             kind: 'integer',
@@ -127,7 +131,7 @@ export function purchasesReportDocument(
     subtitle:
       `${periodText(report.period)} · commandé et reçu comptés séparément : ` +
       'ils ne s’équilibrent pas',
-    filename: `rapport-achats_${periodSlug(report.period)}`,
+    filename: `rapport-achats${periodSlug(report.period.from, report.period.to)}`,
     sections: [
       section({
         title: 'Totaux',

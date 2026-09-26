@@ -142,14 +142,19 @@ void main() {
   ) async {
     final api = await _pump(tester, _admin());
 
-    await tester.tap(find.byTooltip('Exporter les dettes fournisseurs'));
+    await tester.tap(find.byTooltip('Exporter'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CSV').last);
+    // Un seul bouton : le menu dit QUOI avant de dire le format.
+    expect(find.text('Fournisseurs'), findsWidgets);
+    expect(find.text('Dettes fournisseurs'), findsOneWidget);
+    await tester.tap(find.text('   CSV').last);
     await tester.pumpAndSettle();
 
     expect(api.exports, ['csv debtOnly=true']);
     expect(
-      find.text('Enregistré : C:/Téléchargements/dettes-fournisseurs.csv'),
+      find.text(
+        'Enregistré sur ce poste : C:/Téléchargements/dettes-fournisseurs.csv',
+      ),
       findsOneWidget,
     );
   });

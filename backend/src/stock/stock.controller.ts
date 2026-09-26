@@ -25,6 +25,7 @@ import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RequirePermissions,
   RoleCode,
   Roles,
@@ -85,6 +86,9 @@ export class StockController {
   /// Export : MÊMES gardes que `GET /stock`, mêmes emplacements visibles.
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
+  // Droits relus EN BASE : plus strict que la liste — un admin rétrogradé
+  // n'extrait pas toute la base pendant les 15 min de son jeton.
+  @RequireFreshAccess()
   @Throttle(EXPORT_THROTTLE)
   @Get('export')
   @ApiOperation({ summary: 'Stock en Excel, CSV ou PDF' })
@@ -120,6 +124,9 @@ export class StockController {
   /// Export : MÊMES gardes que `GET /stock/movements`, mêmes filtres.
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
+  // Droits relus EN BASE : plus strict que la liste — un admin rétrogradé
+  // n'extrait pas toute la base pendant les 15 min de son jeton.
+  @RequireFreshAccess()
   @Throttle(EXPORT_THROTTLE)
   @Get('movements/export')
   @ApiOperation({ summary: 'Mouvements de stock en Excel, CSV ou PDF' })

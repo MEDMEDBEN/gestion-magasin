@@ -96,7 +96,7 @@ class _ReportCard<T> extends StatelessWidget {
             Row(
               children: [
                 Expanded(child: Text(title, style: AmpereType.rowTitle)),
-                ExportButton(fetch: onExport),
+                ExportButton(targets: [ExportTarget(title, onExport)]),
               ],
             ),
             const SizedBox(height: 4),

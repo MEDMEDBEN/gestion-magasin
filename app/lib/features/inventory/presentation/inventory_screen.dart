@@ -98,8 +98,12 @@ class InventoryScreen extends ConsumerWidget {
               // Même garde que la liste affichée ici (`inventory.create`).
               if (rights.canCount) ...[
                 ExportButton(
-                  tooltip: 'Exporter les inventaires',
-                  fetch: ref.read(inventoryApiProvider).exportInventories,
+                  targets: [
+                    ExportTarget(
+                      'Inventaires et lignes comptées',
+                      ref.read(inventoryApiProvider).exportInventories,
+                    ),
+                  ],
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(

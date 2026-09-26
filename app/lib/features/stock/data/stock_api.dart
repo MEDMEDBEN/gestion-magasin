@@ -103,9 +103,10 @@ class StockApi {
   Future<ExportedFile> exportLevels(ExportFormat format) =>
       fetchExport(_dio, '/stock/export', format);
 
-  /// Journal des 12 derniers mois (la liste prend des INSTANTS, `to` exclu).
+  /// Journal des 30 derniers jours (la liste prend des INSTANTS, `to` exclu) :
+  /// ~90 mouvements par jour atteindraient le plafond de 10 000 en 4 mois.
   Future<ExportedFile> exportMovements(ExportFormat format) {
-    final since = DateTime.now().subtract(const Duration(days: 365));
+    final since = DateTime.now().subtract(const Duration(days: 30));
     return fetchExport(
       _dio,
       '/stock/movements/export',

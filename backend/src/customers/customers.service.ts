@@ -44,6 +44,9 @@ export class CustomersService {
     const all = await collectAll((page, limit) =>
       this.findAll({ ...query, page, limit }),
     );
+    // ponytail: la dette est filtrée APRÈS lecture (elle est recalculée, pas
+    // stockée) ; au-delà de 10 000 clients, l'export des dettes est refusé même
+    // s'il y a peu de débiteurs — passer le filtre en SQL si cela arrive.
     const rows = query.debtOnly ? all.filter((c) => c.balanceDue > 0) : all;
     return {
       title: query.debtOnly ? 'Dettes clients' : 'Clients',

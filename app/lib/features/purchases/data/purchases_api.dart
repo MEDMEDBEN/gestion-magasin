@@ -58,7 +58,7 @@ class PurchasesApi {
 
   /// Commandes fournisseurs des 12 derniers mois.
   Future<ExportedFile> exportOrders(ExportFormat format) {
-    final window = lastYearWindow();
+    final window = recentWindow(365);
     return fetchExport(
       _dio,
       '/purchase-orders/export',

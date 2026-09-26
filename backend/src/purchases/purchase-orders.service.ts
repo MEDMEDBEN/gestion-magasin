@@ -38,6 +38,7 @@ import {
   section,
 } from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
+import { label } from '../common/export/labels';
 
 type Db = Prisma.TransactionClient;
 
@@ -183,7 +184,7 @@ export class PurchaseOrdersService {
               header: 'Fournisseur',
               value: (o) => names.supplier(o.supplierId),
             },
-            { header: 'Statut', value: (o) => o.status },
+            { header: 'Statut', value: (o) => label(o.status) },
             { header: 'HT', kind: 'money', value: (o) => o.totalHt },
             { header: 'TVA', kind: 'money', value: (o) => o.totalTax },
             { header: 'TTC', kind: 'money', value: (o) => o.totalTtc },

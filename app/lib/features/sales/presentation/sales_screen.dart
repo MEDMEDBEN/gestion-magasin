@@ -134,8 +134,12 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               // Le vendeur n'y trouve que SES ventes (le serveur filtre).
               if (rights.canSell)
                 ExportButton(
-                  tooltip: 'Exporter les ventes (12 mois)',
-                  fetch: ref.read(salesApiProvider).exportSales,
+                  targets: [
+                    ExportTarget(
+                      'Ventes (90 jours)',
+                      ref.read(salesApiProvider).exportSales,
+                    ),
+                  ],
                 ),
             ],
           ),
@@ -1264,14 +1268,18 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                 ),
               ),
               ExportButton(
-                tooltip: 'Exporter les clients',
-                fetch: ref.read(salesApiProvider).exportCustomers,
-              ),
-              ExportButton(
-                tooltip: 'Exporter les dettes clients',
-                fetch: (format) => ref
-                    .read(salesApiProvider)
-                    .exportCustomers(format, debtOnly: true),
+                targets: [
+                  ExportTarget(
+                    'Clients',
+                    ref.read(salesApiProvider).exportCustomers,
+                  ),
+                  ExportTarget(
+                    'Dettes clients',
+                    (format) => ref
+                        .read(salesApiProvider)
+                        .exportCustomers(format, debtOnly: true),
+                  ),
+                ],
               ),
               if (widget.rights.canWriteCustomers) ...[
                 const SizedBox(width: 12),

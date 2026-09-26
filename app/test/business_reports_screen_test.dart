@@ -119,7 +119,9 @@ void main() {
       expect(api.exports, ['sales xlsx ${range.from}..${range.to}']);
       expect(saved, ['rapport-sales.xlsx']);
       expect(
-        find.text('Enregistré : C:/Téléchargements/rapport-sales.xlsx'),
+        find.text(
+          'Enregistré sur ce poste : C:/Téléchargements/rapport-sales.xlsx',
+        ),
         findsOneWidget,
       );
     });
@@ -142,25 +144,6 @@ void main() {
         find.text('Export trop volumineux : resserrez la période'),
         findsOneWidget,
       );
-    });
-
-    test('nom de fichier : celui du serveur, sans chemin', () {
-      expect(
-        exportFilename(
-          'attachment; filename="rapport-ventes_2026-09-01_2026-09-30.csv"',
-          fallback: 'export.csv',
-        ),
-        'rapport-ventes_2026-09-01_2026-09-30.csv',
-      );
-      expect(
-        exportFilename('attachment; filename="../../x.csv"', fallback: 'f'),
-        'f',
-      );
-      expect(
-        exportFilename('attachment; filename="a/b.csv"', fallback: 'f'),
-        'a_b.csv',
-      );
-      expect(exportFilename(null, fallback: 'export.pdf'), 'export.pdf');
     });
   });
 

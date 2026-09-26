@@ -4,6 +4,7 @@ import {
   periodSlug,
   section,
 } from '../common/export/export';
+import { label } from '../common/export/labels';
 import { SaleDto } from './dto/sale.dto';
 
 /// Liste des ventes : les lignes rendues par `findAll`, donc déjà cloisonnées
@@ -29,7 +30,7 @@ export function saleListDocument(
           { header: 'Ticket', value: (s) => s.number },
           { header: 'Facture', value: (s) => s.invoiceNumber },
           { header: 'Date', kind: 'date', value: (s) => s.soldAt },
-          { header: 'Statut', value: (s) => s.status },
+          { header: 'Statut', value: (s) => label(s.status) },
           {
             header: 'Client',
             value: (s) => names.customer(s.customerId),

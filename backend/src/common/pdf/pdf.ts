@@ -26,12 +26,19 @@ export function renderPdf(
 
 /// Centimes → « 1 725,50 DA » (espace simple : sûr pour les polices standard).
 export function formatDA(centimes: number): string {
+  return `${amountText(centimes, ' ')} DA`;
+}
+
+/// Centimes → dinars en texte, calculé en ENTIERS (jamais `/ 100` flottant) :
+/// « 1 725,50 » avec `thousands = ' '`, « 1725,50 » pour un CSV. Seule
+/// conversion centimes → dinars du serveur.
+export function amountText(centimes: number, thousands = ''): string {
   const sign = centimes < 0 ? '-' : '';
   const abs = Math.abs(centimes);
   const units = Math.trunc(abs / 100)
     .toString()
-    .replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${sign}${units},${(abs % 100).toString().padStart(2, '0')} DA`;
+    .replace(/\B(?=(\d{3})+(?!\d))/g, thousands);
+  return `${sign}${units},${(abs % 100).toString().padStart(2, '0')}`;
 }
 
 /// Date et heure en Algérie (Africa/Algiers), « 15/09/2026 14:05 ».

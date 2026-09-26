@@ -85,15 +85,20 @@ class PurchasesScreen extends ConsumerWidget {
             children: [
               // Miroirs des gardes serveur de `GET /purchase-orders/export` et
               // `GET /receptions/export`.
-              if (rights.canWrite)
+              if (rights.canWrite || rights.canReceive)
                 ExportButton(
-                  tooltip: 'Exporter les commandes (12 mois)',
-                  fetch: ref.read(purchasesApiProvider).exportOrders,
-                ),
-              if (rights.canReceive)
-                ExportButton(
-                  tooltip: 'Exporter les réceptions (12 mois)',
-                  fetch: ref.read(receptionsApiProvider).exportReceptions,
+                  targets: [
+                    if (rights.canWrite)
+                      ExportTarget(
+                        'Commandes (12 mois)',
+                        ref.read(purchasesApiProvider).exportOrders,
+                      ),
+                    if (rights.canReceive)
+                      ExportTarget(
+                        'Réceptions (12 mois)',
+                        ref.read(receptionsApiProvider).exportReceptions,
+                      ),
+                  ],
                 ),
               if (rights.canWrite) ...[
                 const SizedBox(width: 12),

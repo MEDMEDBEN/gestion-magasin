@@ -21,8 +21,14 @@ import {
   InventoryTypeDto,
   SubmitCountDto,
 } from './dto/inventory.dto';
-import { collectAll, ExportDocument, section } from '../common/export/export';
+import {
+  assertExportable,
+  collectAll,
+  ExportDocument,
+  section,
+} from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
+import { label } from '../common/export/labels';
 
 type Db = Prisma.TransactionClient;
 type InventoryWithLines = Inventory & { lines: InventoryLine[] };
@@ -302,6 +308,9 @@ export class InventoryService {
     const lines = rows.flatMap((inventory) =>
       inventory.lines.map((line) => ({ inventory, line })),
     );
+    // Le plafond porte sur ce qui part dans le fichier : quelques inventaires
+    // complets font des dizaines de milliers de lignes.
+    assertExportable(lines.length);
     const names = await loadExportNames(this.prisma, {
       locations: rows.map((r) => r.locationId),
       users: rows.flatMap((r) => [r.createdById, r.validatedById]),
@@ -316,8 +325,8 @@ export class InventoryService {
           title: 'Inventaires',
           columns: [
             { header: 'Numéro', value: (i) => i.number },
-            { header: 'Type', value: (i) => i.type },
-            { header: 'Statut', value: (i) => i.status },
+            { header: 'Type', value: (i) => label(i.type) },
+            { header: 'Statut', value: (i) => label(i.status) },
             {
               header: 'Emplacement',
               value: (i) => names.location(i.locationId),
@@ -355,7 +364,7 @@ export class InventoryService {
               kind: 'quantity',
               value: (l) => l.line.difference,
             },
-            { header: 'État', value: (l) => l.line.state },
+            { header: 'État', value: (l) => label(l.line.state) },
           ],
           rows: lines,
         }),

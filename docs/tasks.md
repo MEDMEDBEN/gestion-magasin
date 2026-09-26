@@ -362,20 +362,69 @@ Spec §8quinquies : ventes, stock, mouvements, inventaires, achats, réceptions,
   deux.
 - **Un faux échec à moi** : 429 dans la suite — la limite d'export en dur était épuisée par les tests
   précédents, et le bridage passe AVANT l'authentification. D'où la constante configurable.
-- **Preuve** : backend lint 0 · `tsc` propre · **107 unit** · **529 e2e** (36 suites, un passage) · `npm audit` 0 ;
+- **Preuve (avant audits)** : backend lint 0 · `tsc` propre · **107 unit** · **529 e2e** (36 suites, un passage) · `npm audit` 0 ;
   app analyze propre · **+414 ~46**. **Aucun fichier ouvert dans un tableur par un humain, aucun bouton vu.**
 - Limites connues : sur téléphone, la barre Clients (recherche + 2 exports + « Nouveau client ») est serrée ;
   un export n'embarque pas les LIGNES des ventes, commandes et réceptions (seulement les en-têtes) — à ajouter si
   un comptable le demande.
 
+**Corrections des deux audits de la tranche B (2026-09-26)**
+`reviewer` : **PAS OK** (1 bloquant, 4 importants, 9 mineurs). `security-reviewer` : **NON CONFORME** (0 critique,
+0 élevé, 3 moyens, 6 faibles). Parité des gardes jugée conforme sur les 11 routes par l'audit sécurité. Tout
+vérifié dans le code, tout appliqué sauf ce qui est listé plus bas (dette ou décision).
+- 🔴 **BLOQUANT — `collectAll` lisait page par page, hors transaction.** Le stock est trié sur `updatedAt`, que
+  chaque vente modifie : une ligne remontait en page 1 déjà lue et disparaissait du fichier, une autre sortait en
+  double. Troncature silencieuse — ce que le code prétendait interdire. Désormais **une seule requête** jusqu'au
+  plafond (le `@Max(200)` du DTO ne borne que l'écran).
+- **Plafond contourné par l'export des inventaires** (les deux audits) : il comptait les inventaires, pas leurs
+  lignes. `assertExportable(lines.length)`. ⚠️ **Non éprouvé en e2e** (il faudrait 10 001 lignes en base) ;
+  seule la fonction est testée.
+- **PDF bloquant** : `MAX_PDF_ROWS = 2 000` (au-delà : « exportez en Excel ») — le rendu pdfkit tient le fil
+  principal de Node.
+- **Gardes de permission non prouvées** : l'e2e de parité ne voit que les rôles par défaut, qui ont toutes leurs
+  permissions. Nouveau `src/common/export/export-guards.spec.ts` : compare, par réflexion, rôles et permissions
+  de chaque paire lecture/export (11). **Démonstration faite** : `@RequirePermissions` retiré de l'export
+  clients → l'e2e reste VERT, le nouveau test échoue.
+- **`@RequireFreshAccess()` sur les 8 exports de listes** (plus strict que la liste, audit sécurité F6b) : un
+  admin rétrogradé n'extrait plus toute la base pendant les 15 min de son jeton.
+- Mouvements : le vendeur n'obtient pas le détail d'une perte dans le fichier (e2e) ; le fichier dit sa période.
+- App : **un seul bouton par écran**, menu qui dit QUOI avant le format (l'infobulle n'existe pas au doigt) ;
+  fenêtres ramenées à **30 jours pour les mouvements et 90 jours pour les ventes** (12 mois butaient sur le
+  plafond) ; nom de fichier assaini (contrôle, points finaux, `CON`/`NUL`…), non-écrasement testé ; message
+  « Enregistré sur ce poste ».
+- Une règle, un endroit : `amountText()` (`pdf.ts`) est la seule conversion centimes → dinars (le CSV et
+  `formatDA` s'en servent) ; dates d'export par `formatDateTime` ; `periodSlug` unique (rapports compris).
+- Mineurs : libellés français des statuts dans les fichiers (`common/export/labels.ts`), jour pur sans heure dans
+  Excel, neutralisation CSV élargie (blancs en tête, formes pleine chasse ; l'apostrophe devant `+213…` est le
+  prix assumé), commentaire de `findStock` remis à sa place, `ponytail:` sur le filtre `debtOnly` en mémoire,
+  e2e de période pour commandes et réceptions.
+- **Contre-épreuves** (garde retirée → échec, code restauré) : lecture en une requête, plafond PDF, export des
+  mouvements avec `stock.loss` forcé, période des commandes ignorée, permission retirée d'un export, nom réservé,
+  non-écrasement. **Une des miennes n'avait rien retiré** (substitution sans effet, test vert pour rien) : refaite.
+
+**Preuve (2026-09-26, après corrections)** : backend lint 0 · `tsc` propre · **120 unit** · **531 e2e** (36 suites,
+un seul passage) · `npm audit` 0 ; app `flutter analyze` propre · **+415 ~46**. Aucun fichier ouvert dans un
+tableur, aucun bouton vu par un humain.
+
+**Reste, tracé — à décider par MEDMEDBEN**
+- **Mobile** : sur Android, « Téléchargements » est le dossier PRIVÉ de l'app (invisible depuis Android 11) ;
+  sur iOS, les documents de l'app. L'export y est donc peu utile. Le corriger = « partager / ouvrir » après
+  téléchargement, donc probablement **un paquet de plus** (`share_plus`), alors que `CONVENTIONS.md` limite l'app à
+  `printing` pour les PDF. Décision à prendre.
+- **Le vendeur voit dans l'export des mouvements les sorties des ventes des autres vendeurs**, avec leur nom — la
+  LISTE le montre déjà ainsi (préexistant, pas une régression) ; `/sales` le limite pourtant à ses ventes.
+- Le magasinier exporte les dettes clients parce que la liste les lui montre (écart (1) du n°15, déjà en attente).
+
+**Dette assumée** : débit compté par IP et avant authentification (transverse) ; aucune trace d'audit des
+extractions en masse (il faudrait une action `EXPORT`, donc une migration) ; les exports n'embarquent pas les
+lignes des ventes/commandes/réceptions (mais les chargent : `SALE_INCLUDE`) ; les mouvements gardent leur
+période en INSTANTS (contrat existant).
+
 **PROCHAINE ÉTAPE PRÉCISE**
-1. ~~Audits de la tranche A~~ → faits. 2. ~~Exports des rapports~~ → faits. 3. ~~Exports des listes~~ → faits.
-4. **Passer les deux audits de la tranche B** (`reviewer` puis `security-reviewer`) sur `backend/src/common/export/`,
-   les routes `export` des huit contrôleurs et leurs `exportDocument()`, `localDayRange`/`DayPeriodQueryDto`,
-   `test/list-exports.e2e-spec.ts`, et côté app `core/file_export.dart`, `ui/widgets/export_button.dart` et les
-   écrans touchés. Leur signaler : injection de formule CSV, nom de fichier écrit sur disque, plafond 10 000
-   lignes (mémoire), débit par IP avant authentification, le magasinier qui exporte les dettes clients.
-5. Puis clore P1 n°21 et passer à **P1 n°21a Devis** (`docs/plan.md`).
+1. Faire relire par MEDMEDBEN les décisions ci-dessus (mobile, mouvements du vendeur).
+2. Puis **P1 n°21a Devis** (`docs/plan.md`, spec §8quater) : création, PDF par `renderPdf`, conversion en vente,
+   aucun mouvement de stock. `DocumentType.DEVIS` existe déjà dans `nextDocumentNumber` — vérifier le schéma
+   (`Quote`) avant toute migration.
 
 ### 🚧 P1 #20 PRODUITS DORMANTS / PRODUITS DEMANDÉS — LIVRÉS (2026-09-26 · **MEDMEDBEN**)
 Spec §20. Deux questions opposées dans un seul écran — « qu'est-ce qui ne part pas ? » et « qu'est-ce qu'on me
@@ -2105,8 +2154,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Signalement de problème (P1 #18) | 🟡 **Code livré** (2026-09-25) | 🟢 États gardés DANS la transaction, photo bornée | 🟢 Liste, fiche, photo, attribution | 🟢 17 e2e · 5 unit · 14 widget | 🟢 corrigé (2 bloquants, 2 moyens) |
 | Réapprovisionnement (P1 #19) | 🟡 **Code livré** (2026-09-25) | 🟢 Règle unique partagée, alertes au franchissement | 🟢 Liste triée par urgence, quantité modifiable | 🟢 24 e2e · 9 unit · 13 widget | 🟢 corrigé (2 bloquants) |
 | Produits dormants / produits demandés (P1 #20) | 🟡 **Code livré** (2026-09-26) | 🟢 Requêtes bornées, CA réservé à l'admin | 🟢 Écran à deux onglets | 🟢 23 e2e · 14 widget | 🟢 corrigé (1 élevé, 2 bloquants) |
-| Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranche A auditée ; exports livrés** (2026-09-26), audits de la tranche B à passer | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
-| Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste | 🟢 Bouton Exporter sur 6 écrans | 🟢 22 e2e · 9 unit · 5 widget | 🔴 audits à passer |
+| Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranches A et B livrées et auditées** (2026-09-26) | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
+| Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis, étiquettes, documents (P1 #21a-21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
