@@ -5,6 +5,7 @@ import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
+import { roundMoney, taxAmount } from '../common/money';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import {
   Prisma,
@@ -519,9 +520,7 @@ export class PurchaseOrdersService {
     for (const line of lines) {
       const ht = PurchaseOrdersService.lineHt(line);
       totalHt += ht;
-      totalTax += PurchaseOrdersService.round(
-        new Prisma.Decimal(ht).mul(line.taxRate).div(100),
-      );
+      totalTax += taxAmount(ht, line.taxRate);
     }
     const totalTtc = totalHt + totalTax;
     if (totalTtc > MAX_MONEY) {
@@ -538,13 +537,7 @@ export class PurchaseOrdersService {
     orderedQuantity: Prisma.Decimal;
     unitPriceHt: number;
   }) {
-    return PurchaseOrdersService.round(
-      line.orderedQuantity.mul(line.unitPriceHt),
-    );
-  }
-
-  private static round(value: Prisma.Decimal): number {
-    return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
+    return roundMoney(line.orderedQuantity.mul(line.unitPriceHt));
   }
 
   /// Contenu tracé à l'audit : ce qui engage l'argent (lignes, prix) et les
@@ -595,9 +588,7 @@ export class PurchaseOrdersService {
       updatedAt: order.updatedAt,
       lines: order.lines.map((line) => {
         const lineTotalHt = PurchaseOrdersService.lineHt(line);
-        const lineTax = PurchaseOrdersService.round(
-          new Prisma.Decimal(lineTotalHt).mul(line.taxRate).div(100),
-        );
+        const lineTax = taxAmount(lineTotalHt, line.taxRate);
         return {
           id: line.id,
           productId: line.productId,

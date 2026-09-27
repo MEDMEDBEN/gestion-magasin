@@ -119,7 +119,7 @@ Traçabilité / système
 20. Produits dormants / produits demandés _(2026-09-26 : dormants (sans VENTE VALIDÉE depuis N jours, seuil configurable, classés par valeur immobilisée) + trois classements de demande (plus vendus, plus demandés au dépôt, demandés NON servis) livrés et prouvés. La demande non servie se déduit de l'écart demandé/préparé des transferts — aucune table ajoutée. CA réservé à l'admin)_
 21. Rapports (ventes, stock, achats) + **exports Excel/CSV & PDF d'historique** _(2026-09-26, **tranche A** : les TROIS rapports de lecture livrés, prouvés et AUDITÉS le 2026-09-26 (ventes avec marge et tendance, stock valorisé au coût, achats commandé/reçu), ADMIN seul. **Tranche B livrée et auditée le 2026-09-26** : exports Excel/CSV/PDF des 3 rapports et des 8 listes d’historique, garde de la liste exportée)_
 21a. **Devis** (création, PDF, conversion en vente) _(2026-09-26 : code livré et prouvé — prix partagé avec la vente, aucun mouvement de stock, conversion atomique et idempotente ; audité)_
-21b. **Étiquettes code-barres** imprimables (nom, prix, code-barres — planche A4 / thermique) _(2026-09-27 : code livré et prouvé ; audits en cours)_
+21b. **Étiquettes code-barres** imprimables (nom, prix, code-barres — planche A4 / thermique) _(2026-09-27 : livré, prouvé et audité)_
 21c. **Génération de documents PDF** (bon de livraison/transfert, bon de commande fournisseur) + **import** Excel/CSV (produits, clients, fournisseurs, stock initial)
 
 ### P2 — Avancé

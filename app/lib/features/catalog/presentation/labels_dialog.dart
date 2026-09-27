@@ -79,9 +79,7 @@ class _LabelsDialogState extends State<_LabelsDialog> {
             onSubmitted: (_) => _confirm(),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Prix du tarif par défaut, TTC — celui encaissé en caisse.',
-          ),
+          const Text('Prix unitaire TTC du tarif par défaut.'),
         ],
       ),
       actions: [

@@ -24,6 +24,16 @@ export function renderPdf(
   });
 }
 
+/// Image ouverte UNE fois pour tout un document, puis réutilisée par
+/// `doc.image` : pdfkit ne met en cache que les images passées par un chemin,
+/// jamais un tampon — sans cela, chaque réutilisation redécode et réembarque la
+/// même image. `openImage` existe dans pdfkit mais pas dans ses types.
+export function openImage(doc: PdfDoc, png: Buffer): PDFKit.Mixins.ImageSrc {
+  return (
+    doc as unknown as { openImage(src: Buffer): PDFKit.Mixins.ImageSrc }
+  ).openImage(png);
+}
+
 /// Centimes → « 1 725,50 DA » (espace simple : sûr pour les polices standard).
 export function formatDA(centimes: number): string {
   return `${amountText(centimes, ' ')} DA`;

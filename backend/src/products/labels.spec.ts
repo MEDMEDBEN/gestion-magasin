@@ -1,7 +1,12 @@
-import { barcodePng } from '../common/barcode/barcode';
-import { taxAmount } from '../common/money';
+import { barcodePng, symbology } from '../common/barcode/barcode';
 import { Prisma } from '../generated/prisma/client';
-import { Label, labelFor, renderLabels } from './labels';
+import {
+  Label,
+  labelFor,
+  MIN_MODULE_MM,
+  moduleWidthMm,
+  renderLabels,
+} from './labels';
 
 const cable = {
   name: 'Câble 3G2,5 — rouleau de 100 m, gaine souple',
@@ -17,24 +22,61 @@ const pages = (pdf: Buffer) =>
   (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
 
 describe('étiquettes', () => {
-  /// Le prix lu en rayon est le prix payé : même calcul que la ligne de vente.
-  it('TTC calculé comme en caisse, arrondi au centime', () => {
+  /// Le prix unitaire TTC : HT + TVA arrondie au centime, demi vers le haut.
+  it('TTC unitaire arrondi au centime', () => {
     // 145 centimes HT × 19 % = 27,55 → 28 : 1,73 DA TTC.
     expect(labelFor(cable, 145).priceTtc).toBe(173);
-    expect(labelFor(cable, 145).priceTtc).toBe(
-      145 + taxAmount(145, cable.taxRate.rate),
-    );
+    // 1 450,00 HT × 19 % = 275,50 : 1 725,50 TTC.
+    expect(labelFor(cable, 145000).priceTtc).toBe(172550);
     expect(labelFor({ ...cable, taxRate: null }, 145).priceTtc).toBe(145);
   });
 
-  it('code-barres : EAN-13 si la clé est juste, Code128 sinon', async () => {
-    const ean = await barcodePng('2000000000015');
-    const other = await barcodePng('E2E-ABC-1');
-    // Deux images PNG différentes, aucune erreur sur un code non numérique.
-    expect(ean.subarray(1, 4).toString()).toBe('PNG');
-    expect(other.subarray(1, 4).toString()).toBe('PNG');
-    // Clé fausse : pas d'EAN-13 (bwip-js le refuserait), Code128 à la place.
-    await expect(barcodePng('2000000000016')).resolves.toBeInstanceOf(Buffer);
+  it('symbologie : EAN-13 si 13 chiffres à clé juste, Code128 sinon', async () => {
+    expect(symbology('2000000000015')).toBe('ean13');
+    expect(symbology('4006381333931')).toBe('ean13'); // code fabricant réel
+    expect(symbology('2000000000016')).toBe('code128'); // clé fausse
+    expect(symbology('E2E-ABC-1')).toBe('code128');
+    expect(symbology('12345678')).toBe('code128');
+    for (const code of ['2000000000015', 'E2E-ABC-1', '2000000000016']) {
+      const png = await barcodePng(code);
+      expect(png.subarray(1, 4).toString()).toBe('PNG');
+    }
+  });
+
+  /// Barres trop fines = étiquette que la douchette ne lit pas : refusée en
+  /// nommant le produit, au lieu d'être imprimée muette.
+  it('code trop long pour le support : refusé, en nommant le produit', async () => {
+    const court = labelFor({ ...cable, barcode: 'DJ-16-C' }, 1000);
+    const long = labelFor(
+      { ...cable, name: 'Gaine ICTA', barcode: 'X'.repeat(40) },
+      1000,
+    );
+    await expect(renderLabels([court], 'ROULEAU')).resolves.toBeInstanceOf(
+      Buffer,
+    );
+    await expect(renderLabels([court, long], 'A4')).rejects.toMatchObject({
+      response: {
+        message: expect.stringContaining('Gaine ICTA') as unknown as string,
+      },
+    });
+    const a4 = { width: (70 * 72) / 25.4, height: (37.125 * 72) / 25.4 };
+    expect(
+      moduleWidthMm(await barcodePng('2000000000015'), a4),
+    ).toBeGreaterThanOrEqual(MIN_MODULE_MM);
+    expect(moduleWidthMm(await barcodePng('X'.repeat(40)), a4)).toBeLessThan(
+      MIN_MODULE_MM,
+    );
+  });
+
+  /// Audit sécurité : l'image doit être embarquée UNE fois par document.
+  it('1 000 étiquettes du même produit : PDF léger et rapide', async () => {
+    const start = Date.now();
+    const pdf = await renderLabels(
+      Array<Label>(1000).fill(labelFor(cable, 145000)),
+      'A4',
+    );
+    expect(pdf.length).toBeLessThan(200_000);
+    expect(Date.now() - start).toBeLessThan(5_000);
   });
 
   it('planche A4 : 24 par page ; rouleau : une par page', async () => {

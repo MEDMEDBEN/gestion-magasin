@@ -58,17 +58,23 @@ export function normalizeBarcode(raw: string): string {
   return code;
 }
 
+/// Symbologie imprimée : EAN-13 pour un code de 13 chiffres à clé juste, Code128
+/// pour tout le reste.
+export function symbology(code: string): 'ean13' | 'code128' {
+  return /^\d{13}$/.test(code) &&
+    Number(code[12]) === gs1CheckDigit(code.slice(0, 12))
+    ? 'ean13'
+    : 'code128';
+}
+
 /// Image PNG d'un code-barres, pour une étiquette imprimée (CONVENTIONS.md :
 /// `bwip-js`, centralisé ici). Un EAN-13 à clé juste — code interne ou code
 /// fabricant — s'imprime en EAN-13 ; tout autre code en Code128, qui encode
 /// n'importe quel code accepté par `normalizeBarcode`. Le code en clair est
 /// imprimé sous les barres : une douchette défaillante n'arrête pas la caisse.
 export async function barcodePng(code: string): Promise<Buffer> {
-  const ean13 =
-    /^\d{13}$/.test(code) &&
-    Number(code[12]) === gs1CheckDigit(code.slice(0, 12));
   return toBuffer({
-    bcid: ean13 ? 'ean13' : 'code128',
+    bcid: symbology(code),
     text: code,
     scale: 3,
     height: 10,

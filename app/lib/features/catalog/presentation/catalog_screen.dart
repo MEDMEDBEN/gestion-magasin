@@ -108,8 +108,16 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
 
   /// Étiquettes de la liste AFFICHÉE (recherche et catégorie comprises) : une
   /// réassort se filtre, puis s'imprime. Un seul produit : on le cherche.
-  Future<void> _printLabels(List<Product> products) async {
-    if (products.isEmpty) return;
+  Future<void> _printLabels(List<Product> shown) async {
+    // Un produit désactivé (filtre « inactifs » coché) n'a pas d'étiquette.
+    final products = [
+      for (final p in shown)
+        if (p.isActive) p,
+    ];
+    if (products.isEmpty) {
+      _showSnack('Aucun produit actif dans la liste affichée.');
+      return;
+    }
     if (products.length > 200) {
       _showSnack(
         '${products.length} produits affichés : filtrez (recherche, catégorie) '

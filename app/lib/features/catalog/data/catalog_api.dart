@@ -81,9 +81,8 @@ class CatalogApi {
     });
   }
 
-  /// Octets de la photo, par la route authentifiée (le stockage est privé).
-  /// Étiquettes (PDF rendu serveur) : `format` = `A4` ou `ROULEAU`. Prix du
-  /// tarif par défaut, TTC calculé comme en caisse.
+  /// Étiquettes (PDF rendu serveur) : `format` = `A4` ou `ROULEAU`. Prix
+  /// unitaire TTC du tarif par défaut.
   Future<Uint8List> labels({
     required String format,
     required List<({String productId, int copies})> items,
@@ -104,6 +103,7 @@ class CatalogApi {
     return Uint8List.fromList(response.data!);
   }
 
+  /// Octets de la photo, par la route authentifiée (le stockage est privé).
   Future<Uint8List> imageBytes(String productId) {
     return guardApi(() async {
       final response = await _dio.get<List<int>>(

@@ -92,9 +92,20 @@ export class ProductsService {
       }),
     ]);
     if (products.length !== ids.length) {
+      // Le nommer : filtre « inactifs » coché, ou catalogue local en retard.
+      const found = new Set(products.map((p) => p.id));
+      const missing = await this.prisma.product.findMany({
+        where: { id: { in: ids.filter((id) => !found.has(id)) } },
+        select: { name: true },
+      });
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,
-        'Produit introuvable ou désactivé dans la liste',
+        missing.length > 0
+          ? `Produit désactivé, pas d’étiquette : ${missing
+              .slice(0, 5)
+              .map((p) => p.name)
+              .join(', ')}`
+          : 'Produit introuvable dans la liste',
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }

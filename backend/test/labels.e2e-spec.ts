@@ -1,3 +1,4 @@
+import * as labelsModule from '../src/products/labels';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -20,22 +21,36 @@ describe('Étiquettes (e2e)', () => {
   const tokens: Record<string, string> = {};
   let detailId = '';
   let grosId = '';
+  let tva19Id = '';
   let counter = 0;
 
   const product = async (
-    opts: { detail?: number; isActive?: boolean } = {},
+    opts: {
+      detail?: number;
+      gros?: number;
+      isActive?: boolean;
+      barcode?: string;
+    } = {},
   ) => {
     const n = ++counter;
     const created = await prisma.product.create({
       data: {
         sku: `E2E-LBL-${suffix}-${n}`,
-        barcode: `E2E-LBL-BC-${suffix}-${n}`,
+        // Code COURT : un code long est refusé (illisible sur l'étiquette).
+        barcode: opts.barcode ?? `L${String(suffix).slice(-8)}${n}`,
         name: `Produit étiquette ${n}`,
         isActive: opts.isActive ?? true,
-        prices:
-          opts.detail === undefined
-            ? undefined
-            : { create: [{ priceTierId: detailId, priceHt: opts.detail }] },
+        taxRateId: tva19Id,
+        prices: {
+          create: [
+            ...(opts.detail === undefined
+              ? []
+              : [{ priceTierId: detailId, priceHt: opts.detail }]),
+            ...(opts.gros === undefined
+              ? []
+              : [{ priceTierId: grosId, priceHt: opts.gros }]),
+          ],
+        },
       },
     });
     productIds.push(created.id);
@@ -73,6 +88,8 @@ describe('Étiquettes (e2e)', () => {
     grosId = (
       await prisma.priceTier.findUniqueOrThrow({ where: { code: 'GROS' } })
     ).id;
+    tva19Id = (await prisma.taxRate.findFirstOrThrow({ where: { rate: 19 } }))
+      .id;
     for (const [key, role] of [
       ['admin', RoleCode.ADMIN],
       ['vendeur', RoleCode.VENDEUR],
@@ -139,12 +156,59 @@ describe('Étiquettes (e2e)', () => {
     expect(json(res).message).toContain(`Produit étiquette ${counter}`);
   });
 
-  it('produit désactivé : pas d’étiquette', async () => {
+  it('produit désactivé : pas d’étiquette, et il est nommé', async () => {
     const p = await product({ detail: 1000, isActive: false });
-    await labels(tokens.vendeur, {
+    const res = await labels(tokens.vendeur, {
       format: 'A4',
       items: [{ productId: p, copies: 1 }],
     }).expect(422);
+    expect(json(res).message).toContain(`Produit étiquette ${counter}`);
+  });
+
+  /// Chemin d'argent : le prix IMPRIMÉ est celui du tarif demandé, TTC calculé
+  /// comme en caisse. Le PDF est compressé : on lit ce qui part au rendu.
+  it('prix imprimé : celui du tarif demandé, TTC', async () => {
+    const p = await product({ detail: 145000, gros: 120000 });
+    const spy = jest.spyOn(labelsModule, 'renderLabels');
+    try {
+      await labels(tokens.vendeur, {
+        format: 'A4',
+        items: [{ productId: p, copies: 1 }],
+      }).expect(200);
+      // Tarif par défaut (DÉTAIL) : 1 450,00 HT + 19 % = 1 725,50 TTC.
+      expect(spy.mock.calls[0][0][0].priceTtc).toBe(172550);
+      await labels(tokens.vendeur, {
+        format: 'A4',
+        priceTierId: grosId,
+        items: [{ productId: p, copies: 1 }],
+      }).expect(200);
+      // GROS : 1 200,00 HT + 19 % = 1 428,00 TTC.
+      expect(spy.mock.calls[1][0][0].priceTtc).toBe(142800);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('code-barres trop long pour être lu : refusé, en nommant le produit', async () => {
+    const p = await product({
+      detail: 1000,
+      barcode: `LONG-${suffix}-${'X'.repeat(30)}`,
+    });
+    const res = await labels(tokens.vendeur, {
+      format: 'A4',
+      items: [{ productId: p, copies: 1 }],
+    }).expect(422);
+    expect(json(res).message).toContain('trop long');
+    expect(json(res).message).toContain(`Produit étiquette ${counter}`);
+  });
+
+  it('exactement 1 000 étiquettes : acceptées', async () => {
+    const p = await product({ detail: 1000 });
+    const res = await labels(tokens.vendeur, {
+      format: 'A4',
+      items: Array.from({ length: 10 }, () => ({ productId: p, copies: 100 })),
+    }).expect(200);
+    expect(pages(res.body as Buffer)).toBe(42);
   });
 
   it('bornes : copies, nombre total, format', async () => {

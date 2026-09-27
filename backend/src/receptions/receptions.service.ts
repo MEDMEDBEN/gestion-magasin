@@ -5,6 +5,7 @@ import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
+import { roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
@@ -440,12 +441,8 @@ export class ReceptionsService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      const lineTotalHt = ReceptionsService.round(quantity.mul(unitPriceHt));
-      const lineTotalTtc =
-        lineTotalHt +
-        ReceptionsService.round(
-          new Prisma.Decimal(lineTotalHt).mul(taxRate).div(100),
-        );
+      const lineTotalHt = roundMoney(quantity.mul(unitPriceHt));
+      const lineTotalTtc = lineTotalHt + taxAmount(lineTotalHt, taxRate);
       return {
         productId: product.id,
         purchaseLineId: line.purchaseLineId ?? null,
@@ -494,10 +491,6 @@ export class ReceptionsService {
     // Rendu à l'appelant : c'est ce qui distingue une réception PARTIELLE
     // (reliquat à relancer) d'une commande soldée, pour l'alerte de l'admin.
     return complete;
-  }
-
-  private static round(value: Prisma.Decimal): number {
-    return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
   }
 
   private static totalTtc(lines: { lineTotalTtc: number }[]): number {
@@ -577,9 +570,7 @@ export class ReceptionsService {
         purchaseLineId: line.purchaseLineId,
         receivedQuantity: formatQuantity(line.receivedQuantity),
         unitPriceHt: line.unitPriceHt,
-        lineTotalHt: ReceptionsService.round(
-          line.receivedQuantity.mul(line.unitPriceHt),
-        ),
+        lineTotalHt: roundMoney(line.receivedQuantity.mul(line.unitPriceHt)),
         lineTotalTtc: line.lineTotalTtc,
       })),
     };

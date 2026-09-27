@@ -174,6 +174,38 @@ void main() {
     },
   );
 
+  testWidgets('étiquettes : produits désactivés écartés, bornes du dialogue', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 900));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [
+          product(id: 'p1', name: 'Câble'),
+          product(id: 'p2', name: 'Ancien').copyWith(isActive: false),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Étiquettes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Étiquettes — 1 produit(s)'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '101');
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Entre 1 et 100 par produit'), findsOneWidget);
+    expect(api.labelCalls, isEmpty);
+
+    await tester.enterText(find.byType(TextField).last, '2');
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(api.labelCalls.single.$2.map((i) => (i.productId, i.copies)), [
+      ('p1', 2),
+    ]);
+  });
+
   testWidgets('étiquettes : pas de bouton sans le droit de lire les prix', (
     tester,
   ) async {

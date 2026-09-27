@@ -211,7 +211,7 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — CODE LIVRÉ, **AUDITS EN COURS** (2026-09-27 · **MEDMEDBEN**)
+### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8ter. **Aucune migration.**
 - **`POST /products/labels`** → PDF : nom, prix TTC, référence, code-barres. **Planche A4** de 24 (70 × 37 mm)
   ou **rouleau thermique** 50 × 30 mm. Produits actifs ; prix du tarif demandé (défaut : tarif par défaut) ;
@@ -236,11 +236,38 @@ Spec §8ter. **Aucune migration.**
 - **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **123 unit** · **559 e2e** (38 suites, un passage) ·
   `npm audit` 0 ; app `flutter analyze` propre · **+424 ~46**.
 
-**Prochaine étape précise** : passer `reviewer` puis `security-reviewer` sur le n°21b (`backend/src/products/labels.*`,
-la route `labels` de `products.controller.ts`, `ProductsService.labels`, `common/money.ts`, `barcodePng`,
-`test/labels.e2e-spec.ts`, `app/lib/features/catalog/presentation/labels_dialog.dart`, le bouton du Catalogue,
-`guardBytes`), appliquer ; puis **P1 n°21c** (bons PDF de livraison/transfert et de commande fournisseur + import
-Excel/CSV).
+**Corrections des deux audits (2026-09-27)** — `reviewer` : **OK avec réserves** (2 importants, 9 mineurs) ;
+`security-reviewer` : **NON CONFORME** (1 moyen). Tout vérifié dans le code ; tout appliqué.
+- 🟠 **Déni de service** (sécurité) : pdfkit ne met en cache que les images passées par un CHEMIN, jamais un
+  tampon — vérifié dans `node_modules/pdfkit` : 1 000 étiquettes du même produit décodaient et embarquaient
+  1 000 fois la même image (~20 s de serveur bloqué, caisse comprise ; 23 Mo). Chaque image est désormais
+  ouverte UNE fois par document (`openImage`, `common/pdf/pdf.ts`). Test : 1 000 étiquettes < 200 Ko.
+- 🟠 **Codes-barres longs illisibles sans avertissement** (revue, mesures à l'appui) : au-delà de ~20
+  caractères en A4, ~15 sur rouleau, la barre la plus fine passe sous 0,25 mm et la douchette ne lit plus.
+  Refusé désormais en nommant le produit (et « essayez la planche A4 » sur rouleau). **Mes propres codes de
+  test e2e (27 caractères) auraient été illisibles** : raccourcis.
+- 🟠 **Le prix du bon tarif n'était prouvé par rien** : e2e qui lit ce qui part au rendu — DÉTAIL 1 725,50,
+  GROS 1 428,00 TTC. Contre-épreuve : premier prix au lieu du tarif → échoue.
+- Une règle, un endroit : `roundMoney`/`taxAmount` aussi utilisés par les commandes et les réceptions (elles
+  avaient leur propre copie, identique) ; la phrase « prix lu = prix payé » corrigée (vrai pour UNE unité : pour
+  10 m, la caisse arrondit la TVA de la ligne entière — au plus un demi-centime par unité, comme sur le ticket).
+- Mineurs : produit désactivé NOMMÉ dans le refus, et l'app n'envoie que les produits actifs ; symbologie testée
+  pour de vrai (`symbology()`) — **mon test supposait qu'un code d'un jeu de test était un EAN valide, il ne
+  l'était pas** ; plus d'ellipse sur un prix ; exactement 1 000 étiquettes acceptées ; bornes du dialogue
+  testées ; commentaire déplacé remis.
+- **Contre-épreuves** : premier prix au lieu du tarif ; image embarquée à chaque étiquette ; contrôle de
+  lisibilité retiré — les trois échouent.
+- **Preuve (après corrections)** : backend lint 0 · `tsc` propre · **125 unit** · **562 e2e** (38 suites, un
+  passage) · `npm audit` 0 ; app `flutter analyze` propre · **+425 ~46**.
+
+**À trancher par MEDMEDBEN (revue)** : la « sélection multiple » de la spec est couverte par « la liste
+affichée » (recherche + catégorie, un même nombre d'exemplaires). Une vraie réassort mélange des catégories et
+des quantités : la suite naturelle serait **« étiquettes d'une réception »** (quantités reçues), plutôt qu'un
+mode de sélection. `priceTierId` existe côté serveur mais l'app imprime toujours le tarif par défaut.
+
+**Prochaine étape précise** : P1 **n°21c** — bons PDF (bon de livraison / transfert, bon de commande fournisseur)
+par le gabarit A4 commun (`renderA4Document`), puis **import Excel/CSV** (produits, clients, fournisseurs, stock
+initial) par `exceljs`. Commencer par vérifier ce que `transfers/` et `purchases/` exposent déjà.
 
 ### 🚧 P1 #21a DEVIS — LIVRÉ ET AUDITÉ (2026-09-26 · **MEDMEDBEN**)
 Spec §8quater. **Aucune migration** : `Quote`, `QuoteLine`, `QuoteStatus`, `Sale.quoteId` et `DocumentType.DEVIS`
@@ -2243,7 +2270,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranches A et B livrées et auditées** (2026-09-26) | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
-| Étiquettes code-barres (P1 #21b) | 🟡 **Code livré** (2026-09-27), audits en cours | 🟢 PDF A4 / rouleau, prix = caisse | 🟢 Bouton du Catalogue | 🟢 6 e2e · 3 unit · 2 widget | 🔴 audits à passer |
+| Étiquettes code-barres (P1 #21b) | 🟡 **Code livré et audité** (2026-09-27) | 🟢 PDF A4 / rouleau, prix du tarif, codes lisibles | 🟢 Bouton du Catalogue | 🟢 9 e2e · 5 unit · 3 widget | 🟢 corrigé (1 moyen, 2 importants) |
 | Bons PDF, import (P1 #21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
