@@ -68,8 +68,15 @@ export class CustomersController {
     summary: 'Clients (recherche nom, téléphone, code) avec leur dette',
   })
   @ApiOkResponse({ type: CustomerListDto })
-  findAll(@Query() query: CustomerListQueryDto): Promise<CustomerListDto> {
-    return this.customers.findAll(query);
+  async findAll(
+    @Query() query: CustomerListQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CustomerListDto> {
+    const page = await this.customers.findAll(query);
+    return {
+      ...page,
+      data: page.data.map((c) => CustomersService.forViewer(c, user)),
+    };
   }
 
   /// Export : MÊMES gardes que `GET /customers`, mêmes lignes.
@@ -115,8 +122,11 @@ export class CustomersController {
   @Get(':id')
   @ApiOperation({ summary: 'Fiche client et dette recalculée' })
   @ApiOkResponse({ type: CustomerDto })
-  findOne(@Param('id', CanonicalUuidPipe) id: string): Promise<CustomerDto> {
-    return this.customers.findOne(id);
+  async findOne(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<CustomerDto> {
+    return CustomersService.forViewer(await this.customers.findOne(id), user);
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
@@ -128,12 +138,18 @@ export class CustomersController {
     description: 'Tarif et plafond de crédit : ADMIN seul (403 sinon).',
   })
   @ApiCreatedResponse({ type: CustomerDto })
-  create(
+  async create(
     @Body() dto: CreateCustomerDto,
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<CustomerDto> {
-    return this.customers.create(dto, user, { userId: user.id, ipAddress: ip });
+    return CustomersService.forViewer(
+      await this.customers.create(dto, user, {
+        userId: user.id,
+        ipAddress: ip,
+      }),
+      user,
+    );
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
@@ -143,16 +159,19 @@ export class CustomersController {
     summary: 'Modifie un client (tarif et plafond : ADMIN seul)',
   })
   @ApiOkResponse({ type: CustomerDto })
-  update(
+  async update(
     @Param('id', CanonicalUuidPipe) id: string,
     @Body() dto: UpdateCustomerDto,
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<CustomerDto> {
-    return this.customers.update(id, dto, user, {
-      userId: user.id,
-      ipAddress: ip,
-    });
+    return CustomersService.forViewer(
+      await this.customers.update(id, dto, user, {
+        userId: user.id,
+        ipAddress: ip,
+      }),
+      user,
+    );
   }
 }
 

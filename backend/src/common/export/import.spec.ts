@@ -157,4 +157,13 @@ describe('lecture d’un import', () => {
     expect(parseImportQuantity('99999999999')).toBe('99999999999');
     expect(parseImportQuantity('999999999999')).toBeNull();
   });
+
+  it('en-tête : apostrophe du clavier = apostrophe typographique', async () => {
+    const { rows } = await readTable(
+      Buffer.from("Nom;Prix d'achat HT\nA;10"),
+      ['Nom', 'Prix d’achat HT'],
+      ['Nom'],
+    );
+    expect(rows[0].cells).toEqual({ Nom: 'A', 'Prix d’achat HT': '10' });
+  });
 });

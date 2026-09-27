@@ -11,7 +11,6 @@ import {
   nextDocumentNumber,
 } from '../common/document-number';
 import { collectAll, ExportDocument } from '../common/export/export';
-import { loadExportNames } from '../common/export/export-names';
 import { ErrorCode } from '../common/error-codes';
 import { roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
@@ -400,16 +399,7 @@ export class SalesService {
     const rows = await collectAll((page, limit) =>
       this.findAll({ ...query, page, limit }, user),
     );
-    const names = await loadExportNames(this.prisma, {
-      customers: rows.map((r) => r.customerId),
-      users: rows.map((r) => r.userId),
-    });
-    return saleListDocument(
-      rows,
-      names,
-      query,
-      !user.roles.includes(RoleCode.ADMIN),
-    );
+    return saleListDocument(rows, query, !user.roles.includes(RoleCode.ADMIN));
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<SaleDto> {
@@ -746,7 +736,14 @@ export class SalesService {
     db: Db | PrismaService,
     customerIds: string[],
   ): Promise<Map<string, number>> {
-    const accounts = await SalesService.customerAccounts(db, customerIds);
+    return SalesService.balances(
+      await SalesService.customerAccounts(db, customerIds),
+    );
+  }
+
+  static balances(
+    accounts: Map<string, { balance: number }>,
+  ): Map<string, number> {
     return new Map([...accounts].map(([id, a]) => [id, a.balance]));
   }
 

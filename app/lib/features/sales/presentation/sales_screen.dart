@@ -37,7 +37,10 @@ class SalesRights {
     : canSell =
           (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
           user.can('sale.create'),
-      canInvoice = user.can('invoice.issue'),
+      // Miroir exact de `POST /sales/:id/invoice` : ADMIN|VENDEUR + invoice.issue.
+      canInvoice =
+          (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+          user.can('invoice.issue'),
       canManageCash = user.can('cash.session.manage'),
       canWriteCustomers = user.can('customer.write'),
       // `POST /imports/customers` : ADMIN + customer.write (saisie en masse).
@@ -1196,8 +1199,10 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
             child: Text(
               [
-                'Total acheté ${formatDA(customer.totalPurchased)}',
-                'payé ${formatDA(customer.totalPaid)}',
+                if (customer.totalPurchased case final bought?)
+                  'Total acheté ${formatDA(bought)}',
+                if (customer.totalPaid case final paid?)
+                  'payé ${formatDA(paid)}',
                 'reste ${formatDA(customer.balanceDue)}',
                 if (customer.overdueAmount > 0)
                   'en retard ${formatDA(customer.overdueAmount)}',

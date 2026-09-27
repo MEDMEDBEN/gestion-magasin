@@ -64,6 +64,17 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   /// Un champ de prix par tarif, créé à l'arrivée de la liste des tarifs.
   final Map<String, TextEditingController> _prices = {};
 
+  /// Prix d'achat INITIAL (P1 bis n°21f) : saisi à la création, ou tant que le
+  /// coût est inconnu ; ensuite seules les réceptions le changent (règle 5).
+  late final _cost = TextEditingController(
+    text: widget.existing?.lastPurchasePriceHt == null
+        ? ''
+        : formatDA(widget.existing!.lastPurchasePriceHt!, withSymbol: false),
+  );
+
+  bool get _costEditable =>
+      widget.canSetPrices && widget.existing?.lastPurchasePriceHt == null;
+
   /// Stock présent à la saisie (création seulement) : devient un mouvement
   /// « stock initial » côté serveur, jamais une quantité écrite directement.
   final _storeStock = TextEditingController();
@@ -117,6 +128,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _barcode,
       _brand,
       _description,
+      _cost,
       _minThreshold,
       _safetyStock,
       _storeStock,
@@ -175,6 +187,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'safetyStock': _quantity(_safetyStock),
     'allowBackorder': _allowBackorder,
     if (_isEdit && widget.canDisable) 'isActive': _isActive,
+    if (_costEditable) 'purchasePriceHt': parseDA(_cost.text),
   };
 
   static Map<String, Object?> _valuesOf(Product p) => {
@@ -192,6 +205,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'safetyStock': quantityToJson(p.safetyStock),
     'allowBackorder': p.allowBackorder,
     'isActive': p.isActive,
+    'purchasePriceHt': p.lastPurchasePriceHt,
   };
 
   Future<void> _submit() async {
@@ -296,6 +310,45 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             when price != current[entry.key])
           entry.key: price,
     };
+  }
+
+  /// Prix d'achat : modifiable tant qu'il est inconnu (admin), sinon affiché
+  /// — c'est le coût de la marge et le plancher du prix de vente.
+  Widget _costSection(AmpereColors colors, TextStyle inputStyle) {
+    final known = widget.existing?.lastPurchasePriceHt;
+    if (!_costEditable) {
+      return Text(
+        known == null
+            ? 'Prix d’achat HT : inconnu (fixé par la première réception)'
+            : 'Prix d’achat HT (dernière réception) : ${formatDA(known)}',
+        style: AmpereType.body.copyWith(color: colors.ink),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const AmpereFieldLabel('Prix d’achat HT'),
+        TextFormField(
+          controller: _cost,
+          enabled: !_saving,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: inputStyle,
+          decoration: const InputDecoration(suffixText: 'DA'),
+          validator: (v) {
+            final raw = v?.trim() ?? '';
+            if (raw.isEmpty) return null;
+            final amount = parseDA(raw);
+            return amount == null || amount < 0 ? 'Montant invalide' : null;
+          },
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Coût connu aujourd’hui (marge, prix de vente minimum). Les '
+          'réceptions le mettront ensuite à jour.',
+          style: AmpereType.meta.copyWith(color: colors.ink3),
+        ),
+      ],
+    );
   }
 
   Widget _pricesSection(AmpereColors colors, List<PriceTier> tiers) {
@@ -712,6 +765,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             const AmpereFieldLabel('Prix de vente (HT)'),
           _pricesSection(colors, priceTiers),
         ],
+        formFieldGap,
+        _costSection(colors, inputStyle),
       ],
     );
   }

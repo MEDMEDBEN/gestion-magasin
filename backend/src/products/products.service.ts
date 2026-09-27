@@ -328,6 +328,24 @@ export class ProductsService {
     };
   }
 
+  /// Le prix d'achat initial est une condition de PRIX (marge, plancher de
+  /// vente) : `price.manage`, comme les tarifs.
+  static assertCanSetCost(
+    dto: { purchasePriceHt?: number },
+    user: AuthenticatedUser,
+  ): void {
+    if (
+      dto.purchasePriceHt !== undefined &&
+      !user.permissions.includes(PERMISSIONS.PRICE_MANAGE)
+    ) {
+      throw new BusinessException(
+        ErrorCode.FORBIDDEN_PERMISSION,
+        'Permission requise pour fixer un prix d’achat : price.manage',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
   /// Ce qu'un compte voit d'un produit (docs/permissions.md) : le coût d'achat
   /// exige `cost.read`, le fournisseur principal `supplier.read` — sinon `null`.
   /// Appliqué à TOUTE réponse produit, delta compris.
@@ -449,6 +467,7 @@ export class ProductsService {
         ),
         safetyStock: ProductsService.threshold(dto.safetyStock, 'safetyStock'),
         allowBackorder: dto.allowBackorder ?? false,
+        lastPurchasePriceHt: dto.purchasePriceHt ?? null,
       },
     });
     const created = ProductsService.toDto(product);
@@ -476,6 +495,7 @@ export class ProductsService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<ProductDto> {
+    ProductsService.assertCanSetCost(dto, user);
     // Désactiver est une permission distincte de la modification (docs/permissions.md).
     if (
       dto.isActive !== undefined &&
@@ -564,6 +584,21 @@ export class ProductsService {
       if (dto.allowBackorder !== undefined)
         data.allowBackorder = dto.allowBackorder;
       if (dto.isActive !== undefined) data.isActive = dto.isActive;
+      if (
+        dto.purchasePriceHt !== undefined &&
+        dto.purchasePriceHt !== before.lastPurchasePriceHt
+      ) {
+        // Règle 5 : le coût est le dernier prix RÉCEPTIONNÉ. Une saisie ne fait
+        // que combler un coût inconnu ; elle ne réécrit jamais une réception.
+        if (before.lastPurchasePriceHt !== null) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Prix d’achat déjà connu : il suit désormais les réceptions',
+            HttpStatus.CONFLICT,
+          );
+        }
+        data.lastPurchasePriceHt = dto.purchasePriceHt;
+      }
 
       const product = await tx.product.update({
         where: { id },

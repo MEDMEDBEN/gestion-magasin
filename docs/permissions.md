@@ -21,7 +21,7 @@
 
 | Règle | Permission | Rôles porteurs |
 |---|---|---|
-| Prix & tarifs admin only | `price.manage` | ADMIN |
+| Prix & tarifs admin only (dont le prix d'achat INITIAL d'un produit, P1 bis n°21f) | `price.manage` | ADMIN |
 | Pas de remise libre | `sale.discount` | ADMIN |
 | Vente à crédit plafonnée | `sale.credit` | ADMIN, VENDEUR |
 | Commande fournisseur | `purchase.create` | ADMIN, MAGASINIER |
@@ -88,6 +88,10 @@ aucune migration destructive sans confirmation).
 |---|---|---|---|
 | Consulter clients | ✅ | ✅ | 👁️ |
 | Créer / modifier client | ✅ | ✅ | ❌ |
+| Fixer le tarif et le plafond de crédit d'un client | ✅ (`price.manage`) | ❌ | ❌ |
+| Voir le total acheté / payé d'un client (un chiffre d'affaires) | ✅ | ❌ (`null`) | ❌ (`null`) |
+| Historique des ventes (`GET /sales`, recherche `q`) | ✅ toutes | ✅ les SIENNES | ❌ |
+| Annuler une vente (`POST /sales/:id/cancel`) | ✅ (`sale.cancel`) | ❌ | ❌ |
 | Enregistrer paiement client | ✅ | ✅ | ❌ |
 | Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |
 | Contre-passer un règlement client | ✅ | ❌ | ❌ |

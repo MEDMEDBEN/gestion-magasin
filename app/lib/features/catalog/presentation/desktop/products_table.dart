@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/money.dart';
 import '../../../../core/quantity.dart';
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
@@ -19,7 +20,11 @@ class ProductsTable extends StatelessWidget {
     required this.categoryNames,
     required this.onTap,
     this.stock,
+    this.defaultTierId,
   });
+
+  /// Tarif par défaut : son prix est le « prix de vente » affiché.
+  final String? defaultTierId;
 
   final List<Product> products;
   final Map<String, String> categoryNames;
@@ -63,6 +68,7 @@ class ProductsTable extends StatelessWidget {
                           product: products[i],
                           category: categoryNames[products[i].categoryId],
                           stock: stock,
+                          defaultTierId: defaultTierId,
                           onTap: () => onTap(products[i]),
                         ),
                       ),
@@ -84,6 +90,8 @@ class _Columns {
   static const category = 3;
   static const barcode = 3;
   static const threshold = 2;
+  static const sale = 2;
+  static const cost = 2;
   static const status = 3;
 }
 
@@ -113,6 +121,8 @@ class _HeaderRow extends StatelessWidget {
           cell('Catégorie', _Columns.category),
           cell('Code-barres', _Columns.barcode),
           cell('Seuil min.', _Columns.threshold, end: true),
+          cell('Vente HT', _Columns.sale, end: true),
+          cell('Achat HT', _Columns.cost, end: true),
           const SizedBox(width: 16),
           cell('Stock', _Columns.status),
         ],
@@ -127,11 +137,13 @@ class _ProductRow extends StatelessWidget {
     required this.category,
     required this.onTap,
     required this.stock,
+    this.defaultTierId,
   });
 
   final Product product;
   final String? category;
   final VoidCallback onTap;
+  final String? defaultTierId;
   final Map<String, ProductStock>? stock;
 
   @override
@@ -198,6 +210,23 @@ class _ProductRow extends StatelessWidget {
                 ),
               ),
             ),
+            for (final (flex, amount) in [
+              (_Columns.sale, product.salePriceHt(defaultTierId)),
+              (_Columns.cost, product.lastPurchasePriceHt),
+            ])
+              Expanded(
+                flex: flex,
+                child: Text(
+                  amount == null ? '—' : formatDA(amount),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.bodyDesktop.copyWith(
+                    color: amount == null ? colors.ink3 : colors.ink2,
+                    fontFeatures: AmpereType.tabular,
+                  ),
+                ),
+              ),
             const SizedBox(width: 16),
             Expanded(
               flex: _Columns.status,

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/money.dart';
+
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
 import '../../../../ui/widgets/ampere_controls.dart';
@@ -19,6 +21,7 @@ class ProductsList extends StatelessWidget {
     required this.categoryNames,
     required this.onTap,
     required this.onRefresh,
+    this.defaultTierId,
     this.stock,
   });
 
@@ -28,6 +31,9 @@ class ProductsList extends StatelessWidget {
   final Map<String, String> categoryNames;
   final void Function(Product product) onTap;
   final Future<void> Function() onRefresh;
+
+  /// Tarif par défaut : son prix est le « prix de vente » affiché.
+  final String? defaultTierId;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +52,7 @@ class ProductsList extends StatelessWidget {
           product: products[i],
           category: categoryNames[products[i].categoryId],
           stock: stock,
+          defaultTierId: defaultTierId,
           onTap: () => onTap(products[i]),
         ),
       ),
@@ -55,12 +62,14 @@ class ProductsList extends StatelessWidget {
 
 class _ProductRow extends StatelessWidget {
   const _ProductRow({
+    this.defaultTierId,
     required this.product,
     required this.category,
     required this.onTap,
     required this.stock,
   });
 
+  final String? defaultTierId;
   final Product product;
   final String? category;
   final VoidCallback onTap;
@@ -105,6 +114,15 @@ class _ProductRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AmpereType.mono.copyWith(color: colors.ink3),
                   ),
+                  Text(
+                    [
+                      'Vente ${_amount(product.salePriceHt(defaultTierId))}',
+                      'achat ${_amount(product.lastPurchasePriceHt)}',
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.meta.copyWith(color: colors.ink2),
+                  ),
                   if (category != null ||
                       !product.isActive ||
                       stock != null) ...[
@@ -140,3 +158,5 @@ class _ProductRow extends StatelessWidget {
     );
   }
 }
+
+String _amount(int? centimes) => centimes == null ? '—' : formatDA(centimes);

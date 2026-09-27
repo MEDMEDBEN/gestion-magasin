@@ -8,13 +8,9 @@ import { label } from '../common/export/labels';
 import { SaleDto } from './dto/sale.dto';
 
 /// Liste des ventes : les lignes rendues par `findAll`, donc déjà cloisonnées
-/// (le vendeur n'y trouve que les siennes). Les noms sont joints à part.
+/// (le vendeur n'y trouve que les siennes), noms du client et du vendeur compris.
 export function saleListDocument(
   rows: SaleDto[],
-  names: {
-    customer: (id: string | null) => string;
-    user: (id: string) => string;
-  },
   period: { from?: string; to?: string },
   ownOnly: boolean,
 ): ExportDocument {
@@ -33,9 +29,9 @@ export function saleListDocument(
           { header: 'Statut', value: (s) => label(s.status) },
           {
             header: 'Client',
-            value: (s) => names.customer(s.customerId),
+            value: (s) => s.customerName ?? '',
           },
-          { header: 'Vendeur', value: (s) => names.user(s.userId) },
+          { header: 'Vendeur', value: (s) => s.sellerName },
           { header: 'HT', kind: 'money', value: (s) => s.totalHt },
           { header: 'TVA', kind: 'money', value: (s) => s.totalTax },
           { header: 'TTC', kind: 'money', value: (s) => s.totalTtc },

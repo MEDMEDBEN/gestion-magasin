@@ -151,6 +151,19 @@ export class CreateProductDto {
   allowBackorder?: boolean;
 
   @ApiPropertyOptional({
+    example: 120000,
+    description:
+      'Prix d’achat HT INITIAL en centimes (coût de la marge et plancher du prix de ' +
+      'vente) — pour un produit dont le coût n’est pas encore connu. Ensuite, seules ' +
+      'les réceptions le changent (règle 5). Exige `price.manage`.',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(2_000_000_000)
+  @IsOptional()
+  purchasePriceHt?: number;
+
+  @ApiPropertyOptional({
     type: () => [InitialStockDto],
     description:
       'Stock présent à la création (magasin et/ou dépôt). Enregistré comme mouvement ' +
@@ -167,6 +180,19 @@ export class CreateProductDto {
 /// Modification partielle. Les champs obligatoires ne sont jamais `null` ; les
 /// rattachements facultatifs (catégorie, TVA…) acceptent `null` = retirer.
 export class UpdateProductDto {
+  @ApiPropertyOptional({
+    example: 120000,
+    description:
+      'Prix d’achat HT INITIAL en centimes (coût de la marge et plancher du prix de ' +
+      'vente) — pour un produit dont le coût n’est pas encore connu. Ensuite, seules ' +
+      'les réceptions le changent (règle 5). Exige `price.manage`.',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(2_000_000_000)
+  @IsOptional()
+  purchasePriceHt?: number;
+
   @ApiPropertyOptional()
   @Transform(trim)
   @IsOptionalNotNull()

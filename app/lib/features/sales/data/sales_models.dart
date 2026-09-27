@@ -117,9 +117,10 @@ abstract class Customer with _$Customer {
     required int creditLimit,
     required int balanceDue,
 
-    /// Total acheté (ventes validées, TTC) et total payé (fiche client, §10).
-    @Default(0) int totalPurchased,
-    @Default(0) int totalPaid,
+    /// Total acheté (ventes validées, TTC) et total payé (fiche client, §10) :
+    /// un chiffre d'affaires, rendu à l'ADMIN seul (`null` sinon).
+    int? totalPurchased,
+    int? totalPaid,
 
     /// Part de la dette dont l'échéance est dépassée.
     @Default(0) int overdueAmount,

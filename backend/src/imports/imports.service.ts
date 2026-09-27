@@ -56,6 +56,7 @@ const FIELD_HEADER: Record<string, string> = {
   unit: 'Unité',
   brand: 'Marque',
   minThreshold: 'Seuil minimum',
+  purchasePriceHt: 'Prix d’achat HT',
   initialStock: 'Stock initial',
   phone: 'Téléphone',
   email: 'E-mail',
@@ -133,6 +134,7 @@ export class ImportsService {
         'TVA %',
         'Marque',
         'Seuil minimum',
+        'Prix d’achat HT',
         ...tiers.map((t) => `Prix ${t.name} HT`),
         'Stock magasin',
         'Stock dépôt',
@@ -176,6 +178,7 @@ export class ImportsService {
           'TVA %': '19',
           Marque: '',
           'Seuil minimum': '100',
+          'Prix d’achat HT': '110,00',
           'Stock magasin': '250',
           'Stock dépôt': '1000',
         };
@@ -554,6 +557,19 @@ export class ImportsService {
           problems.push(message ?? 'Code-barres invalide');
         }
       }
+      // Prix d'achat INITIAL : coût de la marge et plancher de vente, tant
+      // qu'aucune réception ne l'a fixé (règle 5).
+      let purchasePriceHt: number | undefined;
+      if (c['Prix d’achat HT']) {
+        const cost = parseMoney(c['Prix d’achat HT']);
+        if (cost === null) {
+          problems.push(
+            `Prix d’achat HT : « ${c['Prix d’achat HT']} » n’est pas un montant`,
+          );
+        } else {
+          purchasePriceHt = cost;
+        }
+      }
       const priced = tiers.flatMap((tier) => {
         if (!c[tier.header]) return [];
         const priceHt = parseMoney(c[tier.header]);
@@ -581,6 +597,7 @@ export class ImportsService {
           ...(c['Marque'] && { brand: c['Marque'] }),
           ...(minThreshold && { minThreshold }),
           ...(initialStock.length > 0 && { initialStock }),
+          ...(purchasePriceHt !== undefined && { purchasePriceHt }),
         },
         prices: priced.map((p) => p.price),
         priceHeaders: priced.map((p) => p.header),

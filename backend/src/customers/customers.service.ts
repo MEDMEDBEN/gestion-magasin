@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
-import { AuthenticatedUser } from '../common/auth.decorators';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
@@ -106,8 +106,11 @@ export class CustomersService {
     // Dettes de toute la page en 2 requêtes (jamais 2 par client).
     const ids = rows.map((r) => r.id);
     const accounts = await SalesService.customerAccounts(this.prisma, ids);
-    const debts = new Map([...accounts].map(([id, a]) => [id, a.balance]));
-    const overdue = await SalesService.customerOverdue(this.prisma, ids, debts);
+    const overdue = await SalesService.customerOverdue(
+      this.prisma,
+      ids,
+      SalesService.balances(accounts),
+    );
     const data = rows.map((row) =>
       CustomersService.toDtoWith(
         row,
@@ -589,13 +592,24 @@ export class CustomersService {
     const overdue = await SalesService.customerOverdue(
       db,
       [customer.id],
-      new Map([[customer.id, account.balance]]),
+      SalesService.balances(accounts),
     );
     return CustomersService.toDtoWith(
       customer,
       account,
       overdue.get(customer.id) ?? 0,
     );
+  }
+
+  /// Ce qu'un compte voit d'une fiche client : total acheté et payé sont un
+  /// CHIFFRE D'AFFAIRES — ADMIN seul (docs/permissions.md : ni le magasinier
+  /// ni le vendeur, limité à SES ventes, ne lisent un CA). `null`, jamais 0.
+  static forViewer(
+    customer: CustomerDto,
+    viewer: Pick<AuthenticatedUser, 'roles'>,
+  ): CustomerDto {
+    if (viewer.roles.includes(RoleCode.ADMIN)) return customer;
+    return { ...customer, totalPurchased: null, totalPaid: null };
   }
 
   private static toDtoWith(

@@ -66,10 +66,13 @@ class _CustomerFormState extends ConsumerState<CustomerForm> {
         'address': _text(_address),
         'notes': _text(_notes),
         if (_c != null) 'isActive': _active,
-        if (widget.canManageTerms) ...{
+        // Envoyés seulement s'ils changent : un tarif depuis désactivé ne
+        // bloque pas la modification du reste de la fiche.
+        if (widget.canManageTerms && (_c == null || _tierId != _c.priceTierId))
           'priceTierId': _tierId,
+        if (widget.canManageTerms &&
+            (_c == null || (parseDA(_limit.text) ?? 0) != _c.creditLimit))
           'creditLimit': parseDA(_limit.text) ?? 0,
-        },
       });
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (error) {

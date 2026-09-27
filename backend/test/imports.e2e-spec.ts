@@ -359,6 +359,20 @@ describe('Import Excel/CSV (e2e)', () => {
       expect(cable.barcode).toMatch(/^20\d{11}$/);
     });
 
+    /// P1 bis n°21f : le prix d'achat initial s'importe (apostrophe du clavier
+    /// acceptée dans l'en-tête), en centimes.
+    it('prix d’achat HT importé en centimes', async () => {
+      const file = csv(
+        ['Référence', 'Nom', "Prix d'achat HT"],
+        [sku(45), 'Avec coût', '1 100,50'],
+      );
+      await upload(tokens.admin, 'products', file, false).expect(200);
+      const product = await prisma.product.findUniqueOrThrow({
+        where: { sku: sku(45) },
+      });
+      expect(product.lastPurchasePriceHt).toBe(110050);
+    });
+
     it('le même fichier renvoyé : rien n’est doublé', async () => {
       const file = csv(header(), [
         sku(40),

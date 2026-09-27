@@ -422,14 +422,22 @@ class _ProductsSection extends ConsumerWidget {
                       : 'Le catalogue est encore vide.',
                 );
               }
+              final defaultTierId = ref
+                  .watch(priceTiersProvider)
+                  .value
+                  ?.where((t) => t.isDefault)
+                  .firstOrNull
+                  ?.id;
               return isDesktop
                   ? ProductsTable(
+                      defaultTierId: defaultTierId,
                       products: items,
                       categoryNames: categoryNames,
                       stock: stock,
                       onTap: onOpen,
                     )
                   : ProductsList(
+                      defaultTierId: defaultTierId,
                       products: items,
                       categoryNames: categoryNames,
                       stock: stock,

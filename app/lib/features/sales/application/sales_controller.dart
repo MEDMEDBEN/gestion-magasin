@@ -502,12 +502,6 @@ class SalesActions {
     return customer;
   }
 
-  Future<Customer> createCustomer(String name, String? phone) async {
-    final customer = await _api.createCustomer(name: name, phone: phone);
-    _ref.invalidate(customerSearchProvider);
-    return customer;
-  }
-
   /// Clé d'idempotence gardée par intention (`core/mutation_keys.dart`) : un
   /// nouvel essai après coupure ou délai dépassé
   /// réutilise le même id et le serveur n'efface pas la dette deux fois.

@@ -235,8 +235,39 @@ en retard. Serveur : `CustomerDto.totalPurchased` / `totalPaid`, calculés par `
   réimpression, pas d'annulation pour le vendeur ; annulation admin après confirmation ; fiche client vendeur
   sans tarif/plafond, admin avec). Contre-épreuve : garde d'annulation retirée → test en échec.
 
-**Prochaine étape précise** : audits `reviewer` + `security-reviewer` de 21d/21e (lancés), appliquer ; puis
-**21f** prix d'achat du produit (affichage catalogue/fiche ; prix d'achat initial à la création et à l'import).
+**Audits 21d/21e** — `reviewer` : **OK** (5 mineurs) ; `security-reviewer` : **NON CONFORME** (1 moyen, 3
+faibles). Tout appliqué :
+- 🟠 **Moyen — le total acheté d'un client était un chiffre d'affaires lisible par le magasinier et par le vendeur**
+  (qui additionnait les ventes de ses collègues), contraire à `docs/permissions.md` (« aucun CA »). Désormais
+  `totalPurchased` / `totalPaid` = **ADMIN seul**, `null` sinon (`CustomersService.forViewer`, sur les 4 routes
+  qui rendent une fiche) ; l'app ne les affiche que présents. e2e : vendeur et magasinier reçoivent `null`
+  (fiche et liste) ; contre-épreuve (garde retirée) → échec.
+- Cloisonnement de la recherche `q` prouvé : un vendeur ne trouve ni le n° ni le client d'une vente d'un collègue
+  (e2e). **Défaut de MON test trouvé par la contre-épreuve** : la première version passait même sans le filtre
+  (la vente de départ était refusée — plafond 0 — et on cherchait « undefined ») ; corrigé (201 imposé, l'admin
+  la trouve), contre-épreuve refaite → échec.
+- Recherche par client et par n° de facture (e2e) ; vente ANNULÉE exclue du total acheté (e2e).
+- Tarif / plafond envoyés seulement s'ils changent (un tarif depuis désactivé ne bloquait plus toute
+  modification de la fiche) ; code mort `createCustomer` retiré ; export des ventes : noms repris du `SaleDto`
+  (une source) ; `SalesService.balances()` au lieu de deux recopies ; miroir exact de la facturation
+  (ADMIN|VENDEUR + `invoice.issue`).
+- Non corrigé (faible, accepté) : recherche `contains` sans index trigram (à l'échelle d'un magasin) ; `%` non
+  échappé (reste dans le périmètre de l'utilisateur).
+
+**21f — Prix d'achat du produit (livré)** : `purchasePriceHt` (centimes, ≤ 20 M DA) à la **création** et en
+**PATCH tant que le coût est inconnu** ; connu, il ne change plus que par les réceptions (règle 5 — 409 sinon ;
+renvoyer la même valeur n'est pas une erreur). Droit **`price.manage`** (`ProductsService.assertCanSetCost`,
+prouvé par test unitaire — aucun rôle par défaut n'a `product.write` sans lui). Import : colonne « Prix d'achat
+HT » (apostrophe du clavier acceptée dans tous les en-têtes). App : colonnes **Vente HT / Achat HT** du tableau
+catalogue (tarif par défaut), ligne « Vente · achat » sur mobile, champ dans la fiche (admin, coût inconnu) ou
+coût affiché en lecture.
+- ⚠️ Limite à connaître (MEDMEDBEN) : un prix d'achat initial MAL saisi ne se corrige pas à la main — la prochaine
+  réception le remplace. Si c'est gênant, il faudra un geste « corriger le coût » audité (petite évolution).
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **146 unit** · **585 e2e** ; app `flutter analyze`
+  propre · **+442 ~46**.
+
+**Prochaine étape précise** : audits de 21f (lancés), appliquer ; puis **21g** remise sur une vente (ADMIN) :
+champ serveur `discount` existant → saisie dans le panier + affichage.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

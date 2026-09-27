@@ -188,13 +188,17 @@ export class CustomerDto {
   })
   overdueAmount!: number;
   @ApiProperty({
-    description: 'Total acheté : ventes validées, TTC (centimes).',
+    nullable: true,
+    description:
+      'Total acheté : ventes validées, TTC (centimes). ADMIN seul — `null` ' +
+      'sinon (un chiffre d’affaires, cloisonné comme les rapports).',
   })
-  totalPurchased!: number;
+  totalPurchased!: number | null;
   @ApiProperty({
-    description: 'Total payé : à la vente et par règlements (centimes).',
+    nullable: true,
+    description: 'Total payé, à la vente et par règlements. ADMIN seul.',
   })
-  totalPaid!: number;
+  totalPaid!: number | null;
   @ApiProperty() isActive!: boolean;
 }
 

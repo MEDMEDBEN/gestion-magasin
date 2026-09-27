@@ -157,6 +157,7 @@ export class ProductsController {
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<ProductDto> {
+    ProductsService.assertCanSetCost(dto, user);
     return ProductsService.forViewer(
       await this.productsService.create(dto, actorOf(user, ip)),
       user,

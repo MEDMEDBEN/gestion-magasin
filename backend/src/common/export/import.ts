@@ -48,6 +48,8 @@ export const normalize = (text: string) =>
   text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    // « Prix d’achat » (typographique) = « Prix d'achat » (clavier).
+    .replace(/[‘’`]/g, "'")
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();

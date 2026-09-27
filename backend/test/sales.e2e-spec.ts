@@ -987,30 +987,109 @@ describe('Ventes (e2e)', () => {
 
   /// Fiche client (§10) : total acheté, payé et reste dû, cohérents entre eux
   /// — scénario dettes de la spec §35 (vente à crédit, puis règlement).
-  it('fiche client : total acheté, payé, reste dû', async () => {
+  it('fiche client : total acheté, payé, reste dû — ADMIN seul', async () => {
     const p = await product('10.000');
     const c = await customer(10_000_000);
-    const sale = (
-      await as(tokens.vendeur)
-        .post('/api/sales')
-        .send({
-          customerId: c,
-          lines: [{ productId: p, quantity: '2' }],
-          paidAmount: 100000,
-          dueDate: DUE_DATE,
-        })
-        .expect(201)
-    ).body;
+    const sell = async (paidAmount: number) =>
+      (
+        await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            customerId: c,
+            lines: [{ productId: p, quantity: '2' }],
+            paidAmount,
+            dueDate: DUE_DATE,
+          })
+          .expect(201)
+      ).body as { id: string; totalTtc: number };
+    const sale = await sell(100000);
+    // Une vente ANNULÉE ne compte ni dans l'acheté ni dans la dette.
+    const cancelled = await sell(0);
+    await as(tokens.admin)
+      .post(`/api/sales/${cancelled.id}/cancel`)
+      .expect(200);
     await as(tokens.vendeur)
       .post('/api/payments/customer')
       .send({ customerId: c, amount: 50000 })
       .expect(201);
     const sheet = (
-      await as(tokens.vendeur).get(`/api/customers/${c}`).expect(200)
+      await as(tokens.admin).get(`/api/customers/${c}`).expect(200)
     ).body;
     expect(sheet.totalPurchased).toBe(sale.totalTtc);
     expect(sheet.totalPaid).toBe(150000);
     expect(sheet.balanceDue).toBe(sale.totalTtc - 150000);
+
+    // Un chiffre d'affaires : ni le vendeur ni le magasinier ne le lisent.
+    for (const token of [tokens.vendeur, tokens.magasinier]) {
+      const seen = (await as(token).get(`/api/customers/${c}`).expect(200))
+        .body;
+      expect(seen.totalPurchased).toBeNull();
+      expect(seen.totalPaid).toBeNull();
+      expect(seen.balanceDue).toBe(sheet.balanceDue);
+      const listed = (
+        await as(token)
+          .get(`/api/customers?q=${encodeURIComponent(sheet.name)}`)
+          .expect(200)
+      ).body.data.find((x: { id: string }) => x.id === c);
+      expect(listed.totalPurchased).toBeNull();
+    }
+  });
+
+  /// Recherche : le filtre « mes ventes » du vendeur tient AUSSI sous `q`.
+  it('recherche : un vendeur ne trouve pas la vente d’un collègue', async () => {
+    const p = await product('10.000');
+    const c = await customer(10_000_000);
+    const theirs = (
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          customerId: c,
+          lines: [{ productId: p, quantity: '1' }],
+          paidAmount: 0,
+          dueDate: DUE_DATE,
+        })
+        .expect(201)
+    ).body as { number: string };
+    // Garde-fou du test lui-même : l'admin, lui, la trouve.
+    const admin = await as(tokens.admin)
+      .get(`/api/sales?q=${theirs.number}`)
+      .expect(200);
+    expect(admin.body.meta.total).toBe(1);
+    const mine = await as(tokens.autreVendeur)
+      .get(`/api/sales?q=${theirs.number}`)
+      .expect(200);
+    expect(mine.body.meta.total).toBe(0);
+    const name = (await prisma.customer.findUniqueOrThrow({ where: { id: c } }))
+      .name;
+    const byName = await as(tokens.autreVendeur)
+      .get(`/api/sales?q=${encodeURIComponent(name)}`)
+      .expect(200);
+    expect(byName.body.meta.total).toBe(0);
+  });
+
+  /// Recherche par nom de client et par numéro de facture.
+  it('recherche par client et par facture', async () => {
+    const invoiced = await prisma.sale.findFirstOrThrow({
+      where: { invoiceNumber: { not: null } },
+    });
+    const byInvoice = await as(tokens.admin)
+      .get(`/api/sales?q=${invoiced.invoiceNumber}`)
+      .expect(200);
+    expect(byInvoice.body.data.map((s: { id: string }) => s.id)).toContain(
+      invoiced.id,
+    );
+    const withCustomer = await prisma.sale.findFirstOrThrow({
+      where: { customerId: { in: customerIds } },
+      include: { customer: true },
+    });
+    const byName = await as(tokens.admin)
+      .get(
+        `/api/sales?limit=200&q=${encodeURIComponent(withCustomer.customer!.name)}`,
+      )
+      .expect(200);
+    expect(byName.body.data.map((s: { id: string }) => s.id)).toContain(
+      withCustomer.id,
+    );
   });
 
   /// Historique des ventes : un ticket se retrouve par son numéro.

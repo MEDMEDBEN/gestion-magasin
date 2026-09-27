@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/core/photos.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
@@ -418,6 +419,8 @@ void main() {
             prices: const [
               ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
             ],
+            // Coût connu : affiché, pas un champ — « Gros » reste le dernier.
+            lastPurchasePriceHt: 100000,
           ),
         ],
       ),
@@ -516,5 +519,57 @@ void main() {
       ),
       {'brand': null, 'unit': 'METRE'},
     );
+  });
+
+  /// P1 bis n°21f : le prix d'achat n'était affiché nulle part, et un produit
+  /// sans réception n'avait aucun coût.
+  testWidgets('prix d’achat : colonnes Vente/Achat, coût connu non modifiable', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 1600));
+    await tester.pumpWidget(
+      wrap(
+        _admin(),
+        desktop: true,
+        products: [
+          product(id: 'p1', name: 'Disjoncteur').copyWith(
+            prices: const [
+              ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
+            ],
+            lastPurchasePriceHt: 100000,
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('ACHAT HT'), findsOneWidget);
+    expect(find.text(formatDA(145000)), findsOneWidget);
+    expect(find.text(formatDA(100000)), findsOneWidget);
+
+    // Fiche d'un produit au coût connu : affiché, jamais modifiable.
+    await tester.tap(find.text('Disjoncteur'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Prix d’achat HT (dernière réception) : ${formatDA(100000)}'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('prix d’achat : saisi à la création, envoyé en centimes', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(wrap(_admin()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Interrupteur');
+    await tester.enterText(fields.at(1), 'INT-COUT');
+    await tester.enterText(fields.last, '85,50');
+    await tester.ensureVisible(find.text('Créer le produit'));
+    await tester.tap(find.text('Créer le produit'));
+    await tester.pumpAndSettle();
+    expect(api.productCalls.last.$2['purchasePriceHt'], 8550);
   });
 }

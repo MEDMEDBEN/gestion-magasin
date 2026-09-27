@@ -199,3 +199,15 @@ abstract class CatalogChanges with _$CatalogChanges {
   factory CatalogChanges.fromJson(Map<String, dynamic> json) =>
       _$CatalogChangesFromJson(json);
 }
+
+/// Prix affichés d'un produit dans le catalogue (P1 bis n°21f).
+extension ProductDisplayPrices on Product {
+  /// Prix de vente HT au tarif par défaut ; sans tarif connu (hors ligne),
+  /// le premier prix fixé. `null` : aucun prix (ou pas le droit de le lire).
+  int? salePriceHt(String? defaultTierId) {
+    for (final p in prices) {
+      if (p.priceTierId == defaultTierId) return p.priceHt;
+    }
+    return prices.isEmpty ? null : prices.first.priceHt;
+  }
+}

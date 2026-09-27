@@ -128,13 +128,6 @@ class SalesApi {
     });
   }
 
-  Future<Customer> createCustomer({required String name, String? phone}) {
-    return _post('/customers', {
-      'name': name,
-      'phone': ?phone,
-    }, Customer.fromJson);
-  }
-
   /// Fiche client complète : création (`id` nul) ou modification. Tarif et
   /// plafond ne sont envoyés que par qui a `price.manage` (le serveur refuse
   /// sinon).
