@@ -10,10 +10,13 @@ import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/catalog_controller.dart';
+import '../../sales/application/sales_controller.dart' show printPdfProvider;
 import '../../stock/application/stock_controller.dart';
+import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import 'catalog_lists.dart';
 import 'category_form.dart';
+import 'labels_dialog.dart';
 import 'desktop/products_table.dart';
 import 'location_form.dart';
 import 'mobile/products_list.dart';
@@ -29,6 +32,8 @@ class CatalogRights {
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
       canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
+      // `POST /products/labels` : les 3 rôles + product.read ET price.read.
+      canPrintLabels = user.can('product.read') && user.can('price.read'),
       canManageLocations =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('location.manage');
@@ -39,6 +44,7 @@ class CatalogRights {
   final bool canReadStock;
   final bool canReadSuppliers;
   final bool canSetPrices;
+  final bool canPrintLabels;
 }
 
 enum _Section { products, categories, locations }
@@ -98,6 +104,35 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           ? '${saved.name} créé — code-barres ${saved.barcode}.'
           : '${saved.name} mis à jour.',
     );
+  }
+
+  /// Étiquettes de la liste AFFICHÉE (recherche et catégorie comprises) : une
+  /// réassort se filtre, puis s'imprime. Un seul produit : on le cherche.
+  Future<void> _printLabels(List<Product> products) async {
+    if (products.isEmpty) return;
+    if (products.length > 200) {
+      _showSnack(
+        '${products.length} produits affichés : filtrez (recherche, catégorie) '
+        'pour en imprimer 200 au plus.',
+      );
+      return;
+    }
+    final choice = await askLabels(context, productCount: products.length);
+    if (choice == null || !mounted) return;
+    try {
+      final pdf = await ref
+          .read(catalogApiProvider)
+          .labels(
+            format: choice.format,
+            items: [
+              for (final p in products)
+                (productId: p.id, copies: choice.copies),
+            ],
+          );
+      await ref.read(printPdfProvider)(pdf, 'etiquettes.pdf');
+    } on ApiException catch (error) {
+      _showSnack(error.userMessage);
+    }
   }
 
   Future<void> _openCategory([
@@ -190,6 +225,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               canReadStock: rights.canReadStock,
               syncing: sync.isLoading,
               onOpen: (p) => _openProduct(rights, p),
+              onLabels: rights.canPrintLabels ? _printLabels : null,
             ),
             _Section.categories => CategoriesList(
               margin: margin,
@@ -226,6 +262,7 @@ class _ProductsSection extends ConsumerWidget {
     required this.canReadStock,
     required this.syncing,
     required this.onOpen,
+    this.onLabels,
   });
 
   final TextEditingController search;
@@ -237,6 +274,9 @@ class _ProductsSection extends ConsumerWidget {
   final bool canReadStock;
   final bool syncing;
   final void Function(Product? product) onOpen;
+
+  /// Étiquettes de la liste affichée ; `null` sans le droit.
+  final void Function(List<Product> products)? onLabels;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -282,6 +322,14 @@ class _ProductsSection extends ConsumerWidget {
                   onChanged: notifier.setSearch,
                 ),
               ),
+              if (onLabels case final print?) ...[
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: () => print(products.value ?? const []),
+                  icon: const Icon(LucideIcons.tag, size: 17),
+                  label: const Text('Étiquettes'),
+                ),
+              ],
               if (canCreate) ...[
                 const SizedBox(width: 12),
                 FilledButton.icon(

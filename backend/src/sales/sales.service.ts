@@ -13,6 +13,7 @@ import {
 import { collectAll, ExportDocument } from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
 import { ErrorCode } from '../common/error-codes';
+import { roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
@@ -41,11 +42,6 @@ const SALE_INCLUDE = { lines: true } as const;
 
 /// Tris autorisés (liste blanche, CONVENTIONS.md).
 const SALE_SORT_FIELDS = ['soldAt', 'totalTtc', 'number'] as const;
-
-/// Arrondi monétaire unique des ventes : au centime, demi vers le haut.
-function roundMoney(value: Prisma.Decimal): number {
-  return value.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toNumber();
-}
 
 @Injectable()
 export class SalesService {
@@ -900,9 +896,7 @@ export class SalesService {
     if (lineTotalHt < roundMoney(new Prisma.Decimal(floor).mul(quantity))) {
       throw belowFloor();
     }
-    const lineTaxAmount = roundMoney(
-      new Prisma.Decimal(lineTotalHt).mul(taxRate).div(100),
-    );
+    const lineTaxAmount = taxAmount(lineTotalHt, taxRate);
     return {
       productId: product.id,
       priceTierId,

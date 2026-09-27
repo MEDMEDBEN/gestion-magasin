@@ -1,4 +1,10 @@
-import { formatDA, formatDateTime, PdfDoc, renderPdf } from '../common/pdf/pdf';
+import {
+  formatDA,
+  formatDateTime,
+  PdfDoc,
+  renderPdf,
+  UNIT_LABEL,
+} from '../common/pdf/pdf';
 import { Prisma } from '../generated/prisma/client';
 import { SaleDto } from './dto/sale.dto';
 
@@ -23,15 +29,6 @@ export interface SaleDocumentData {
   /// productId → désignation et unité
   products: Map<string, { name: string; sku: string; unit: string }>;
 }
-
-const UNIT_LABEL: Record<string, string> = {
-  PIECE: 'pce',
-  METRE: 'm',
-  ROULEAU: 'rlx',
-  BOITE: 'bte',
-  PAQUET: 'pqt',
-  KILOGRAMME: 'kg',
-};
 
 /// « 2.500 » → « 2,5 »
 function qty(value: string): string {

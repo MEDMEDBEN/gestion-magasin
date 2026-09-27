@@ -36,22 +36,31 @@ Future<ExportedFile> fetchExport(
   ExportFormat format, {
   Map<String, dynamic> query = const {},
 }) async {
-  try {
-    final response = await dio.get<List<int>>(
+  final response = await guardBytes(
+    () => dio.get<List<int>>(
       path,
       queryParameters: {...query, 'format': format.name},
       options: Options(responseType: ResponseType.bytes),
-    );
-    return ExportedFile(
-      Uint8List.fromList(response.data!),
-      exportFilename(
-        response.headers.value('content-disposition'),
-        fallback: 'export.${format.name}',
-      ),
-    );
+    ),
+  );
+  return ExportedFile(
+    Uint8List.fromList(response.data!),
+    exportFilename(
+      response.headers.value('content-disposition'),
+      fallback: 'export.${format.name}',
+    ),
+  );
+}
+
+/// Appel qui rend un FICHIER (export, PDF, étiquettes). En `bytes`, l'erreur
+/// arrive AUSSI en octets : sans ce décodage, un refus métier (export trop
+/// volumineux, produit sans prix) s'afficherait « Erreur inattendue ».
+Future<Response<List<int>>> guardBytes(
+  Future<Response<List<int>>> Function() call,
+) async {
+  try {
+    return await call();
   } on DioException catch (error) {
-    // En `bytes`, l'erreur arrive AUSSI en octets : sans ce décodage, un refus
-    // métier (export trop volumineux) s'afficherait « Erreur inattendue ».
     final data = error.response?.data;
     if (data is List<int>) {
       try {

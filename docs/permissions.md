@@ -221,6 +221,14 @@ fermer.
 Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
 attendre l'expiration de son jeton.
 
+## Étiquettes code-barres (P1 n°21b, ajouté le 2026-09-27)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Imprimer des étiquettes (`POST /products/labels`) | ✅ | ✅ | ✅ |
+
+Garde : les trois rôles + `product.read` **ET** `price.read` (le prix est imprimé). Aucune écriture : une
+lecture en POST, parce qu'une liste de 200 produits ne tient pas dans une URL. Produits actifs seulement.
+
 ## Devis (P1 n°21a, ajouté le 2026-09-26)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

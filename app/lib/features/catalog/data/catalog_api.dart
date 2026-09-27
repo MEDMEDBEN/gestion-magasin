@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import 'catalog_models.dart';
 
@@ -81,6 +82,28 @@ class CatalogApi {
   }
 
   /// Octets de la photo, par la route authentifiée (le stockage est privé).
+  /// Étiquettes (PDF rendu serveur) : `format` = `A4` ou `ROULEAU`. Prix du
+  /// tarif par défaut, TTC calculé comme en caisse.
+  Future<Uint8List> labels({
+    required String format,
+    required List<({String productId, int copies})> items,
+  }) async {
+    final response = await guardBytes(
+      () => _dio.post<List<int>>(
+        '/products/labels',
+        data: {
+          'format': format,
+          'items': [
+            for (final item in items)
+              {'productId': item.productId, 'copies': item.copies},
+          ],
+        },
+        options: Options(responseType: ResponseType.bytes),
+      ),
+    );
+    return Uint8List.fromList(response.data!);
+  }
+
   Future<Uint8List> imageBytes(String productId) {
     return guardApi(() async {
       final response = await _dio.get<List<int>>(

@@ -9,9 +9,11 @@ import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_api.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/catalog/presentation/catalog_screen.dart';
+import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/widgets/form_panel.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
@@ -76,8 +78,10 @@ void main() {
   late AppDatabase db;
   late RecordingCatalogApi api;
   late _ApiOnlyActions actions;
+  final printed = <String>[];
 
   setUp(() {
+    printed.clear();
     db = AppDatabase.forTesting();
     api = RecordingCatalogApi();
   });
@@ -124,6 +128,10 @@ void main() {
         ),
         catalogActionsProvider.overrideWithValue(actions),
         pickPhotoProvider.overrideWithValue(() async => pickedPhoto),
+        catalogApiProvider.overrideWithValue(api),
+        printPdfProvider.overrideWithValue((bytes, name) async {
+          printed.add(name);
+        }),
       ],
       child: MaterialApp(
         theme: desktop
@@ -133,6 +141,52 @@ void main() {
       ),
     );
   }
+
+  /// La liste AFFICHÉE part à l'impression : une réassort se filtre, puis
+  /// s'imprime (spec §8ter, « sélection multiple »).
+  testWidgets(
+    'étiquettes : la liste affichée, au nombre d’exemplaires choisi',
+    (tester) async {
+      useScreenSize(tester, const Size(900, 900));
+      await tester.pumpWidget(
+        wrap(
+          _vendeur(),
+          products: [
+            product(id: 'p1', name: 'Câble'),
+            product(id: 'p2', name: 'Disjoncteur'),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Étiquettes'));
+      await tester.pumpAndSettle();
+      expect(find.text('Étiquettes — 2 produit(s)'), findsOneWidget);
+      await tester.tap(find.text('Rouleau'));
+      await tester.enterText(find.byType(TextField).last, '3');
+      await tester.tap(find.text('Imprimer'));
+      await tester.pumpAndSettle();
+
+      final (format, items) = api.labelCalls.single;
+      expect(format, 'ROULEAU');
+      expect(items.map((i) => (i.productId, i.copies)), [('p1', 3), ('p2', 3)]);
+      expect(printed, ['etiquettes.pdf']);
+    },
+  );
+
+  testWidgets('étiquettes : pas de bouton sans le droit de lire les prix', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 900));
+    await tester.pumpWidget(
+      wrap(
+        _magasinier(),
+        products: [product(id: 'p1', name: 'Câble')],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Étiquettes'), findsNothing);
+  });
 
   testWidgets(
     'le VENDEUR consulte : ni création, ni catégories, ni emplacements',

@@ -51,3 +51,14 @@ export function formatDateTime(date: Date): string {
     .format(date)
     .replace(',', '');
 }
+
+/// Unité d'un produit, en abrégé, telle qu'imprimée (ticket, facture,
+/// étiquette) : « 12,5 m », « 1 725,50 DA / m ».
+export const UNIT_LABEL: Record<string, string> = {
+  PIECE: 'pce',
+  METRE: 'm',
+  ROULEAU: 'rlx',
+  BOITE: 'bte',
+  PAQUET: 'pqt',
+  KILOGRAMME: 'kg',
+};

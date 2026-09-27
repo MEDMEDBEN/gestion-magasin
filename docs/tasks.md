@@ -211,6 +211,37 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — CODE LIVRÉ, **AUDITS EN COURS** (2026-09-27 · **MEDMEDBEN**)
+Spec §8ter. **Aucune migration.**
+- **`POST /products/labels`** → PDF : nom, prix TTC, référence, code-barres. **Planche A4** de 24 (70 × 37 mm)
+  ou **rouleau thermique** 50 × 30 mm. Produits actifs ; prix du tarif demandé (défaut : tarif par défaut) ;
+  1 à 100 exemplaires par produit, 1 000 au plus. Un produit sans prix au tarif → refus qui le NOMME (une
+  étiquette sans prix collée en rayon ferait vendre au hasard).
+- **Le prix imprimé est celui encaissé** : `common/money.ts` (`roundMoney`, `taxAmount`) sorti de la vente,
+  utilisé par la ligne de vente ET par l'étiquette — une seule règle de TVA.
+- **`bwip-js` installé** (seule bibliothèque de codes-barres, `CONVENTIONS.md`) : `barcodePng()` dans
+  `common/barcode/`. EAN-13 si la clé est juste (codes internes et fabricants), Code128 sinon. `npm audit` 0.
+- Libellés d'unité (« m », « pce ») déplacés dans `common/pdf/pdf.ts` : ticket, facture, devis et étiquette.
+- **App** : bouton **« Étiquettes »** du Catalogue = la liste AFFICHÉE (recherche + catégorie) → support et
+  exemplaires → impression / partage. « Sélection multiple » de la spec couverte par le filtre, sans mode de
+  sélection à construire. Au-delà de 200 produits affichés : demande de filtrer. `guardBytes()`
+  (`core/file_export.dart`) partagé : un refus métier reçu en octets s'affiche lisiblement.
+- **Rendu vérifié à l'œil** (PDF générés et relus) : prix TTC juste (145,00 HT + 19 % = 172,55 DA / m),
+  désignation longue coupée proprement, code interne en EAN-13, code fabricant non numérique en Code128.
+- **Contre-épreuves** : `price.read` retiré de la garde ; produit sans prix accepté ; produit désactivé
+  accepté ; EAN-13 forcé ; bouton sans le droit — les cinq échouent.
+- ponytail : un seul gabarit A4 et un seul rouleau ; la planche est « sans marge » — si l'imprimante de bureau
+  rogne les bords, c'est un réglage à ajouter, pas un défaut de code.
+- **Aucune étiquette réellement imprimée ni scannée** : à faire en magasin (imprimante, douchette).
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **123 unit** · **559 e2e** (38 suites, un passage) ·
+  `npm audit` 0 ; app `flutter analyze` propre · **+424 ~46**.
+
+**Prochaine étape précise** : passer `reviewer` puis `security-reviewer` sur le n°21b (`backend/src/products/labels.*`,
+la route `labels` de `products.controller.ts`, `ProductsService.labels`, `common/money.ts`, `barcodePng`,
+`test/labels.e2e-spec.ts`, `app/lib/features/catalog/presentation/labels_dialog.dart`, le bouton du Catalogue,
+`guardBytes`), appliquer ; puis **P1 n°21c** (bons PDF de livraison/transfert et de commande fournisseur + import
+Excel/CSV).
+
 ### 🚧 P1 #21a DEVIS — LIVRÉ ET AUDITÉ (2026-09-26 · **MEDMEDBEN**)
 Spec §8quater. **Aucune migration** : `Quote`, `QuoteLine`, `QuoteStatus`, `Sale.quoteId` et `DocumentType.DEVIS`
 existaient depuis la Phase 0 — vérifié avant d'appeler `db-migrator`.
@@ -2212,7 +2243,8 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Rapports ventes/stock/achats (P1 #21) | 🟡 **Tranches A et B livrées et auditées** (2026-09-26) | 🟢 3 lectures, ADMIN seul, jours d'Alger | 🟢 Écran « Activité » | 🟢 26 e2e · 12 widget | 🟢 corrigé (1 bloquant) |
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
-| Étiquettes, documents, import (P1 #21b-21c) | 🔴 Non commencé | — | — | — | — |
+| Étiquettes code-barres (P1 #21b) | 🟡 **Code livré** (2026-09-27), audits en cours | 🟢 PDF A4 / rouleau, prix = caisse | 🟢 Bouton du Catalogue | 🟢 6 e2e · 3 unit · 2 widget | 🔴 audits à passer |
+| Bons PDF, import (P1 #21c) | 🔴 Non commencé | — | — | — | — |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

@@ -13,8 +13,10 @@ import { detectImageFormat } from '../common/image-format';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
+import { labelFor, renderLabels } from './labels';
 import {
   CreateProductDto,
+  LabelsDto,
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
@@ -51,6 +53,10 @@ const PRODUCT_WRITE_LOCK = 7303;
 /// déjà pris que par un code fabricant saisi à la main avec le préfixe 20.
 const INTERNAL_BARCODE_ATTEMPTS = 5;
 
+/// Une impression = une réassort, pas le catalogue entier : au-delà, le rendu
+/// tiendrait le serveur (images de codes-barres, PDF sur le fil principal).
+const MAX_LABELS = 1_000;
+
 @Injectable()
 export class ProductsService {
   constructor(
@@ -58,6 +64,74 @@ export class ProductsService {
     private readonly ledger: StockLedgerService,
     private readonly storage: StorageService,
   ) {}
+
+  /// Étiquettes des produits demandés, dans l'ordre demandé, chacune répétée
+  /// `copies` fois (spec §8ter). Le prix imprimé est le TTC du tarif choisi,
+  /// calculé comme en caisse (`taxAmount`) : ce qu'on lit en rayon est ce qu'on
+  /// paie. Un produit sans prix à ce tarif n'a pas d'étiquette — plutôt un refus
+  /// qui le nomme qu'une étiquette sans prix collée en rayon.
+  async labels(dto: LabelsDto): Promise<Buffer> {
+    const total = dto.items.reduce((sum, item) => sum + item.copies, 0);
+    if (total > MAX_LABELS) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Trop d’étiquettes : ${total} demandées, ${MAX_LABELS} au plus par impression`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const ids = [...new Set(dto.items.map((item) => item.productId))];
+    const [products, tier] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: ids }, isActive: true },
+        include: { taxRate: true, prices: true },
+      }),
+      this.prisma.priceTier.findFirst({
+        where: dto.priceTierId
+          ? { id: dto.priceTierId, isActive: true }
+          : { isDefault: true, isActive: true },
+      }),
+    ]);
+    if (products.length !== ids.length) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Produit introuvable ou désactivé dans la liste',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    if (!tier) {
+      throw new BusinessException(
+        ErrorCode.PRICE_NOT_DEFINED,
+        'Tarif introuvable ou inactif',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const byId = new Map(products.map((p) => [p.id, p]));
+    const priceOf = (id: string) =>
+      byId.get(id)!.prices.find((p) => p.priceTierId === tier.id)?.priceHt;
+    const unpriced = products.filter((p) => priceOf(p.id) === undefined);
+    if (unpriced.length > 0) {
+      throw new BusinessException(
+        ErrorCode.PRICE_NOT_DEFINED,
+        `Sans prix au tarif ${tier.name} : ` +
+          unpriced
+            .slice(0, 5)
+            .map((p) => p.name)
+            .join(', ') +
+          (unpriced.length > 5 ? ` et ${unpriced.length - 5} autre(s)` : ''),
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return renderLabels(
+      dto.items.flatMap((item) => {
+        const label = labelFor(
+          byId.get(item.productId)!,
+          priceOf(item.productId)!,
+        );
+        return Array<typeof label>(item.copies).fill(label);
+      }),
+      dto.format,
+    );
+  }
 
   /// Pose ou remplace la photo d'un produit. Le type est vérifié sur les OCTETS
   /// (signature du fichier), jamais sur l'extension ni l'en-tête déclaré.

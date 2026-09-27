@@ -2,9 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayNotEmpty,
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -24,6 +26,7 @@ import {
   IsCanonicalUuid,
   IsOptionalNotNull,
 } from '../../common/validation';
+import { LABEL_FORMATS, type LabelFormat } from '../labels';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 export enum ProductUnitDto {
@@ -416,4 +419,41 @@ export class TaxRateDto {
   @ApiProperty() isDefault!: boolean;
   @ApiProperty() isActive!: boolean;
   @ApiProperty() updatedAt!: Date;
+}
+
+export class LabelItemDto {
+  @ApiProperty() @IsCanonicalUuid() productId!: string;
+
+  @ApiProperty({ minimum: 1, maximum: 100, example: 1 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  copies!: number;
+}
+
+/// Étiquettes à imprimer (spec §8ter) : nom, prix TTC, code-barres.
+export class LabelsDto {
+  @ApiProperty({
+    enum: LABEL_FORMATS,
+    description: 'A4 = planche de 24 (70 × 37 mm) ; ROULEAU = 50 × 30 mm.',
+  })
+  @IsIn(LABEL_FORMATS)
+  format!: LabelFormat;
+
+  @ApiPropertyOptional({
+    description:
+      'Tarif dont le prix est imprimé. Absent : le tarif par défaut.',
+  })
+  @IsCanonicalUuid()
+  @IsOptional()
+  priceTierId?: string;
+
+  @ApiProperty({ type: [LabelItemDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => LabelItemDto)
+  items!: LabelItemDto[];
 }

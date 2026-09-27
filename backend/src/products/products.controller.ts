@@ -11,10 +11,12 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import {
   ApiBearerAuth,
@@ -46,6 +48,7 @@ import {
   CategoryDto,
   CreateCategoryDto,
   CreateProductDto,
+  LabelsDto,
   PriceTierDto,
   ProductDto,
   ProductListDto,
@@ -84,6 +87,32 @@ export class ProductsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ProductListDto> {
     return this.productsService.findAll(query, user);
+  }
+
+  /// Étiquettes (spec §8ter). Une lecture, en POST : la liste des produits
+  /// dépasserait la longueur d'une URL. Le prix est imprimé : `price.read` en
+  /// plus de `product.read` — les trois rôles les ont.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.PRICE_READ)
+  // Rendu synchrone (images + PDF) : bridé comme les autres documents.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Post('labels')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Étiquettes à imprimer : nom, prix TTC, code-barres (PDF)',
+    description:
+      'Planche A4 de 24 (70 × 37 mm) ou rouleau thermique 50 × 30 mm. ' +
+      'Produits actifs ; prix du tarif demandé (défaut : tarif par défaut), ' +
+      'TTC calculé comme en caisse. 1 000 étiquettes au plus.',
+  })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async labels(@Body() dto: LabelsDto): Promise<StreamableFile> {
+    const pdf = await this.productsService.labels(dto);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: 'inline; filename="etiquettes.pdf"',
+    });
   }
 
   @Roles(...ALL_ROLES)

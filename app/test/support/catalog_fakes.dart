@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_api.dart';
@@ -46,6 +48,18 @@ class RecordingCatalogApi extends CatalogApi {
   RecordingCatalogApi() : super(Dio());
 
   final List<(String? id, Map<String, Object?> fields)> productCalls = [];
+
+  /// Étiquettes demandées : support, puis (produit, exemplaires).
+  final List<(String, List<({String productId, int copies})>)> labelCalls = [];
+
+  @override
+  Future<Uint8List> labels({
+    required String format,
+    required List<({String productId, int copies})> items,
+  }) async {
+    labelCalls.add((format, items));
+    return Uint8List(4);
+  }
 
   @override
   Future<Product> createProduct(Map<String, Object?> fields) async {
