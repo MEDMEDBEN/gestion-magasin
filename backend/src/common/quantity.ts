@@ -9,7 +9,7 @@ import { ErrorCode } from './error-codes';
 export const QUANTITY_SCALE = 3;
 
 /// 11 chiffres avant la virgule, 3 après — la borne exacte de `Decimal(14,3)`.
-const QUANTITY_PATTERN = /^-?\d{1,11}(\.\d{1,3})?$/;
+export const QUANTITY_PATTERN = /^-?\d{1,11}(\.\d{1,3})?$/;
 
 /// Convertit une quantité reçue du client. Lève une erreur métier (jamais une 500)
 /// si la valeur n'est pas une décimale représentable telle quelle en base.

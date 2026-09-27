@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -46,15 +48,27 @@ class _ImportButtonState extends ConsumerState<ImportButton> {
   }
 
   Future<void> _import() async {
-    final picked = await ref.read(pickImportFileProvider)();
+    final ({Uint8List bytes, String name})? picked;
+    try {
+      picked = await ref.read(pickImportFileProvider)();
+    } on Exception {
+      _snack('Le fichier n’a pas pu être lu sur ce poste.');
+      return;
+    }
     if (picked == null || !mounted) return;
+    final (:bytes, :name) = picked;
+    if (bytes.length > maxImportBytes) {
+      _snack('Fichier trop lourd : 2 Mo au plus — découpez-le.');
+      return;
+    }
     final api = ref.read(importApiProvider);
+    var applying = false;
     setState(() => _busy = true);
     try {
       final check = await api.send(
         widget.kind,
-        picked.bytes,
-        picked.name,
+        bytes,
+        name,
         dryRun: true,
       );
       if (!mounted) return;
@@ -64,22 +78,32 @@ class _ImportButtonState extends ConsumerState<ImportButton> {
         context: context,
         builder: (context) => _ReportDialog(
           kind: widget.kind,
-          filename: picked.name,
+          filename: name,
           report: check,
         ),
       );
       if (go != true || !mounted) return;
       setState(() => _busy = true);
+      applying = true;
       final done = await api.send(
         widget.kind,
-        picked.bytes,
-        picked.name,
+        bytes,
+        name,
         dryRun: false,
       );
       widget.onImported?.call();
       _snack('${done.created} ${widget.kind.label} importé(s).');
     } on ApiException catch (error) {
-      _snack(error.userMessage);
+      // Réponse perdue pendant l'écriture : le serveur a peut-être tout créé.
+      // Une nouvelle vérification le dira (les doublons y sont signalés).
+      _snack(
+        applying && error.isOffline
+            ? 'Réponse du serveur perdue : l’import a peut-être abouti. '
+                  'Relancez la vérification du fichier avant de réessayer.'
+            : error.userMessage,
+      );
+    } on Exception {
+      _snack('Import interrompu : relancez la vérification du fichier.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -151,6 +175,10 @@ class _ReportDialog extends StatelessWidget {
               '${report.total} ligne(s) lue(s) — ${report.ready} prête(s), '
               '${errors.length} en erreur.',
             ),
+            if (report.ignored.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('Colonnes non lues : ${report.ignored.join(', ')}.'),
+            ],
             if (errors.isNotEmpty) ...[
               const SizedBox(height: 8),
               const Text(

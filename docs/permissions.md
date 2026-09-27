@@ -227,10 +227,12 @@ attendre l'expiration de son jeton.
 | Bon de commande fournisseur (`GET /purchase-orders/:id/pdf`) | ✅ | ❌ | ✅ |
 | Bon de transfert (`GET /transfers/:id/pdf`, sans prix) | ✅ | ✅ | ✅ |
 | Importer des produits (`POST /imports/products`) | ✅ (`product.write` + `price.manage`) | ❌ | ❌ |
-| Importer des clients / fournisseurs | ✅ (`customer.write` / `supplier.write`) | ❌ | ❌ |
+| Importer des clients (`POST /imports/customers`) | ✅ (`customer.write` + `price.manage` : plafond de crédit) | ❌ | ❌ |
+| Importer des fournisseurs (`POST /imports/suppliers`) | ✅ (`supplier.write`) | ❌ | ❌ |
 
 Chaque bon a la garde du DÉTAIL qu'il imprime. L'import est de la **saisie en masse** : ADMIN seul, même là où
-le vendeur crée à l'unité (clients). Création seulement ; un doublon est refusé.
+le vendeur crée à l'unité (clients). Création seulement ; un doublon est refusé. Le modèle à remplir porte la garde
+de son import (prouvé par `export-guards.spec.ts`).
 
 ## Étiquettes code-barres (P1 n°21b, ajouté le 2026-09-27)
 | Action | Admin | Vendeur/Caissier | Magasinier |

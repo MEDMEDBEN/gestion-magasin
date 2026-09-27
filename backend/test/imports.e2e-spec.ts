@@ -1,6 +1,10 @@
+import { HttpStatus } from '@nestjs/common';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
+import { BusinessException } from '../src/common/business.exception';
+import { ErrorCode } from '../src/common/error-codes';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { ProductsService } from '../src/products/products.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
 /// Import Excel/CSV (P1 n°21c partie 2, spec §8quinquies).
@@ -159,9 +163,9 @@ describe('Import Excel/CSV (e2e)', () => {
       expect(await prisma.product.count({ where: { sku: sku(10) } })).toBe(0);
     });
 
-    /// Règle 3 : une ligne refusée PENDANT l'écriture (ici un code-barres à la
-    /// clé fausse, contrôlé par le cœur de création) annule tout le fichier.
-    it('tout ou rien : une ligne refusée à l’écriture annule tout', async () => {
+    /// Code-barres à la clé fausse : repéré DÈS la vérification à blanc (même
+    /// normalisation que la création unitaire), pas au milieu de l'import.
+    it('code-barres invalide : signalé à blanc, avec sa ligne', async () => {
       const file = csv(
         [...header(), 'Code-barres'],
         [sku(20), 'Premier', 'Pièce', '19', '10', '', '5', '', ''],
@@ -177,12 +181,130 @@ describe('Import Excel/CSV (e2e)', () => {
           '2000000000016',
         ],
       );
-      const res = await upload(tokens.admin, 'products', file, false).expect(
-        422,
+      const res = await upload(tokens.admin, 'products', file, true).expect(
+        200,
       );
-      expect(res.body.message).toContain('Ligne 3');
-      expect(res.body.message).toContain('rien n’a été créé');
-      expect(await prisma.product.count({ where: { sku: sku(20) } })).toBe(0);
+      expect(res.body.errors).toEqual([
+        { line: 3, message: expect.stringContaining('clé de contrôle') },
+      ]);
+    });
+
+    /// Règle 3 : une ligne refusée PENDANT l'écriture annule tout le fichier,
+    /// y compris le stock initial déjà journalisé des lignes précédentes.
+    it('tout ou rien : une ligne refusée à l’écriture annule tout', async () => {
+      const products = e2e.app.get(ProductsService);
+      const real = products.createInTx.bind(products);
+      let calls = 0;
+      const spy = jest
+        .spyOn(products, 'createInTx')
+        .mockImplementation(async (...args) => {
+          calls += 1;
+          if (calls === 2) {
+            throw new BusinessException(
+              ErrorCode.CONFLICT,
+              'refus simulé',
+              HttpStatus.CONFLICT,
+            );
+          }
+          return real(...args);
+        });
+      try {
+        const file = csv(
+          header(),
+          [sku(22), 'Premier', 'Pièce', '19', '10', '', '5', ''],
+          [sku(23), 'Second', 'Pièce', '19', '10', '', '', ''],
+        );
+        const res = await upload(tokens.admin, 'products', file, false).expect(
+          409,
+        );
+        // Code et statut d'origine gardés, ligne nommée.
+        expect(res.body.code).toBe(ErrorCode.CONFLICT);
+        expect(res.body.message).toContain('Ligne 3');
+        expect(res.body.message).toContain('rien n’a été créé');
+      } finally {
+        spy.mockRestore();
+      }
+      expect(await prisma.product.count({ where: { sku: sku(22) } })).toBe(0);
+    });
+
+    /// Deux imports simultanés du même fichier : le verrou les met en file,
+    /// les doublons sont recontrôlés dessous — une fiche, un mouvement.
+    it('deux imports simultanés : un seul passe, rien n’est doublé', async () => {
+      const file = csv(header(), [
+        sku(25),
+        'Concurrent',
+        'Pièce',
+        '19',
+        '10',
+        '',
+        '7',
+        '',
+      ]);
+      const results = await Promise.all([
+        upload(tokens.admin, 'products', file, false),
+        upload(tokens.admin, 'products', file, false),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const product = await prisma.product.findUniqueOrThrow({
+        where: { sku: sku(25) },
+      });
+      expect(
+        await prisma.stockMovement.count({ where: { productId: product.id } }),
+      ).toBe(1);
+    });
+
+    /// Messages en français, nommant la COLONNE ; espaces de bord retirés à
+    /// la lecture ; TVA « 19 % » reconnue ; colonne inconnue signalée.
+    it('messages par colonne, valeurs nettoyées, colonne inconnue signalée', async () => {
+      const file = csv(
+        [...header(), 'Prix TTC'],
+        [sku(26), 'X', 'Pièce', '19', '10', '', '', '', '12'],
+        [
+          `  ${sku(27)}  `,
+          '  Nettoyé  ',
+          'Pièce',
+          '19 %',
+          '10',
+          '',
+          '',
+          '',
+          '',
+        ],
+        [sku(28), 'Prix énorme', 'Pièce', '19', '99999999', '', '', '', ''],
+      );
+      const res = await upload(tokens.admin, 'products', file, true).expect(
+        200,
+      );
+      expect(res.body.ignored).toEqual(['Prix TTC']);
+      const byLine = Object.fromEntries(
+        res.body.errors.map((e: { line: number; message: string }) => [
+          e.line,
+          e.message,
+        ]),
+      );
+      expect(Object.keys(byLine).map(Number)).toEqual([2, 4]);
+      expect(byLine[2]).toBe('Nom : trop court');
+      expect(byLine[4]).toBe(`Prix ${detailName} HT : trop grand`);
+
+      await upload(
+        tokens.admin,
+        'products',
+        csv(header(), [
+          `  ${sku(27)}  `,
+          '  Nettoyé  ',
+          'Pièce',
+          '19 %',
+          '10',
+          '',
+          '',
+          '',
+        ]),
+        false,
+      ).expect(200);
+      const cleaned = await prisma.product.findUniqueOrThrow({
+        where: { sku: sku(27) },
+      });
+      expect(cleaned.name).toBe('Nettoyé');
     });
 
     it('appliqué : fiches, prix par tarif, stock initial par le journal', async () => {
@@ -298,6 +420,18 @@ describe('Import Excel/CSV (e2e)', () => {
         200,
       );
       expect(again.body.errors[0].message).toContain('existe déjà');
+      // Même nom, autres accents, casse et espaces : toujours un doublon.
+      const variant = csv(
+        ['Nom'],
+        [`  client   imp${suffix} `.replace('client', 'Clíent')],
+      );
+      const accents = await upload(
+        tokens.admin,
+        'customers',
+        variant,
+        true,
+      ).expect(200);
+      expect(accents.body.errors[0].message).toContain('existe déjà');
     });
 
     it('fournisseurs : reprise de dette en centimes', async () => {

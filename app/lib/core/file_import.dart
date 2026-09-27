@@ -35,6 +35,7 @@ class ImportReport {
     required this.total,
     required this.created,
     required this.errors,
+    this.ignored = const [],
   });
 
   factory ImportReport.fromJson(Map<String, dynamic> json) => ImportReport(
@@ -48,6 +49,9 @@ class ImportReport {
           e['message'] as String,
         ),
     ],
+    ignored: [
+      for (final c in json['ignored'] as List<dynamic>? ?? const []) '$c',
+    ],
   );
 
   final bool dryRun;
@@ -55,8 +59,18 @@ class ImportReport {
   final int created;
   final List<ImportLineError> errors;
 
+  /// Colonnes de l'en-tête que l'import ne lit pas (faute de frappe…).
+  final List<String> ignored;
+
   int get ready => total - errors.length;
 }
+
+/// Taille maximale d'un fichier d'import (la même borne côté serveur).
+const maxImportBytes = 2 * 1024 * 1024;
+
+/// Délai de réponse d'un import appliqué : jusqu'à 1 000 fiches créées d'un
+/// bloc (le serveur s'accorde 120 s).
+const importApplyTimeout = Duration(seconds: 150);
 
 /// Client des routes d'import. Remplaçable en test.
 class ImportApi {
@@ -75,6 +89,7 @@ class ImportApi {
       final response = await _dio.post<Map<String, dynamic>>(
         '/imports/${kind.name}',
         queryParameters: {'dryRun': dryRun},
+        options: dryRun ? null : Options(receiveTimeout: importApplyTimeout),
         data: FormData.fromMap({
           'file': MultipartFile.fromBytes(bytes, filename: filename),
         }),

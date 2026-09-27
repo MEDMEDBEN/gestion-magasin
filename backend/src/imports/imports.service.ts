@@ -1,7 +1,8 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
+import { validate, ValidationError } from 'class-validator';
 import { ActorContext } from '../audit/audit-writer';
+import { normalizeBarcode } from '../common/barcode/barcode';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import {
@@ -14,16 +15,21 @@ import {
 import { label } from '../common/export/labels';
 import {
   ImportRow,
+  ImportTable,
+  normalize,
   parseImportQuantity,
   parseMoney,
   readTable,
 } from '../common/export/import';
-import { flatten } from '../common/validate-payload';
 import { CreateCustomerDto } from '../customers/dto/customer.dto';
 import { CustomersService } from '../customers/customers.service';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateProductDto, ProductUnitDto } from '../products/dto/product.dto';
+import {
+  CreateProductDto,
+  ProductUnitDto,
+  SetProductPriceDto,
+} from '../products/dto/product.dto';
 import { ProductsService } from '../products/products.service';
 import { CreateSupplierDto } from '../suppliers/dto/supplier.dto';
 import { SuppliersService } from '../suppliers/suppliers.service';
@@ -42,11 +48,53 @@ const IMPORT_LOCK = 7304;
 /// écritures de produits pendant sa durée.
 const IMPORT_TIMEOUT_MS = 120_000;
 
+/// Champ du DTO → en-tête du fichier : l'erreur nomme la colonne à corriger.
+const FIELD_HEADER: Record<string, string> = {
+  sku: 'Référence',
+  name: 'Nom',
+  barcode: 'Code-barres',
+  unit: 'Unité',
+  brand: 'Marque',
+  minThreshold: 'Seuil minimum',
+  initialStock: 'Stock initial',
+  phone: 'Téléphone',
+  email: 'E-mail',
+  address: 'Adresse',
+  notes: 'Notes',
+  creditLimit: 'Plafond de crédit',
+  contactName: 'Contact',
+  openingBalance: 'Reprise de dette',
+};
+
+const CONSTRAINT_TEXT: Record<string, string> = {
+  isNotEmpty: 'obligatoire',
+  minLength: 'trop court',
+  maxLength: 'trop long',
+  max: 'trop grand',
+  min: 'ne peut pas être négatif',
+  isEmail: 'adresse e-mail invalide',
+};
+
+/// Refus de validation → « Nom : trop court », dans la langue de l'écran.
+function frenchErrors(errors: ValidationError[], field?: string): string[] {
+  return errors.flatMap((error) => {
+    const header = field ?? FIELD_HEADER[error.property] ?? error.property;
+    const own = Object.entries(error.constraints ?? {}).map(
+      ([kind, message]) => `${header} : ${CONSTRAINT_TEXT[kind] ?? message}`,
+    );
+    return [...own, ...frenchErrors(error.children ?? [], header)];
+  });
+}
+
+const VALIDATION = { whitelist: true, forbidNonWhitelisted: true };
+
 interface Prepared<Dto> {
   line: number;
   label: string;
   dto: Dto;
   prices?: { priceTierId: string; priceHt: number }[];
+  /// En-tête de chaque prix, pour nommer la colonne fautive.
+  priceHeaders?: string[];
 }
 
 /// Import Excel/CSV (spec §8quinquies, P1 n°21c) : produits (avec prix et
@@ -134,30 +182,26 @@ export class ImportsService {
         tiers.forEach((t, i) => (row[t.header] = i === 0 ? '145,00' : ''));
         return ImportsService.templateDocument('Import produits', headers, row);
       },
-      customers: () =>
-        Promise.resolve(
-          ImportsService.templateDocument(
-            'Import clients',
-            ImportsService.CUSTOMER_HEADERS,
-            {
-              Nom: 'Électricité Benali',
-              Téléphone: '0550 12 34 56',
-              'Plafond de crédit': '50000,00',
-            },
-          ),
+      customers: async () =>
+        ImportsService.templateDocument(
+          'Import clients',
+          ImportsService.CUSTOMER_HEADERS,
+          {
+            Nom: 'Électricité Benali',
+            Téléphone: '0550 12 34 56',
+            'Plafond de crédit': '50000,00',
+          },
         ),
-      suppliers: () =>
-        Promise.resolve(
-          ImportsService.templateDocument(
-            'Import fournisseurs',
-            ImportsService.SUPPLIER_HEADERS,
-            {
-              Nom: 'Sonelec',
-              Contact: 'M. Rahmani',
-              Téléphone: '0550 11 22 33',
-              'Reprise de dette': '0,00',
-            },
-          ),
+      suppliers: async () =>
+        ImportsService.templateDocument(
+          'Import fournisseurs',
+          ImportsService.SUPPLIER_HEADERS,
+          {
+            Nom: 'Sonelec',
+            Contact: 'M. Rahmani',
+            Téléphone: '0550 11 22 33',
+            'Reprise de dette': '0,00',
+          },
         ),
     };
     return renderExport(await example[kind](), format);
@@ -199,9 +243,10 @@ export class ImportsService {
     const report = (created: number): ImportReportDto => ({
       kind,
       dryRun,
-      total: prepared.rows.length + errors.length,
+      total: prepared.total,
       created,
       errors,
+      ignored: prepared.ignored,
     });
     if (dryRun) return report(0);
     if (errors.length > 0) {
@@ -228,13 +273,16 @@ export class ImportsService {
           await this.createRow(tx, kind, row, actor).catch((error: unknown) => {
             // Refus métier d'une ligne (ex. code-barres pris) : on le rapporte
             // AVEC sa ligne, et toute la transaction est annulée.
+            // Son code et son statut d'origine sont gardés (409 reste 409).
             if (error instanceof BusinessException) {
-              const message = (error.getResponse() as { message?: string })
-                .message;
+              const { code, message } = error.getResponse() as {
+                code: ErrorCode;
+                message?: string;
+              };
               throw new BusinessException(
-                ErrorCode.VALIDATION_FAILED,
+                code,
                 `Ligne ${row.line} (${row.label}) : ${message} — rien n’a été créé`,
-                HttpStatus.UNPROCESSABLE_ENTITY,
+                error.getStatus(),
               );
             }
             throw error;
@@ -277,50 +325,66 @@ export class ImportsService {
     const fail = (line: number, message: string) =>
       errors.push({ line, message });
 
-    let table: ImportRow[];
-    let build: (row: ImportRow) => Promise<Prepared<object> | string>;
+    let table: ImportTable;
+    let build: (row: ImportRow) => Prepared<object> | string;
     if (kind === 'products') {
       const columns = await this.productColumns();
       table = await readTable(file, columns.headers, columns.required);
       build = await this.productBuilder(columns.tiers);
     } else if (kind === 'customers') {
       table = await readTable(file, ImportsService.CUSTOMER_HEADERS, ['Nom']);
-      build = (row) => ImportsService.customerRow(row);
+      build = ImportsService.customerRow;
     } else {
       table = await readTable(file, ImportsService.SUPPLIER_HEADERS, ['Nom']);
-      build = (row) => ImportsService.supplierRow(row);
+      build = ImportsService.supplierRow;
     }
+    const dtoClass: new () => object =
+      kind === 'products'
+        ? CreateProductDto
+        : kind === 'customers'
+          ? CreateCustomerDto
+          : CreateSupplierDto;
 
-    for (const row of table) {
-      const built = await build(row);
+    for (const row of table.rows) {
+      if (row.error) {
+        fail(row.line, row.error);
+        continue;
+      }
+      const built = build(row);
       if (typeof built === 'string') {
         fail(row.line, built);
         continue;
       }
-      const dtoClass: new () => object =
-        kind === 'products'
-          ? CreateProductDto
-          : kind === 'customers'
-            ? CreateCustomerDto
-            : CreateSupplierDto;
-      const invalid = flatten(
-        await validate(plainToInstance(dtoClass, built.dto), {
-          whitelist: true,
-          forbidNonWhitelisted: true,
-        }),
-      );
+      // L'instance VALIDÉE est gardée : c'est elle, nettoyée par les
+      // `@Transform` du DTO (espaces retirés…), qui sera créée.
+      const dto = plainToInstance(dtoClass, built.dto);
+      const invalid = frenchErrors(await validate(dto, VALIDATION));
+      for (const [i, price] of (built.prices ?? []).entries()) {
+        const checked = plainToInstance(SetProductPriceDto, price);
+        invalid.push(
+          ...frenchErrors(
+            await validate(checked, VALIDATION),
+            built.priceHeaders?.[i],
+          ),
+        );
+      }
       if (invalid.length > 0) {
         fail(row.line, invalid.join(' ; '));
         continue;
       }
-      rows.push(built);
+      rows.push({ ...built, dto });
     }
     for (const duplicate of await this.duplicates(this.prisma, kind, rows)) {
       fail(duplicate.line, duplicate.message);
     }
     errors.sort((a, b) => a.line - b.line);
     const bad = new Set(errors.map((e) => e.line));
-    return { rows: rows.filter((r) => !bad.has(r.line)), errors };
+    return {
+      rows: rows.filter((r) => !bad.has(r.line)),
+      errors,
+      total: table.rows.length,
+      ignored: table.ignored,
+    };
   }
 
   /// Doublons DANS le fichier et avec la base : référence et code-barres pour
@@ -392,18 +456,18 @@ export class ImportsService {
         name: (r.dto as { name: string }).name,
       }));
       for (const { line, name } of names) {
-        inFile(`name:${name.toLowerCase()}`, line, `Nom « ${name} »`);
+        inFile(`name:${normalize(name)}`, line, `Nom « ${name} »`);
       }
-      const where = {
-        name: { in: names.map((n) => n.name), mode: 'insensitive' as const },
-      };
+      // Comparaison sans accents ni casse : faite ici, sur tous les noms.
+      // ponytail : quelques milliers de fiches au plus pour un magasin ; une
+      // colonne normalisée indexée si la base grossit.
       const existing =
         kind === 'customers'
-          ? await db.customer.findMany({ where, select: { name: true } })
-          : await db.supplier.findMany({ where, select: { name: true } });
-      const taken = new Set(existing.map((e) => e.name.toLowerCase()));
+          ? await db.customer.findMany({ select: { name: true } })
+          : await db.supplier.findMany({ select: { name: true } });
+      const taken = new Set(existing.map((e) => normalize(e.name)));
       for (const { line, name } of names) {
-        if (taken.has(name.toLowerCase())) {
+        if (taken.has(normalize(name))) {
           found.push({ line, message: `« ${name} » existe déjà` });
         }
       }
@@ -415,7 +479,7 @@ export class ImportsService {
 
   private async productBuilder(
     tiers: { id: string; header: string }[],
-  ): Promise<(row: ImportRow) => Promise<Prepared<object> | string>> {
+  ): Promise<(row: ImportRow) => Prepared<object> | string> {
     const [categories, taxRates, locations] = await Promise.all([
       this.prisma.category.findMany({ where: { isActive: true } }),
       this.prisma.taxRate.findMany({ where: { isActive: true } }),
@@ -423,11 +487,11 @@ export class ImportsService {
         where: { type: { in: ['MAGASIN', 'DEPOT'] }, isActive: true },
       }),
     ]);
-    const byName = new Map(categories.map((c) => [c.name.toLowerCase(), c.id]));
+    const byName = new Map(categories.map((c) => [normalize(c.name), c.id]));
     const units = new Map<string, ProductUnitDto>();
     for (const unit of Object.values(ProductUnitDto)) {
-      units.set(unit.toLowerCase(), unit);
-      units.set(label(unit).toLowerCase(), unit);
+      units.set(normalize(unit), unit);
+      units.set(normalize(label(unit)), unit);
     }
     const magasin = locations.find((l) => l.type === 'MAGASIN');
     const depot = locations.find((l) => l.type === 'DEPOT');
@@ -436,19 +500,26 @@ export class ImportsService {
       const c = row.cells;
       const problems: string[] = [];
       const unit = c['Unité']
-        ? units.get(c['Unité'].toLowerCase())
+        ? units.get(normalize(c['Unité']))
         : ProductUnitDto.PIECE;
       if (!unit) problems.push(`unité « ${c['Unité']} » inconnue`);
       const categoryId = c['Catégorie']
-        ? byName.get(c['Catégorie'].toLowerCase())
+        ? byName.get(normalize(c['Catégorie']))
         : undefined;
       if (c['Catégorie'] && !categoryId) {
         problems.push(`catégorie « ${c['Catégorie']} » inconnue`);
       }
       let taxRateId: string | undefined;
       if (c['TVA %']) {
-        const rate = c['TVA %'].replace('%', '').replace(',', '.').trim();
-        taxRateId = taxRates.find((t) => Number(t.rate) === Number(rate))?.id;
+        const text = c['TVA %'].replace('%', '').replace(',', '.').trim();
+        // Une cellule Excel au format « % » vaut 0,19 pour 19 %.
+        const rate =
+          Number(text) > 0 && Number(text) < 1
+            ? Math.round(Number(text) * 10_000) / 100
+            : Number(text);
+        taxRateId = text
+          ? taxRates.find((t) => Number(t.rate) === rate)?.id
+          : undefined;
         if (!taxRateId) problems.push(`taux de TVA « ${c['TVA %']} » inconnu`);
       }
       const quantity = (header: string) => {
@@ -460,14 +531,30 @@ export class ImportsService {
       };
       const minThreshold = quantity('Seuil minimum');
       const initialStock = [
-        { location: magasin, quantity: quantity('Stock magasin') },
-        { location: depot, quantity: quantity('Stock dépôt') },
-      ].flatMap((s) =>
-        s.location && s.quantity
-          ? [{ locationId: s.location.id, quantity: s.quantity }]
-          : [],
-      );
-      const prices = tiers.flatMap((tier) => {
+        { header: 'Stock magasin', location: magasin },
+        { header: 'Stock dépôt', location: depot },
+      ].flatMap(({ header, location }) => {
+        const q = quantity(header);
+        if (!q) return [];
+        if (!location) {
+          problems.push(`${header} : aucun emplacement actif de ce type`);
+          return [];
+        }
+        return [{ locationId: location.id, quantity: q }];
+      });
+      // Même normalisation que la création unitaire, dès la vérification à
+      // blanc : un code illisible est signalé AVANT l'import, pas pendant.
+      let barcode: string | undefined;
+      if (c['Code-barres']) {
+        try {
+          barcode = normalizeBarcode(c['Code-barres']);
+        } catch (error) {
+          if (!(error instanceof BusinessException)) throw error;
+          const { message } = error.getResponse() as { message?: string };
+          problems.push(message ?? 'Code-barres invalide');
+        }
+      }
+      const priced = tiers.flatMap((tier) => {
         if (!c[tier.header]) return [];
         const priceHt = parseMoney(c[tier.header]);
         if (priceHt === null) {
@@ -476,16 +563,18 @@ export class ImportsService {
           );
           return [];
         }
-        return [{ priceTierId: tier.id, priceHt }];
+        return [
+          { header: tier.header, price: { priceTierId: tier.id, priceHt } },
+        ];
       });
-      if (problems.length > 0) return Promise.resolve(problems.join(' ; '));
-      return Promise.resolve({
+      if (problems.length > 0) return problems.join(' ; ');
+      return {
         line: row.line,
         label: c['Référence'] ?? '',
         dto: {
           sku: c['Référence'],
           name: c['Nom'],
-          ...(c['Code-barres'] && { barcode: c['Code-barres'] }),
+          ...(barcode && { barcode }),
           unit,
           ...(categoryId && { categoryId }),
           ...(taxRateId && { taxRateId }),
@@ -493,26 +582,26 @@ export class ImportsService {
           ...(minThreshold && { minThreshold }),
           ...(initialStock.length > 0 && { initialStock }),
         },
-        prices,
-      });
+        prices: priced.map((p) => p.price),
+        priceHeaders: priced.map((p) => p.header),
+      };
     };
   }
 
   private static customerRow(
+    this: void,
     row: ImportRow,
-  ): Promise<Prepared<object> | string> {
+  ): Prepared<object> | string {
     const c = row.cells;
     let creditLimit: number | undefined;
     if (c['Plafond de crédit']) {
       const amount = parseMoney(c['Plafond de crédit']);
       if (amount === null) {
-        return Promise.resolve(
-          `Plafond de crédit : « ${c['Plafond de crédit']} » n’est pas un montant`,
-        );
+        return `Plafond de crédit : « ${c['Plafond de crédit']} » n’est pas un montant`;
       }
       creditLimit = amount;
     }
-    return Promise.resolve({
+    return {
       line: row.line,
       label: c['Nom'] ?? '',
       dto: {
@@ -523,24 +612,23 @@ export class ImportsService {
         ...(c['Notes'] && { notes: c['Notes'] }),
         ...(creditLimit !== undefined && { creditLimit }),
       },
-    });
+    };
   }
 
   private static supplierRow(
+    this: void,
     row: ImportRow,
-  ): Promise<Prepared<object> | string> {
+  ): Prepared<object> | string {
     const c = row.cells;
     let openingBalance: number | undefined;
     if (c['Reprise de dette']) {
       const amount = parseMoney(c['Reprise de dette']);
       if (amount === null) {
-        return Promise.resolve(
-          `Reprise de dette : « ${c['Reprise de dette']} » n’est pas un montant`,
-        );
+        return `Reprise de dette : « ${c['Reprise de dette']} » n’est pas un montant`;
       }
       openingBalance = amount;
     }
-    return Promise.resolve({
+    return {
       line: row.line,
       label: c['Nom'] ?? '',
       dto: {
@@ -552,6 +640,6 @@ export class ImportsService {
         ...(c['Notes'] && { notes: c['Notes'] }),
         ...(openingBalance !== undefined && { openingBalance }),
       },
-    });
+    };
   }
 }

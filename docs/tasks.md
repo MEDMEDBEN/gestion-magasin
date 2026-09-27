@@ -211,7 +211,7 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #21c BONS PDF + IMPORT EXCEL/CSV — CODE LIVRÉ ; PARTIE 1 AUDITÉE, PARTIE 2 À AUDITER (2026-09-27 · **MEDMEDBEN**)
+### ✅ P1 #21c BONS PDF + IMPORT EXCEL/CSV — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8quinquies. **Aucune migration.**
 - **`GET /purchase-orders/:id/pdf`** — bon de commande à envoyer au fournisseur : le gabarit A4 de la facture et
   du devis (`renderA4Document`), « Fournisseur » à la place de « Client » (`partyLabel`), prix, TVA ventilée,
@@ -266,7 +266,7 @@ Spec §8quinquies. **Aucune migration.**
 - **Création seulement, jamais de mise à jour.** Doublons refusés (référence et code-barres des produits, nom des
   clients et fournisseurs), dans le fichier comme en base, et **recontrôlés sous un verrou** au moment d'écrire
   : un fichier renvoyé ne double rien — c'est l'idempotence de la reprise de dette fournisseur (de l'argent).
-- Bornes : 2 Mo, 1 000 lignes, 10 envois/min, transaction de 2 min au plus.
+- Bornes : 2 Mo, 1 000 lignes, `EXPORT_RATE_LIMIT` envois/min (10 par défaut), transaction de 2 min au plus.
 - **App** : bouton « Importer » (modèle Excel/CSV, puis fichier) dans Catalogue, Clients et Fournisseurs, pour
   l'admin ; compte rendu ligne par ligne ; « Importer N … » n'est proposé que pour un fichier sans erreur.
   Nouveau paquet **`file_selector`** (officiel flutter.dev ; ses implémentations Windows/Linux/macOS étaient
@@ -280,10 +280,53 @@ Spec §8quinquies. **Aucune migration.**
 - **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **134 unit** · **575 e2e** (40 suites, un passage) ·
   `npm audit` 0 ; app `flutter analyze` propre · **+430 ~46**.
 
-**Prochaine étape précise** : (1) passer `reviewer` + `security-reviewer` sur la **partie 2** (`src/imports/**`,
-`common/export/import.ts`, les `…InTx` extraits, `test/imports.e2e-spec.ts`, `app/lib/core/file_import.dart`,
-`ui/widgets/import_button.dart`) et sur les corrections de la partie 1 ; appliquer. (2) P1 est alors
-entièrement codée : relecture humaine des écrans (MEDMEDBEN), puis **P2 n°22** (`docs/plan.md`).
+**Audits de la partie 2** — `security-reviewer` : **NON CONFORME** (2 élevés) ; `reviewer` : **PAS OK**. Tout
+appliqué (chaque affirmation vérifiée avant correction) :
+- 🔴 **E1 — fichier creux = mémoire épuisée** : une seule cellule en A1048576 faisait parcourir un million de
+  lignes. 🔴 **E2 — bombe ZIP** : un .xlsx de 2 Mo peut se décompresser en gigaoctets. La lecture tourne
+  désormais dans un **worker** (`worker_threads`) borné à **256 Mo et 15 s**, tué au-delà (refus 422 lisible) ;
+  seules les lignes EXISTANTES sont parcourues (`eachRow`), au plus 20 + 1 000 + 1. Éprouvé : fichier creux lu en
+  < 1 s (test) ; bombe de 5,9 Mo (≈ 200 Mo de XML) refusée en 2 s, tas du serveur inchangé (essai manuel).
+- 🟠 **CSV : zéros de tête perdus** (reproduit : `0550123456` → `550123456`, code fabricant `0…` idem) : tout CSV
+  est lu en TEXTE (`map`). 🟠 **CSV Windows-1252** (celui d'Excel sous Windows) : accents cassés → UTF-8 strict,
+  sinon Windows-1252.
+- 🟠 **Cellule en erreur (#N/A) ou formule jamais calculée** : lue comme vide, donc importée sans la valeur → la
+  ligne est désormais EN ERREUR, colonne nommée.
+- 🟠 **Prix sans borne** (> 20 M DA → 500 à l'écriture) : chaque prix passe par `SetProductPriceDto`, à blanc.
+- 🟠 **Code-barres à clé fausse / quantité hors bornes découverts seulement à l'écriture** : `normalizeBarcode`
+  et le motif de `parseQuantity` (`QUANTITY_PATTERN`, exporté) appliqués dès la vérification à blanc.
+- 🟠 **L'import clients posait un plafond de crédit sans `price.manage`** (la route unitaire l'exige) : garde
+  ajoutée sur l'import ET son modèle ; test de métadonnées (`export-guards.spec.ts`) ; `docs/permissions.md`.
+- 🟠 **Deux imports simultanés** : test ajouté — un 200, un 409, une fiche, UN mouvement de stock. (Honnête : le
+  verrou d'écriture produits protège aussi ; ce test prouve le résultat, pas lequel des deux verrous agit.)
+- Messages de validation **en français, nommant la colonne** (« Nom : trop court », « Prix Détail HT : trop
+  grand ») ; l'instance VALIDÉE est celle créée ; doublons de noms et catégories/unités comparés **sans accents,
+  casse ni espaces** ; TVA « 19 % » (cellule Excel au format % = 0,19) reconnue ; stock saisi sans emplacement
+  actif → erreur ; `total` = lignes lues (erreurs comprises) ; l'erreur d'écriture garde son **code et statut
+  d'origine** (409 reste 409) ; colonnes d'en-tête inconnues **signalées** (`ignored`, montrées dans l'app) ;
+  bridage de l'import et des modèles par `EXPORT_RATE_LIMIT` (il était codé en dur à 10 et faisait échouer les
+  e2e en 429) ; bruit `Promise.resolve` retiré.
+- **App** : fichier > 2 Mo refusé sur le poste (rien d'envoyé) ; sélecteur et lecture dans le `try` + message
+  générique ; import appliqué avec `receiveTimeout` 150 s, et si la réponse se perd : « l'import a peut-être
+  abouti, relancez la vérification » (jamais « échec ») ; stock relu après un import de produits.
+- **Contre-épreuves** : sans `map` → zéros perdus (test échoue) ; sans repli Windows-1252 ; formule sans
+  résultat acceptée ; doublon sans normalisation des accents ; code-barres non normalisé à blanc ; contrôle de
+  taille côté app retiré — les six échouent. L'instance validée n'est pas contre-éprouvable : le lecteur retire
+  déjà les espaces de bord (la correction reste, pour que ce qui est validé soit ce qui est créé).
+- **Tracé, non corrigé (acceptés par l'audit)** : F4 — pendant un import (jusqu'à 2 min), une création ou pose
+  de prix produit en parallèle attend le verrou produits et peut échouer (mise en place ponctuelle, hors heures
+  de vente) ; F5 — pas de contrainte d'unicité sur le nom client/fournisseur : une création unitaire simultanée
+  à un import peut faire un doublon fonctionnel (sans argent en jeu). ponytail : un worker par envoi (≈ 0,5 s) ;
+  bridé par le réglage des exports.
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **144 unit** · **578 e2e** (40 suites, un
+  passage) ; app `flutter analyze` propre · **+433 ~46**.
+
+**Prochaine étape précise** : **P1 est entièrement codée et auditée.** (1) Relecture humaine des écrans par
+MEDMEDBEN (il teste l'app desktop) — aucun écran n'a encore été validé par un humain ; corriger ce qu'il remonte
+AVANT d'avancer. (2) Puis **P2 n°22** (`docs/plan.md`). Décisions en attente de MEDMEDBEN (rappel) : arabe
+absent des PDF ; étiquettes depuis une réception ; visibilité partagée des devis ; valeur du stock au coût ;
+multiplicateur de réapprovisionnement ; `reservedQuantity` ignorée par les listes ; partage des exports sur
+mobile ; le vendeur voit les mouvements des autres ; le magasinier voit les dettes clients.
 
 ### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8ter. **Aucune migration.**
@@ -2345,7 +2388,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
 | Étiquettes code-barres (P1 #21b) | 🟡 **Code livré et audité** (2026-09-27) | 🟢 PDF A4 / rouleau, prix du tarif, codes lisibles | 🟢 Bouton du Catalogue | 🟢 9 e2e · 5 unit · 3 widget | 🟢 corrigé (1 moyen, 2 importants) |
-| Bons PDF + import (P1 #21c) | 🟡 **Code livré** (2026-09-27) ; bons audités, import à auditer | 🟢 Bons PDF ; import à blanc puis tout ou rien | 🟢 Imprimer ; Importer (admin) | 🟢 13 e2e · 9 unit · 7 widget | 🟠 partie 2 à auditer |
+| Bons PDF + import (P1 #21c) | ✅ **Livré et audité** (2026-09-27) | 🟢 Bons PDF ; import à blanc puis tout ou rien | 🟢 Imprimer ; Importer (admin) | 🟢 16 e2e · 19 unit · 10 widget | 🟢 audité (2 élevés corrigés) |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

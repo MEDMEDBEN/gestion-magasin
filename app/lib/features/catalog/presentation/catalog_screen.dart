@@ -348,9 +348,12 @@ class _ProductsSection extends ConsumerWidget {
               if (canImport)
                 ImportButton(
                   kind: ImportKind.products,
-                  // Les produits créés descendent par la synchro du catalogue.
-                  onImported: () =>
-                      ref.read(catalogSyncProvider.notifier).refresh(),
+                  // Les produits créés descendent par la synchro du catalogue ;
+                  // leur stock initial se relit en ligne.
+                  onImported: () {
+                    ref.read(catalogSyncProvider.notifier).refresh();
+                    ref.invalidate(stockByProductProvider);
+                  },
                 ),
               if (onLabels case final print?) ...[
                 const SizedBox(width: 12),

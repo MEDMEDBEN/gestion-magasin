@@ -35,7 +35,7 @@ describe('lecture d’un import', () => {
         ['Nom', 'Téléphone'],
         ['Nom'],
       );
-      expect(rows.map((r) => r.cells)).toEqual([
+      expect(rows.rows.map((r) => r.cells)).toEqual([
         { Nom: 'A', Téléphone: '1' },
         { Nom: 'B', Téléphone: '2' },
       ]);
@@ -54,7 +54,7 @@ describe('lecture d’un import', () => {
     const buffer = Buffer.from(await book.xlsx.writeBuffer());
 
     const rows = await readTable(buffer, ['Nom', 'Plafond de crédit'], ['Nom']);
-    expect(rows).toEqual([
+    expect(rows.rows).toEqual([
       { line: 4, cells: { Nom: 'Benali', 'Plafond de crédit': '3' } },
     ]);
   });
@@ -74,5 +74,87 @@ describe('lecture d’un import', () => {
         message: expect.stringContaining('« Nom »') as unknown as string,
       },
     });
+  });
+
+  /// Un CSV est lu en TEXTE : ni le zéro d'un téléphone, ni celui d'un code
+  /// fabricant ne disparaissent (sans `map`, exceljs en faisait des nombres).
+  it('CSV : zéros de tête conservés', async () => {
+    const { rows } = await readTable(
+      Buffer.from('Nom;Téléphone;Code\nA;0550123456;0123456789012'),
+      ['Nom', 'Téléphone', 'Code'],
+      ['Nom'],
+    );
+    expect(rows[0].cells).toEqual({
+      Nom: 'A',
+      Téléphone: '0550123456',
+      Code: '0123456789012',
+    });
+  });
+
+  /// Un CSV enregistré par Excel sous Windows est en Windows-1252.
+  it('CSV Windows-1252 : accents lus', async () => {
+    const latin1 = Buffer.from('Référence;Nom\nCAB;Câble', 'latin1');
+    const { rows } = await readTable(latin1, ['Référence', 'Nom'], ['Nom']);
+    expect(rows[0].cells).toEqual({ Référence: 'CAB', Nom: 'Câble' });
+  });
+
+  it('colonne inconnue signalée, jamais perdue en silence', async () => {
+    const { ignored } = await readTable(
+      Buffer.from('Nom;Prix TTC\nA;10'),
+      ['Nom'],
+      ['Nom'],
+    );
+    expect(ignored).toEqual(['Prix TTC']);
+  });
+
+  /// Une cellule en erreur ou une formule jamais calculée : la LIGNE est en
+  /// erreur, jamais importée avec une case vide.
+  it('Excel : cellule illisible → ligne en erreur', async () => {
+    const book = new Workbook();
+    const sheet = book.addWorksheet('Clients');
+    sheet.addRow(['Nom', 'Plafond de crédit']);
+    sheet.addRow(['A', { error: '#N/A' }]);
+    sheet.addRow(['B', { formula: 'SUM(1,2)' }]);
+    const buffer = Buffer.from(await book.xlsx.writeBuffer());
+
+    const { rows } = await readTable(
+      buffer,
+      ['Nom', 'Plafond de crédit'],
+      ['Nom'],
+    );
+    expect(rows[0].error).toContain('#N/A');
+    expect(rows[1].error).toContain('jamais calculée');
+  });
+
+  /// Une seule cellule en A1048576 : l'ancien lecteur parcourait le million
+  /// de lignes (mémoire du serveur épuisée). Seules les lignes existantes.
+  it('Excel creux : une cellule en A1048576 ne coûte rien', async () => {
+    const book = new Workbook();
+    const sheet = book.addWorksheet('Clients');
+    sheet.addRow(['Nom']);
+    sheet.addRow(['A']);
+    sheet.getCell('A1048576').value = 'Z';
+    const buffer = Buffer.from(await book.xlsx.writeBuffer());
+
+    const started = Date.now();
+    const { rows } = await readTable(buffer, ['Nom'], ['Nom']);
+    expect(rows.map((r) => r.line)).toEqual([2, 1048576]);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it('trop de lignes : refus, sans tout lire', async () => {
+    const text = ['Nom', ...Array.from({ length: 1_100 }, (_, i) => `C${i}`)];
+    await expect(
+      readTable(Buffer.from(text.join('\n')), ['Nom'], ['Nom']),
+    ).rejects.toMatchObject({
+      response: {
+        message: expect.stringContaining('trop long') as unknown as string,
+      },
+    });
+  });
+
+  it('quantité : mêmes bornes que `parseQuantity`', () => {
+    expect(parseImportQuantity('99999999999')).toBe('99999999999');
+    expect(parseImportQuantity('999999999999')).toBeNull();
   });
 });

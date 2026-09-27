@@ -1,4 +1,11 @@
-import { FRESH_READ_KEY, PERMISSIONS_KEY, ROLES_KEY } from '../auth.decorators';
+import {
+  FRESH_READ_KEY,
+  PERMISSIONS_KEY,
+  RoleCode,
+  ROLES_KEY,
+} from '../auth.decorators';
+import { PERMISSIONS } from '../permissions';
+import { ImportsController } from '../../imports/imports.controller';
 import { CustomersController } from '../../customers/customers.controller';
 import { InventoryController } from '../../inventory/inventory.controller';
 import { PurchaseOrdersController } from '../../purchases/purchase-orders.controller';
@@ -47,5 +54,25 @@ describe('gardes des exports = gardes de la lecture exportée', () => {
     expect(meta(controller, exported, ROLES_KEY)).toBeTruthy();
     // Un export de masse relit toujours les droits en base.
     expect(meta(controller, exported, FRESH_READ_KEY)).toBe(true);
+  });
+});
+
+/// Import = saisie en masse : ADMIN (au niveau du contrôleur), et les droits
+/// d'écriture de ce qu'il crée — PRICE_MANAGE dès qu'il fixe des conditions
+/// commerciales (prix des produits, plafond de crédit des clients). Le modèle
+/// à remplir porte la même garde que l'import.
+describe('gardes des imports', () => {
+  const P = PERMISSIONS;
+  it.each([
+    ['products', 'productsTemplate', [P.PRODUCT_WRITE, P.PRICE_MANAGE]],
+    ['customers', 'customersTemplate', [P.CUSTOMER_WRITE, P.PRICE_MANAGE]],
+    ['suppliers', 'suppliersTemplate', [P.SUPPLIER_WRITE]],
+  ])('%s', (route, template, permissions) => {
+    const controller = ImportsController as Controller;
+    expect(Reflect.getMetadata(ROLES_KEY, ImportsController)).toEqual([
+      RoleCode.ADMIN,
+    ]);
+    expect(meta(controller, route, PERMISSIONS_KEY)).toEqual(permissions);
+    expect(meta(controller, template, PERMISSIONS_KEY)).toEqual(permissions);
   });
 });

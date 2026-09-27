@@ -34,6 +34,7 @@ import {
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import {
+  EXPORT_THROTTLE,
   EXPORT_TYPES,
   ExportFormatQueryDto,
   exportResponse,
@@ -70,8 +71,9 @@ const Upload = () =>
     }),
     ApiOkResponse({ type: ImportReportDto }),
     HttpCode(HttpStatus.OK),
-    // Une vérification relit tout le fichier : bridée comme un document.
-    Throttle({ default: { ttl: 60_000, limit: 10 } }),
+    // Une vérification relit tout le fichier (un worker par envoi) : bridée
+    // comme un export, par le même réglage.
+    Throttle(EXPORT_THROTTLE),
   );
 
 const Template = () =>
@@ -81,6 +83,7 @@ const Template = () =>
     }),
     ApiProduces(...EXPORT_TYPES),
     ApiOkResponse({ schema: { type: 'string', format: 'binary' } }),
+    Throttle(EXPORT_THROTTLE),
   );
 
 /// Import Excel/CSV (spec §8quinquies, P1 n°21c) : la mise en place du
@@ -107,7 +110,9 @@ export class ImportsController {
     return this.run('products', file, query, user, ip);
   }
 
-  @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE)
+  /// Le plafond de crédit est une condition commerciale : PRICE_MANAGE, comme
+  /// à la création unitaire d'une fiche client.
+  @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE, PERMISSIONS.PRICE_MANAGE)
   @Post('customers')
   @Upload()
   @ApiOperation({ summary: 'Importe des clients (Excel ou CSV)' })
@@ -146,7 +151,7 @@ export class ImportsController {
     );
   }
 
-  @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE)
+  @RequirePermissions(PERMISSIONS.CUSTOMER_WRITE, PERMISSIONS.PRICE_MANAGE)
   @Get('customers/template')
   @Template()
   async customersTemplate(@Query() query: ExportFormatQueryDto) {

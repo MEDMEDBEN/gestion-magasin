@@ -15,4 +15,9 @@ export class ImportReportDto {
   total!: number;
   @ApiProperty({ description: 'Fiches créées (0 à blanc).' }) created!: number;
   @ApiProperty({ type: [ImportErrorDto] }) errors!: ImportErrorDto[];
+  @ApiProperty({
+    type: [String],
+    description: 'Colonnes de l’en-tête inconnues de l’import (non lues).',
+  })
+  ignored!: string[];
 }
