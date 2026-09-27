@@ -78,10 +78,11 @@ class _FakePurchasesApi extends PurchasesApi {
   }
 
   @override
-  Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
-    data: orders,
-    meta: PageMeta(page: 1, limit: limit, total: orders.length),
-  );
+  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async =>
+      PurchaseOrderPage(
+        data: orders,
+        meta: PageMeta(page: 1, limit: limit, total: orders.length),
+      );
 }
 
 class _FakeReceptionsApi extends ReceptionsApi {

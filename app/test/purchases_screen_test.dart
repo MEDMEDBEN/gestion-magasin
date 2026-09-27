@@ -54,10 +54,11 @@ class _FakePurchasesApi extends PurchasesApi {
   (String, DateTime)? confirmed;
 
   @override
-  Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
-    data: orders,
-    meta: PageMeta(page: 1, limit: limit, total: orders.length),
-  );
+  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async =>
+      PurchaseOrderPage(
+        data: orders,
+        meta: PageMeta(page: 1, limit: limit, total: orders.length),
+      );
 
   @override
   Future<PurchaseOrder> create(Map<String, Object?> fields) async {

@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/dates.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/history_dialog.dart';
+import '../../purchases/data/purchases_api.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/import_button.dart';
@@ -26,13 +29,18 @@ class SupplierRights {
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
       canWrite = user.hasRole('ADMIN') && user.can('supplier.write'),
-      canPay = user.hasRole('ADMIN') && user.can('supplier.payment.create');
+      canPay = user.hasRole('ADMIN') && user.can('supplier.payment.create'),
+      // Garde de la liste des commandes (`GET /purchase-orders`).
+      canSeePurchases =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('purchase.create');
 
   /// Contre-passation : même droit que le paiement (ADMIN).
 
   final bool canRead;
   final bool canWrite;
   final bool canPay;
+  final bool canSeePurchases;
 }
 
 void _snack(BuildContext context, String message) {
@@ -187,6 +195,12 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 title: const Text('Enregistrer un paiement'),
                 onTap: () => Navigator.of(context).pop('pay'),
               ),
+            if (rights.canSeePurchases)
+              ListTile(
+                leading: const Icon(LucideIcons.package, size: 18),
+                title: const Text('Historique des achats'),
+                onTap: () => Navigator.of(context).pop('purchases'),
+              ),
             ListTile(
               leading: const Icon(LucideIcons.history, size: 18),
               title: const Text('Historique des paiements'),
@@ -205,6 +219,24 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     if (!mounted) return;
     if (action == 'pay') return _pay(supplier);
     if (action == 'edit') return _openForm(supplier);
+    if (action == 'purchases') {
+      final api = ref.read(purchasesApiProvider);
+      await showHistory(
+        context,
+        title: 'Achats — ${supplier.name}',
+        empty: 'Aucune commande passée à ce fournisseur.',
+        load: () async => [
+          for (final o in (await api.list(supplierId: supplier.id)).data)
+            (
+              title: '${o.number} · ${o.status.label}',
+              subtitle:
+                  '${formatDate(o.orderDate)} · ${o.lines.length} ligne(s)',
+              trailing: '${formatDA(o.totalTtc)} TTC',
+            ),
+        ],
+      );
+      return;
+    }
     if (action == 'history') {
       final actions = ref.read(suppliersActionsProvider);
       await showPaymentHistory(

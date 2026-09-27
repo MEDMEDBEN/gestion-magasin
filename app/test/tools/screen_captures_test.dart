@@ -388,23 +388,24 @@ class _CapturePurchasesApi extends PurchasesApi {
   _CapturePurchasesApi() : super(Dio());
 
   @override
-  Future<PurchaseOrderPage> list({int limit = 200}) async => PurchaseOrderPage(
-    data: [
-      _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
-      _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
-      _po(
-        '5',
-        'f1',
-        PurchaseStatus.partiallyReceived,
-        11900000,
-        2,
-        received: 4,
-      ),
-      _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
-      _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
-    ],
-    meta: const PageMeta(page: 1, limit: 200, total: 5),
-  );
+  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async =>
+      PurchaseOrderPage(
+        data: [
+          _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
+          _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
+          _po(
+            '5',
+            'f1',
+            PurchaseStatus.partiallyReceived,
+            11900000,
+            2,
+            received: 4,
+          ),
+          _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
+          _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
+        ],
+        meta: const PageMeta(page: 1, limit: 200, total: 5),
+      );
 }
 
 class _CaptureReceptionsApi extends ReceptionsApi {

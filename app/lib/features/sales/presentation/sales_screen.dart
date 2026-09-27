@@ -13,6 +13,7 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/amount_dialog.dart';
+import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
@@ -1217,6 +1218,11 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
               onPressed: () => Navigator.of(context).pop('pay'),
               child: const Text('Encaisser un règlement'),
             ),
+          if (rights.canSell)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('sales'),
+              child: const Text('Historique des achats'),
+            ),
           SimpleDialogOption(
             onPressed: () => Navigator.of(context).pop('history'),
             child: const Text('Historique des règlements'),
@@ -1226,6 +1232,34 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (!mounted || action == null) return;
     if (action == 'pay') return _pay(customer);
+    if (action == 'sales') {
+      final api = ref.read(salesApiProvider);
+      await showHistory(
+        context,
+        title: 'Achats — ${customer.name}',
+        empty: 'Ce client n’a encore rien acheté.',
+        load: () async => [
+          for (final s in (await api.sales(
+            limit: 100,
+            customerId: customer.id,
+          )).data)
+            (
+              title: [
+                s.invoiceNumber ?? s.number,
+                if (s.status == 'ANNULEE') 'annulée',
+              ].join(' · '),
+              subtitle: [
+                formatDateTime(s.soldAt),
+                '${s.lines.length} article(s)',
+                if (s.remainingAmount > 0)
+                  'reste ${formatDA(s.remainingAmount)}',
+              ].join(' · '),
+              trailing: '${formatDA(s.totalTtc)} TTC',
+            ),
+        ],
+      );
+      return;
+    }
     final actions = ref.read(salesActionsProvider);
     await showPaymentHistory(
       context,

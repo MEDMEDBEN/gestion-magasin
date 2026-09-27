@@ -72,11 +72,11 @@ class SalesApi {
   Future<Sale> createSale(Map<String, dynamic> body) =>
       _post('/sales', body, Sale.fromJson);
 
-  Future<SalePage> sales({int limit = 50}) {
+  Future<SalePage> sales({int limit = 50, String? customerId}) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/sales',
-        queryParameters: {'limit': limit},
+        queryParameters: {'limit': limit, 'customerId': ?customerId},
       );
       return SalePage.fromJson(response.data!);
     });

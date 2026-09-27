@@ -211,6 +211,28 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
+MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
+introuvable**. Vérifié : c'était un **vrai manque** de P0 n°5 (« fiches, historique », spec §10-11) — le serveur
+filtrait déjà (`GET /purchase-orders?supplierId=`, `GET /sales?customerId=`), mais aucun écran ne l'exposait :
+la fiche fournisseur n'avait que « Historique des paiements », la fiche client que « Historique des règlements ».
+- **Fiche fournisseur → « Historique des achats »** : ses commandes (numéro, statut, date, lignes, TTC). Proposé
+  seulement avec la garde de la liste des commandes (ADMIN|MAGASINIER + `purchase.create`).
+- **Fiche client → « Historique des achats »** : ses ventes (n° de facture sinon de ticket, annulée, date,
+  articles, reste dû, TTC), 100 dernières. Proposé avec la garde de la liste des ventes (ADMIN|VENDEUR +
+  `sale.create`).
+- Une seule boîte de lecture partagée (`ui/widgets/history_dialog.dart`). **Aucun changement serveur.**
+- ⚠️ **À trancher par MEDMEDBEN** : le serveur limite le VENDEUR à SES propres ventes (règle existante) ; un
+  vendeur ne voit donc, dans l'historique d'un client, que les ventes qu'il a faites lui-même. L'admin voit tout.
+  Élargir = décision de visibilité (comme les mouvements de stock).
+- **Preuve (2026-09-27)** : 2 tests d'écran fournisseur (filtre envoyé au serveur ; option absente sans le droit),
+  1 test d'écran client, 1 e2e (`GET /sales?customerId=` : ses ventes, ni plus ni moins) ; backend lint 0 ·
+  e2e ventes 36/36 ; app `flutter analyze` propre · **+436 ~46**.
+
+**Prochaine étape précise** : MEDMEDBEN reteste l'historique (fiche fournisseur et fiche client) sur un build
+desktop à jour, puis tranche la visibilité vendeur ci-dessus ; reste à tester par un humain : le **mobile**
+(P1 n°13 scanner et n°14 écrans mobiles, APK jamais installé). Ensuite **P2 n°22** (`docs/plan.md`).
+
 ### ✅ P1 #21c BONS PDF + IMPORT EXCEL/CSV — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8quinquies. **Aucune migration.**
 - **`GET /purchase-orders/:id/pdf`** — bon de commande à envoyer au fournisseur : le gabarit A4 de la facture et

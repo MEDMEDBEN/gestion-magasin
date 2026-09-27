@@ -984,4 +984,19 @@ describe('Ventes (e2e)', () => {
     const all = await as(tokens.admin).get('/api/sales?limit=200').expect(200);
     expect(all.body.meta.total).toBeGreaterThanOrEqual(mine.body.meta.total);
   });
+
+  /// Historique des achats d'un client (fiche client de l'app) : le filtre
+  /// est appliqué par le SERVEUR — ni plus, ni moins que ses ventes.
+  it('liste filtrée par client : ses ventes seulement', async () => {
+    const c = customerIds[0];
+    const expected = await prisma.sale.count({ where: { customerId: c } });
+    expect(expected).toBeGreaterThan(0);
+    const res = await as(tokens.admin)
+      .get(`/api/sales?limit=200&customerId=${c}`)
+      .expect(200);
+    expect(res.body.meta.total).toBe(expected);
+    expect(
+      res.body.data.every((s: { customerId: string }) => s.customerId === c),
+    ).toBe(true);
+  });
 });

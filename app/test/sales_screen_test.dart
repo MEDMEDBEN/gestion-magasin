@@ -6,6 +6,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/money.dart';
+import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
@@ -59,6 +61,48 @@ class _FakeSalesApi extends SalesApi {
   }
 
   Map<String, Object?>? sent;
+
+  /// Client demandé à l'historique des achats (filtre serveur).
+  final historyAsked = <String?>[];
+
+  @override
+  Future<CustomerPage> customers({String? query, int limit = 50}) async =>
+      CustomerPage(
+        data: const [
+          Customer(
+            id: 'c1',
+            name: 'Benali',
+            creditLimit: 0,
+            balanceDue: 0,
+            isActive: true,
+          ),
+        ],
+        meta: PageMeta(page: 1, limit: limit, total: 1),
+      );
+
+  @override
+  Future<SalePage> sales({int limit = 50, String? customerId}) async {
+    historyAsked.add(customerId);
+    return SalePage(
+      data: [
+        Sale(
+          id: 's1',
+          number: 'TK-2026-000007',
+          type: 'TICKET',
+          status: 'VALIDEE',
+          customerId: customerId,
+          totalHt: 100000,
+          totalTax: 19000,
+          totalTtc: 119000,
+          paidAmount: 19000,
+          remainingAmount: 100000,
+          lines: const [],
+          soldAt: DateTime.utc(2026, 9, 20, 10),
+        ),
+      ],
+      meta: PageMeta(page: 1, limit: limit, total: 1),
+    );
+  }
 
   @override
   Future<CashSession?> currentCashSession() async {
@@ -603,4 +647,25 @@ void main() {
       );
     },
   );
+
+  /// Retour de test humain (2026-09-27) : l'historique des achats d'un client
+  /// était introuvable depuis sa fiche.
+  testWidgets('fiche client : historique des achats, filtré serveur', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    await _pumpScreen(tester, api, []);
+    await tester.tap(find.text('Clients'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Benali'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Historique des achats'));
+    await tester.pumpAndSettle();
+
+    expect(api.historyAsked.last, 'c1');
+    expect(find.text('TK-2026-000007'), findsOneWidget);
+    expect(find.textContaining('reste ${formatDA(100000)}'), findsOneWidget);
+    expect(find.text('${formatDA(119000)} TTC'), findsOneWidget);
+  });
 }

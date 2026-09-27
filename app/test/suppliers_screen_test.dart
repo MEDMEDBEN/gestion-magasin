@@ -9,6 +9,8 @@ import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
+import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
+import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/suppliers/presentation/suppliers_screen.dart';
@@ -103,15 +105,46 @@ class _FakeSuppliersApi extends SuppliersApi {
   }
 }
 
-AuthUser _admin() => authUser(
+/// Commandes du fournisseur : le filtre part au SERVEUR.
+class _FakePurchasesApi extends PurchasesApi {
+  _FakePurchasesApi() : super(Dio());
+
+  final asked = <String?>[];
+
+  @override
+  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async {
+    asked.add(supplierId);
+    final order = PurchaseOrder(
+      id: 'po1',
+      number: 'CMD-2026-00007',
+      supplierId: 's1',
+      status: PurchaseStatus.confirmed,
+      orderDate: DateTime(2026, 9, 20),
+      totalHt: 100000,
+      totalTax: 19000,
+      totalTtc: 119000,
+      updatedAt: DateTime(2026, 9, 20),
+      lines: const [],
+    );
+    return PurchaseOrderPage(
+      data: [order],
+      meta: PageMeta(page: 1, limit: limit, total: 1),
+    );
+  }
+}
+
+AuthUser _admin({bool purchases = true}) => authUser(
   id: 'a',
   roles: const ['ADMIN'],
-  permissions: const [
+  permissions: [
     'supplier.read',
     'supplier.write',
     'supplier.payment.create',
+    if (purchases) 'purchase.create',
   ],
 );
+
+final _purchases = _FakePurchasesApi();
 
 Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
   useScreenSize(tester, const Size(500, 1000));
@@ -120,6 +153,7 @@ Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
     ProviderScope(
       overrides: [
         suppliersApiProvider.overrideWithValue(api),
+        purchasesApiProvider.overrideWithValue(_purchases),
         saveExportProvider.overrideWithValue(
           (file) async => 'C:/Téléchargements/${file.filename}',
         ),
@@ -278,5 +312,30 @@ void main() {
       ).map((d) => d.label),
       isNot(contains('Fournisseurs')),
     );
+  });
+
+  /// Retour de test humain (2026-09-27) : l'historique des achats d'un
+  /// fournisseur était introuvable.
+  testWidgets('fiche fournisseur : historique des achats, filtré serveur', (
+    tester,
+  ) async {
+    await _pump(tester, _admin());
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Historique des achats'));
+    await tester.pumpAndSettle();
+
+    expect(_purchases.asked.last, 's1');
+    expect(find.text('CMD-2026-00007 · Confirmée'), findsOneWidget);
+    expect(find.text('${formatDA(119000)} TTC'), findsOneWidget);
+  });
+
+  testWidgets('sans le droit de lire les achats : pas d’historique proposé', (
+    tester,
+  ) async {
+    await _pump(tester, _admin(purchases: false));
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    expect(find.text('Historique des achats'), findsNothing);
   });
 }
