@@ -419,8 +419,6 @@ void main() {
             prices: const [
               ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
             ],
-            // Coût connu : affiché, pas un champ — « Gros » reste le dernier.
-            lastPurchasePriceHt: 100000,
           ),
         ],
       ),
@@ -439,8 +437,9 @@ void main() {
           )
           .first,
     );
-    // Les prix ferment le formulaire : « Gros » est le dernier champ.
-    await tester.enterText(find.byType(TextFormField).last, '1200,50');
+    // « Gros » est le dernier prix ; le prix d'achat vient juste après.
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(fields.evaluate().length - 2), '1200,50');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();
@@ -523,7 +522,7 @@ void main() {
 
   /// P1 bis n°21f : le prix d'achat n'était affiché nulle part, et un produit
   /// sans réception n'avait aucun coût.
-  testWidgets('prix d’achat : colonnes Vente/Achat, coût connu non modifiable', (
+  testWidgets('prix d’achat : colonnes Vente/Achat, coût dans la fiche', (
     tester,
   ) async {
     useScreenSize(tester, const Size(1400, 1600));
@@ -546,11 +545,12 @@ void main() {
     expect(find.text(formatDA(145000)), findsOneWidget);
     expect(find.text(formatDA(100000)), findsOneWidget);
 
-    // Fiche d'un produit au coût connu : affiché, jamais modifiable.
+    // Fiche : le coût connu est dans le champ (le serveur refuse de le
+    // changer si une réception existe).
     await tester.tap(find.text('Disjoncteur'));
     await tester.pumpAndSettle();
     expect(
-      find.text('Prix d’achat HT (dernière réception) : ${formatDA(100000)}'),
+      find.widgetWithText(TextFormField, formatDA(100000, withSymbol: false)),
       findsOneWidget,
     );
   });

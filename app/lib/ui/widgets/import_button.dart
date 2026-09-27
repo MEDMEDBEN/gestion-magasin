@@ -65,32 +65,19 @@ class _ImportButtonState extends ConsumerState<ImportButton> {
     var applying = false;
     setState(() => _busy = true);
     try {
-      final check = await api.send(
-        widget.kind,
-        bytes,
-        name,
-        dryRun: true,
-      );
+      final check = await api.send(widget.kind, bytes, name, dryRun: true);
       if (!mounted) return;
       // La roue ne tourne que pendant l'envoi, pas derrière le compte rendu.
       setState(() => _busy = false);
       final go = await showDialog<bool>(
         context: context,
-        builder: (context) => _ReportDialog(
-          kind: widget.kind,
-          filename: name,
-          report: check,
-        ),
+        builder: (context) =>
+            _ReportDialog(kind: widget.kind, filename: name, report: check),
       );
       if (go != true || !mounted) return;
       setState(() => _busy = true);
       applying = true;
-      final done = await api.send(
-        widget.kind,
-        bytes,
-        name,
-        dryRun: false,
-      );
+      final done = await api.send(widget.kind, bytes, name, dryRun: false);
       widget.onImported?.call();
       _snack('${done.created} ${widget.kind.label} importé(s).');
     } on ApiException catch (error) {

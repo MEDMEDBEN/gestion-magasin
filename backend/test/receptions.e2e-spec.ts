@@ -28,6 +28,8 @@ describe('Réceptions (e2e)', () => {
       request(server).get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string) =>
       request(server).post(url).set('Authorization', `Bearer ${token}`),
+    patch: (url: string) =>
+      request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Produit taxé à 19 % — le taux figé sur la ligne de COMMANDE est celui qui
@@ -189,6 +191,41 @@ describe('Réceptions (e2e)', () => {
       where: { id: order.productId },
     });
     expect(updated.lastPurchasePriceHt).toBe(120000);
+  });
+
+  /// P1 bis n°21f × règle 5 : un coût saisi à la main tient jusqu'à la
+  /// première réception, qui le remplace ; ensuite il ne se saisit plus.
+  it('coût saisi à la main : remplacé par la réception, puis figé', async () => {
+    const order = await confirmedOrder('10');
+    await as(tokens.admin)
+      .patch(`/api/products/${order.productId}`)
+      .send({ purchasePriceHt: 90000 })
+      .expect(200);
+    await as(tokens.magasinier)
+      .post('/api/receptions')
+      .send({
+        purchaseOrderId: order.id,
+        supplierId,
+        locationId: depotId,
+        lines: [
+          {
+            productId: order.productId,
+            purchaseLineId: order.lineId,
+            receivedQuantity: '5',
+            unitPriceHt: 120000,
+          },
+        ],
+      })
+      .expect(201);
+    const after = await prisma.product.findUniqueOrThrow({
+      where: { id: order.productId },
+    });
+    expect(after.lastPurchasePriceHt).toBe(120000);
+    const refused = await as(tokens.admin)
+      .patch(`/api/products/${order.productId}`)
+      .send({ purchasePriceHt: 50000 })
+      .expect(409);
+    expect(refused.body.message).toContain('réceptions');
   });
 
   it('le solde de la commande la passe RECUE et ne la reçoit plus ensuite', async () => {

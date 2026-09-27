@@ -510,6 +510,9 @@ export class ProductsService {
 
     return this.prisma.$transaction(async (tx) => {
       await ProductsService.lockWrites(tx);
+      // La réception écrit le coût sans `lockWrites` : on tient la LIGNE, pour
+      // que « aucune réception » reste vrai jusqu'à l'écriture du coût.
+      await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id}::uuid FOR UPDATE`;
       const before = await tx.product.findUnique({
         where: { id },
         include: PRODUCT_INCLUDE,
@@ -588,12 +591,18 @@ export class ProductsService {
         dto.purchasePriceHt !== undefined &&
         dto.purchasePriceHt !== before.lastPurchasePriceHt
       ) {
-        // Règle 5 : le coût est le dernier prix RÉCEPTIONNÉ. Une saisie ne fait
-        // que combler un coût inconnu ; elle ne réécrit jamais une réception.
-        if (before.lastPurchasePriceHt !== null) {
+        // Règle 5 : le coût est le dernier prix RÉCEPTIONNÉ. La saisie comble
+        // (ou corrige) un coût tant qu'AUCUNE réception n'existe ; ensuite
+        // seules les réceptions le fixent. La ligne produit est verrouillée
+        // plus haut : une réception simultanée passe avant ou après, jamais
+        // écrasée.
+        const received = await tx.receptionLine.count({
+          where: { productId: id },
+        });
+        if (received > 0) {
           throw new BusinessException(
             ErrorCode.INVALID_STATE_TRANSITION,
-            'Prix d’achat déjà connu : il suit désormais les réceptions',
+            'Prix d’achat fixé par les réceptions : il ne se modifie plus à la main',
             HttpStatus.CONFLICT,
           );
         }

@@ -130,9 +130,9 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 21e. **Fiche client complète** : création et modification (adresse, e-mail, tarif, plafond de crédit — ces deux
      derniers ADMIN), total acheté et payé affichés (ADMIN seul). _(2026-09-27 : livré, prouvé et audité)_
 21f. **Prix d'achat du produit** : affiché (catalogue, fiche) ; prix d'achat INITIAL saisi à la création et à
-     l'import (sans réception, un produit n'avait aucun coût : ni marge ni plancher de prix). _(2026-09-27 : livré
-     et prouvé ; audit en cours)_
-21g. **Remise sur une vente** (ADMIN, champ existant côté serveur).
+     l'import (sans réception, un produit n'avait aucun coût : ni marge ni plancher de prix). _(2026-09-27 : livré,
+     prouvé et audité)_
+21g. **Remise sur une vente** (ADMIN, champ existant côté serveur). _(2026-09-27 : livré et prouvé ; audit en cours)_
 21h. **Paramètres** (ADMIN) : tarifs, taux de TVA, identité du magasin imprimée (nom, NIF, RC, adresse).
 21i. **Commande fournisseur** : date de livraison prévue et échéance de paiement ; e-mail du fournisseur.
 21j. **Notifications planifiées** : retard fournisseur, échéance client, dette client en retard, dette

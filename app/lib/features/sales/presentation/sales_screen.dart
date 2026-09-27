@@ -50,6 +50,8 @@ class SalesRights {
           user.hasRole('ADMIN') && user.can('customer.payment.create'),
       canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read'),
       canCancelSales = user.hasRole('ADMIN') && user.can('sale.cancel'),
+      // Remise sur une ligne : ADMIN + sale.discount (miroir du serveur).
+      canDiscount = user.hasRole('ADMIN') && user.can('sale.discount'),
       // Tarif et plafond de crédit d'un client : conditions commerciales.
       canManageCustomerTerms =
           user.hasRole('ADMIN') && user.can('price.manage');
@@ -69,6 +71,7 @@ class SalesRights {
 
   /// Annulation d'une vente : ADMIN + sale.cancel (miroir du guard serveur).
   final bool canCancelSales;
+  final bool canDiscount;
   final bool canManageCustomerTerms;
 }
 
@@ -719,6 +722,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               totalHt: estimate.lineTotalsHt[line.product.id],
               unitPriceHt: estimate.unitPricesHt[line.product.id],
               tariffPriceHt: estimate.tariffPricesHt[line.product.id],
+              canDiscount: widget.rights.canDiscount,
             ),
         if (!cart.isEmpty) ...[
           const Divider(height: 28),
@@ -809,8 +813,10 @@ class _CartLineRow extends ConsumerWidget {
     this.totalHt,
     this.unitPriceHt,
     this.tariffPriceHt,
+    this.canDiscount = false,
   });
 
+  final bool canDiscount;
   final CartLine line;
   final bool missingPrice;
   final int? totalHt;
@@ -845,11 +851,41 @@ class _CartLineRow extends ConsumerWidget {
       _snack(
         context,
         'Prix trop bas : minimum ${formatDA(floor)} HT '
-        '(${line.product.lastPurchasePriceHt != null ? 'prix d’achat' : 'tarif'})',
+        '(${(line.product.lastPurchasePriceHt ?? 0) > 0 ? 'prix d’achat' : 'tarif'})',
       );
       return;
     }
     ref.read(cartProvider.notifier).setPrice(line.product.id, value);
+  }
+
+  /// Remise HT sur la ligne (ADMIN). Mêmes bornes que le serveur : jamais plus
+  /// que la ligne, jamais un net sous le plancher (coût) × quantité.
+  Future<void> _editDiscount(BuildContext context, WidgetRef ref) async {
+    final price = unitPriceHt;
+    final floor = priceFloor(line.product);
+    if (price == null || floor == null) return;
+    final gross = lineGrossHt(price, line.quantity);
+    final maxDiscount = gross - lineGrossHt(floor, line.quantity);
+    final value = await askAmount(
+      context,
+      title: 'Remise sur « ${line.product.name} »',
+      label: 'Remise HT sur la ligne',
+      confirm: 'Appliquer',
+      initial: line.discountHt,
+      help:
+          'Ligne ${formatDA(gross)} HT · remise maximale '
+          '${formatDA(maxDiscount < 0 ? 0 : maxDiscount)} (pas sous le coût)',
+    );
+    if (value == null || !context.mounted) return;
+    if (value > maxDiscount) {
+      _snack(
+        context,
+        'Remise trop forte : au plus ${formatDA(maxDiscount < 0 ? 0 : maxDiscount)} '
+        '— la ligne ne descend pas sous le coût',
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).setDiscount(line.product.id, value);
   }
 
   @override
@@ -889,6 +925,11 @@ class _CartLineRow extends ConsumerWidget {
                     label: 'Prix modifié',
                     tone: StatusTone.warn,
                   ),
+                if (line.discountHt > 0)
+                  Text(
+                    'Remise ${formatDA(line.discountHt)} HT',
+                    style: AmpereType.meta.copyWith(color: colors.warn),
+                  ),
               ],
             ),
           ),
@@ -897,6 +938,12 @@ class _CartLineRow extends ConsumerWidget {
             icon: const Icon(LucideIcons.pencil, size: 17),
             onPressed: () => _editPrice(context, ref),
           ),
+          if (canDiscount && !missingPrice)
+            IconButton(
+              tooltip: 'Remise',
+              icon: const Icon(LucideIcons.percent, size: 17),
+              onPressed: () => _editDiscount(context, ref),
+            ),
           IconButton(
             tooltip: 'Moins',
             icon: const Icon(LucideIcons.minus, size: 17),

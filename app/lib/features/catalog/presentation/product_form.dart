@@ -72,8 +72,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
         : formatDA(widget.existing!.lastPurchasePriceHt!, withSymbol: false),
   );
 
-  bool get _costEditable =>
-      widget.canSetPrices && widget.existing?.lastPurchasePriceHt == null;
+  /// Saisi par l'admin ; le serveur le refuse (409) dès qu'une réception
+  /// existe pour ce produit — elle fixe alors le coût (règle 5).
+  bool get _costEditable => widget.canSetPrices;
 
   /// Stock présent à la saisie (création seulement) : devient un mouvement
   /// « stock initial » côté serveur, jamais une quantité écrite directement.
@@ -320,7 +321,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       return Text(
         known == null
             ? 'Prix d’achat HT : inconnu (fixé par la première réception)'
-            : 'Prix d’achat HT (dernière réception) : ${formatDA(known)}',
+            : 'Prix d’achat HT : ${formatDA(known)}',
         style: AmpereType.body.copyWith(color: colors.ink),
       );
     }
@@ -343,8 +344,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Coût connu aujourd’hui (marge, prix de vente minimum). Les '
-          'réceptions le mettront ensuite à jour.',
+          'Coût connu aujourd’hui (marge, prix de vente minimum). '
+          'Modifiable tant qu’aucune réception ; ensuite, les réceptions le '
+          'fixent.',
           style: AmpereType.meta.copyWith(color: colors.ink3),
         ),
       ],

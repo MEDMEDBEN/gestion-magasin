@@ -62,6 +62,7 @@ class QuoteActions {
               productId: line.product.id,
               quantity: quantityToJson(line.quantity),
               unitPriceHt: line.unitPriceHt,
+              discountAmount: line.discountHt,
             ),
         ],
       ),

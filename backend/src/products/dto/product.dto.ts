@@ -153,9 +153,9 @@ export class CreateProductDto {
   @ApiPropertyOptional({
     example: 120000,
     description:
-      'Prix d’achat HT INITIAL en centimes (coût de la marge et plancher du prix de ' +
-      'vente) — pour un produit dont le coût n’est pas encore connu. Ensuite, seules ' +
-      'les réceptions le changent (règle 5). Exige `price.manage`.',
+      'Prix d’achat HT en centimes (coût de la marge, plancher du prix de vente), ' +
+      'saisi tant qu’aucune réception n’existe pour le produit ; ensuite seules ' +
+      'les réceptions le fixent (règle 5, 409). Exige `price.manage`.',
   })
   @IsInt()
   @Min(0)
@@ -183,9 +183,9 @@ export class UpdateProductDto {
   @ApiPropertyOptional({
     example: 120000,
     description:
-      'Prix d’achat HT INITIAL en centimes (coût de la marge et plancher du prix de ' +
-      'vente) — pour un produit dont le coût n’est pas encore connu. Ensuite, seules ' +
-      'les réceptions le changent (règle 5). Exige `price.manage`.',
+      'Prix d’achat HT en centimes (coût de la marge, plancher du prix de vente), ' +
+      'saisi tant qu’aucune réception n’existe pour le produit ; ensuite seules ' +
+      'les réceptions le fixent (règle 5, 409). Exige `price.manage`.',
   })
   @IsInt()
   @Min(0)

@@ -287,7 +287,8 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
                       Expanded(
                         child: Text(
                           '${products[line.productId]?.name ?? 'Produit retiré du catalogue'}'
-                          ' × ${formatQuantity(line.quantity)}',
+                          ' × ${formatQuantity(line.quantity)}'
+                          '${line.discountAmount > 0 ? ' · remise ${formatDA(line.discountAmount)} HT' : ''}',
                         ),
                       ),
                       Text(formatDA(line.lineTotalTtc)),

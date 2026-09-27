@@ -62,7 +62,14 @@ class _FakeQuotesApi extends QuotesApi {
     required String id,
     String? customerId,
     String? validUntil,
-    required List<({String productId, String quantity, int? unitPriceHt})>
+    required List<
+      ({
+        String productId,
+        String quantity,
+        int? unitPriceHt,
+        int discountAmount,
+      })
+    >
     lines,
   }) async {
     created.add({'id': id, 'lines': lines, 'validUntil': validUntil});
@@ -282,7 +289,14 @@ void main() {
       expect(api.created[1]['id'], api.created[0]['id']);
       final lines =
           api.created[1]['lines']!
-              as List<({String productId, String quantity, int? unitPriceHt})>;
+              as List<
+                ({
+                  String productId,
+                  String quantity,
+                  int? unitPriceHt,
+                  int discountAmount,
+                })
+              >;
       expect(lines.single.productId, 'p1');
       expect(lines.single.quantity, '2.500');
       expect(lines.single.unitPriceHt, 150000);

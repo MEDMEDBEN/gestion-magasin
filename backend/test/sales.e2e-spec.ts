@@ -31,6 +31,8 @@ describe('Ventes (e2e)', () => {
       request(server).get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string) =>
       request(server).post(url).set('Authorization', `Bearer ${token}`),
+    patch: (url: string) =>
+      request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Produit au magasin : prix DETAIL / GROS en centimes, TVA 19 %.
@@ -423,6 +425,30 @@ describe('Ventes (e2e)', () => {
         });
         await prisma.priceTier.delete({ where: { id: tier.id } });
       }
+    });
+
+    /// P1 bis n°21f : un coût saisi à la main (sans réception) est le plancher.
+    it('coût saisi à la main : plancher du prix de vente', async () => {
+      const p = await product('10.000');
+      await as(tokens.admin)
+        .patch(`/api/products/${p}`)
+        .send({ purchasePriceHt: 130000 })
+        .expect(200);
+      const c = await customer(10_000_000);
+      const sell = (unitPriceHt: number) =>
+        as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            customerId: c,
+            lines: [
+              { productId: p, quantity: '1', unitPriceHt, priceEdited: true },
+            ],
+            paidAmount: 0,
+            dueDate: DUE_DATE,
+          });
+      const below = await sell(125000).expect(422);
+      expect(below.body.code).toBe('PRICE_BELOW_COST');
+      await sell(135000).expect(201);
     });
 
     it('coût d’achat inconnu : le prix ne descend pas sous le tarif (jamais 1 centime)', async () => {

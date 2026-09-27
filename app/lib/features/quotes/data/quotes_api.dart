@@ -36,7 +36,14 @@ class QuotesApi {
     required String id,
     String? customerId,
     String? validUntil,
-    required List<({String productId, String quantity, int? unitPriceHt})>
+    required List<
+      ({
+        String productId,
+        String quantity,
+        int? unitPriceHt,
+        int discountAmount,
+      })
+    >
     lines,
   }) => _post('/quotes', {
     'id': id,
@@ -51,6 +58,7 @@ class QuotesApi {
             'unitPriceHt': line.unitPriceHt,
             'priceEdited': true,
           },
+          if (line.discountAmount > 0) 'discountAmount': line.discountAmount,
         },
     ],
   }, Quote.fromJson);

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/money.dart';
-
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
 import '../../../../ui/widgets/ampere_controls.dart';

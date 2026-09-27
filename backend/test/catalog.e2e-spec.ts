@@ -299,17 +299,13 @@ describe('Catalogue (e2e)', () => {
     /// P1 bis n°21f : sans réception, un produit n'avait AUCUN coût (ni marge,
     /// ni plancher de prix). Prix d'achat initial à la création, ou tant qu'il
     /// est inconnu ; ensuite seules les réceptions le changent (règle 5).
-    it('prix d’achat initial : à la création ou tant qu’inconnu, jamais réécrit', async () => {
+    it('prix d’achat initial : saisi, corrigeable tant qu’aucune réception', async () => {
       const created = await createProduct({ purchasePriceHt: 120_000 });
       expect(created.lastPurchasePriceHt).toBe(120_000);
+      // Faute de frappe : sans réception, elle se corrige.
       await as(tokens.admin)
         .patch(`/api/products/${created.id}`)
-        .send({ purchasePriceHt: 90_000 })
-        .expect(409);
-      // Renvoyer la même valeur (formulaire inchangé) n'est pas une erreur.
-      await as(tokens.admin)
-        .patch(`/api/products/${created.id}`)
-        .send({ purchasePriceHt: 120_000 })
+        .send({ purchasePriceHt: 12_000 })
         .expect(200);
 
       const unknown = await createProduct();

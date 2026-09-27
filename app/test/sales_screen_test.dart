@@ -331,6 +331,20 @@ void main() {
     );
     expect(estimate.lineTotalsHt, {'p1': 362500});
 
+    // Remise HT sur la ligne (P1 bis n°21g) : la TVA porte sur le NET.
+    final discounted = estimateCart(
+      CartState(
+        saleId: 's',
+        lines: [CartLine(_cable(), Decimal.parse('2.5'), discountHt: 50000)],
+      ),
+      defaultTierId: 'detail',
+      taxRates: {'tva19': Decimal.fromInt(19)},
+    );
+    expect(
+      (discounted.totalHt, discounted.totalTax, discounted.totalTtc),
+      (312500, 59375, 371875),
+    );
+
     // Tarif sans prix pour ce produit : signalé, jamais inventé.
     final gros = estimateCart(cart, defaultTierId: 'gros', taxRates: const {});
     expect(gros.missingPrices, hasLength(1));
@@ -741,5 +755,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.cancelled, ['s1']);
     expect(find.textContaining('Annulée'), findsWidgets);
+  });
+
+  /// P1 bis n°21g : la remise existait au serveur, sans aucune saisie.
+  testWidgets('remise ADMIN : bornée au coût, envoyée au serveur', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const [
+        'sale.create',
+        'sale.discount',
+        'cash.session.manage',
+      ],
+    );
+    await _pumpScreen(
+      tester,
+      api,
+      [],
+      user: admin,
+      product: _cable().copyWith(lastPurchasePriceHt: 100000),
+    );
+    await tester.enterText(find.byType(TextField).first, '3245060123458');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // Au-delà de ligne − coût (1 450 − 1 000 = 450 DA) : refusé.
+    await tester.tap(find.byTooltip('Remise'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '500');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Remise trop forte'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Remise'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '100');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remise ${formatDA(10000)} HT'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Encaisser'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '4000');
+    await tester.tap(find.text('Valider la vente'));
+    await tester.pumpAndSettle();
+    final line = (api.sent!['lines']! as List).single as Map;
+    expect(line['discountAmount'], 10000);
+  });
+
+  testWidgets('le VENDEUR n’a pas de bouton de remise', (tester) async {
+    useScreenSize(tester, const Size(900, 1400));
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await tester.enterText(find.byType(TextField).first, '3245060123458');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Modifier le prix'), findsOneWidget);
+    expect(find.byTooltip('Remise'), findsNothing);
   });
 }

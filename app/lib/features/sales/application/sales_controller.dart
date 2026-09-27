@@ -113,14 +113,36 @@ final salesHistoryProvider = FutureProvider.autoDispose
 
 @immutable
 class CartLine {
-  const CartLine(this.product, this.quantity, {this.unitPriceHt});
+  const CartLine(
+    this.product,
+    this.quantity, {
+    this.unitPriceHt,
+    this.discountHt = 0,
+  });
 
   final Product product;
   final Quantity quantity;
 
   /// Prix unitaire HT saisi par le vendeur (centimes) ; `null` = prix du tarif.
   final int? unitPriceHt;
+
+  /// Remise HT sur la LIGNE, en centimes (ADMIN, `sale.discount`). Jamais au
+  /// point de vendre sous le coût : vérifié ici ET par le serveur.
+  final int discountHt;
+
+  CartLine copyWith({Quantity? quantity, int? unitPriceHt, int? discountHt}) =>
+      CartLine(
+        product,
+        quantity ?? this.quantity,
+        unitPriceHt: unitPriceHt ?? this.unitPriceHt,
+        discountHt: discountHt ?? this.discountHt,
+      );
 }
+
+/// Montant HT brut d'une ligne (prix × quantité, arrondi au centime) — la
+/// MÊME règle que le serveur, avant remise.
+int lineGrossHt(int unitPriceHt, Quantity quantity) =>
+    _roundMoney(Decimal.fromInt(unitPriceHt) * quantity);
 
 /// Plancher du prix de vente (décision 2026-09-22, MÊME règle que le serveur) :
 /// le dernier prix d'achat ; sans coût connu (ou reçu gratuit), le plus bas des
@@ -169,10 +191,8 @@ class CartController extends Notifier<CartState> {
     final lines = [...state.lines];
     final index = lines.indexWhere((l) => l.product.id == product.id);
     if (index >= 0) {
-      lines[index] = CartLine(
-        product,
-        lines[index].quantity + added,
-        unitPriceHt: lines[index].unitPriceHt,
+      lines[index] = lines[index].copyWith(
+        quantity: lines[index].quantity + added,
       );
     } else {
       lines.add(CartLine(product, added));
@@ -187,7 +207,7 @@ class CartController extends Notifier<CartState> {
           if (line.product.id != productId)
             line
           else if (quantity > Quantity.zero)
-            CartLine(line.product, quantity, unitPriceHt: line.unitPriceHt),
+            line.copyWith(quantity: quantity),
       ],
     );
   }
@@ -199,7 +219,19 @@ class CartController extends Notifier<CartState> {
       lines: [
         for (final line in state.lines)
           line.product.id == productId
-              ? CartLine(line.product, line.quantity, unitPriceHt: unitPriceHt)
+              ? line.copyWith(unitPriceHt: unitPriceHt)
+              : line,
+      ],
+    );
+  }
+
+  /// Remise HT d'une ligne (0 : retirée).
+  void setDiscount(String productId, int discountHt) {
+    state = state.copyWith(
+      lines: [
+        for (final line in state.lines)
+          line.product.id == productId
+              ? line.copyWith(discountHt: discountHt)
               : line,
       ],
     );
@@ -275,7 +307,7 @@ CartEstimate estimateCart(
       continue;
     }
     unitPrices[line.product.id] = price;
-    final lineHt = _roundMoney(Decimal.fromInt(price) * line.quantity);
+    final lineHt = lineGrossHt(price, line.quantity) - line.discountHt;
     final rate = taxRates[line.product.taxRateId] ?? Decimal.zero;
     lineTotals[line.product.id] = lineHt;
     ht += lineHt;
@@ -455,6 +487,7 @@ class SalesActions {
               // Prix saisi par le vendeur : tracé pour l'admin ; sinon c'est
               // le tarif affiché, que le serveur revérifie en ligne.
               priceEdited: line.unitPriceHt != null,
+              discountAmount: line.discountHt,
             ),
         ],
         paidAmount: paidAmount,

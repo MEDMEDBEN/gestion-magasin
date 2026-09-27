@@ -44,7 +44,13 @@ class SalesApi {
     String? customerId,
     String? cashSessionId,
     required List<
-      ({String productId, String quantity, int? unitPriceHt, bool priceEdited})
+      ({
+        String productId,
+        String quantity,
+        int? unitPriceHt,
+        bool priceEdited,
+        int discountAmount,
+      })
     >
     lines,
     required int paidAmount,
@@ -62,6 +68,7 @@ class SalesApi {
           'quantity': line.quantity,
           'unitPriceHt': ?line.unitPriceHt,
           if (line.priceEdited) 'priceEdited': true,
+          if (line.discountAmount > 0) 'discountAmount': line.discountAmount,
         },
     ],
     'paidAmount': paidAmount,

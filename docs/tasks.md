@@ -261,13 +261,31 @@ prouvé par test unitaire — aucun rôle par défaut n'a `product.write` sans l
 HT » (apostrophe du clavier acceptée dans tous les en-têtes). App : colonnes **Vente HT / Achat HT** du tableau
 catalogue (tarif par défaut), ligne « Vente · achat » sur mobile, champ dans la fiche (admin, coût inconnu) ou
 coût affiché en lecture.
-- ⚠️ Limite à connaître (MEDMEDBEN) : un prix d'achat initial MAL saisi ne se corrige pas à la main — la prochaine
-  réception le remplace. Si c'est gênant, il faudra un geste « corriger le coût » audité (petite évolution).
-- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **146 unit** · **585 e2e** ; app `flutter analyze`
-  propre · **+442 ~46**.
+- **Audits 21f** — `security-reviewer` : **CONFORME** (3 faibles) ; `reviewer` : **PAS OK** (2 importants).
+  Appliqué :
+  - 🟠 **Course PATCH / réception** : la réception écrit le coût sans le verrou produits ; un PATCH simultané
+    pouvait écraser le coût réceptionné (règle 5). Le PATCH verrouille désormais la LIGNE produit
+    (`FOR UPDATE`) avant de lire.
+  - 🟠 **Une faute de frappe devenait irréversible** (et un coût trop haut bloquait la vente : il est le
+    plancher). Nouvelle règle, fidèle à la règle 5 : le coût se saisit ET se corrige **tant qu'aucune
+    réception n'existe** pour le produit (`ReceptionLine`) ; ensuite 409. La limite signalée plus haut
+    n'existe donc plus. e2e : coût saisi remplacé par la réception puis figé (contre-épreuve : garde retirée →
+    échec) ; coût saisi = plancher de vente (`PRICE_BELOW_COST` dessous, vente acceptée dessus).
+  - Libellé « (dernière réception) » retiré (le coût peut venir d'une saisie) ; message du plancher : 0 = tarif.
+  - ⚠️ **À trancher (MEDMEDBEN)** — faible F1 : l'historique des RÈGLEMENTS d'un client est lisible par les trois
+    rôles (préexistant). Réserver au vendeur + admin (le magasinier n'encaisse pas) ? Sans décision, inchangé.
 
-**Prochaine étape précise** : audits de 21f (lancés), appliquer ; puis **21g** remise sur une vente (ADMIN) :
-champ serveur `discount` existant → saisie dans le panier + affichage.
+**21g — Remise sur une vente (livrée)** : bouton « Remise » sur chaque ligne du panier pour ADMIN + `sale.discount`
+(miroir du serveur) ; remise HT en centimes, **bornée comme au serveur** (jamais plus que la ligne, jamais un net
+sous le coût × quantité) ; estimation locale identique (TVA sur le NET) ; envoyée en vente ET en devis créé du
+panier ; affichée sur la ligne et dans le détail d'une vente passée. Le vendeur n'a pas le bouton (le serveur
+refuse de toute façon : `DISCOUNT_NOT_ALLOWED`, déjà prouvé en e2e).
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **146 unit** · **587 e2e** ; app `flutter analyze`
+  propre · **+444 ~46** (estimation avec remise ; remise admin bornée puis envoyée ; pas de bouton vendeur).
+
+**Prochaine étape précise** : audits de 21g (lancés), appliquer ; puis **21h — Paramètres** (ADMIN) : tarifs
+(créer / renommer / désactiver, défaut), taux de TVA, identité du magasin imprimée (aujourd'hui lue dans l'env
+du serveur : `storeIdentity`) — vérifier le schéma avant toute migration (`db-migrator`, additive seulement).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
