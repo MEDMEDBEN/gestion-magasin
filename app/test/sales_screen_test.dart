@@ -65,6 +65,16 @@ class _FakeSalesApi extends SalesApi {
   /// Client demandé à l'historique des achats (filtre serveur).
   final historyAsked = <String?>[];
 
+  /// Recherches envoyées à l'historique des ventes, et ventes annulées.
+  final searches = <String?>[];
+  final cancelled = <String>[];
+
+  @override
+  Future<Sale> cancelSale(String saleId) async {
+    cancelled.add(saleId);
+    return (await sales()).data.single;
+  }
+
   @override
   Future<CustomerPage> customers({String? query, int limit = 50}) async =>
       CustomerPage(
@@ -81,16 +91,25 @@ class _FakeSalesApi extends SalesApi {
       );
 
   @override
-  Future<SalePage> sales({int limit = 50, String? customerId}) async {
+  Future<SalePage> sales({
+    int limit = 50,
+    int page = 1,
+    String? customerId,
+    String? q,
+    String? from,
+    String? to,
+  }) async {
     historyAsked.add(customerId);
+    searches.add(q);
     return SalePage(
       data: [
         Sale(
           id: 's1',
           number: 'TK-2026-000007',
           type: 'TICKET',
-          status: 'VALIDEE',
+          status: cancelled.isEmpty ? 'VALIDEE' : 'ANNULEE',
           customerId: customerId,
+          customerName: 'Benali',
           totalHt: 100000,
           totalTax: 19000,
           totalTtc: 119000,
@@ -227,6 +246,7 @@ Future<void> _pumpScreen(
   bool withStore = false,
   MemorySettingsStore? settings,
   Product? product,
+  AuthUser? user,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -273,7 +293,7 @@ Future<void> _pumpScreen(
       ],
       child: MaterialApp(
         theme: AppTheme.mobile(dark: true),
-        home: Scaffold(body: SalesScreen(user: _vendeur())),
+        home: Scaffold(body: SalesScreen(user: user ?? _vendeur())),
       ),
     ),
   );
@@ -667,5 +687,59 @@ void main() {
     expect(find.text('TK-2026-000007'), findsOneWidget);
     expect(find.textContaining('reste ${formatDA(100000)}'), findsOneWidget);
     expect(find.text('${formatDA(119000)} TTC'), findsOneWidget);
+  });
+
+  /// Revue du 2026-09-27 : aucune vente passée n'était visible — ni
+  /// réimpression, ni facture après coup, ni annulation.
+  testWidgets(
+    'historique des ventes : recherche serveur, détail, réimpression',
+    (tester) async {
+      useScreenSize(tester, const Size(900, 1400));
+      final api = _FakeSalesApi(cash: _openCash);
+      final printed = <String>[];
+      await _pumpScreen(tester, api, printed);
+      await tester.tap(find.text('Historique'));
+      await tester.pumpAndSettle();
+      expect(find.text('TK-2026-000007'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField).last, 'TK-2026-000007');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(api.searches.last, 'TK-2026-000007');
+
+      await tester.tap(find.widgetWithText(ListTile, 'TK-2026-000007'));
+      await tester.pumpAndSettle();
+      expect(find.text('Réimprimer le ticket'), findsOneWidget);
+      expect(find.text('Émettre la facture'), findsOneWidget);
+      // Le vendeur n'annule pas une vente (ADMIN + sale.cancel).
+      expect(find.text('Annuler la vente'), findsNothing);
+      await tester.tap(find.text('Réimprimer le ticket'));
+      await tester.pumpAndSettle();
+      expect(printed.single, startsWith('TK-2026-000007.pdf'));
+    },
+  );
+
+  testWidgets('historique : l’admin annule une vente, après confirmation', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const ['sale.create', 'sale.cancel', 'cash.report.read'],
+    );
+    await _pumpScreen(tester, api, [], user: admin);
+    await tester.tap(find.text('Historique'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('TK-2026-000007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Annuler la vente'));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, isEmpty); // rien sans confirmation
+    await tester.tap(find.widgetWithText(FilledButton, 'Annuler la vente'));
+    await tester.pumpAndSettle();
+    expect(api.cancelled, ['s1']);
+    expect(find.textContaining('Annulée'), findsWidgets);
   });
 }

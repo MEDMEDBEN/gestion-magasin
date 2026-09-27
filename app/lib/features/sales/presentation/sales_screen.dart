@@ -13,6 +13,7 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/amount_dialog.dart';
+import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/export_button.dart';
@@ -27,6 +28,8 @@ import '../../quotes/application/quotes_controller.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import 'customer_form.dart';
+import 'sales_history.dart';
 
 /// Droits de la vente, MIROIRS des guards serveur (`docs/permissions.md`).
 class SalesRights {
@@ -42,7 +45,11 @@ class SalesRights {
       canTakePayments = user.can('customer.payment.create'),
       canReversePayments =
           user.hasRole('ADMIN') && user.can('customer.payment.create'),
-      canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read');
+      canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read'),
+      canCancelSales = user.hasRole('ADMIN') && user.can('sale.cancel'),
+      // Tarif et plafond de crédit d'un client : conditions commerciales.
+      canManageCustomerTerms =
+          user.hasRole('ADMIN') && user.can('price.manage');
 
   final bool canSell;
   final bool canInvoice;
@@ -56,9 +63,13 @@ class SalesRights {
 
   /// Liste de toutes les caisses : ADMIN + cash.report.read.
   final bool canSeeAllCash;
+
+  /// Annulation d'une vente : ADMIN + sale.cancel (miroir du guard serveur).
+  final bool canCancelSales;
+  final bool canManageCustomerTerms;
 }
 
-enum _Section { sale, customers, cashSessions }
+enum _Section { sale, history, customers, cashSessions }
 
 void _snack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
@@ -124,6 +135,12 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                     value: _Section.sale,
                     label: Text('Vente'),
                   ),
+                  // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
+                  if (rights.canSell)
+                    const ButtonSegment(
+                      value: _Section.history,
+                      label: Text('Historique'),
+                    ),
                   const ButtonSegment(
                     value: _Section.customers,
                     label: Text('Clients'),
@@ -155,6 +172,10 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
         Expanded(
           child: switch (_section) {
             _Section.sale => _SaleSection(margin: margin, rights: rights),
+            _Section.history => SalesHistorySection(
+              margin: margin,
+              rights: rights,
+            ),
             _Section.customers => _CustomersSection(
               margin: margin,
               rights: rights,
@@ -1124,57 +1145,15 @@ class _CustomersSection extends ConsumerStatefulWidget {
 class _CustomersSectionState extends ConsumerState<_CustomersSection> {
   String _query = '';
 
-  Future<void> _create() async {
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Nouveau client'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Nom'),
-            ),
-            TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(labelText: 'Téléphone'),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Tarif et plafond de crédit sont fixés par l’administrateur.',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Créer'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
-    try {
-      final created = await ref
-          .read(salesActionsProvider)
-          .createCustomer(
-            name.text.trim(),
-            phone.text.trim().isEmpty ? null : phone.text.trim(),
-          );
-      if (mounted) _snack(context, 'Client ${created.name} créé.');
-    } on ApiException catch (error) {
-      if (mounted) _snack(context, error.userMessage);
-    }
-  }
+  /// Fiche complète (P1 bis n°21e) : même formulaire en création et en
+  /// modification ; tarif et plafond seulement pour l'administrateur.
+  Future<void> _create([Customer? existing]) => openFormPanel<void>(
+    context,
+    CustomerForm(
+      existing: existing,
+      canManageTerms: widget.rights.canManageCustomerTerms,
+    ),
+  );
 
   Future<void> _pay(Customer customer) async {
     final amount = await askAmount(
@@ -1213,6 +1192,23 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
       builder: (context) => SimpleDialog(
         title: Text(customer.name),
         children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(
+              [
+                'Total acheté ${formatDA(customer.totalPurchased)}',
+                'payé ${formatDA(customer.totalPaid)}',
+                'reste ${formatDA(customer.balanceDue)}',
+                if (customer.overdueAmount > 0)
+                  'en retard ${formatDA(customer.overdueAmount)}',
+              ].join(' · '),
+            ),
+          ),
+          if (rights.canWriteCustomers)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('edit'),
+              child: const Text('Modifier la fiche'),
+            ),
           if (rights.canTakePayments && customer.balanceDue > 0)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('pay'),
@@ -1232,6 +1228,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (!mounted || action == null) return;
     if (action == 'pay') return _pay(customer);
+    if (action == 'edit') return _create(customer);
     if (action == 'sales') {
       final api = ref.read(salesApiProvider);
       await showHistory(

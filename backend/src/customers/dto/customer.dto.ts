@@ -187,6 +187,14 @@ export class CustomerDto {
       'Part de la dette EN RETARD (ventes à crédit dont l’échéance est passée), centimes.',
   })
   overdueAmount!: number;
+  @ApiProperty({
+    description: 'Total acheté : ventes validées, TTC (centimes).',
+  })
+  totalPurchased!: number;
+  @ApiProperty({
+    description: 'Total payé : à la vente et par règlements (centimes).',
+  })
+  totalPaid!: number;
   @ApiProperty() isActive!: boolean;
 }
 

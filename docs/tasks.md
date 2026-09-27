@@ -211,6 +211,33 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 bis — COMPLÉTUDE (revue fonctionnelle du 2026-09-27 · **MEDMEDBEN**)
+Revue « chaque fonction de la spec a-t-elle un ÉCRAN ? » demandée par MEDMEDBEN après son test desktop ; il a
+validé TOUTES les corrections et propositions (`docs/plan.md` § P1 bis, n°21d → 21n), plus le **prix d'achat du
+produit** (jamais affiché, et absent pour un produit créé sans réception — n°21f).
+
+**21d — Historique des ventes (livré)** : onglet « Historique » de Ventes (ADMIN|VENDEUR + `sale.create`, le
+vendeur ne voit que SES ventes — règle serveur existante). Recherche serveur (`GET /sales?q=` : n° de ticket,
+de facture ou nom du client — ajouté), périodes aujourd'hui / 7 j / 30 j / tout, 200 plus récentes avec
+avertissement si tronqué. Détail : lignes, HT/TVA/TTC, encaissé, reste dû et échéance ; **Réimprimer** (ticket
+ou facture) ; **Émettre la facture** d'un ticket après coup (`invoice.issue`) ; **Annuler la vente** (ADMIN +
+`sale.cancel`, après confirmation ; une vente facturée ne s'annule pas → avoir, n°21l). `SaleDto` porte désormais
+`customerName` et `sellerName`. Ventes en file sur le poste absentes (pas définitives, règle 8).
+
+**21e — Fiche client complète (livrée)** : formulaire unique création / modification (nom, téléphone, e-mail,
+adresse, notes, actif) ; **tarif et plafond de crédit** seulement pour ADMIN + `price.manage` (champs absents
+et JAMAIS envoyés pour le vendeur — le serveur refuse de toute façon). Fiche : total acheté · payé · reste ·
+en retard. Serveur : `CustomerDto.totalPurchased` / `totalPaid`, calculés par `SalesService.customerAccounts`
+(une seule règle, 2 requêtes par page) dont `customerDebts` dérive.
+
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **144 unit** · **581 e2e** (+ recherche par numéro,
+  + totaux client du scénario dettes §35) ; app `flutter analyze` propre · **+440 ~46** (+ historique : recherche,
+  réimpression, pas d'annulation pour le vendeur ; annulation admin après confirmation ; fiche client vendeur
+  sans tarif/plafond, admin avec). Contre-épreuve : garde d'annulation retirée → test en échec.
+
+**Prochaine étape précise** : audits `reviewer` + `security-reviewer` de 21d/21e (lancés), appliquer ; puis
+**21f** prix d'achat du produit (affichage catalogue/fiche ; prix d'achat initial à la création et à l'import).
+
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
 introuvable**. Vérifié : c'était un **vrai manque** de P0 n°5 (« fiches, historique », spec §10-11) — le serveur

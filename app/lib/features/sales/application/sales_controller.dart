@@ -15,6 +15,7 @@ import '../../../core/quantity.dart';
 import '../../../data/sync/sync_coordinator.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../stock/application/stock_controller.dart';
 import '../../payments/data/payment_models.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
@@ -86,6 +87,29 @@ final mySalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
   ref.watch(currentUserIdProvider);
   return (await ref.watch(salesApiProvider).sales()).data;
 });
+
+/// Filtre de l'historique : recherche et nombre de jours (null : tout).
+typedef SalesHistoryFilter = ({String q, int? days});
+
+/// Historique des ventes (spec §8) : les 200 plus récentes du filtre. Lu EN
+/// LIGNE — une vente en file n'est pas encore définitive (règle 8).
+final salesHistoryProvider = FutureProvider.autoDispose
+    .family<SalePage, SalesHistoryFilter>((ref, filter) async {
+      ref.watch(currentUserIdProvider);
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final days = filter.days;
+      return ref
+          .watch(salesApiProvider)
+          .sales(
+            limit: 200,
+            q: filter.q.trim().isEmpty ? null : filter.q.trim(),
+            from: days == null
+                ? null
+                : isoDay(today.subtract(Duration(days: days - 1))),
+            to: days == null ? null : isoDay(today),
+          );
+    });
 
 @immutable
 class CartLine {
@@ -450,6 +474,16 @@ class SalesActions {
   Future<Sale> invoice(String saleId) async {
     final sale = await _api.issueInvoice(saleId);
     _ref.invalidate(mySalesProvider);
+    _ref.invalidate(salesHistoryProvider);
+    return sale;
+  }
+
+  /// Annulation (ADMIN) : le stock revient, la caisse rend l'espèce.
+  Future<Sale> cancel(String saleId) async {
+    final sale = await _api.cancelSale(saleId);
+    _ref.invalidate(salesHistoryProvider);
+    _ref.invalidate(currentCashSessionProvider);
+    _ref.invalidate(stockByProductProvider);
     return sale;
   }
 
@@ -460,6 +494,12 @@ class SalesActions {
       bytes,
       '${sale.invoiceNumber ?? sale.number}.pdf',
     );
+  }
+
+  Future<Customer> saveCustomer(String? id, Map<String, Object?> fields) async {
+    final customer = await _api.saveCustomer(id, fields);
+    _ref.invalidate(customerSearchProvider);
+    return customer;
   }
 
   Future<Customer> createCustomer(String name, String? phone) async {

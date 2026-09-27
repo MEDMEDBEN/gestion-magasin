@@ -18,7 +18,7 @@ import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
-import { Prisma, Sale, SaleLine } from '../generated/prisma/client';
+import { Prisma, Sale } from '../generated/prisma/client';
 import { parseSort } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
@@ -36,9 +36,15 @@ import { renderSaleDocument, storeIdentity } from './sale-document';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
-type SaleWithLines = Sale & { lines: SaleLine[] };
+type SaleWithLines = Prisma.SaleGetPayload<{ include: typeof SALE_INCLUDE }>;
 
-const SALE_INCLUDE = { lines: true } as const;
+/// Lignes, plus les NOMS du client et du vendeur : l'historique des ventes se
+/// lit sans deviner à qui correspond un identifiant.
+const SALE_INCLUDE = {
+  lines: true,
+  customer: { select: { name: true } },
+  user: { select: { fullName: true } },
+} as const;
 
 /// Tris autorisés (liste blanche, CONVENTIONS.md).
 const SALE_SORT_FIELDS = ['soldAt', 'totalTtc', 'number'] as const;
@@ -336,6 +342,25 @@ export class SalesService {
     const where: Prisma.SaleWhereInput = {
       ...(query.customerId && { customerId: query.customerId }),
       ...(soldAt && { soldAt }),
+      // Retrouver un ticket, une facture ou les ventes d'un client par son nom.
+      ...(query.q?.trim() && {
+        OR: [
+          {
+            number: { contains: query.q.trim(), mode: 'insensitive' as const },
+          },
+          {
+            invoiceNumber: {
+              contains: query.q.trim(),
+              mode: 'insensitive' as const,
+            },
+          },
+          {
+            customer: {
+              name: { contains: query.q.trim(), mode: 'insensitive' as const },
+            },
+          },
+        ],
+      }),
       // Le vendeur voit SES ventes ; l'admin toutes.
       ...(!user.roles.includes(RoleCode.ADMIN) && { userId: user.id }),
     };
@@ -682,11 +707,14 @@ export class SalesService {
     return overdue;
   }
 
-  /// Même calcul pour une PAGE de clients en 2 requêtes (jamais une par client).
-  static async customerDebts(
+  /// Compte de chaque client d'une PAGE, en 2 requêtes (jamais une par
+  /// client) : total acheté (ventes validées, TTC) et reste dû = acheté −
+  /// encaissé à la vente − règlements ultérieurs. Une seule règle pour la
+  /// dette, le plafond de crédit et la fiche client.
+  static async customerAccounts(
     db: Db | PrismaService,
     customerIds: string[],
-  ): Promise<Map<string, number>> {
+  ): Promise<Map<string, { purchased: number; balance: number }>> {
     const [sales, payments] = await Promise.all([
       db.sale.groupBy({
         by: ['customerId'],
@@ -699,22 +727,27 @@ export class SalesService {
         _sum: { amount: true },
       }),
     ]);
-    const debts = new Map(customerIds.map((id) => [id, 0]));
+    const accounts = new Map(
+      customerIds.map((id) => [id, { purchased: 0, balance: 0 }]),
+    );
     for (const row of sales) {
-      debts.set(
-        row.customerId!,
-        (debts.get(row.customerId!) ?? 0) +
-          (row._sum.totalTtc ?? 0) -
-          (row._sum.paidAmount ?? 0),
-      );
+      const account = accounts.get(row.customerId!)!;
+      account.purchased += row._sum.totalTtc ?? 0;
+      account.balance += (row._sum.totalTtc ?? 0) - (row._sum.paidAmount ?? 0);
     }
     for (const row of payments) {
-      debts.set(
-        row.customerId,
-        (debts.get(row.customerId) ?? 0) - (row._sum.amount ?? 0),
-      );
+      accounts.get(row.customerId)!.balance -= row._sum.amount ?? 0;
     }
-    return debts;
+    return accounts;
+  }
+
+  /// Reste dû de chaque client d'une page (voir `customerAccounts`).
+  static async customerDebts(
+    db: Db | PrismaService,
+    customerIds: string[],
+  ): Promise<Map<string, number>> {
+    const accounts = await SalesService.customerAccounts(db, customerIds);
+    return new Map([...accounts].map(([id, a]) => [id, a.balance]));
   }
 
   /// Prix d'un panier — vente ou devis, UNE seule règle (règle 13) : tarif du
@@ -944,7 +977,9 @@ export class SalesService {
       type: sale.type as SaleTypeDto,
       status: sale.status,
       customerId: sale.customerId,
+      customerName: sale.customer?.name ?? null,
       userId: sale.userId,
+      sellerName: sale.user.fullName,
       cashSessionId: sale.cashSessionId,
       totalHt: sale.totalHt,
       totalTax: sale.totalTax,

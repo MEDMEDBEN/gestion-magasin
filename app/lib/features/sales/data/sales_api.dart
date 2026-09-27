@@ -72,15 +72,36 @@ class SalesApi {
   Future<Sale> createSale(Map<String, dynamic> body) =>
       _post('/sales', body, Sale.fromJson);
 
-  Future<SalePage> sales({int limit = 50, String? customerId}) {
+  /// Ventes, les plus récentes d'abord. Le serveur limite le vendeur aux
+  /// siennes. `q` : numéro de ticket, de facture ou nom du client ; `from` et
+  /// `to` : jours locaux (`AAAA-MM-JJ`), inclus.
+  Future<SalePage> sales({
+    int limit = 50,
+    int page = 1,
+    String? customerId,
+    String? q,
+    String? from,
+    String? to,
+  }) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/sales',
-        queryParameters: {'limit': limit, 'customerId': ?customerId},
+        queryParameters: {
+          'limit': limit,
+          'page': page,
+          'customerId': ?customerId,
+          'q': ?q,
+          'from': ?from,
+          'to': ?to,
+        },
       );
       return SalePage.fromJson(response.data!);
     });
   }
+
+  /// Annulation d'une vente (ADMIN) : retours en stock, sortie de caisse.
+  Future<Sale> cancelSale(String saleId) =>
+      _post('/sales/$saleId/cancel', null, Sale.fromJson);
 
   Future<Sale> issueInvoice(String saleId) =>
       _post('/sales/$saleId/invoice', null, Sale.fromJson);
@@ -112,6 +133,21 @@ class SalesApi {
       'name': name,
       'phone': ?phone,
     }, Customer.fromJson);
+  }
+
+  /// Fiche client complète : création (`id` nul) ou modification. Tarif et
+  /// plafond ne sont envoyés que par qui a `price.manage` (le serveur refuse
+  /// sinon).
+  Future<Customer> saveCustomer(String? id, Map<String, Object?> fields) {
+    return guardApi(() async {
+      final response = id == null
+          ? await _dio.post<Map<String, dynamic>>('/customers', data: fields)
+          : await _dio.patch<Map<String, dynamic>>(
+              '/customers/$id',
+              data: fields,
+            );
+      return Customer.fromJson(response.data!);
+    });
   }
 
   /// Corps : le MÊME en ligne et dans la file (`CUSTOMER_PAYMENT`).

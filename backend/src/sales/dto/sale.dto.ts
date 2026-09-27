@@ -210,7 +210,11 @@ export class SaleDto {
   @ApiProperty({ enum: SaleTypeDto }) type!: SaleTypeDto;
   @ApiProperty({ example: 'VALIDEE' }) status!: string;
   @ApiProperty({ nullable: true }) customerId!: string | null;
+  @ApiProperty({ nullable: true, description: 'Nom du client (lecture).' })
+  customerName!: string | null;
   @ApiProperty() userId!: string;
+  @ApiProperty({ description: 'Nom du vendeur (lecture).' })
+  sellerName!: string;
   @ApiProperty({ nullable: true }) cashSessionId!: string | null;
   @ApiProperty() totalHt!: number;
   @ApiProperty() totalTax!: number;

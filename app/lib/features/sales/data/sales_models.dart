@@ -64,6 +64,10 @@ abstract class Sale with _$Sale {
     required String type,
     required String status,
     String? customerId,
+
+    /// Noms du client et du vendeur, pour l'historique (lecture seule).
+    String? customerName,
+    @Default('') String sellerName,
     required int totalHt,
     required int totalTax,
     required int totalTtc,
@@ -71,6 +75,7 @@ abstract class Sale with _$Sale {
     required int remainingAmount,
     required List<SaleLine> lines,
     required DateTime soldAt,
+    DateTime? cancelledAt,
 
     /// Échéance d'une vente à crédit.
     DateTime? dueDate,
@@ -108,8 +113,13 @@ abstract class Customer with _$Customer {
     String? email,
     String? address,
     String? priceTierId,
+    String? notes,
     required int creditLimit,
     required int balanceDue,
+
+    /// Total acheté (ventes validées, TTC) et total payé (fiche client, §10).
+    @Default(0) int totalPurchased,
+    @Default(0) int totalPaid,
 
     /// Part de la dette dont l'échéance est dépassée.
     @Default(0) int overdueAmount,

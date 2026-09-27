@@ -105,12 +105,13 @@ export class CustomersService {
     ]);
     // Dettes de toute la page en 2 requêtes (jamais 2 par client).
     const ids = rows.map((r) => r.id);
-    const debts = await SalesService.customerDebts(this.prisma, ids);
+    const accounts = await SalesService.customerAccounts(this.prisma, ids);
+    const debts = new Map([...accounts].map(([id, a]) => [id, a.balance]));
     const overdue = await SalesService.customerOverdue(this.prisma, ids, debts);
     const data = rows.map((row) =>
       CustomersService.toDtoWith(
         row,
-        debts.get(row.id) ?? 0,
+        accounts.get(row.id)!,
         overdue.get(row.id) ?? 0,
       ),
     );
@@ -583,22 +584,23 @@ export class CustomersService {
     db: Db | PrismaService,
     customer: Customer,
   ): Promise<CustomerDto> {
-    const debts = await SalesService.customerDebts(db, [customer.id]);
+    const accounts = await SalesService.customerAccounts(db, [customer.id]);
+    const account = accounts.get(customer.id)!;
     const overdue = await SalesService.customerOverdue(
       db,
       [customer.id],
-      debts,
+      new Map([[customer.id, account.balance]]),
     );
     return CustomersService.toDtoWith(
       customer,
-      debts.get(customer.id) ?? 0,
+      account,
       overdue.get(customer.id) ?? 0,
     );
   }
 
   private static toDtoWith(
     customer: Customer,
-    balanceDue: number,
+    account: { purchased: number; balance: number },
     overdueAmount: number,
   ): CustomerDto {
     return {
@@ -611,8 +613,10 @@ export class CustomersService {
       notes: customer.notes,
       priceTierId: customer.priceTierId,
       creditLimit: customer.creditLimit,
-      balanceDue,
+      balanceDue: account.balance,
       overdueAmount,
+      totalPurchased: account.purchased,
+      totalPaid: account.purchased - account.balance,
       isActive: customer.isActive,
     };
   }

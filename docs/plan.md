@@ -122,6 +122,26 @@ Traçabilité / système
 21b. **Étiquettes code-barres** imprimables (nom, prix, code-barres — planche A4 / thermique) _(2026-09-27 : livré, prouvé et audité)_
 21c. **Génération de documents PDF** (bon de livraison/transfert, bon de commande fournisseur) + **import** Excel/CSV (produits, clients, fournisseurs, stock initial)  _(2026-09-27 : code livré — bons PDF audités ; import à blanc puis tout ou rien, à auditer)_
 
+### P1 bis — Complétude (revue fonctionnelle du 2026-09-27, validée par MEDMEDBEN)
+Revue « chaque fonction de la spec a-t-elle un ÉCRAN ? » après le test humain du desktop. Une fonction sans
+affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
+21d. **Historique des ventes** : liste (période, client, recherche), détail, réimpression, facturation d'un
+     ticket après coup, annulation par l'admin. _(2026-09-27 : livré et prouvé ; audit en cours)_
+21e. **Fiche client complète** : création et modification (adresse, e-mail, tarif, plafond de crédit — ces deux
+     derniers ADMIN), total acheté et payé affichés. _(2026-09-27 : livré et prouvé ; audit en cours)_
+21f. **Prix d'achat du produit** : affiché (catalogue, fiche) ; prix d'achat INITIAL saisi à la création et à
+     l'import (sans réception, un produit n'avait aucun coût : ni marge ni plancher de prix).
+21g. **Remise sur une vente** (ADMIN, champ existant côté serveur).
+21h. **Paramètres** (ADMIN) : tarifs, taux de TVA, identité du magasin imprimée (nom, NIF, RC, adresse).
+21i. **Commande fournisseur** : date de livraison prévue et échéance de paiement ; e-mail du fournisseur.
+21j. **Notifications planifiées** : retard fournisseur, échéance client, dette client en retard, dette
+     fournisseur à payer, inventaire à faire, tâche du jour, tâche en retard.
+21k. **Mouvements de caisse manuels** : entrée, sortie, prélèvement (session ouverte).
+21l. **Retours** : retour client partiel (+ **facture d'avoir** si la vente est facturée) ; retour fournisseur.
+21m. **Indicateurs** : fournisseur (total acheté, produits fournis, livraisons à temps, évolution des prix
+     d'achat), graphiques du tableau de bord, modification d'un devis brouillon.
+21n. **Relevé de compte** client et fournisseur (PDF) ; suivi des chèques ; historique des prix de vente.
+
 ### P2 — Avancé
 22. Commande fournisseur préparée automatiquement + message par modèle (email/WhatsApp)
 23. Contact clients ciblé par modèle

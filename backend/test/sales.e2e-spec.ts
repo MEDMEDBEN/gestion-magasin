@@ -985,6 +985,45 @@ describe('Ventes (e2e)', () => {
     expect(all.body.meta.total).toBeGreaterThanOrEqual(mine.body.meta.total);
   });
 
+  /// Fiche client (§10) : total acheté, payé et reste dû, cohérents entre eux
+  /// — scénario dettes de la spec §35 (vente à crédit, puis règlement).
+  it('fiche client : total acheté, payé, reste dû', async () => {
+    const p = await product('10.000');
+    const c = await customer(10_000_000);
+    const sale = (
+      await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          customerId: c,
+          lines: [{ productId: p, quantity: '2' }],
+          paidAmount: 100000,
+          dueDate: DUE_DATE,
+        })
+        .expect(201)
+    ).body;
+    await as(tokens.vendeur)
+      .post('/api/payments/customer')
+      .send({ customerId: c, amount: 50000 })
+      .expect(201);
+    const sheet = (
+      await as(tokens.vendeur).get(`/api/customers/${c}`).expect(200)
+    ).body;
+    expect(sheet.totalPurchased).toBe(sale.totalTtc);
+    expect(sheet.totalPaid).toBe(150000);
+    expect(sheet.balanceDue).toBe(sale.totalTtc - 150000);
+  });
+
+  /// Historique des ventes : un ticket se retrouve par son numéro.
+  it('recherche par numéro de ticket', async () => {
+    const some = await prisma.sale.findFirstOrThrow({
+      where: { customerId: { in: customerIds } },
+    });
+    const res = await as(tokens.admin)
+      .get(`/api/sales?q=${some.number.toLowerCase()}`)
+      .expect(200);
+    expect(res.body.data.map((s: { id: string }) => s.id)).toEqual([some.id]);
+  });
+
   /// Historique des achats d'un client (fiche client de l'app) : le filtre
   /// est appliqué par le SERVEUR — ni plus, ni moins que ses ventes.
   it('liste filtrée par client : ses ventes seulement', async () => {
