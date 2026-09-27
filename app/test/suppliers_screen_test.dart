@@ -237,6 +237,12 @@ void main() {
     expect(api.payment, isNull);
   });
 
+  /// Miroir de `POST /imports/suppliers` : ADMIN + supplier.write.
+  testWidgets('import : proposé à l’admin', (tester) async {
+    await _pump(tester, _admin());
+    expect(find.byTooltip('Importer'), findsOneWidget);
+  });
+
   testWidgets('MAGASINIER : lecture seule, ni création ni paiement', (
     tester,
   ) async {
@@ -254,6 +260,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Enregistrer un paiement'), findsNothing);
     expect(find.text('Modifier la fiche'), findsNothing);
+    expect(find.byTooltip('Importer'), findsNothing);
   });
 
   test('menu : « Fournisseurs » pour ADMIN/MAGASINIER, jamais le vendeur', () {

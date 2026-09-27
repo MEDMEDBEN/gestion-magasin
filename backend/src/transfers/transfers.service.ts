@@ -5,10 +5,8 @@ import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
-import { renderExport, section } from '../common/export/export';
+import { renderExport } from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
-import { label } from '../common/export/labels';
-import { formatDateTime } from '../common/pdf/pdf';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Transfer, TransferLine } from '../generated/prisma/client';
@@ -30,6 +28,7 @@ import {
   TransferListDto,
   TransferListQueryDto,
 } from './dto/transfer.dto';
+import { transferDocument } from './transfer-document';
 
 type Db = Prisma.TransactionClient;
 type TransferWithLines = Transfer & { lines: TransferLine[] };
@@ -517,77 +516,7 @@ export class TransfersService {
         transfer.receivedById,
       ],
     });
-    const when = (date: Date | null) => (date ? formatDateTime(date) : '');
-    const file = await renderExport(
-      {
-        title: `Bon de transfert ${transfer.number}`,
-        // Pas de flèche : absente des polices standard du PDF (WinAnsi).
-        subtitle:
-          `De ${names.location(transfer.fromLocationId)} vers ` +
-          `${names.location(transfer.toLocationId)} · ${label(transfer.status)}` +
-          (transfer.comment ? ` · ${transfer.comment}` : ''),
-        filename: transfer.number,
-        sections: [
-          section({
-            title: 'Marchandise',
-            columns: [
-              { header: 'Référence', value: (l) => names.sku(l.productId) },
-              { header: 'Produit', value: (l) => names.product(l.productId) },
-              { header: 'Unité', value: (l) => label(names.unit(l.productId)) },
-              {
-                header: 'Demandé',
-                kind: 'quantity',
-                value: (l) => l.requestedQuantity,
-              },
-              {
-                header: 'Préparé',
-                kind: 'quantity',
-                value: (l) => l.preparedQuantity,
-              },
-              {
-                header: 'Expédié',
-                kind: 'quantity',
-                value: (l) => l.shippedQuantity,
-              },
-              {
-                header: 'Reçu',
-                kind: 'quantity',
-                value: (l) => l.receivedQuantity,
-              },
-            ],
-            rows: transfer.lines,
-          }),
-          section({
-            title: 'Étapes et signatures',
-            columns: [
-              { header: 'Étape', value: (r) => r.step },
-              { header: 'Par', value: (r) => r.who },
-              { header: 'Le', value: (r) => r.when },
-              { header: 'Signature', value: () => '' },
-            ],
-            rows: [
-              {
-                step: 'Demandé',
-                who: names.user(transfer.requestedById),
-                when: when(transfer.requestedAt),
-              },
-              {
-                step: 'Préparé',
-                who: names.user(transfer.preparedById),
-                when: when(transfer.preparedAt),
-              },
-              { step: 'Expédié', who: '', when: when(transfer.shippedAt) },
-              {
-                step: 'Reçu',
-                who: names.user(transfer.receivedById),
-                when: when(transfer.receivedAt),
-              },
-            ],
-          }),
-        ],
-      },
-      'pdf',
-    );
+    const file = await renderExport(transferDocument(transfer, names), 'pdf');
     return { filename: file.filename, pdf: file.buffer };
   }
 

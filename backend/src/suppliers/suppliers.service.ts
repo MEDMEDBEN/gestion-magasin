@@ -161,27 +161,34 @@ export class SuppliersService {
     dto: CreateSupplierDto,
     actor: ActorContext,
   ): Promise<SupplierDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const supplier = await tx.supplier.create({
-        data: {
-          id: dto.id,
-          name: dto.name,
-          phone: dto.phone ?? null,
-          email: dto.email ?? null,
-          address: dto.address ?? null,
-          contactName: dto.contactName ?? null,
-          notes: dto.notes ?? null,
-          openingBalance: dto.openingBalance ?? 0,
-        },
-      });
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'Supplier',
-        entityId: supplier.id,
-        newValue: SuppliersService.snapshot(supplier),
-      });
-      return this.toDto(tx, supplier);
+    return this.prisma.$transaction((tx) => this.createInTx(tx, dto, actor));
+  }
+
+  /// Cœur de la création, dans la transaction de l'appelant (route, import).
+  async createInTx(
+    tx: Prisma.TransactionClient,
+    dto: CreateSupplierDto,
+    actor: ActorContext,
+  ): Promise<SupplierDto> {
+    const supplier = await tx.supplier.create({
+      data: {
+        id: dto.id,
+        name: dto.name,
+        phone: dto.phone ?? null,
+        email: dto.email ?? null,
+        address: dto.address ?? null,
+        contactName: dto.contactName ?? null,
+        notes: dto.notes ?? null,
+        openingBalance: dto.openingBalance ?? 0,
+      },
     });
+    await writeAudit(tx, actor, {
+      action: 'CREATE',
+      entityType: 'Supplier',
+      entityId: supplier.id,
+      newValue: SuppliersService.snapshot(supplier),
+    });
+    return this.toDto(tx, supplier);
   }
 
   async update(

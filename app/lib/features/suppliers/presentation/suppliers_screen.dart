@@ -8,7 +8,9 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../core/file_import.dart';
 import '../../../ui/widgets/export_button.dart';
+import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
@@ -82,6 +84,12 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
               ),
+              // `POST /imports/suppliers` : même garde que la création (ADMIN).
+              if (rights.canWrite)
+                ImportButton(
+                  kind: ImportKind.suppliers,
+                  onImported: () => ref.invalidate(supplierSearchProvider),
+                ),
               ExportButton(
                 targets: [
                   ExportTarget(

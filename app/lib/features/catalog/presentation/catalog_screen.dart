@@ -15,6 +15,8 @@ import '../../stock/application/stock_controller.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import 'catalog_lists.dart';
+import '../../../core/file_import.dart';
+import '../../../ui/widgets/import_button.dart';
 import 'category_form.dart';
 import 'labels_dialog.dart';
 import 'desktop/products_table.dart';
@@ -34,6 +36,11 @@ class CatalogRights {
       canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
       // `POST /products/labels` : les 3 rôles + product.read ET price.read.
       canPrintLabels = user.can('product.read') && user.can('price.read'),
+      // `POST /imports/products` : ADMIN + product.write ET price.manage.
+      canImportProducts =
+          user.hasRole('ADMIN') &&
+          user.can('product.write') &&
+          user.can('price.manage'),
       canManageLocations =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('location.manage');
@@ -45,6 +52,7 @@ class CatalogRights {
   final bool canReadSuppliers;
   final bool canSetPrices;
   final bool canPrintLabels;
+  final bool canImportProducts;
 }
 
 enum _Section { products, categories, locations }
@@ -140,6 +148,8 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
       await ref.read(printPdfProvider)(pdf, 'etiquettes.pdf');
     } on ApiException catch (error) {
       _showSnack(error.userMessage);
+    } on Exception {
+      _showSnack('Impression impossible sur ce poste.');
     }
   }
 
@@ -234,6 +244,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               syncing: sync.isLoading,
               onOpen: (p) => _openProduct(rights, p),
               onLabels: rights.canPrintLabels ? _printLabels : null,
+              canImport: rights.canImportProducts,
             ),
             _Section.categories => CategoriesList(
               margin: margin,
@@ -271,6 +282,7 @@ class _ProductsSection extends ConsumerWidget {
     required this.syncing,
     required this.onOpen,
     this.onLabels,
+    this.canImport = false,
   });
 
   final TextEditingController search;
@@ -285,6 +297,9 @@ class _ProductsSection extends ConsumerWidget {
 
   /// Étiquettes de la liste affichée ; `null` sans le droit.
   final void Function(List<Product> products)? onLabels;
+
+  /// Import Excel/CSV du catalogue (admin).
+  final bool canImport;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -330,6 +345,13 @@ class _ProductsSection extends ConsumerWidget {
                   onChanged: notifier.setSearch,
                 ),
               ),
+              if (canImport)
+                ImportButton(
+                  kind: ImportKind.products,
+                  // Les produits créés descendent par la synchro du catalogue.
+                  onImported: () =>
+                      ref.read(catalogSyncProvider.notifier).refresh(),
+                ),
               if (onLabels case final print?) ...[
                 const SizedBox(width: 12),
                 OutlinedButton.icon(

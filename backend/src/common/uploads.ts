@@ -11,3 +11,12 @@ export const IMAGE_UPLOAD_LIMITS = {
   files: 1,
   fields: 0,
 } as const;
+
+/// Fichier d'import Excel/CSV : 1 000 lignes tiennent largement en 2 Mo.
+export const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+
+export const IMPORT_UPLOAD_LIMITS = {
+  fileSize: IMPORT_MAX_BYTES,
+  files: 1,
+  fields: 0,
+} as const;

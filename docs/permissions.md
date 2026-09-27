@@ -221,6 +221,17 @@ fermer.
 Lecture **sensible** (`@RequireFreshAccess`) : un admin rétrogradé cesse de lire CA et marge à la seconde, sans
 attendre l'expiration de son jeton.
 
+## Bons PDF et import Excel/CSV (P1 n°21c, ajouté le 2026-09-27)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Bon de commande fournisseur (`GET /purchase-orders/:id/pdf`) | ✅ | ❌ | ✅ |
+| Bon de transfert (`GET /transfers/:id/pdf`, sans prix) | ✅ | ✅ | ✅ |
+| Importer des produits (`POST /imports/products`) | ✅ (`product.write` + `price.manage`) | ❌ | ❌ |
+| Importer des clients / fournisseurs | ✅ (`customer.write` / `supplier.write`) | ❌ | ❌ |
+
+Chaque bon a la garde du DÉTAIL qu'il imprime. L'import est de la **saisie en masse** : ADMIN seul, même là où
+le vendeur crée à l'unité (clients). Création seulement ; un doublon est refusé.
+
 ## Étiquettes code-barres (P1 n°21b, ajouté le 2026-09-27)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

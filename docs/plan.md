@@ -120,7 +120,7 @@ Traçabilité / système
 21. Rapports (ventes, stock, achats) + **exports Excel/CSV & PDF d'historique** _(2026-09-26, **tranche A** : les TROIS rapports de lecture livrés, prouvés et AUDITÉS le 2026-09-26 (ventes avec marge et tendance, stock valorisé au coût, achats commandé/reçu), ADMIN seul. **Tranche B livrée et auditée le 2026-09-26** : exports Excel/CSV/PDF des 3 rapports et des 8 listes d’historique, garde de la liste exportée)_
 21a. **Devis** (création, PDF, conversion en vente) _(2026-09-26 : code livré et prouvé — prix partagé avec la vente, aucun mouvement de stock, conversion atomique et idempotente ; audité)_
 21b. **Étiquettes code-barres** imprimables (nom, prix, code-barres — planche A4 / thermique) _(2026-09-27 : livré, prouvé et audité)_
-21c. **Génération de documents PDF** (bon de livraison/transfert, bon de commande fournisseur) + **import** Excel/CSV (produits, clients, fournisseurs, stock initial)
+21c. **Génération de documents PDF** (bon de livraison/transfert, bon de commande fournisseur) + **import** Excel/CSV (produits, clients, fournisseurs, stock initial)  _(2026-09-27 : code livré — bons PDF audités ; import à blanc puis tout ou rien, à auditer)_
 
 ### P2 — Avancé
 22. Commande fournisseur préparée automatiquement + message par modèle (email/WhatsApp)

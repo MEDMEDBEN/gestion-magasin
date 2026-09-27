@@ -233,46 +233,57 @@ export class ProductsService {
     dto: { priceTierId: string; priceHt: number },
     actor: ActorContext,
   ): Promise<ProductDto> {
-    return this.prisma.$transaction(async (tx) => {
-      await ProductsService.lockWrites(tx);
-      const product = await tx.product.findUnique({ where: { id } });
-      if (!product) throw ProductsService.notFound();
-      const tier = await tx.priceTier.findFirst({
-        where: { id: dto.priceTierId, isActive: true },
-      });
-      if (!tier) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'priceTierId : tarif introuvable ou inactif',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-      const before = await tx.productPrice.findUnique({
-        where: {
-          productId_priceTierId: { productId: id, priceTierId: tier.id },
-        },
-      });
-      await tx.productPrice.upsert({
-        where: {
-          productId_priceTierId: { productId: id, priceTierId: tier.id },
-        },
-        create: { productId: id, priceTierId: tier.id, priceHt: dto.priceHt },
-        update: { priceHt: dto.priceHt },
-      });
-      const updated = await tx.product.update({
-        where: { id },
-        data: { updatedAt: new Date() },
-        include: PRODUCT_INCLUDE,
-      });
-      await writeAudit(tx, actor, {
-        action: 'UPDATE',
-        entityType: 'ProductPrice',
-        entityId: id,
-        oldValue: { tier: tier.code, priceHt: before?.priceHt ?? null },
-        newValue: { tier: tier.code, priceHt: dto.priceHt },
-      });
-      return ProductsService.toDto(updated);
+    return this.prisma.$transaction((tx) =>
+      this.setPriceInTx(tx, id, dto, actor),
+    );
+  }
+
+  /// Cœur de la pose d'un prix, dans la transaction de l'appelant (route,
+  /// import).
+  async setPriceInTx(
+    tx: Db,
+    id: string,
+    dto: { priceTierId: string; priceHt: number },
+    actor: ActorContext,
+  ): Promise<ProductDto> {
+    await ProductsService.lockWrites(tx);
+    const product = await tx.product.findUnique({ where: { id } });
+    if (!product) throw ProductsService.notFound();
+    const tier = await tx.priceTier.findFirst({
+      where: { id: dto.priceTierId, isActive: true },
     });
+    if (!tier) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'priceTierId : tarif introuvable ou inactif',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const before = await tx.productPrice.findUnique({
+      where: {
+        productId_priceTierId: { productId: id, priceTierId: tier.id },
+      },
+    });
+    await tx.productPrice.upsert({
+      where: {
+        productId_priceTierId: { productId: id, priceTierId: tier.id },
+      },
+      create: { productId: id, priceTierId: tier.id, priceHt: dto.priceHt },
+      update: { priceHt: dto.priceHt },
+    });
+    const updated = await tx.product.update({
+      where: { id },
+      data: { updatedAt: new Date() },
+      include: PRODUCT_INCLUDE,
+    });
+    await writeAudit(tx, actor, {
+      action: 'UPDATE',
+      entityType: 'ProductPrice',
+      entityId: id,
+      oldValue: { tier: tier.code, priceHt: before?.priceHt ?? null },
+      newValue: { tier: tier.code, priceHt: dto.priceHt },
+    });
+    return ProductsService.toDto(updated);
   }
 
   async openImage(id: string) {
@@ -396,62 +407,67 @@ export class ProductsService {
     dto: CreateProductDto,
     actor: ActorContext,
   ): Promise<ProductDto> {
-    return this.prisma.$transaction(async (tx) => {
-      await ProductsService.lockWrites(tx);
-      await this.assertReferences(tx, dto);
-      await ProductsService.assertSkuFree(tx, dto.sku);
+    return this.prisma.$transaction((tx) => this.createInTx(tx, dto, actor));
+  }
 
-      let barcode: string;
-      if (dto.barcode) {
-        barcode = normalizeBarcode(dto.barcode);
-        await ProductsService.assertBarcodeFree(tx, barcode);
-      } else {
-        barcode = await ProductsService.nextInternalBarcode(tx);
-      }
+  /// Cœur de la création, dans la transaction de l'appelant : la route et
+  /// l'import (tout ou rien) appliquent les MÊMES règles.
+  async createInTx(
+    tx: Db,
+    dto: CreateProductDto,
+    actor: ActorContext,
+  ): Promise<ProductDto> {
+    await ProductsService.lockWrites(tx);
+    await this.assertReferences(tx, dto);
+    await ProductsService.assertSkuFree(tx, dto.sku);
 
-      const product = await tx.product.create({
-        include: PRODUCT_INCLUDE,
-        data: {
-          id: dto.id,
-          sku: dto.sku,
-          barcode,
-          name: dto.name,
-          description: dto.description ?? null,
-          brand: dto.brand ?? null,
-          unit: dto.unit,
-          categoryId: dto.categoryId ?? null,
-          taxRateId: dto.taxRateId ?? null,
-          mainSupplierId: dto.mainSupplierId ?? null,
-          storageLocationId: dto.storageLocationId ?? null,
-          minThreshold: ProductsService.threshold(
-            dto.minThreshold,
-            'minThreshold',
-          ),
-          safetyStock: ProductsService.threshold(
-            dto.safetyStock,
-            'safetyStock',
-          ),
-          allowBackorder: dto.allowBackorder ?? false,
-        },
-      });
-      const created = ProductsService.toDto(product);
-      const initialStock = await this.applyInitialStock(
-        tx,
-        created.id,
-        dto.initialStock ?? [],
-        actor,
-      );
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'Product',
-        entityId: created.id,
-        newValue: {
-          ...(ProductsService.auditSnapshot(created) as Prisma.InputJsonObject),
-          initialStock,
-        },
-      });
-      return created;
+    let barcode: string;
+    if (dto.barcode) {
+      barcode = normalizeBarcode(dto.barcode);
+      await ProductsService.assertBarcodeFree(tx, barcode);
+    } else {
+      barcode = await ProductsService.nextInternalBarcode(tx);
+    }
+
+    const product = await tx.product.create({
+      include: PRODUCT_INCLUDE,
+      data: {
+        id: dto.id,
+        sku: dto.sku,
+        barcode,
+        name: dto.name,
+        description: dto.description ?? null,
+        brand: dto.brand ?? null,
+        unit: dto.unit,
+        categoryId: dto.categoryId ?? null,
+        taxRateId: dto.taxRateId ?? null,
+        mainSupplierId: dto.mainSupplierId ?? null,
+        storageLocationId: dto.storageLocationId ?? null,
+        minThreshold: ProductsService.threshold(
+          dto.minThreshold,
+          'minThreshold',
+        ),
+        safetyStock: ProductsService.threshold(dto.safetyStock, 'safetyStock'),
+        allowBackorder: dto.allowBackorder ?? false,
+      },
     });
+    const created = ProductsService.toDto(product);
+    const initialStock = await this.applyInitialStock(
+      tx,
+      created.id,
+      dto.initialStock ?? [],
+      actor,
+    );
+    await writeAudit(tx, actor, {
+      action: 'CREATE',
+      entityType: 'Product',
+      entityId: created.id,
+      newValue: {
+        ...(ProductsService.auditSnapshot(created) as Prisma.InputJsonObject),
+        initialStock,
+      },
+    });
+    return created;
   }
 
   async update(

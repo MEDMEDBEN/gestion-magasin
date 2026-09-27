@@ -6,7 +6,7 @@ import { ErrorCode } from './error-codes';
 
 type Constructor<T> = new () => T;
 
-function flatten(errors: ValidationError[], parent = ''): string[] {
+export function flatten(errors: ValidationError[], parent = ''): string[] {
   return errors.flatMap((error) => {
     const path = parent ? `${parent}.${error.property}` : error.property;
     const own = Object.values(error.constraints ?? {}).map(

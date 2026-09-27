@@ -11,7 +11,9 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../core/file_import.dart';
 import '../../../ui/widgets/amount_dialog.dart';
+import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -34,6 +36,8 @@ class SalesRights {
       canInvoice = user.can('invoice.issue'),
       canManageCash = user.can('cash.session.manage'),
       canWriteCustomers = user.can('customer.write'),
+      // `POST /imports/customers` : ADMIN + customer.write (saisie en masse).
+      canImportCustomers = user.hasRole('ADMIN') && user.can('customer.write'),
       canTakePayments = user.can('customer.payment.create'),
       canReversePayments =
           user.hasRole('ADMIN') && user.can('customer.payment.create'),
@@ -43,6 +47,7 @@ class SalesRights {
   final bool canInvoice;
   final bool canManageCash;
   final bool canWriteCustomers;
+  final bool canImportCustomers;
   final bool canTakePayments;
 
   /// Contre-passation d'un règlement : ADMIN (miroir du guard serveur).
@@ -1254,6 +1259,11 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                   onChanged: (v) => setState(() => _query = v.trim()),
                 ),
               ),
+              if (widget.rights.canImportCustomers)
+                ImportButton(
+                  kind: ImportKind.customers,
+                  onImported: () => ref.invalidate(customerSearchProvider),
+                ),
               ExportButton(
                 targets: [
                   ExportTarget(

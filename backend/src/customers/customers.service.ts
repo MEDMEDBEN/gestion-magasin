@@ -129,33 +129,40 @@ export class CustomersService {
     actor: ActorContext,
   ): Promise<CustomerDto> {
     CustomersService.assertCommercialTermsAllowed(dto, user);
-    return this.prisma.$transaction(async (tx) => {
-      if (dto.priceTierId)
-        await CustomersService.assertTier(tx, dto.priceTierId);
-      const customer = await tx.customer.create({
-        data: {
-          id: dto.id,
-          name: dto.name,
-          phone: dto.phone ?? null,
-          email: dto.email ?? null,
-          address: dto.address ?? null,
-          notes: dto.notes ?? null,
-          priceTierId: dto.priceTierId ?? null,
-          creditLimit: dto.creditLimit ?? 0,
-        },
-      });
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'Customer',
-        entityId: customer.id,
-        newValue: {
-          name: customer.name,
-          priceTierId: customer.priceTierId,
-          creditLimit: customer.creditLimit,
-        },
-      });
-      return this.toDto(tx, customer);
+    return this.prisma.$transaction((tx) => this.createInTx(tx, dto, actor));
+  }
+
+  /// Cœur de la création, dans la transaction de l'appelant (route, import).
+  /// Les conditions commerciales sont vérifiées par l'APPELANT (droits).
+  async createInTx(
+    tx: Prisma.TransactionClient,
+    dto: CreateCustomerDto,
+    actor: ActorContext,
+  ): Promise<CustomerDto> {
+    if (dto.priceTierId) await CustomersService.assertTier(tx, dto.priceTierId);
+    const customer = await tx.customer.create({
+      data: {
+        id: dto.id,
+        name: dto.name,
+        phone: dto.phone ?? null,
+        email: dto.email ?? null,
+        address: dto.address ?? null,
+        notes: dto.notes ?? null,
+        priceTierId: dto.priceTierId ?? null,
+        creditLimit: dto.creditLimit ?? 0,
+      },
     });
+    await writeAudit(tx, actor, {
+      action: 'CREATE',
+      entityType: 'Customer',
+      entityId: customer.id,
+      newValue: {
+        name: customer.name,
+        priceTierId: customer.priceTierId,
+        creditLimit: customer.creditLimit,
+      },
+    });
+    return this.toDto(tx, customer);
   }
 
   async update(

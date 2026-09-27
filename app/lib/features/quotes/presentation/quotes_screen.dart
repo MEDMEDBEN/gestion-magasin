@@ -167,6 +167,11 @@ class QuotesScreen extends ConsumerWidget {
       // État changé entre-temps (autre poste, expiration) : on relit.
       if (error.statusCode == 409) ref.invalidate(quotesProvider);
       if (context.mounted) _snack(context, error.userMessage);
+    } on Exception {
+      // Imprimante ou boîte d'impression du poste : pas une erreur serveur.
+      if (context.mounted) {
+        _snack(context, 'Impression impossible sur ce poste.');
+      }
     }
   }
 

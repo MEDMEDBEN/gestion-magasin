@@ -21,7 +21,8 @@ import {
   QuoteStatus,
 } from './dto/quote.dto';
 import { CreateSaleDto, SaleDto } from './dto/sale.dto';
-import { renderA4Document } from './sale-document';
+import { renderA4Document, storeIdentity } from './sale-document';
+import { ConfigService } from '@nestjs/config';
 import { SalesService } from './sales.service';
 
 type Db = Prisma.TransactionClient;
@@ -65,6 +66,7 @@ export class QuotesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sales: SalesService,
+    private readonly config: ConfigService,
   ) {}
 
   async create(
@@ -393,7 +395,7 @@ export class QuotesService {
           ? `Valable jusqu’au ${quote.validUntil.split('-').reverse().join('/')}`
           : 'Sans date de validité',
       ],
-      store: this.sales.storeIdentity(false),
+      store: storeIdentity(this.config, false),
       customer,
       products: new Map(products.map((p) => [p.id, p])),
       lines: quote.lines,

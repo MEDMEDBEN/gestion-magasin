@@ -19,6 +19,7 @@ import { MessagingModule } from './messaging/messaging.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ProblemsModule } from './problems/problems.module';
 import { ReplenishmentModule } from './replenishment/replenishment.module';
+import { ImportsModule } from './imports/imports.module';
 import { ReportsModule } from './reports/reports.module';
 import { AuditModule } from './audit/audit.module';
 import { InventoryModule } from './inventory/inventory.module';
@@ -62,6 +63,7 @@ import { UsersModule } from './users/users.module';
     LocationsModule,
     ReplenishmentModule,
     ReportsModule,
+    ImportsModule,
     MessagingModule,
     NotificationsModule,
     ProblemsModule,

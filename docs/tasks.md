@@ -211,7 +211,7 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
-### 🚧 P1 #21c BONS PDF + IMPORT — PARTIE 1 (BONS) LIVRÉE, AUDITS EN COURS ; IMPORT À FAIRE (2026-09-27 · **MEDMEDBEN**)
+### 🚧 P1 #21c BONS PDF + IMPORT EXCEL/CSV — CODE LIVRÉ ; PARTIE 1 AUDITÉE, PARTIE 2 À AUDITER (2026-09-27 · **MEDMEDBEN**)
 Spec §8quinquies. **Aucune migration.**
 - **`GET /purchase-orders/:id/pdf`** — bon de commande à envoyer au fournisseur : le gabarit A4 de la facture et
   du devis (`renderA4Document`), « Fournisseur » à la place de « Client » (`partyLabel`), prix, TVA ventilée,
@@ -237,10 +237,53 @@ Spec §8quinquies. **Aucune migration.**
 - **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **125 unit** · **565 e2e** (39 suites, un passage) ;
   app `flutter analyze` propre · **+427 ~46**. PDF générés et relus à l'œil.
 
-**Prochaine étape précise** : (1) audits `reviewer` + `security-reviewer` de cette partie ; (2) **partie 2 —
-import Excel/CSV** (produits, clients, fournisseurs, stock initial) par `exceljs` dans `common/export/`
-(même bibliothèque, dans l'autre sens). Le stock initial passe par le journal (`StockLedgerService`), jamais par
-`Stock.quantity`.
+**Audits de la partie 1** — `reviewer` : **OK** (2 importants, 8 mineurs) ; `security-reviewer` : **CONFORME**
+(3 faibles). Appliqués :
+- 🟠 **Le bon attribuait la préparation au mauvais membre** : l'expédition RÉÉCRIT `preparedById` avec
+  l'expéditeur (vérifié). Sans migration, une seule ligne « Préparé / expédié ».
+- 🟠 **« Reçu 0,000 » sur un bon en route** : une étape non franchie laisse désormais sa case VIDE.
+- Construction du bon sortie en fonction pure (`transfers/transfer-document.ts`) : un test prouve qu'aucune
+  colonne n'est un montant (la relecture à l'œil ne suffisait pas). e2e : 200 imposé, 404 du transfert ajouté.
+  Enveloppe `SalesService.storeIdentity` supprimée. Une erreur d'IMPRIMANTE affiche un message au lieu de rien
+  (Achats, Transferts, Catalogue, Devis). Non fait, tracé : la note de la commande n'est pas imprimée sur le bon
+  (elle peut être interne).
+
+**Partie 2 — import Excel/CSV (2026-09-27)**
+- **`POST /imports/{products,customers,suppliers}?dryRun=`** (fichier `file`) et
+  **`GET /imports/{…}/template?format=xlsx|csv`**. **ADMIN seul** + le droit d'écriture de ce qu'on importe
+  (produits : `product.write` ET `price.manage`). Par défaut **à blanc**.
+- Lecture par `exceljs` (`common/export/import.ts`, la bibliothèque des exports dans l'autre sens) : Excel ou
+  CSV `;`/`,` ; la ligne d'en-tête est CHERCHÉE, donc un modèle téléchargé — ou un export — se réimporte tel
+  quel ; une formule n'est jamais évaluée (seul son résultat enregistré est lu). Montants « 1 725,50 » →
+  centimes par arithmétique sur le TEXTE (règle 4).
+- **À blanc** : toutes les lignes vérifiées, TOUTES les erreurs rendues avec leur ligne, rien d'écrit.
+  **Appliqué** : même vérification puis création **d'un bloc** (règle 3) ; une ligne refusée pendant l'écriture
+  annule tout le fichier et le message nomme la ligne.
+- **Aucune règle réécrite** : chaque ligne passe par le DTO de création ET par le cœur `…InTx` extrait des
+  routes unitaires (`ProductsService.createInTx`/`setPriceInTx`, `CustomersService.createInTx`,
+  `SuppliersService.createInTx`) — mêmes contrôles, même audit, code-barres interne, **stock initial par le
+  journal** (`AJUSTEMENT_INVENTAIRE`).
+- **Création seulement, jamais de mise à jour.** Doublons refusés (référence et code-barres des produits, nom des
+  clients et fournisseurs), dans le fichier comme en base, et **recontrôlés sous un verrou** au moment d'écrire
+  : un fichier renvoyé ne double rien — c'est l'idempotence de la reprise de dette fournisseur (de l'argent).
+- Bornes : 2 Mo, 1 000 lignes, 10 envois/min, transaction de 2 min au plus.
+- **App** : bouton « Importer » (modèle Excel/CSV, puis fichier) dans Catalogue, Clients et Fournisseurs, pour
+  l'admin ; compte rendu ligne par ligne ; « Importer N … » n'est proposé que pour un fichier sans erreur.
+  Nouveau paquet **`file_selector`** (officiel flutter.dev ; ses implémentations Windows/Linux/macOS étaient
+  déjà présentes via `image_picker`) — seul sélecteur de fichier de l'app.
+- **Contre-épreuves** : à blanc qui écrit ; une transaction par ligne (plus de tout ou rien) ; doublons non
+  contrôlés ; vendeur autorisé ; bouton sans le droit — les cinq échouent.
+- **Défaut trouvé par mon test d'écran** : la roue de chargement tournait derrière le compte rendu.
+- **Non fait, tracé** : pas de mise à jour d'une fiche existante par import (création seulement) ; pas de
+  stock initial pour un produit DÉJÀ au catalogue (ce serait un ajustement, geste d'inventaire) ; pas de colonne
+  « code » client/fournisseur (absente des DTO de création).
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **134 unit** · **575 e2e** (40 suites, un passage) ·
+  `npm audit` 0 ; app `flutter analyze` propre · **+430 ~46**.
+
+**Prochaine étape précise** : (1) passer `reviewer` + `security-reviewer` sur la **partie 2** (`src/imports/**`,
+`common/export/import.ts`, les `…InTx` extraits, `test/imports.e2e-spec.ts`, `app/lib/core/file_import.dart`,
+`ui/widgets/import_button.dart`) et sur les corrections de la partie 1 ; appliquer. (2) P1 est alors
+entièrement codée : relecture humaine des écrans (MEDMEDBEN), puis **P2 n°22** (`docs/plan.md`).
 
 ### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8ter. **Aucune migration.**
@@ -2302,7 +2345,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
 | Étiquettes code-barres (P1 #21b) | 🟡 **Code livré et audité** (2026-09-27) | 🟢 PDF A4 / rouleau, prix du tarif, codes lisibles | 🟢 Bouton du Catalogue | 🟢 9 e2e · 5 unit · 3 widget | 🟢 corrigé (1 moyen, 2 importants) |
-| Bons PDF + import (P1 #21c) | 🟠 **Bons PDF livrés** (2026-09-27), import à faire | 🟢 Bon de commande, bon de transfert | 🟢 Imprimer depuis Achats / Transferts | 🟢 3 e2e · 2 widget | 🔴 audits à passer |
+| Bons PDF + import (P1 #21c) | 🟡 **Code livré** (2026-09-27) ; bons audités, import à auditer | 🟢 Bons PDF ; import à blanc puis tout ou rien | 🟢 Imprimer ; Importer (admin) | 🟢 13 e2e · 9 unit · 7 widget | 🟠 partie 2 à auditer |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

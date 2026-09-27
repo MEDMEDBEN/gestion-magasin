@@ -232,6 +232,11 @@ class PurchasesScreen extends ConsumerWidget {
         await ref.read(printPdfProvider)(pdf, '${order.number}.pdf');
       } on ApiException catch (error) {
         if (context.mounted) _snack(context, error.userMessage);
+      } on Exception {
+        // Imprimante ou boîte d'impression du poste : pas une erreur serveur.
+        if (context.mounted) {
+          _snack(context, 'Impression impossible sur ce poste.');
+        }
       }
       return;
     }

@@ -179,15 +179,19 @@ describe('Bons PDF (e2e)', () => {
   describe('bon de transfert', () => {
     it('les trois rôles du flux : un vrai PDF', async () => {
       for (const who of ['admin', 'vendeur', 'magasinier']) {
-        const detail = await get(tokens[who], `/api/transfers/${transferId}`);
+        await get(tokens[who], `/api/transfers/${transferId}`).expect(200);
         const res = await get(
           tokens[who],
           `/api/transfers/${transferId}/pdf`,
-        ).expect(detail.status);
+        ).expect(200);
         expect((res.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
         keep('bon-de-transfert.pdf', res.body as Buffer);
       }
       await get(null, `/api/transfers/${transferId}/pdf`).expect(401);
+      await get(
+        tokens.admin,
+        '/api/transfers/00000000-0000-4000-8000-000000000000/pdf',
+      ).expect(404);
     });
   });
 });
