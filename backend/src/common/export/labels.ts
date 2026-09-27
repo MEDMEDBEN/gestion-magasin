@@ -36,6 +36,21 @@ const LABELS: Record<string, string> = {
   TOURNANT: 'Tournant',
   CONFORME: 'Conforme',
   ECART: 'Écart',
+  // Transferts
+  DEMANDEE: 'Demandée',
+  ACCEPTEE: 'Acceptée',
+  EN_PREPARATION: 'En préparation',
+  PREPAREE: 'Préparée',
+  EN_TRANSIT: 'En transit',
+  REFUSEE: 'Refusée',
+  // (RECUE et ANNULEE : déjà définis plus haut, même libellé.)
+  // Unités
+  PIECE: 'Pièce',
+  METRE: 'Mètre',
+  ROULEAU: 'Rouleau',
+  BOITE: 'Boîte',
+  PAQUET: 'Paquet',
+  KILOGRAMME: 'Kilogramme',
   // Emplacements
   MAGASIN: 'Magasin',
   DEPOT: 'Dépôt',

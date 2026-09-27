@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -65,6 +67,17 @@ class PurchasesApi {
       format,
       query: {'from': window.from, 'to': window.to},
     );
+  }
+
+  /// PDF rendu serveur, pour l'impression / le partage (garde du détail).
+  Future<Uint8List> document(String id) async {
+    final response = await guardBytes(
+      () => _dio.get<List<int>>(
+        '/purchase-orders/$id/pdf',
+        options: Options(responseType: ResponseType.bytes),
+      ),
+    );
+    return Uint8List.fromList(response.data!);
   }
 }
 

@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,7 +17,9 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiProduces,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -91,6 +94,25 @@ export class TransfersController {
   @ApiOkResponse({ type: TransferDto })
   findOne(@Param('id', CanonicalUuidPipe) id: string): Promise<TransferDto> {
     return this.transfers.findOne(id);
+  }
+
+  /// Bon de transfert PDF, qui voyage avec la marchandise. MÊMES gardes que le
+  /// détail (les trois rôles du flux) ; aucun prix n'y figure.
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER)
+  // Rendu synchrone : bridé comme les autres documents.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get(':id/pdf')
+  @ApiOperation({ summary: 'Bon de transfert / de livraison (PDF, sans prix)' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async document(
+    @Param('id', CanonicalUuidPipe) id: string,
+  ): Promise<StreamableFile> {
+    const { filename, pdf } = await this.transfers.renderDocument(id);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

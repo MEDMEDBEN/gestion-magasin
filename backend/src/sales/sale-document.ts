@@ -1,3 +1,7 @@
+import { HttpStatus } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { BusinessException } from '../common/business.exception';
+import { ErrorCode } from '../common/error-codes';
 import {
   formatDA,
   formatDateTime,
@@ -44,6 +48,33 @@ function designation(
     name: p?.name ?? productId,
     sku: p?.sku ?? '',
     unit: UNIT_LABEL[p?.unit ?? ''] ?? '',
+  };
+}
+
+/// Identité du magasin imprimée en tête des documents (variables STORE_*).
+/// `requireLegal` : une facture exige ses mentions légales ; un ticket, un devis
+/// ou un bon de commande reste imprimable sans.
+export function storeIdentity(
+  config: ConfigService,
+  requireLegal: boolean,
+): StoreIdentity {
+  const env = (key: string) => config.get<string>(key)?.trim() || undefined;
+  if (requireLegal && !(env('STORE_NIF') && env('STORE_RC'))) {
+    throw new BusinessException(
+      ErrorCode.STORE_IDENTITY_MISSING,
+      'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+  const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
+    const value = env(`STORE_${key}`);
+    return value ? [`${key} : ${value}`] : [];
+  });
+  return {
+    name: env('STORE_NAME') ?? 'Magasin',
+    address: env('STORE_ADDRESS'),
+    phone: env('STORE_PHONE'),
+    legal,
   };
 }
 
@@ -197,6 +228,8 @@ export interface A4Document {
   /// Lignes sous le titre : numéro, dates.
   info: string[];
   store: StoreIdentity;
+  /// En tête du bloc de la partie : « Client » (défaut), « Fournisseur ».
+  partyLabel?: string;
   customer: SaleDocumentData['customer'];
   products: SaleDocumentData['products'];
   lines: {
@@ -251,15 +284,16 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
       }
       doc.y = Math.max(leftBottom, doc.y) + 20;
 
-      // Client
-      doc.font('Helvetica-Bold').fontSize(10).text('Client', left, doc.y);
+      // Client (facture, devis) ou fournisseur (bon de commande)
+      const party = input.partyLabel ?? 'Client';
+      doc.font('Helvetica-Bold').fontSize(10).text(party, left, doc.y);
       doc.font('Helvetica').fontSize(9);
       if (input.customer) {
         doc.text(input.customer.name);
         if (input.customer.address) doc.text(input.customer.address);
         if (input.customer.phone) doc.text(input.customer.phone);
       } else {
-        doc.text('Client comptoir');
+        doc.text(`${party} comptoir`);
       }
       doc.moveDown(1.5);
 

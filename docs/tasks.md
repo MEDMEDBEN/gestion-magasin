@@ -211,6 +211,37 @@ Les conteneurs de l'autre projet de la machine tournent sur d'autres ports (5433
 image Docker reconstruite, démarrée sur une **base vierge** avec un compte MinIO **restreint**, premier admin
 connecté ; app `flutter analyze` propre · **+210 ~31** · **31 captures** produites.
 
+### 🚧 P1 #21c BONS PDF + IMPORT — PARTIE 1 (BONS) LIVRÉE, AUDITS EN COURS ; IMPORT À FAIRE (2026-09-27 · **MEDMEDBEN**)
+Spec §8quinquies. **Aucune migration.**
+- **`GET /purchase-orders/:id/pdf`** — bon de commande à envoyer au fournisseur : le gabarit A4 de la facture et
+  du devis (`renderA4Document`), « Fournisseur » à la place de « Client » (`partyLabel`), prix, TVA ventilée,
+  tampon pour une commande annulée, brouillon ou clôturée. Garde = celle du détail (ADMIN|MAGASINIER +
+  `purchase.create`) ; le vendeur n'a aucun accès aux achats, bon compris (e2e + contre-épreuve).
+- **`GET /transfers/:id/pdf`** — bon de transfert / livraison qui voyage avec la marchandise : **aucun prix**,
+  quantités demandée / préparée / expédiée / reçue, étapes avec qui et quand, colonne de signature. Réutilise le
+  rendu PDF des exports (pas un troisième gabarit). Garde = celle du détail (les trois rôles du flux).
+- `storeIdentity()` devenue une fonction (plus une méthode de `SalesService`) : les Achats l'utilisent sans
+  dépendre du module Ventes.
+- **Défaut vu en relisant le PDF** : la flèche « → » s'imprimait « !' » (absente des polices standard du PDF,
+  jeu WinAnsi). Remplacée par « de … vers … ». Même relecture : **mes libellés de statuts de transfert étaient
+  devinés** (`PRETE`, `EXPEDIEE`…) au lieu d'être lus dans le schéma — alignés sur l'enum réel.
+- **App** : « Imprimer le bon de commande » (Achats) et « Imprimer le bon de transfert » (Transferts), par la même
+  boîte d'impression / partage que le ticket.
+- ⚠️ **Limite PRÉEXISTANTE découverte, à trancher par MEDMEDBEN** : les polices standard du PDF n'ont **pas
+  l'alphabet arabe**. Un nom de client, de produit ou de fournisseur écrit en arabe sort illisible sur TOUS les
+  documents (ticket, facture, devis, bons, étiquettes, exports PDF). Corriger = embarquer une police TTF
+  (ex. Noto Sans Arabic) dans `common/pdf/` et gérer l'écriture de droite à gauche — un chantier à part.
+  Les exports Excel/CSV, eux, gardent l'arabe intact.
+- ponytail : la colonne « Signature » du bon de transfert a la hauteur d'une ligne de tableau — suffisant pour un
+  paraphe, pas pour une signature complète ; à agrandir si le dépôt le demande.
+- **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **125 unit** · **565 e2e** (39 suites, un passage) ;
+  app `flutter analyze` propre · **+427 ~46**. PDF générés et relus à l'œil.
+
+**Prochaine étape précise** : (1) audits `reviewer` + `security-reviewer` de cette partie ; (2) **partie 2 —
+import Excel/CSV** (produits, clients, fournisseurs, stock initial) par `exceljs` dans `common/export/`
+(même bibliothèque, dans l'autre sens). Le stock initial passe par le journal (`StockLedgerService`), jamais par
+`Stock.quantity`.
+
 ### 🚧 P1 #21b ÉTIQUETTES CODE-BARRES — LIVRÉ ET AUDITÉ (2026-09-27 · **MEDMEDBEN**)
 Spec §8ter. **Aucune migration.**
 - **`POST /products/labels`** → PDF : nom, prix TTC, référence, code-barres. **Planche A4** de 24 (70 × 37 mm)
@@ -2271,7 +2302,7 @@ dont le contrat backend est déjà figé (routes 501 dans `api-contract.module.t
 | Exports Excel/CSV + PDF (P1 #21 tranche B) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 3 rapports + 8 listes, garde de la liste, relue en base | 🟢 Un bouton Exporter par écran | 🟢 24 e2e · 23 unit · 5 widget | 🟢 corrigé (1 bloquant, 3 moyens) |
 | Devis (P1 #21a) | 🟡 **Code livré et audité** (2026-09-26) | 🟢 Prix partagé avec la vente, conversion atomique et concurrente | 🟢 Panier → devis, écran Devis | 🟢 22 e2e · 7 widget | 🟢 corrigé (2 bloquants, 1 élevé) |
 | Étiquettes code-barres (P1 #21b) | 🟡 **Code livré et audité** (2026-09-27) | 🟢 PDF A4 / rouleau, prix du tarif, codes lisibles | 🟢 Bouton du Catalogue | 🟢 9 e2e · 5 unit · 3 widget | 🟢 corrigé (1 moyen, 2 importants) |
-| Bons PDF, import (P1 #21c) | 🔴 Non commencé | — | — | — | — |
+| Bons PDF + import (P1 #21c) | 🟠 **Bons PDF livrés** (2026-09-27), import à faire | 🟢 Bon de commande, bon de transfert | 🟢 Imprimer depuis Achats / Transferts | 🟢 3 e2e · 2 widget | 🔴 audits à passer |
 
 Légende : 🔴 non commencé · 🟠 code écrit, preuve manquante · 🟡 code livré et prouvé par les tests, relecture
 humaine en attente · 🟢 terminé et validé par MEDMEDBEN

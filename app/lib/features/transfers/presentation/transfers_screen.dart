@@ -12,7 +12,9 @@ import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../sales/application/sales_controller.dart' show printPdfProvider;
 import '../application/transfers_controller.dart';
+import '../data/transfers_api.dart';
 import '../data/transfers_models.dart';
 import 'transfer_quantities_form.dart';
 import 'transfer_request_form.dart';
@@ -227,6 +229,10 @@ class TransfersScreen extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop('lines'),
             child: const Text('Voir les lignes'),
           ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('print'),
+            child: const Text('Imprimer le bon de transfert'),
+          ),
         ],
       ),
     );
@@ -246,6 +252,15 @@ class TransfersScreen extends ConsumerWidget {
     }
     if (action == 'lines') {
       await _showLines(context, transfer);
+      return;
+    }
+    if (action == 'print') {
+      try {
+        final pdf = await ref.read(transfersApiProvider).document(transfer.id);
+        await ref.read(printPdfProvider)(pdf, '${transfer.number}.pdf');
+      } on ApiException catch (error) {
+        if (context.mounted) _snack(context, error.userMessage);
+      }
       return;
     }
     if (action == 'ship') {

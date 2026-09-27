@@ -14,6 +14,7 @@ import '../../suppliers/application/suppliers_controller.dart';
 import '../../receptions/application/receptions_controller.dart';
 import '../../receptions/data/receptions_api.dart';
 import '../../receptions/presentation/reception_form.dart';
+import '../../sales/application/sales_controller.dart' show printPdfProvider;
 import '../application/purchases_controller.dart';
 import '../data/purchases_api.dart';
 import '../data/purchases_models.dart';
@@ -217,10 +218,23 @@ class PurchasesScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop('view'),
               child: const Text('Voir les lignes'),
             ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('print'),
+            child: const Text('Imprimer le bon de commande'),
+          ),
         ],
       ),
     );
     if (action == null || !context.mounted) return;
+    if (action == 'print') {
+      try {
+        final pdf = await ref.read(purchasesApiProvider).document(order.id);
+        await ref.read(printPdfProvider)(pdf, '${order.number}.pdf');
+      } on ApiException catch (error) {
+        if (context.mounted) _snack(context, error.userMessage);
+      }
+      return;
+    }
     if (action == 'receive') {
       await openFormPanel<void>(context, ReceptionForm(order: order));
       return;

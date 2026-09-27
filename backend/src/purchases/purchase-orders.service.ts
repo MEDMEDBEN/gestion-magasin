@@ -5,6 +5,9 @@ import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
+import { formatDateTime } from '../common/pdf/pdf';
+import { renderA4Document, storeIdentity } from '../sales/sale-document';
+import { ConfigService } from '@nestjs/config';
 import { roundMoney, taxAmount } from '../common/money';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import {
@@ -60,7 +63,10 @@ const EDITABLE = ['BROUILLON', 'COMMANDEE'];
 
 @Injectable()
 export class PurchaseOrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async create(
     dto: CreatePurchaseOrderDto,
@@ -228,6 +234,65 @@ export class PurchaseOrdersService {
       data: rows.map(PurchaseOrdersService.toDto),
       meta: { page: query.page, limit: query.limit, total },
     };
+  }
+
+  /// Bon de commande à envoyer au fournisseur (spec §8quinquies) : le gabarit
+  /// A4 de la facture et du devis, le fournisseur à la place du client. Même
+  /// droit de lecture que le détail de la commande.
+  async renderDocument(id: string): Promise<{ filename: string; pdf: Buffer }> {
+    const order = await this.findOne(id);
+    const [products, supplier, author] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: order.lines.map((l) => l.productId) } },
+        select: { id: true, name: true, sku: true, unit: true },
+      }),
+      this.prisma.supplier.findUnique({
+        where: { id: order.supplierId },
+        select: { name: true, address: true, phone: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: order.createdById },
+        select: { fullName: true },
+      }),
+    ]);
+    const day = (date: Date | null) =>
+      date
+        ? date.toISOString().slice(0, 10).split('-').reverse().join('/')
+        : null;
+    const stamp: Record<string, string> = {
+      ANNULEE: 'COMMANDE ANNULÉE',
+      BROUILLON: 'BROUILLON — NON ENVOYÉ',
+      CLOTUREE: 'COMMANDE CLÔTURÉE',
+    };
+    const pdf = await renderA4Document({
+      title: 'BON DE COMMANDE',
+      pdfTitle: `Bon de commande ${order.number}`,
+      info: [
+        `N° ${order.number}`,
+        `Date : ${formatDateTime(order.orderDate)}`,
+        ...(order.expectedDate
+          ? [`Livraison souhaitée : ${day(order.expectedDate)}`]
+          : []),
+      ],
+      store: storeIdentity(this.config, false),
+      partyLabel: 'Fournisseur',
+      customer: supplier,
+      products: new Map(products.map((p) => [p.id, p])),
+      lines: order.lines.map((line) => ({
+        productId: line.productId,
+        quantity: line.orderedQuantity,
+        unitPriceHt: line.unitPriceHt,
+        taxRate: line.taxRate,
+        lineTotalHt: line.lineTotalHt,
+        lineTaxAmount: line.lineTotalTtc - line.lineTotalHt,
+      })),
+      totalHt: order.totalHt,
+      totalTtc: order.totalTtc,
+      after: [],
+      stamp: stamp[order.status],
+      footer: `Établi par : ${author?.fullName ?? ''}`,
+    });
+    return { filename: `${order.number}.pdf`, pdf };
   }
 
   async findOne(id: string): Promise<PurchaseOrderDto> {

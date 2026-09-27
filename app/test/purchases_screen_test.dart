@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/purchases/presentation/purchases_screen.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
+import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
@@ -67,6 +70,14 @@ class _FakePurchasesApi extends PurchasesApi {
     confirmed = (id, expectedUpdatedAt);
     return _order(PurchaseStatus.confirmed);
   }
+
+  final documents = <String>[];
+
+  @override
+  Future<Uint8List> document(String id) async {
+    documents.add(id);
+    return Uint8List(4);
+  }
 }
 
 class _FakeSuppliersApi extends SuppliersApi {
@@ -114,6 +125,9 @@ Future<_FakePurchasesApi> _pump(
     ProviderScope(
       overrides: [
         purchasesApiProvider.overrideWithValue(api),
+        printPdfProvider.overrideWithValue((bytes, name) async {
+          printedPdfs.add(name);
+        }),
         currentUserIdProvider.overrideWithValue('u'),
         documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
@@ -133,7 +147,11 @@ Future<_FakePurchasesApi> _pump(
   return api;
 }
 
+final printedPdfs = <String>[];
+
 void main() {
+  setUp(printedPdfs.clear);
+
   testWidgets(
     'nouvelle commande : fournisseur, produit, quantité et prix partent au serveur',
     (tester) async {
@@ -200,6 +218,20 @@ void main() {
 
     // La version AFFICHÉE part avec la confirmation.
     expect(api.confirmed, ('o1', DateTime.utc(2026, 9, 16, 10, 30)));
+  });
+
+  testWidgets('bon de commande : imprimé depuis la commande', (tester) async {
+    final api = await _pump(
+      tester,
+      _admin(),
+      orders: [_order(PurchaseStatus.ordered)],
+    );
+    await tester.tap(find.textContaining('BC-2026-00007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Imprimer le bon de commande'));
+    await tester.pumpAndSettle();
+    expect(api.documents, ['o1']);
+    expect(printedPdfs, ['BC-2026-00007.pdf']);
   });
 
   testWidgets('MAGASINIER : ni confirmation ni annulation', (tester) async {

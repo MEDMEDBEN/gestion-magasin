@@ -32,7 +32,11 @@ import {
   SaleTypeDto,
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
-import { renderSaleDocument, StoreIdentity } from './sale-document';
+import {
+  renderSaleDocument,
+  storeIdentity,
+  StoreIdentity,
+} from './sale-document';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
@@ -770,29 +774,9 @@ export class SalesService {
     return { lines, totalHt, totalTax, totalTtc };
   }
 
-  /// Identité du magasin imprimée en tête des documents (variables STORE_*).
-  /// `requireLegal` : une facture exige ses mentions légales ; un ticket ou un
-  /// devis reste imprimable sans.
+  /// Identité du magasin (voir `storeIdentity`, `sale-document.ts`).
   storeIdentity(requireLegal: boolean): StoreIdentity {
-    const env = (key: string) =>
-      this.config.get<string>(key)?.trim() || undefined;
-    if (requireLegal && !(env('STORE_NIF') && env('STORE_RC'))) {
-      throw new BusinessException(
-        ErrorCode.STORE_IDENTITY_MISSING,
-        'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
-      const value = env(`STORE_${key}`);
-      return value ? [`${key} : ${value}`] : [];
-    });
-    return {
-      name: env('STORE_NAME') ?? 'Magasin',
-      address: env('STORE_ADDRESS'),
-      phone: env('STORE_PHONE'),
-      legal,
-    };
+    return storeIdentity(this.config, requireLegal);
   }
 
   private static async priceLine(

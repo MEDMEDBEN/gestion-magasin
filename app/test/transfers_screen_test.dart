@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'dart:convert';
 
 import 'package:decimal/decimal.dart';
@@ -14,6 +16,7 @@ import 'package:gestion_magasin/features/catalog/application/catalog_controller.
 import 'package:gestion_magasin/features/transfers/data/transfers_api.dart';
 import 'package:gestion_magasin/features/transfers/data/transfers_models.dart';
 import 'package:gestion_magasin/features/transfers/presentation/transfers_screen.dart';
+import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
@@ -115,6 +118,14 @@ class _FakeTransfersApi extends TransfersApi {
       status == 'REFUSEE' ? TransferStatus.refused : TransferStatus.cancelled,
     );
   }
+
+  final documents = <String>[];
+
+  @override
+  Future<Uint8List> document(String id) async {
+    documents.add(id);
+    return Uint8List(4);
+  }
 }
 
 AuthUser _vendeur({String id = 'v'}) => authUser(
@@ -146,6 +157,9 @@ Future<_FakeTransfersApi> _pump(
     ProviderScope(
       overrides: [
         transfersApiProvider.overrideWithValue(api),
+        printPdfProvider.overrideWithValue((bytes, name) async {
+          printedPdfs.add(name);
+        }),
         // Une écriture (en ligne ou en file) appartient au compte connecté.
         currentUserIdProvider.overrideWithValue('u'),
         documentCacheProvider.overrideWithValue(cache ?? MemoryDocumentCache()),
@@ -166,7 +180,25 @@ Future<_FakeTransfersApi> _pump(
   return api;
 }
 
+final printedPdfs = <String>[];
+
 void main() {
+  setUp(printedPdfs.clear);
+
+  testWidgets('bon de transfert : imprimé depuis le transfert', (tester) async {
+    final api = await _pump(
+      tester,
+      _magasinier(),
+      transfers: [_transfer(TransferStatus.inTransit)],
+    );
+    await tester.tap(find.textContaining('TRF-2026-00004'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Imprimer le bon de transfert'));
+    await tester.pumpAndSettle();
+    expect(api.documents, ['t1']);
+    expect(printedPdfs, ['TRF-2026-00004.pdf']);
+  });
+
   testWidgets('le vendeur demande : produit, quantité et priorité partent', (
     tester,
   ) async {

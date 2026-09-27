@@ -118,6 +118,25 @@ export class PurchaseOrdersController {
     return this.orders.findOne(id);
   }
 
+  /// Bon de commande PDF, à envoyer au fournisseur. MÊMES gardes que le détail.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
+  // Rendu synchrone : bridé comme les autres documents.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get(':id/pdf')
+  @ApiOperation({ summary: 'Bon de commande fournisseur (PDF A4)' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async document(
+    @Param('id', CanonicalUuidPipe) id: string,
+  ): Promise<StreamableFile> {
+    const { filename, pdf } = await this.orders.renderDocument(id);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
+  }
+
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
   @Patch(':id')
