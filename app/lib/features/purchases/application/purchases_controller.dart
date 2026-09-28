@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/quantity.dart';
 import '../../../core/providers.dart';
 import '../data/purchases_api.dart';
@@ -39,7 +40,14 @@ class PurchasesActions {
     required String supplierId,
     required List<PurchaseLineDraft> lines,
     String? note,
+    DateTime? expectedDate,
+    DateTime? dueDate,
   }) async {
+    // Jours locaux AAAA-MM-JJ ; `null` efface la date d'une commande existante.
+    final dates = {
+      'expectedDate': expectedDate == null ? null : isoDay(expectedDate),
+      'dueDate': dueDate == null ? null : isoDay(dueDate),
+    };
     final payload = [
       for (final l in lines)
         {
@@ -54,8 +62,10 @@ class PurchasesActions {
             'supplierId': supplierId,
             'lines': payload,
             'note': ?note,
+            for (final e in dates.entries)
+              if (e.value != null) e.key: e.value,
           })
-        : await _api.update(id, {'lines': payload, 'note': note});
+        : await _api.update(id, {'lines': payload, 'note': note, ...dates});
     _ref.invalidate(purchaseOrdersProvider);
     return order;
   }

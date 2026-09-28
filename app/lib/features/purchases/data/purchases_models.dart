@@ -61,6 +61,9 @@ abstract class PurchaseOrder with _$PurchaseOrder {
     required PurchaseStatus status,
     required DateTime orderDate,
     DateTime? expectedDate,
+
+    /// Échéance de paiement convenue avec le fournisseur.
+    DateTime? dueDate,
     DateTime? confirmedAt,
     DateTime? closedAt,
     String? closedReason,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
@@ -141,8 +142,16 @@ class PurchasesScreen extends ConsumerWidget {
                               '${o.number} · ${suppliers[o.supplierId] ?? 'Fournisseur'}',
                             ),
                             subtitle: Text(
-                              '${o.lines.length} ligne(s) · '
-                              '${formatDA(o.totalTtc)} TTC',
+                              [
+                                '${o.lines.length} ligne(s)',
+                                '${formatDA(o.totalTtc)} TTC',
+                                if (o.expectedDate != null)
+                                  _late(o)
+                                      ? 'EN RETARD (prévue le ${formatDate(o.expectedDate!.toLocal())})'
+                                      : 'livraison ${formatDate(o.expectedDate!.toLocal())}',
+                                if (o.dueDate != null)
+                                  'échéance ${formatDate(o.dueDate!.toLocal())}',
+                              ].join(' · '),
                             ),
                             trailing: AmpereBadge(
                               label: o.status.label,
@@ -436,4 +445,17 @@ class _CloseRemainderDialogState extends State<_CloseRemainderDialog> {
       ],
     );
   }
+}
+
+/// Livraison attendue et dépassée, pour une commande engagée non soldée.
+bool _late(PurchaseOrder o) {
+  final expected = o.expectedDate;
+  if (expected == null) return false;
+  final engaged =
+      o.status == PurchaseStatus.confirmed ||
+      o.status == PurchaseStatus.partiallyReceived;
+  return engaged &&
+      DateUtils.dateOnly(
+        expected.toLocal(),
+      ).isBefore(DateUtils.dateOnly(DateTime.now()));
 }

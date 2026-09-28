@@ -372,6 +372,7 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
   late final _contact = TextEditingController(
     text: widget.existing?.contactName ?? '',
   );
+  late final _email = TextEditingController(text: widget.existing?.email ?? '');
   late final _address = TextEditingController(
     text: widget.existing?.address ?? '',
   );
@@ -383,7 +384,7 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
 
   @override
   void dispose() {
-    for (final c in [_name, _phone, _contact, _address, _opening]) {
+    for (final c in [_name, _phone, _contact, _email, _address, _opening]) {
       c.dispose();
     }
     super.dispose();
@@ -405,6 +406,7 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
             contactName: _contact.text.trim().isEmpty
                 ? null
                 : _contact.text.trim(),
+            email: _email.text.trim().isEmpty ? null : _email.text.trim(),
             address: _address.text.trim().isEmpty ? null : _address.text.trim(),
             openingBalance: parseDA(_opening.text) ?? 0,
           );
@@ -463,6 +465,18 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
         ),
         field('Téléphone', _phone, keyboard: TextInputType.phone),
         field('Contact', _contact),
+        field(
+          'E-mail',
+          _email,
+          keyboard: TextInputType.emailAddress,
+          validator: (v) {
+            final raw = (v ?? '').trim();
+            return raw.isEmpty ||
+                    RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(raw)
+                ? null
+                : 'E-mail invalide';
+          },
+        ),
         field('Adresse', _address),
         field(
           'Dette déjà due (reprise)',

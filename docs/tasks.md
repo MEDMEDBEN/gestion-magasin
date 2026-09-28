@@ -316,9 +316,16 @@ refuse de toute façon : `DISCOUNT_NOT_ALLOWED`, déjà prouvé en e2e).
 - **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **146 unit** · **593 e2e** (+ `settings.e2e` : 5,
   dont facture refusée sans RC puis acceptée une fois le RC saisi) ; app `flutter analyze` propre · **+448 ~46**.
 
-**Prochaine étape précise** : audits de 21h (lancés), appliquer ; puis **21i** — commande fournisseur : date de
-livraison prévue et échéance de paiement (colonnes `expectedDate` / `dueDate` DÉJÀ au schéma) dans le formulaire
-et la liste ; e-mail du fournisseur dans sa fiche.
+**21i — Commande fournisseur : dates ; e-mail fournisseur (livré, app seule — le serveur les acceptait déjà)** :
+« Livraison prévue » et « Échéance de paiement » (facultatives, jours locaux AAAA-MM-JJ) dans le formulaire de
+commande, envoyées à la création, effacées par `null` en modification ; liste des achats : date de livraison,
+**« EN RETARD »** pour une commande engagée (confirmée / partiellement reçue) dont la date est passée, échéance.
+Fiche fournisseur : champ e-mail. Test : dates au format jour, effacement par `null`. **Preuve** : app `flutter
+analyze` propre · **+449 ~46** (backend inchangé). Audit : groupé avec 21j (petit périmètre, app seule).
+
+**Prochaine étape précise** : appliquer les audits de 21h (sécurité CONFORME reçu : moyen = identité figée sur une
+facture émise ; relecture en cours) ; puis **21j** notifications planifiées (retard fournisseur, échéances,
+dettes, inventaire, tâches).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

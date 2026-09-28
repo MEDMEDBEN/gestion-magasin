@@ -9,6 +9,7 @@ import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/purchases/application/purchases_controller.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
 import 'package:gestion_magasin/features/purchases/presentation/purchases_screen.dart';
@@ -63,6 +64,14 @@ class _FakePurchasesApi extends PurchasesApi {
   @override
   Future<PurchaseOrder> create(Map<String, Object?> fields) async {
     created = fields;
+    return _order(PurchaseStatus.draft);
+  }
+
+  Map<String, Object?>? updated;
+
+  @override
+  Future<PurchaseOrder> update(String id, Map<String, Object?> fields) async {
+    updated = fields;
     return _order(PurchaseStatus.draft);
   }
 
@@ -263,5 +272,37 @@ void main() {
       ).map((d) => d.label),
       isNot(contains('Achats')),
     );
+  });
+
+  /// P1 bis n°21i : livraison prévue (retard fournisseur) et échéance de
+  /// paiement, en jours locaux ; en modification, `null` efface la date.
+  test('commande : dates envoyées en jours, effacées par null', () async {
+    final api = _FakePurchasesApi(const []);
+    final container = ProviderContainer(
+      overrides: [
+        purchasesApiProvider.overrideWithValue(api),
+        currentUserIdProvider.overrideWithValue('a'),
+      ],
+    );
+    addTearDown(container.dispose);
+    final actions = container.read(purchasesActionsProvider);
+    final lines = [
+      (productId: 'p1', quantity: Decimal.one, unitPriceHt: 100000),
+    ];
+    await actions.save(
+      id: 'po1',
+      isNew: true,
+      supplierId: 's1',
+      lines: lines,
+      expectedDate: DateTime(2026, 10, 5),
+      dueDate: DateTime(2026, 11, 5),
+    );
+    expect(api.created!['expectedDate'], '2026-10-05');
+    expect(api.created!['dueDate'], '2026-11-05');
+
+    await actions.save(id: 'po1', isNew: false, supplierId: 's1', lines: lines);
+    expect(api.updated!.containsKey('expectedDate'), isTrue);
+    expect(api.updated!['expectedDate'], isNull);
+    expect(api.updated!['dueDate'], isNull);
   });
 }

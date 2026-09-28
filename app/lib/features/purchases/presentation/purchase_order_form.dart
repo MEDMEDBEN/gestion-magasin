@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/providers.dart';
@@ -58,10 +59,55 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
               price: formatDA(l.unitPriceHt, withSymbol: false),
             ),
         ];
+  late DateTime? _expectedDate = widget.existing?.expectedDate?.toLocal();
+  late DateTime? _dueDate = widget.existing?.dueDate?.toLocal();
   bool _saving = false;
   String? _error;
 
   bool get _locked => widget.readOnly || _saving;
+
+  /// Date facultative : livraison prévue (retard fournisseur), échéance de
+  /// paiement (dette fournisseur à payer).
+  Widget _dateField(
+    String label,
+    DateTime? value,
+    ValueChanged<DateTime?> onChanged,
+  ) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$label : ${value == null ? 'non précisée' : formatDate(value)}',
+            ),
+          ),
+          TextButton(
+            onPressed: _locked
+                ? null
+                : () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      helpText: label,
+                      initialDate: value ?? today,
+                      firstDate: today.subtract(const Duration(days: 365)),
+                      lastDate: today.add(const Duration(days: 730)),
+                    );
+                    if (picked != null) setState(() => onChanged(picked));
+                  },
+            child: Text(value == null ? 'Choisir' : 'Changer'),
+          ),
+          if (value != null && !_locked)
+            IconButton(
+              tooltip: 'Retirer la date',
+              icon: const Icon(LucideIcons.x, size: 16),
+              onPressed: () => setState(() => onChanged(null)),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -104,6 +150,8 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
                   unitPriceHt: parseDA(l.price.text)!,
                 ),
             ],
+            expectedDate: _expectedDate,
+            dueDate: _dueDate,
           );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -158,7 +206,10 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
               : (v) => setState(() => _supplierId = v),
           validator: (v) => v == null ? 'Choisissez un fournisseur' : null,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        _dateField('Livraison prévue', _expectedDate, (d) => _expectedDate = d),
+        _dateField('Échéance de paiement', _dueDate, (d) => _dueDate = d),
+        const SizedBox(height: 8),
         for (var i = 0; i < _lines.length; i++) _lineRow(i, products, colors),
         if (!_locked)
           Align(

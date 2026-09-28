@@ -32,6 +32,7 @@ class SuppliersActions {
     required String name,
     String? phone,
     String? contactName,
+    String? email,
     String? address,
     required int openingBalance,
   }) async {
@@ -39,6 +40,7 @@ class SuppliersActions {
       'name': name,
       'phone': phone,
       'contactName': contactName,
+      'email': email,
       'address': address,
       'openingBalance': openingBalance,
     };
