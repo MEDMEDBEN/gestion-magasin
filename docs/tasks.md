@@ -350,10 +350,27 @@ Tout appliqué :
 - **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **600 e2e** ; app `flutter analyze`
   propre · **+449 ~46**.
 
-**Prochaine étape précise** : **21j — notifications planifiées** : aucune tâche horaire n'existe au serveur ;
-7 types définis ne sont jamais émis (RETARD_FOURNISSEUR, ECHEANCE_CLIENT, DETTE_CLIENT_RETARD, DETTE_FOURNISSEUR,
-INVENTAIRE_A_FAIRE, TACHE_DU_JOUR, TACHE_EN_RETARD). Ajouter un balayage quotidien idempotent (une notification
-par objet et par jour), dans `src/notifications/`, puis audits (avec 21i).
+**21j — Notifications planifiées (livré)** : `RemindersService` (`src/notifications/reminders.service.ts`) —
+balayage au démarrage puis toutes les heures (`REMINDERS_INTERVAL_MS`, défaut 1 h, 0 = désactivé ; minuteur Node,
+aucune dépendance), sous verrou (une instance à la fois), **idempotent** : au plus un rappel par objet, par type
+et par jour local. Les 7 types jamais émis le sont désormais :
+- RETARD_FOURNISSEUR : commande confirmée / partiellement reçue, livraison prévue dépassée → admin + magasinier ;
+- DETTE_FOURNISSEUR : échéance de paiement dans 3 jours ou dépassée, fournisseur encore créancier → admin ;
+- ECHEANCE_CLIENT / DETTE_CLIENT_RETARD : vente à crédit due dans 3 jours / en retard, avec un reste réel (un
+  acompte général qui solde le client = aucun rappel) → admin + le vendeur de la vente ;
+- TACHE_DU_JOUR / INVENTAIRE_A_FAIRE (tâche COMPTAGE) : prévue aujourd'hui → l'assigné ; TACHE_EN_RETARD :
+  échéance dépassée et non terminée → l'assigné + l'admin.
+Au plus 200 rappels par type et par balayage (garde-fou). App : un rappel de tâche ouvre l'écran « Tâches ».
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **603 e2e** (+ `reminders.e2e` : bons
+  destinataires, rien si soldé, second balayage = rien de plus, lendemain = retards résolus non rappelés) ;
+  contre-épreuves (anti-doublon retiré ; filtre « client soldé » retiré) → échecs. App `flutter analyze` propre ·
+  **+449 ~46**.
+- ⚠️ Limite : les rappels sont relus à chaque balayage (état, pas événements) — un rappel manqué pendant un arrêt
+  du serveur part au balayage suivant ; un rappel du jour n'est pas repoussé s'il a été lu.
+
+**Prochaine étape précise** : audits de 21i + 21j (lancés), appliquer ; puis **21k** mouvements de caisse
+manuels (entrée, sortie, prélèvement sur la session ouverte ; `CashSessionsService` a déjà `deposit`/sortie
+internes — exposer une route ADMIN/caissier + écran « Caisse »).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

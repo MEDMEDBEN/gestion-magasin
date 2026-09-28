@@ -226,6 +226,15 @@ void main() {
 
     expect(parsed.type, NotificationKind.message);
     expect(destinationFor(parsed.operationType), 'Messages');
+    // Rappel planifié d'une tâche (P1 bis n°21j) : l'écran des tâches.
+    expect(
+      destinationFor(NotificationTarget.manual, NotificationKind.taskLate),
+      'Tâches',
+    );
+    expect(
+      destinationFor(NotificationTarget.manual, NotificationKind.inventoryTodo),
+      'Tâches',
+    );
   });
 
   testWidgets('une alerte urgente se distingue des autres', (tester) async {

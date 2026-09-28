@@ -16,15 +16,23 @@ import '../data/notifications_api.dart';
 /// Écran où va la destination visée par une alerte. `null` : l'opération n'a
 /// pas d'écran dédié (ou il est fermé à ce compte) — l'alerte reste alors
 /// informative, sans bouton mort.
-String? destinationFor(NotificationTarget? target) => switch (target) {
-  NotificationTarget.transfer => 'Transferts',
-  NotificationTarget.reception || NotificationTarget.purchaseOrder => 'Achats',
-  NotificationTarget.inventory => 'Inventaire',
-  NotificationTarget.sale || NotificationTarget.quote => 'Vente',
-  NotificationTarget.product => 'Catalogue',
-  NotificationTarget.conversation => 'Messages',
-  _ => null,
-};
+String? destinationFor(NotificationTarget? target, [NotificationKind? kind]) =>
+    switch (target) {
+      // Rappels planifiés d'une tâche (P1 bis n°21j) : l'écran des tâches.
+      _
+          when kind == NotificationKind.taskToday ||
+              kind == NotificationKind.taskLate ||
+              kind == NotificationKind.inventoryTodo =>
+        'Tâches',
+      NotificationTarget.transfer => 'Transferts',
+      NotificationTarget.reception ||
+      NotificationTarget.purchaseOrder => 'Achats',
+      NotificationTarget.inventory => 'Inventaire',
+      NotificationTarget.sale || NotificationTarget.quote => 'Vente',
+      NotificationTarget.product => 'Catalogue',
+      NotificationTarget.conversation => 'Messages',
+      _ => null,
+    };
 
 /// Ton d'une alerte : ce qui est en retard ou en écart doit se voir en premier.
 StatusTone toneOf(AppNotification notification) {
@@ -124,7 +132,7 @@ class _NotificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
-    final target = destinationFor(item.operationType);
+    final target = destinationFor(item.operationType, item.type);
     final reachable = target != null && open.contains(target);
 
     return Card(

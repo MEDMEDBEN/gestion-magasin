@@ -13,6 +13,9 @@ process.env.AUTH_REFRESH_LIMIT = '10000';
 process.env.AUTH_CHANGE_PASSWORD_LIMIT = '10000';
 process.env.API_RATE_LIMIT = '100000';
 process.env.EXPORT_RATE_LIMIT = '100000';
+/// Rappels planifiés : pas de minuteur pendant les tests, qui appellent
+/// `RemindersService.sweep` eux-mêmes (résultat déterministe).
+process.env.REMINDERS_INTERVAL_MS = '0';
 
 /// Contrat d'idempotence (src/common/idempotency.ts) : les mutations d'argent
 /// EXIGENT un `clientMutationId`. Pour les tests qui ne portent pas sur
