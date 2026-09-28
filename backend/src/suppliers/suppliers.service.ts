@@ -22,9 +22,12 @@ import {
   SupplierExportQueryDto,
   SupplierListQueryDto,
   SupplierPaymentDto,
+  SupplierProductPriceDto,
+  SupplierStatsDto,
   UpdateSupplierDto,
 } from './dto/supplier.dto';
 import { collectAll, ExportDocument, section } from '../common/export/export';
+import { localDate } from '../common/document-number';
 
 type Db = Prisma.TransactionClient;
 
@@ -174,6 +177,83 @@ export class SuppliersService {
     const supplier = await this.prisma.supplier.findUnique({ where: { id } });
     if (!supplier) throw SuppliersService.notFound();
     return this.toDto(this.prisma, supplier);
+  }
+
+  /// Indicateurs (P1 bis n°21m) : produits fournis, livraisons à l'heure,
+  /// évolution des prix d'achat par produit (réceptions, jamais les commandes :
+  /// seul le reçu fait foi, comme pour la dette).
+  async stats(id: string): Promise<SupplierStatsDto> {
+    if (!(await this.prisma.supplier.findUnique({ where: { id } }))) {
+      throw SuppliersService.notFound();
+    }
+    // ponytail: toutes les lignes de réception du fournisseur, lues en mémoire
+    // (quelques milliers au plus pour un magasin) ; agréger en SQL au-delà.
+    // `receivedAt` : l'heure réelle de la réception (celle de l'appareil hors
+    // ligne), la même référence que le « dernier prix » de la règle 5 — jamais
+    // l'heure de synchronisation.
+    const [lines, dated] = await Promise.all([
+      this.prisma.receptionLine.findMany({
+        where: { reception: { supplierId: id } },
+        orderBy: [{ reception: { receivedAt: 'desc' } }, { id: 'desc' }],
+        select: {
+          productId: true,
+          unitPriceHt: true,
+          reception: { select: { id: true, receivedAt: true } },
+          product: { select: { name: true, sku: true } },
+        },
+      }),
+      this.prisma.reception.findMany({
+        where: {
+          supplierId: id,
+          purchaseOrder: { expectedDate: { not: null } },
+        },
+        select: {
+          receivedAt: true,
+          purchaseOrder: { select: { expectedDate: true } },
+        },
+      }),
+    ]);
+    const prices = new Map<string, SupplierProductPriceDto>();
+    // Dernière réception vue par produit : un produit sur deux lignes d'un
+    // même bon compte UNE réception (et son prix n'est pas « le précédent »).
+    const lastSeen = new Map<string, string>();
+    for (const line of lines) {
+      const seen = prices.get(line.productId);
+      if (!seen) {
+        prices.set(line.productId, {
+          productId: line.productId,
+          name: line.product.name,
+          sku: line.product.sku,
+          receptions: 1,
+          firstPriceHt: line.unitPriceHt,
+          previousPriceHt: null,
+          lastPriceHt: line.unitPriceHt,
+          lastReceivedAt: line.reception.receivedAt,
+        });
+        lastSeen.set(line.productId, line.reception.id);
+        continue;
+      }
+      if (lastSeen.get(line.productId) === line.reception.id) continue;
+      lastSeen.set(line.productId, line.reception.id);
+      // Du plus récent au plus ancien : la 2e réception est la précédente, la
+      // dernière lue est la première.
+      if (seen.receptions === 1) seen.previousPriceHt = line.unitPriceHt;
+      seen.firstPriceHt = line.unitPriceHt;
+      seen.receptions++;
+    }
+    // Date prévue : un jour (AAAA-MM-JJ, la date prévue ACTUELLE de la
+    // commande) ; à l'heure = reçu ce jour-là au plus tard, heure d'Alger.
+    const onTime = dated.filter(
+      (r) =>
+        localDate(r.receivedAt) <=
+        r.purchaseOrder!.expectedDate!.toISOString().slice(0, 10),
+    ).length;
+    return {
+      productCount: prices.size,
+      deliveriesWithDate: dated.length,
+      deliveriesOnTime: onTime,
+      prices: [...prices.values()].slice(0, 100),
+    };
   }
 
   async create(

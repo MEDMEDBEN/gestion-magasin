@@ -75,6 +75,15 @@ class SuppliersApi {
     return Uint8List.fromList(response.data!);
   });
 
+  /// Indicateurs (P1 bis n°21m) : produits fournis, livraisons à l'heure,
+  /// évolution des prix d'achat.
+  Future<SupplierStats> stats(String supplierId) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/suppliers/$supplierId/stats',
+    );
+    return SupplierStats.fromJson(response.data!);
+  });
+
   Future<PaymentHistoryPage> payments(String supplierId) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(

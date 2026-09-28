@@ -43,6 +43,7 @@ import {
   SupplierListDto,
   SupplierListQueryDto,
   SupplierPaymentDto,
+  SupplierStatsDto,
   UpdateSupplierDto,
 } from './dto/supplier.dto';
 import {
@@ -109,6 +110,21 @@ export class SuppliersController {
     @Query() query: PaginationQueryDto,
   ): Promise<PaymentHistoryDto> {
     return this.suppliers.payments(id, query);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.SUPPLIER_READ)
+  // Lecture lourde (toutes les réceptions du fournisseur) : même bride que
+  // les autres calculs complets.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get(':id/stats')
+  @ApiOperation({
+    summary:
+      'Indicateurs : produits fournis, livraisons à l’heure, évolution des prix d’achat',
+  })
+  @ApiOkResponse({ type: SupplierStatsDto })
+  stats(@Param('id', CanonicalUuidPipe) id: string): Promise<SupplierStatsDto> {
+    return this.suppliers.stats(id);
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

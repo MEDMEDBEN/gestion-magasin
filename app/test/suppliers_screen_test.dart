@@ -104,6 +104,25 @@ class _FakeSuppliersApi extends SuppliersApi {
     return _suppliers.first;
   }
 
+  @override
+  Future<SupplierStats> stats(String supplierId) async => SupplierStats(
+    productCount: 4,
+    deliveriesWithDate: 4,
+    deliveriesOnTime: 3,
+    prices: [
+      SupplierProductPrice(
+        productId: 'p1',
+        name: 'Disjoncteur',
+        sku: 'DIS-16A',
+        receptions: 3,
+        firstPriceHt: 100000,
+        previousPriceHt: 110000,
+        lastPriceHt: 115000,
+        lastReceivedAt: DateTime.utc(2026, 9, 20, 10),
+      ),
+    ],
+  );
+
   final exports = <String>[];
 
   @override
@@ -397,6 +416,38 @@ void main() {
     ]);
     expect(sent['clientMutationId'], isA<String>());
     expect(find.textContaining('RF-2026-00001'), findsOneWidget);
+  });
+
+  /// P1 bis n°21m : indicateurs fournisseur (magasinier compris).
+  testWidgets('indicateurs : total acheté, produits, ponctualité, prix', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      authUser(
+        id: 'm',
+        roles: const ['MAGASINIER'],
+        permissions: const ['supplier.read'],
+      ),
+    );
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Indicateurs'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Produits fournis'), findsOneWidget);
+    expect(find.text('4'), findsOneWidget);
+    expect(find.text('75 %'), findsOneWidget);
+    expect(find.text('DIS-16A — Disjoncteur'), findsOneWidget);
+    expect(find.text('${formatDA(115000)} HT (+4,5 %)'), findsOneWidget);
+  });
+
+  test('évolution du prix d’achat', () {
+    expect(priceEvolution(null, 100000), '');
+    expect(priceEvolution(0, 100000), '');
+    expect(priceEvolution(100000, 100000), '');
+    expect(priceEvolution(100000, 99999), '');
+    expect(priceEvolution(110000, 99000), ' (-10,0 %)');
   });
 
   testWidgets('sans le droit de réception : pas de retour proposé', (

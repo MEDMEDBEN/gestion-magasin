@@ -76,9 +76,103 @@ describe('Fournisseurs et dettes (e2e)', () => {
       where: { supplierId: { in: supplierIds } },
     });
     await prisma.cashSession.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.reception.deleteMany({
+      where: { supplierId: { in: supplierIds } },
+    });
+    await prisma.purchaseOrder.deleteMany({
+      where: { supplierId: { in: supplierIds } },
+    });
+    await prisma.product.deleteMany({
+      where: { sku: { startsWith: `E2E-SUPSTAT-${suffix}` } },
+    });
     await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await e2e.app.close();
+  });
+
+  /// P1 bis n°21m : indicateurs lus des RÉCEPTIONS (jamais des commandes).
+  it('indicateurs : produits fournis, livraisons à l’heure, évolution des prix', async () => {
+    const supplier = await createSupplier({});
+    const product = await prisma.product.create({
+      data: {
+        sku: `E2E-SUPSTAT-${suffix}`,
+        barcode: `E2E-SUPSTAT-BC-${suffix}`,
+        name: 'Disjoncteur indicateurs',
+      },
+    });
+    const adminId = userIds[0];
+    // Trois réceptions à 1 000, 1 100 puis 1 250 HT ; deux commandes datées :
+    // la première livrée à temps, la seconde en retard.
+    const receive = async (
+      price: number,
+      at: string,
+      expectedDate?: string,
+    ) => {
+      const order = expectedDate
+        ? await prisma.purchaseOrder.create({
+            data: {
+              number: `E2E-BC-${suffix}-${price}`,
+              supplierId: supplier.id,
+              createdById: adminId,
+              expectedDate: new Date(`${expectedDate}T00:00:00Z`),
+            },
+          })
+        : null;
+      await prisma.reception.create({
+        data: {
+          number: `E2E-BR-${suffix}-${price}`,
+          supplierId: supplier.id,
+          purchaseOrderId: order?.id,
+          locationId: magasinId,
+          userId: adminId,
+          // Heure réelle de la réception ; `createdAt` (synchro) reste « maintenant ».
+          receivedAt: new Date(at),
+          lines: {
+            // Le dernier bon porte le produit sur DEUX lignes : une réception.
+            create: Array.from(
+              { length: at.startsWith('2026-09-20') ? 2 : 1 },
+              () => ({
+                productId: product.id,
+                receivedQuantity: '1',
+                unitPriceHt: price,
+              }),
+            ),
+          },
+        },
+      });
+    };
+    // Synchronisée la PREMIÈRE, reçue la dernière : l'ordre suit `receivedAt`.
+    await receive(125000, '2026-09-20T10:00:00Z');
+    await receive(100000, '2026-09-01T10:00:00Z', '2026-09-01');
+    // 23 h 30 UTC le 05 = 00 h 30 le 06 à Alger : EN RETARD pour le 05.
+    await receive(110000, '2026-09-05T23:30:00Z', '2026-09-05');
+
+    const stats = (
+      await as(tokens.magasinier)
+        .get(`/api/suppliers/${supplier.id}/stats`)
+        .expect(200)
+    ).body;
+    expect(stats).toMatchObject({
+      productCount: 1,
+      deliveriesWithDate: 2,
+      deliveriesOnTime: 1,
+    });
+    expect(stats.prices).toEqual([
+      expect.objectContaining({
+        productId: product.id,
+        receptions: 3,
+        firstPriceHt: 100000,
+        previousPriceHt: 110000,
+        lastPriceHt: 125000,
+      }),
+    ]);
+    // Le vendeur n'a aucun accès aux fournisseurs.
+    await as(tokens.vendeur)
+      .get(`/api/suppliers/${supplier.id}/stats`)
+      .expect(403);
+    await as(tokens.admin)
+      .get(`/api/suppliers/${randomUUID()}/stats`)
+      .expect(404);
   });
 
   describe('fiches', () => {

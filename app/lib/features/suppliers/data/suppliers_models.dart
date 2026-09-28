@@ -21,6 +21,9 @@ abstract class Supplier with _$Supplier {
     required int openingBalance,
     required int paidAmount,
     required int balanceDue,
+
+    /// Total TTC réellement reçu, net des retours : le « total acheté ».
+    @Default(0) int receivedAmount,
     required bool isActive,
   }) = _Supplier;
 
@@ -37,6 +40,38 @@ abstract class SupplierPage with _$SupplierPage {
 
   factory SupplierPage.fromJson(Map<String, dynamic> json) =>
       _$SupplierPageFromJson(json);
+}
+
+/// Prix d'achat d'un produit chez ce fournisseur, d'une réception à l'autre.
+@freezed
+abstract class SupplierProductPrice with _$SupplierProductPrice {
+  const factory SupplierProductPrice({
+    required String productId,
+    required String name,
+    required String sku,
+    required int receptions,
+    required int firstPriceHt,
+    int? previousPriceHt,
+    required int lastPriceHt,
+    required DateTime lastReceivedAt,
+  }) = _SupplierProductPrice;
+
+  factory SupplierProductPrice.fromJson(Map<String, dynamic> json) =>
+      _$SupplierProductPriceFromJson(json);
+}
+
+/// Indicateurs d'un fournisseur (P1 bis n°21m), lus des réceptions.
+@freezed
+abstract class SupplierStats with _$SupplierStats {
+  const factory SupplierStats({
+    required int productCount,
+    required int deliveriesWithDate,
+    required int deliveriesOnTime,
+    @Default(<SupplierProductPrice>[]) List<SupplierProductPrice> prices,
+  }) = _SupplierStats;
+
+  factory SupplierStats.fromJson(Map<String, dynamic> json) =>
+      _$SupplierStatsFromJson(json);
 }
 
 @freezed

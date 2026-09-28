@@ -50,6 +50,18 @@ class SupplierRights {
   final bool canReturn;
 }
 
+/// Évolution du dernier prix d'achat par rapport au précédent : « (+4,5 %) »,
+/// rien sans prix précédent (ou nul) ni sous 0,05 %.
+@visibleForTesting
+String priceEvolution(int? previous, int last) {
+  if (previous == null || previous == 0) return '';
+  final percent = (last - previous) * 100 / previous;
+  final text = percent.toStringAsFixed(1).replaceAll('.', ',');
+  // Arrondi à 0 : aucune évolution lisible (jamais « -0,0 % »).
+  if (text == '0,0' || text == '-0,0') return '';
+  return ' (${percent > 0 ? '+' : ''}$text %)';
+}
+
 void _snack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
@@ -208,6 +220,11 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 title: const Text('Historique des achats'),
                 onTap: () => Navigator.of(context).pop('purchases'),
               ),
+            ListTile(
+              leading: const Icon(LucideIcons.chartLine, size: 18),
+              title: const Text('Indicateurs'),
+              onTap: () => Navigator.of(context).pop('stats'),
+            ),
             if (rights.canReturn) ...[
               ListTile(
                 leading: const Icon(LucideIcons.undo2, size: 18),
@@ -239,6 +256,52 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     if (action == 'pay') return _pay(supplier);
     if (action == 'edit') return _openForm(supplier);
     if (action == 'return') return _returnGoods(supplier);
+    if (action == 'stats') {
+      // P1 bis n°21m : lu des réceptions (le reçu fait foi, comme la dette).
+      final api = ref.read(suppliersApiProvider);
+      await showHistory(
+        context,
+        title: 'Indicateurs — ${supplier.name}',
+        empty: 'Rien encore reçu de ce fournisseur.',
+        load: () async {
+          final stats = await api.stats(supplier.id);
+          return [
+            (
+              title: 'Total acheté',
+              subtitle: 'Marchandise reçue, nette des retours',
+              trailing: '${formatDA(supplier.receivedAmount)} TTC',
+            ),
+            (
+              title: 'Produits fournis',
+              subtitle: 'Produits différents reçus',
+              trailing: '${stats.productCount}',
+            ),
+            (
+              title: 'Livraisons à l’heure',
+              subtitle: stats.deliveriesWithDate == 0
+                  ? 'Aucune commande avec date de livraison prévue'
+                  : '${stats.deliveriesOnTime} sur ${stats.deliveriesWithDate} '
+                        'réceptions de commandes datées',
+              trailing: stats.deliveriesWithDate == 0
+                  ? '—'
+                  : '${(stats.deliveriesOnTime * 100 / stats.deliveriesWithDate).round()} %',
+            ),
+            for (final p in stats.prices)
+              (
+                title: '${p.sku} — ${p.name}',
+                subtitle:
+                    'Reçu le ${formatDate(p.lastReceivedAt.toLocal())} · '
+                    '${p.receptions} réception(s) · premier prix '
+                    '${formatDA(p.firstPriceHt)}'
+                    '${p.previousPriceHt == null ? '' : ' · précédent ${formatDA(p.previousPriceHt!)}'}',
+                trailing:
+                    '${formatDA(p.lastPriceHt)} HT${priceEvolution(p.previousPriceHt, p.lastPriceHt)}',
+              ),
+          ];
+        },
+      );
+      return;
+    }
     if (action == 'returns') {
       final actions = ref.read(suppliersActionsProvider);
       await showHistory(

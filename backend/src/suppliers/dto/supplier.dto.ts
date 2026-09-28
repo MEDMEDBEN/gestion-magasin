@@ -154,10 +154,50 @@ export class SupplierDto {
   @ApiProperty({ description: 'Total déjà payé à ce fournisseur (centimes).' })
   paidAmount!: number;
   @ApiProperty({
-    description: 'Total TTC de la marchandise RÉELLEMENT reçue (centimes).',
+    description:
+      'Total TTC de la marchandise RÉELLEMENT reçue, net des retours (centimes).',
   })
   receivedAmount!: number;
   @ApiProperty() isActive!: boolean;
+}
+
+/// Prix d'achat d'un produit chez ce fournisseur, d'une réception à l'autre.
+export class SupplierProductPriceDto {
+  @ApiProperty() productId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty() sku!: string;
+  @ApiProperty({ description: 'Réceptions (bons) de ce produit chez lui.' })
+  receptions!: number;
+  @ApiProperty({ description: 'Premier prix HT réceptionné (centimes).' })
+  firstPriceHt!: number;
+  @ApiProperty({
+    nullable: true,
+    description: 'Prix HT de la réception précédente (centimes).',
+  })
+  previousPriceHt!: number | null;
+  @ApiProperty({ description: 'Dernier prix HT réceptionné (centimes).' })
+  lastPriceHt!: number;
+  @ApiProperty() lastReceivedAt!: Date;
+}
+
+/// Indicateurs d'un fournisseur (P1 bis n°21m). Le total acheté est
+/// `SupplierDto.receivedAmount` (reçu net des retours).
+export class SupplierStatsDto {
+  @ApiProperty({ description: 'Produits distincts réceptionnés chez lui.' })
+  productCount!: number;
+  @ApiProperty({
+    description:
+      'Réceptions de commandes portant une date de livraison prévue.',
+  })
+  deliveriesWithDate!: number;
+  @ApiProperty({ description: '… dont reçues au plus tard à la date prévue.' })
+  deliveriesOnTime!: number;
+  @ApiProperty({
+    type: [SupplierProductPriceDto],
+    description:
+      'Produits, du plus récemment reçu au plus ancien (100 au plus).',
+  })
+  prices!: SupplierProductPriceDto[];
 }
 
 export class SupplierListQueryDto extends PaginationQueryDto {
