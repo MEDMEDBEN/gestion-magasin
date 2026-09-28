@@ -249,3 +249,6 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
      est ouverte (file vide = aucun appel réseau).
 
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->
+
+**Chèques (P1 bis n°21n, 2026-09-28)** : un règlement client par chèque ne passe JAMAIS par la file hors-ligne —
+le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin doit connaître le chèque pour le suivre.

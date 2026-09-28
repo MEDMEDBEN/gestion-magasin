@@ -96,6 +96,16 @@ enum PaymentMethod {
   AUTRE
 }
 
+/// Suivi d'un chèque (P1 bis n°21n, décisions MEDMEDBEN du 2026-09-28).
+/// EN_PORTEFEUILLE = remis / émis, pas encore passé en banque ;
+/// ENCAISSE = passé en banque ;
+/// REJETE = refusé par la banque, le règlement est contre-passé.
+enum ChequeStatus {
+  EN_PORTEFEUILLE
+  ENCAISSE
+  REJETE
+}
+
 enum QuoteStatus {
   BROUILLON
   ENVOYE
@@ -220,6 +230,8 @@ enum NotificationType {
   MESSAGE
   /// Signalement de problème : ouvert, pris en charge ou résolu (P1 n°18).
   PROBLEME
+  /// Chèque rejeté par la banque : le règlement est contre-passé, la dette revient (P1 bis n°21n).
+  CHEQUE_REJETE
 }
 
 enum AuditAction {
@@ -747,6 +759,19 @@ model CustomerPayment {
   /// Avoir d'un retour client déduit de la dette (P1 bis n°21l) : ce
   /// règlement n'est pas un encaissement et ne se contre-passe pas.
   saleReturnId      String?       @unique @db.Uuid
+  /// Chèque (P1 bis n°21n) — tous NULL si le règlement n'est pas un chèque.
+  /// N° du chèque.
+  chequeNumber      String?
+  /// Banque tirée.
+  chequeBank        String?
+  /// Date d'encaissement possible (jour pur, enregistré à minuit UTC).
+  chequeDueDate     DateTime?
+  /// Statut du chèque ; NULL = pas un chèque.
+  chequeStatus      ChequeStatus?
+  /// Quand l'admin a statué (encaissé / rejeté).
+  chequeStatusAt    DateTime?
+  /// Admin ayant statué (id seul, sans relation Prisma vers User).
+  chequeStatusById  String?       @db.Uuid
   createdAt         DateTime      @default(now())
 
   customer   Customer         @relation(fields: [customerId], references: [id])
@@ -759,6 +784,7 @@ model CustomerPayment {
   @@index([customerId])
   @@index([saleId])
   @@index([paidAt])
+  @@index([chequeStatus])
 }
 
 // ───────────────────────────────────────────────────────────
@@ -913,6 +939,19 @@ model SupplierPayment {
   clientMutationId  String?       @unique @db.Uuid
   /// Contre-passation du paiement référencé (montant opposé), jamais suppression.
   reversesPaymentId String?       @unique @db.Uuid
+  /// Chèque (P1 bis n°21n) — tous NULL si le règlement n'est pas un chèque.
+  /// N° du chèque.
+  chequeNumber      String?
+  /// Banque tirée.
+  chequeBank        String?
+  /// Date d'encaissement possible (jour pur, enregistré à minuit UTC).
+  chequeDueDate     DateTime?
+  /// Statut du chèque ; NULL = pas un chèque.
+  chequeStatus      ChequeStatus?
+  /// Quand l'admin a statué (encaissé / rejeté).
+  chequeStatusAt    DateTime?
+  /// Admin ayant statué (id seul, sans relation Prisma vers User).
+  chequeStatusById  String?       @db.Uuid
   createdAt         DateTime      @default(now())
 
   reverses      SupplierPayment? @relation("SupplierPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
@@ -925,6 +964,7 @@ model SupplierPayment {
   @@index([supplierId])
   @@index([purchaseOrderId])
   @@index([paidAt])
+  @@index([chequeStatus])
 }
 
 /// BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE (+ ANNULEE).

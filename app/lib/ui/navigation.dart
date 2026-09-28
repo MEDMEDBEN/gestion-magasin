@@ -24,6 +24,7 @@ import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/transfers/presentation/transfers_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/users/presentation/users_screen.dart';
+import '../features/cheques/presentation/cheques_screen.dart';
 
 /// Une destination de navigation (entrée de sidebar desktop, onglet mobile).
 class AppDestination {
@@ -142,6 +143,16 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.clipboardList,
       label: 'Achats',
       builder: (context, user) => PurchasesScreen(user: user),
+    ),
+  // `/cheques` : ADMIN + les DEUX droits de paiement (chèques reçus ET émis,
+  // P1 bis n°21n).
+  if (user.hasRole('ADMIN') &&
+      user.can('customer.payment.create') &&
+      user.can('supplier.payment.create'))
+    AppDestination(
+      icon: LucideIcons.receipt,
+      label: 'Chèques',
+      builder: (context, _) => const ChequesScreen(),
     ),
   // `/reports/business` : ADMIN SEUL — ces rapports portent le chiffre
   // d'affaires, la MARGE et la valeur du stock au coût. Le tableau de bord ne

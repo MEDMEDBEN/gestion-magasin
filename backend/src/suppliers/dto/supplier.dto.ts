@@ -1,3 +1,6 @@
+import { Type } from 'class-transformer';
+import { IsObject, ValidateNested } from 'class-validator';
+import { ChequeInputDto } from '../../common/dto/payment.dto';
 import { ClientMutationId } from '../../common/idempotency';
 import {
   ApiProperty,
@@ -243,6 +246,19 @@ export class CreateSupplierPaymentDto {
   @Min(1)
   @Max(MAX_MONEY)
   amount!: number;
+
+  @ApiPropertyOptional({
+    type: ChequeInputDto,
+    description:
+      'Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse touchée ; ' +
+      'le chèque reste en portefeuille jusqu’à la décision de l’admin.',
+  })
+  // @IsObject : un TABLEAU passerait @ValidateNested (audit sécurité 21n).
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ChequeInputDto)
+  @IsOptional()
+  cheque?: ChequeInputDto;
 
   @ApiProperty({
     description:

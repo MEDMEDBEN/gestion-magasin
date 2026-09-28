@@ -30,6 +30,7 @@ import '../../quotes/application/quotes_controller.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import '../../cheques/presentation/cheque_dialog.dart';
 import 'customer_form.dart';
 import 'sales_history.dart';
 
@@ -1394,6 +1395,39 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     }
   }
 
+  /// Chèque client (P1 bis n°21n) : la dette baisse dès la remise, aucune
+  /// caisse ; l'admin le déclarera encaissé ou rejeté.
+  Future<void> _payByCheque(Customer customer) async {
+    final entry = await askCheque(
+      context,
+      title: 'Chèque de ${customer.name}',
+      initialAmount: customer.balanceDue,
+      confirm: 'Enregistrer le chèque',
+      onInvalid: (message) => _snack(context, message),
+    );
+    if (entry == null || !mounted) return;
+    try {
+      await ref
+          .read(salesActionsProvider)
+          .payCustomerByCheque(
+            customer.id,
+            amount: entry.amount,
+            number: entry.number,
+            bank: entry.bank,
+            dueDate: entry.dueDate,
+          );
+      if (mounted) {
+        _snack(
+          context,
+          'Chèque n° ${entry.number} de ${formatDA(entry.amount)} enregistré — '
+          'en portefeuille.',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    }
+  }
+
   Future<void> _openCustomer(Customer customer) async {
     final rights = widget.rights;
     final action = await showDialog<String>(
@@ -1420,11 +1454,16 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
               onPressed: () => Navigator.of(context).pop('edit'),
               child: const Text('Modifier la fiche'),
             ),
-          if (rights.canTakePayments && customer.balanceDue > 0)
+          if (rights.canTakePayments && customer.balanceDue > 0) ...[
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('pay'),
               child: const Text('Encaisser un règlement'),
             ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('cheque'),
+              child: const Text('Encaisser un chèque'),
+            ),
+          ],
           if (rights.canSell)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('sales'),
@@ -1444,6 +1483,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
     if (!mounted || action == null) return;
     if (action == 'pay') return _pay(customer);
+    if (action == 'cheque') return _payByCheque(customer);
     if (action == 'statement') {
       // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.
       try {

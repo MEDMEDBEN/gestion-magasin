@@ -19,6 +19,9 @@ export const MONEY_ROUTES = [
   '/api/payments/customer/:id/reverse',
   '/api/payments/supplier',
   '/api/payments/supplier/:id/reverse',
+  // Chèque rejeté : contre-passation, la dette revient (21n).
+  '/api/cheques/customer/:id/status',
+  '/api/cheques/supplier/:id/status',
   // La réception fait entrer la marchandise ET augmente la dette fournisseur.
   '/api/receptions',
   // La conversion d'un devis CRÉE une vente : encaissement, crédit, stock.

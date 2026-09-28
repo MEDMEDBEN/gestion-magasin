@@ -29,6 +29,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
 import { SalesModule } from './sales/sales.module';
 import { StorageModule } from './storage/storage.module';
 import { SettingsModule } from './settings/settings.module';
+import { PaymentsModule } from './payments/payments.module';
 import { SyncModule } from './sync/sync.module';
 import { UsersModule } from './users/users.module';
 
@@ -70,6 +71,7 @@ import { UsersModule } from './users/users.module';
     ProblemsModule,
     SyncModule,
     SettingsModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [

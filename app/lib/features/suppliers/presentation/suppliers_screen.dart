@@ -19,6 +19,7 @@ import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
 import '../data/suppliers_api.dart';
+import '../../cheques/presentation/cheque_dialog.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
 import '../../sales/application/sales_controller.dart';
@@ -201,65 +202,107 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   Future<void> _openActions(Supplier supplier, SupplierRights rights) async {
     final action = await showModalBottomSheet<String>(
       context: context,
+      // Beaucoup d'actions (paiement, chèque, retours, indicateurs, relevé…) :
+      // défilable, jamais tronqué sur un petit écran.
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(supplier.name),
-              subtitle: Text('Reste dû : ${formatDA(supplier.balanceDue)}'),
-            ),
-            if (rights.canPay && supplier.balanceDue > 0)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               ListTile(
-                leading: const Icon(LucideIcons.banknote, size: 18),
-                title: const Text('Enregistrer un paiement'),
-                onTap: () => Navigator.of(context).pop('pay'),
+                title: Text(supplier.name),
+                subtitle: Text('Reste dû : ${formatDA(supplier.balanceDue)}'),
               ),
-            if (rights.canSeePurchases)
+              if (rights.canPay && supplier.balanceDue > 0) ...[
+                ListTile(
+                  leading: const Icon(LucideIcons.banknote, size: 18),
+                  title: const Text('Enregistrer un paiement'),
+                  onTap: () => Navigator.of(context).pop('pay'),
+                ),
+                ListTile(
+                  leading: const Icon(LucideIcons.receipt, size: 18),
+                  title: const Text('Payer par chèque'),
+                  onTap: () => Navigator.of(context).pop('cheque'),
+                ),
+              ],
+              if (rights.canSeePurchases)
+                ListTile(
+                  leading: const Icon(LucideIcons.package, size: 18),
+                  title: const Text('Historique des achats'),
+                  onTap: () => Navigator.of(context).pop('purchases'),
+                ),
               ListTile(
-                leading: const Icon(LucideIcons.package, size: 18),
-                title: const Text('Historique des achats'),
-                onTap: () => Navigator.of(context).pop('purchases'),
-              ),
-            ListTile(
-              leading: const Icon(LucideIcons.chartLine, size: 18),
-              title: const Text('Indicateurs'),
-              onTap: () => Navigator.of(context).pop('stats'),
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.fileText, size: 18),
-              title: const Text('Relevé de compte (PDF)'),
-              onTap: () => Navigator.of(context).pop('statement'),
-            ),
-            if (rights.canReturn) ...[
-              ListTile(
-                leading: const Icon(LucideIcons.undo2, size: 18),
-                title: const Text('Retour de marchandise'),
-                onTap: () => Navigator.of(context).pop('return'),
+                leading: const Icon(LucideIcons.chartLine, size: 18),
+                title: const Text('Indicateurs'),
+                onTap: () => Navigator.of(context).pop('stats'),
               ),
               ListTile(
                 leading: const Icon(LucideIcons.fileText, size: 18),
-                title: const Text('Retours de marchandise'),
-                onTap: () => Navigator.of(context).pop('returns'),
+                title: const Text('Relevé de compte (PDF)'),
+                onTap: () => Navigator.of(context).pop('statement'),
               ),
-            ],
-            ListTile(
-              leading: const Icon(LucideIcons.history, size: 18),
-              title: const Text('Historique des paiements'),
-              onTap: () => Navigator.of(context).pop('history'),
-            ),
-            if (rights.canWrite)
+              if (rights.canReturn) ...[
+                ListTile(
+                  leading: const Icon(LucideIcons.undo2, size: 18),
+                  title: const Text('Retour de marchandise'),
+                  onTap: () => Navigator.of(context).pop('return'),
+                ),
+                ListTile(
+                  leading: const Icon(LucideIcons.fileText, size: 18),
+                  title: const Text('Retours de marchandise'),
+                  onTap: () => Navigator.of(context).pop('returns'),
+                ),
+              ],
               ListTile(
-                leading: const Icon(LucideIcons.pencil, size: 18),
-                title: const Text('Modifier la fiche'),
-                onTap: () => Navigator.of(context).pop('edit'),
+                leading: const Icon(LucideIcons.history, size: 18),
+                title: const Text('Historique des paiements'),
+                onTap: () => Navigator.of(context).pop('history'),
               ),
-          ],
+              if (rights.canWrite)
+                ListTile(
+                  leading: const Icon(LucideIcons.pencil, size: 18),
+                  title: const Text('Modifier la fiche'),
+                  onTap: () => Navigator.of(context).pop('edit'),
+                ),
+            ],
+          ),
         ),
       ),
     );
     if (!mounted) return;
     if (action == 'pay') return _pay(supplier);
+    if (action == 'cheque') {
+      final entry = await askCheque(
+        context,
+        title: 'Chèque à ${supplier.name}',
+        initialAmount: supplier.balanceDue,
+        confirm: 'Enregistrer le chèque',
+        onInvalid: (message) => _snack(context, message),
+      );
+      if (entry == null || !mounted) return;
+      try {
+        final paid = await ref
+            .read(suppliersActionsProvider)
+            .payByCheque(
+              supplier.id,
+              amount: entry.amount,
+              number: entry.number,
+              bank: entry.bank,
+              dueDate: entry.dueDate,
+            );
+        if (mounted) {
+          _snack(
+            context,
+            'Chèque n° ${entry.number} enregistré — reste dû '
+            '${formatDA(paid.balanceDue)}.',
+          );
+        }
+      } on ApiException catch (error) {
+        if (mounted) _snack(context, error.userMessage);
+      }
+      return;
+    }
     if (action == 'edit') return _openForm(supplier);
     if (action == 'return') return _returnGoods(supplier);
     if (action == 'statement') {

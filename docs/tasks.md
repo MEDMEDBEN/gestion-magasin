@@ -572,9 +572,37 @@ chèques) : chèques CLIENTS reçus ET chèques FOURNISSEURS émis ; un chèque 
 (rejeté par la banque → la dette revient par contre-passation + alerte) ; le vendeur saisit, l'ADMIN statue
 (encaissé / rejeté).
 
-**Prochaine étape précise** : **21n partie 2 — suivi des chèques** (migration additive par `db-migrator` : n°,
-banque, échéance, statut EN_PORTEFEUILLE / ENCAISSE / REJETE sur `CustomerPayment` et `SupplierPayment` ; un
-chèque n'entre pas dans la caisse) ; puis **partie 3** — historique des prix de vente d'un produit.
+**21n (partie 2) — Suivi des chèques (livré et audité)** — migrations ADDITIVES par `db-migrator` :
+`20260928192417_cheque_tracking` (enum `ChequeStatus`, n° / banque / échéance / statut / décision sur
+`CustomerPayment` et `SupplierPayment`) et `20260928192635_notification_cheque_rejete` (`CHEQUE_REJETE`).
+- Règlement client par chèque (`POST /payments/customer` + `cheque`) : aucune caisse, dette réduite dès la remise,
+  « en portefeuille » ; `cashSessionId` refusé. Paiement fournisseur par chèque (`fromCash: false`), idem.
+- `GET /cheques?status=` et `POST /cheques/{customer,supplier}/:id/status` (ADMIN + les deux droits de paiement) :
+  ENCAISSE (rien ne bouge) ou REJETE (contre-passation : la dette revient ; alerte `CHEQUE_REJETE` à l'admin et au
+  vendeur qui l'a reçu). Même décision renvoyée → état actuel ; autre → 409. Contre-passation manuelle d'un chèque :
+  sans caisse ; ensuite il ne se traite plus. Routes au contrat d'argent.
+- App : fiche client « Encaisser un chèque », fiche fournisseur « Payer par chèque » (dialogue commun : montant,
+  n°, banque, échéance JJ/MM/AAAA), écran « Chèques » (ADMIN) avec filtre et décision ; menu d'actions fournisseur
+  rendu défilable (il débordait).
+- Preuves : e2e `cheques` 7 ; contrat d'argent ; contre-épreuves (caisse exigée, décision renvoyée, contre-passation
+  sans caisse, chèque en caisse fournisseur, alerte au vendeur) → échecs ; app `cheques_screen_test` 4 +
+  `suppliers_screen_test` +1.
+
+- **Audits (2026-09-28) — appliqués** : sécurité (2 importants) + revue (3 importants). Corrigé : `cheque: []`
+  refusé (`@IsObject`, sinon chèque fantôme sans n°) ; jamais d'espèces rendues sur un retour contre un chèque PAS
+  encore encaissé (`cashKept.pendingCheques`) ; un chèque ENCAISSÉ ne se contre-passe plus (la dette reviendrait
+  sur de l'argent en banque) ; `method: CHEQUE` sans chèque (ou chèque sous une autre méthode) refusé ; rejeu
+  comparé sur le chèque SUIVI et son n° ; portefeuille : chèques contre-passés à la main exclus partout, historique
+  du plus récent ; une seule alerte par personne ; synchro hors-ligne : chèque refusé explicitement (en ligne
+  seulement) ; échéance au sélecteur de date. Tests : e2e `cheques` 8, `sale-returns` +1. Preuves complètes : lint 0 · `tsc` · **156 unit** · **637 e2e** ; app analyze propre · **+467 ~46**.
+- Noté (non bloquant) : la décision ENCAISSE ne conserve pas sa clé (renvoi = état actuel, admin seul).
+- ⚠️ **À confirmer (MEDMEDBEN)** : un chèque saisi par un vendeur libère AUSSI le plafond de crédit du client dès la
+  remise (conséquence de « dette réduite dès la remise ») ; aucune alerte à l'admin à la saisie (il voit le
+  portefeuille).
+
+**Prochaine étape précise** : **21n partie 3** — historique des prix de vente : backend fait (`GET
+/products/:id/price-history`, lu de l'audit des tarifs ; e2e dans `catalog.e2e-spec`), reste l'écran (fiche produit
+→ « Historique des prix »), audits, commit.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

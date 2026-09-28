@@ -41,6 +41,7 @@ import {
   statementFilename,
 } from '../common/export/statement';
 import { localDate } from '../common/document-number';
+import { parseApiDate } from '../common/api-date';
 
 type Db = Prisma.TransactionClient;
 
@@ -346,7 +347,11 @@ export class CustomersService {
       user.id,
       existing.customerId === dto.customerId &&
         existing.amount === dto.amount &&
-        existing.saleId === (dto.saleId ?? null),
+        existing.saleId === (dto.saleId ?? null) &&
+        // Chèque SUIVI (statut) et même numéro : un autre chèque ressaisi sous
+        // la même clé n'est pas rendu en silence.
+        (existing.chequeStatus !== null) === Boolean(dto.cheque) &&
+        existing.chequeNumber === (dto.cheque?.number ?? null),
       {
         code: ErrorCode.PAYMENT_ALREADY_RECORDED,
         message: `Règlement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
@@ -426,10 +431,20 @@ export class CustomersService {
       }
     }
 
-    const session = await CashSessionsService.lockOpenSession(tx, {
-      userId: user.id,
-    });
-    if (!session) {
+    // Chèque (P1 bis n°21n) : il n'entre dans AUCUNE caisse ; la dette baisse
+    // dès la remise, il reste « en portefeuille » jusqu'à la décision admin.
+    const cheque = dto.cheque;
+    if (cheque && dto.cashSessionId !== undefined) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Un chèque n’entre pas dans la caisse : cashSessionId interdit',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const session = cheque
+      ? null
+      : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
+    if (!cheque && !session) {
       throw new BusinessException(
         ErrorCode.CASH_SESSION_REQUIRED,
         'Ouvrez votre caisse avant d’encaisser un règlement',
@@ -438,7 +453,11 @@ export class CustomersService {
     }
     // Mêmes règles que la vente en espèces : les espèces restent dans la caisse
     // où elles sont entrées, jamais imputées à une autre (audit tranche B).
-    if (dto.cashSessionId !== undefined && dto.cashSessionId !== session.id) {
+    if (
+      session &&
+      dto.cashSessionId !== undefined &&
+      dto.cashSessionId !== session.id
+    ) {
       throw new BusinessException(
         ErrorCode.CASH_SESSION_CLOSED,
         'La caisse de ce règlement a été clôturée avant sa synchronisation : ' +
@@ -455,20 +474,30 @@ export class CustomersService {
         saleId: dto.saleId ?? null,
         userId: user.id,
         amount: dto.amount,
-        method: 'ESPECES',
+        method: cheque ? 'CHEQUE' : 'ESPECES',
         note: dto.note ?? null,
         // Jamais avant l'ouverture de la caisse où entrent ses espèces.
-        paidAt: paidAt < session.openedAt ? session.openedAt : paidAt,
+        paidAt:
+          session && paidAt < session.openedAt ? session.openedAt : paidAt,
+        ...(cheque && {
+          chequeNumber: cheque.number,
+          chequeBank: cheque.bank,
+          chequeDueDate: cheque.dueDate
+            ? parseApiDate(cheque.dueDate, 'cheque.dueDate')
+            : null,
+          chequeStatus: 'EN_PORTEFEUILLE' as const,
+        }),
       },
     });
     // Point d'entrée COMMUN des espèces (comme `withdraw` pour les sorties).
-    await CashSessionsService.deposit(tx, session, {
-      userId: user.id,
-      amount: dto.amount,
-      saleId: dto.saleId ?? undefined,
-      // Rapprochement caisse ↔ règlement par l'id du règlement.
-      note: `Règlement ${payment.id} — ${customer.name}`,
-    });
+    if (session)
+      await CashSessionsService.deposit(tx, session, {
+        userId: user.id,
+        amount: dto.amount,
+        saleId: dto.saleId ?? undefined,
+        // Rapprochement caisse ↔ règlement par l'id du règlement.
+        note: `Règlement ${payment.id} — ${customer.name}`,
+      });
     if (actor) {
       await writeAudit(tx, actor, {
         action: 'CREATE',
@@ -478,6 +507,10 @@ export class CustomersService {
           customerId: customer.id,
           amount: dto.amount,
           saleId: dto.saleId ?? null,
+          method: payment.method,
+          ...(cheque && {
+            cheque: { number: cheque.number, bank: cheque.bank },
+          }),
         },
       });
     }
@@ -516,9 +549,9 @@ export class CustomersService {
         id: p.id,
         amount: p.amount,
         method: p.method,
-        // Règlement client = espèces en caisse (décision 2026-09-15), sauf
-        // l'avoir d'un retour : une écriture, aucune espèce.
-        fromCash: !p.saleReturnId,
+        // Espèces en caisse (décision 2026-09-15) ; ni l'avoir d'un retour
+        // (méthode AUTRE) ni un chèque (21n) ne passent par la caisse.
+        fromCash: p.method === 'ESPECES',
         paidAt: p.paidAt,
         userId: p.userId,
         saleId: p.saleId,
@@ -578,6 +611,17 @@ export class CustomersService {
             HttpStatus.CONFLICT,
           );
         }
+        // Un chèque ENCAISSÉ est de l'argent en banque : le contre-passer ferait
+        // revenir une dette déjà payée. Seul un chèque en portefeuille
+        // (erreur de saisie, chèque rendu) se contre-passe ; un rejet passe
+        // par le portefeuille (audit 21n).
+        if (original.chequeStatus === 'ENCAISSE') {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Chèque encaissé : il ne se contre-passe plus',
+            HttpStatus.CONFLICT,
+          );
+        }
         if (original.reversesPaymentId || original.reversedBy) {
           throw new BusinessException(
             ErrorCode.INVALID_STATE_TRANSITION,
@@ -608,10 +652,12 @@ export class CustomersService {
             );
           }
         }
-        const session = await CashSessionsService.lockOpenSession(tx, {
-          userId: user.id,
-        });
-        if (!session) {
+        // Un chèque n'est jamais passé par la caisse : rien à y reprendre.
+        const byCheque = original.method === 'CHEQUE';
+        const session = byCheque
+          ? null
+          : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
+        if (!byCheque && !session) {
           throw new BusinessException(
             ErrorCode.CASH_SESSION_REQUIRED,
             'Ouvrez votre caisse : les espèces du règlement sont rendues au client',
@@ -630,12 +676,14 @@ export class CustomersService {
             reversesPaymentId: original.id,
           },
         });
-        await CashSessionsService.withdraw(tx, session, {
-          userId: user.id,
-          amount: original.amount,
-          saleId: original.saleId ?? undefined,
-          note: `Contre-passation du règlement ${original.id}`,
-        });
+        if (session) {
+          await CashSessionsService.withdraw(tx, session, {
+            userId: user.id,
+            amount: original.amount,
+            saleId: original.saleId ?? undefined,
+            note: `Contre-passation du règlement ${original.id}`,
+          });
+        }
         await writeAudit(tx, actor, {
           action: 'CANCEL',
           entityType: 'CustomerPayment',
