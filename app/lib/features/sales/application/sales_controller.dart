@@ -144,6 +144,16 @@ class CartLine {
 int lineGrossHt(int unitPriceHt, Quantity quantity) =>
     _roundMoney(Decimal.fromInt(unitPriceHt) * quantity);
 
+/// Remise HT maximale d'une ligne, MÊME borne que le serveur : le net ne
+/// descend jamais sous plancher × quantité (donc jamais sous 0). Sans
+/// plancher connu, aucune remise.
+int maxLineDiscountHt(Product product, int unitPriceHt, Quantity quantity) {
+  final floor = priceFloor(product);
+  if (floor == null) return 0;
+  final max = lineGrossHt(unitPriceHt, quantity) - lineGrossHt(floor, quantity);
+  return max < 0 ? 0 : max;
+}
+
 /// Plancher du prix de vente (décision 2026-09-22, MÊME règle que le serveur) :
 /// le dernier prix d'achat ; sans coût connu (ou reçu gratuit), le plus bas des
 /// tarifs du produit. `null` : aucune référence — le prix ne se fixe pas en
@@ -257,6 +267,7 @@ class CartEstimate {
     required this.totalHt,
     required this.totalTax,
     required this.missingPrices,
+    this.invalidDiscounts = const [],
     this.lineTotalsHt = const {},
     this.unitPricesHt = const {},
     this.tariffPricesHt = const {},
@@ -268,6 +279,13 @@ class CartEstimate {
 
   /// Produits sans prix pour le tarif applicable : la vente serait refusée.
   final List<Product> missingPrices;
+
+  /// Remise devenue trop forte (quantité, prix ou client changés après coup) :
+  /// le serveur refuserait — hors ligne, APRÈS le départ du client.
+  final List<Product> invalidDiscounts;
+
+  /// Encaissement ou devis impossible tant qu'une ligne est dans ce cas.
+  bool get blocked => missingPrices.isNotEmpty || invalidDiscounts.isNotEmpty;
 
   /// Total HT estimé par produit (affiché sur chaque ligne du panier).
   final Map<String, int> lineTotalsHt;
@@ -292,6 +310,7 @@ CartEstimate estimateCart(
   var ht = 0;
   var tax = 0;
   final missing = <Product>[];
+  final invalid = <Product>[];
   final lineTotals = <String, int>{};
   final unitPrices = <String, int>{};
   final tariffs = <String, int>{};
@@ -307,6 +326,10 @@ CartEstimate estimateCart(
       continue;
     }
     unitPrices[line.product.id] = price;
+    if (line.discountHt >
+        maxLineDiscountHt(line.product, price, line.quantity)) {
+      invalid.add(line.product);
+    }
     final lineHt = lineGrossHt(price, line.quantity) - line.discountHt;
     final rate = taxRates[line.product.taxRateId] ?? Decimal.zero;
     lineTotals[line.product.id] = lineHt;
@@ -321,6 +344,7 @@ CartEstimate estimateCart(
     totalHt: ht,
     totalTax: tax,
     missingPrices: missing,
+    invalidDiscounts: invalid,
     lineTotalsHt: lineTotals,
     unitPricesHt: unitPrices,
     tariffPricesHt: tariffs,

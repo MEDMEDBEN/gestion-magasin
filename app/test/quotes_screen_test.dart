@@ -278,6 +278,7 @@ void main() {
       final cart = container.read(cartProvider.notifier);
       cart.add(product(id: 'p1', name: 'Câble'), Decimal.parse('2.5'));
       cart.setPrice('p1', 150000);
+      cart.setDiscount('p1', 2500);
 
       api.failNext = const ApiException(statusCode: 0, message: 'coupure');
       final actions = container.read(quoteActionsProvider);
@@ -300,6 +301,8 @@ void main() {
       expect(lines.single.productId, 'p1');
       expect(lines.single.quantity, '2.500');
       expect(lines.single.unitPriceHt, 150000);
+      // La remise du panier part avec le devis (P1 bis n°21g).
+      expect(lines.single.discountAmount, 2500);
       expect(container.read(cartProvider).isEmpty, isTrue);
     },
   );

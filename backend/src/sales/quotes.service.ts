@@ -467,21 +467,23 @@ export class QuotesService {
     return quote;
   }
 
-  /// Lignes dont le prix appliqué n'est pas celui du tarif (même forme que
-  /// `SalesService.priceOverrides`).
+  /// Lignes dont le prix appliqué n'est pas celui du tarif, ou remisées (même
+  /// forme que `SalesService.priceOverrides`).
   private static overrides(
     lines: {
       productId: string;
       unitPriceHt: number;
       tariffPriceHt: number | null;
+      discountAmount: number;
     }[],
   ) {
     return lines
-      .filter((l) => l.unitPriceHt !== l.tariffPriceHt)
+      .filter((l) => l.unitPriceHt !== l.tariffPriceHt || l.discountAmount > 0)
       .map((l) => ({
         productId: l.productId,
         tariffPriceHt: l.tariffPriceHt,
         unitPriceHt: l.unitPriceHt,
+        discountAmount: l.discountAmount,
       }));
   }
 

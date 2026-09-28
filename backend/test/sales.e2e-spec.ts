@@ -183,6 +183,30 @@ describe('Ventes (e2e)', () => {
       });
     });
 
+    /// Une REMISE (admin), même sans prix modifié, est tracée comme un écart
+    /// au tarif (audit 21g).
+    it('remise sans prix modifié : tracée dans le journal', async () => {
+      const p = await product('10.000');
+      const c = await customer(10_000_000);
+      const res = await as(tokens.admin)
+        .post('/api/sales')
+        .send({
+          customerId: c,
+          lines: [{ productId: p, quantity: '1', discountAmount: 5000 }],
+          paidAmount: 0,
+          dueDate: DUE_DATE,
+        })
+        .expect(201);
+      const audit = await prisma.auditLog.findFirstOrThrow({
+        where: { entityId: res.body.id, entityType: 'Sale' },
+      });
+      expect(audit.newValue).toMatchObject({
+        priceOverrides: [
+          { productId: p, unitPriceHt: 145000, discountAmount: 5000 },
+        ],
+      });
+    });
+
     it('vente au prix du tarif : aucune entrée d’audit (spec §24)', async () => {
       const p = await product('10.000');
       const res = await as(tokens.vendeur)

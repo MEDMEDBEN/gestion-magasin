@@ -331,6 +331,30 @@ void main() {
     );
     expect(estimate.lineTotalsHt, {'p1': 362500});
 
+    // Borne de la remise = celle du serveur : net ≥ plancher × quantité.
+    final costed = _cable().copyWith(lastPurchasePriceHt: 100000);
+    final q = Decimal.parse('2.5');
+    // 2,5 × 1 450,01 = 3 625,025 → 362 503 (demi vers le haut) ; plancher
+    // 2,5 × 1 000 = 250 000 → remise ≤ 112 503.
+    expect(maxLineDiscountHt(costed, 145001, q), 112503);
+    // Sans coût : plancher = plus bas tarif (1 450,00) ; prix modifié 1 500.
+    expect(maxLineDiscountHt(_cable(), 150000, Decimal.one), 5000);
+    // Prix sous le plancher : aucune remise, jamais négative.
+    expect(maxLineDiscountHt(costed, 90000, Decimal.one), 0);
+
+    // Remise valide à 3, devenue trop forte après baisse à 1 : BLOQUÉE.
+    CartEstimate estimateAt(Decimal quantity) => estimateCart(
+      CartState(
+        saleId: 's',
+        lines: [CartLine(costed, quantity, discountHt: 100000)],
+      ),
+      defaultTierId: 'detail',
+      taxRates: const {},
+    );
+    expect(estimateAt(Decimal.fromInt(3)).blocked, isFalse);
+    expect(estimateAt(Decimal.one).invalidDiscounts, [costed]);
+    expect(estimateAt(Decimal.one).blocked, isTrue);
+
     // Remise HT sur la ligne (P1 bis n°21g) : la TVA porte sur le NET.
     final discounted = estimateCart(
       CartState(
@@ -815,5 +839,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Modifier le prix'), findsOneWidget);
     expect(find.byTooltip('Remise'), findsNothing);
+  });
+
+  testWidgets('remise puis quantité baissée : encaissement bloqué, signalé', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const [
+        'sale.create',
+        'sale.discount',
+        'cash.session.manage',
+      ],
+    );
+    await _pumpScreen(
+      tester,
+      _FakeSalesApi(cash: _openCash),
+      [],
+      user: admin,
+      product: _cable().copyWith(lastPurchasePriceHt: 100000),
+    );
+    for (var i = 0; i < 3; i++) {
+      await tester.enterText(find.byType(TextField).first, '3245060123458');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+    }
+    // 3 × (1 450 − 1 000) = 1 350 DA : la remise maximale.
+    await tester.tap(find.byTooltip('Remise'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '1350');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Moins'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('trop forte — à corriger'), findsOneWidget);
+    final pay = tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.textContaining('Encaisser'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    expect(pay.onPressed, isNull);
+
+    // Retirer la remise (0) est toujours permis, et débloque.
+    await tester.tap(find.byTooltip('Remise'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '0');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('trop forte'), findsNothing);
   });
 }

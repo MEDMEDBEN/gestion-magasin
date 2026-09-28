@@ -512,7 +512,10 @@ export class ProductsService {
       await ProductsService.lockWrites(tx);
       // La réception écrit le coût sans `lockWrites` : on tient la LIGNE, pour
       // que « aucune réception » reste vrai jusqu'à l'écriture du coût.
-      await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id}::uuid FOR UPDATE`;
+      // NO KEY : n'empêche pas les ventes et mouvements qui référencent le
+      // produit, mais attend (et fait attendre) l'écriture du coût par une
+      // réception.
+      await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${id}::uuid FOR NO KEY UPDATE`;
       const before = await tx.product.findUnique({
         where: { id },
         include: PRODUCT_INCLUDE,

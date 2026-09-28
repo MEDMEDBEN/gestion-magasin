@@ -226,6 +226,11 @@ describe('Réceptions (e2e)', () => {
       .send({ purchasePriceHt: 50000 })
       .expect(409);
     expect(refused.body.message).toContain('réceptions');
+    // Formulaire renvoyé tel quel (même coût) : pas une modification, pas 409.
+    await as(tokens.admin)
+      .patch(`/api/products/${order.productId}`)
+      .send({ purchasePriceHt: 120000 })
+      .expect(200);
   });
 
   it('le solde de la commande la passe RECUE et ne la reçoit plus ensuite', async () => {

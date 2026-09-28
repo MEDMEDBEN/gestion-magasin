@@ -719,6 +719,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             _CartLineRow(
               line: line,
               missingPrice: estimate.missingPrices.contains(line.product),
+              invalidDiscount: estimate.invalidDiscounts.contains(line.product),
               totalHt: estimate.lineTotalsHt[line.product.id],
               unitPriceHt: estimate.unitPricesHt[line.product.id],
               tariffPriceHt: estimate.tariffPricesHt[line.product.id],
@@ -741,6 +742,14 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'la vente sera refusée.',
             ),
           ],
+          if (estimate.invalidDiscounts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const AmpereInlineAlert(
+              message:
+                  'Une remise dépasse désormais ce que sa ligne permet (elle '
+                  'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
+            ),
+          ],
           if (noCash && cart.customer == null) ...[
             const SizedBox(height: 10),
             const AmpereInlineAlert(
@@ -752,7 +761,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           SizedBox(
             height: AmpereGeometry.touchPrimary,
             child: FilledButton.icon(
-              onPressed: _busy || estimate.missingPrices.isNotEmpty
+              onPressed: _busy || estimate.blocked
                   ? null
                   : () => _checkout(estimate),
               icon: const Icon(LucideIcons.banknote, size: 18),
@@ -762,9 +771,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           const SizedBox(height: 8),
           // Même panier, aucun encaissement, aucun mouvement de stock.
           OutlinedButton.icon(
-            onPressed: _busy || estimate.missingPrices.isNotEmpty
-                ? null
-                : _makeQuote,
+            onPressed: _busy || estimate.blocked ? null : _makeQuote,
             icon: const Icon(LucideIcons.fileText, size: 18),
             label: const Text('Faire un devis'),
           ),
@@ -814,9 +821,11 @@ class _CartLineRow extends ConsumerWidget {
     this.unitPriceHt,
     this.tariffPriceHt,
     this.canDiscount = false,
+    this.invalidDiscount = false,
   });
 
   final bool canDiscount;
+  final bool invalidDiscount;
   final CartLine line;
   final bool missingPrice;
   final int? totalHt;
@@ -862,10 +871,9 @@ class _CartLineRow extends ConsumerWidget {
   /// que la ligne, jamais un net sous le plancher (coût) × quantité.
   Future<void> _editDiscount(BuildContext context, WidgetRef ref) async {
     final price = unitPriceHt;
-    final floor = priceFloor(line.product);
-    if (price == null || floor == null) return;
+    if (price == null) return;
     final gross = lineGrossHt(price, line.quantity);
-    final maxDiscount = gross - lineGrossHt(floor, line.quantity);
+    final maxDiscount = maxLineDiscountHt(line.product, price, line.quantity);
     final value = await askAmount(
       context,
       title: 'Remise sur « ${line.product.name} »',
@@ -874,13 +882,14 @@ class _CartLineRow extends ConsumerWidget {
       initial: line.discountHt,
       help:
           'Ligne ${formatDA(gross)} HT · remise maximale '
-          '${formatDA(maxDiscount < 0 ? 0 : maxDiscount)} (pas sous le coût)',
+          '${formatDA(maxDiscount)} (pas sous le coût)',
     );
     if (value == null || !context.mounted) return;
+    // 0 retire la remise : toujours permis.
     if (value > maxDiscount) {
       _snack(
         context,
-        'Remise trop forte : au plus ${formatDA(maxDiscount < 0 ? 0 : maxDiscount)} '
+        'Remise trop forte : au plus ${formatDA(maxDiscount)} '
         '— la ligne ne descend pas sous le coût',
       );
       return;
@@ -925,7 +934,13 @@ class _CartLineRow extends ConsumerWidget {
                     label: 'Prix modifié',
                     tone: StatusTone.warn,
                   ),
-                if (line.discountHt > 0)
+                if (invalidDiscount)
+                  AmpereBadge(
+                    label:
+                        'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
+                    tone: StatusTone.error,
+                  )
+                else if (line.discountHt > 0)
                   Text(
                     'Remise ${formatDA(line.discountHt)} HT',
                     style: AmpereType.meta.copyWith(color: colors.warn),

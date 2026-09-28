@@ -144,18 +144,20 @@ export class SalesService {
     return this.toDto(db, existing);
   }
 
-  /// Lignes dont le vendeur a MODIFIÉ le prix : produit, tarif, appliqué. (Un
-  /// tarif changé pendant une coupure n'en est pas une.)
+  /// Lignes dont le prix a été MODIFIÉ ou REMISÉ : produit, tarif, appliqué,
+  /// remise — l'admin voit tout écart au tarif (règle 13, §24). (Un tarif
+  /// changé pendant une coupure n'en est pas un.)
   static priceOverrides(sale: SaleDto, dto: CreateSaleDto) {
     const edited = new Set(
       dto.lines.filter((l) => l.priceEdited).map((l) => l.productId),
     );
     return sale.lines
-      .filter((l) => edited.has(l.productId))
+      .filter((l) => edited.has(l.productId) || l.discountAmount > 0)
       .map((l) => ({
         productId: l.productId,
         tariffPriceHt: l.tariffPriceHt,
         unitPriceHt: l.unitPriceHt,
+        discountAmount: l.discountAmount,
       }));
   }
 

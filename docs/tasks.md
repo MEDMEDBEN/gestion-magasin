@@ -283,7 +283,28 @@ refuse de toute façon : `DISCOUNT_NOT_ALLOWED`, déjà prouvé en e2e).
 - **Preuve (2026-09-27)** : backend lint 0 · `tsc` propre · **146 unit** · **587 e2e** ; app `flutter analyze`
   propre · **+444 ~46** (estimation avec remise ; remise admin bornée puis envoyée ; pas de bouton vendeur).
 
-**Prochaine étape précise** : audits de 21g (lancés), appliquer ; puis **21h — Paramètres** (ADMIN) : tarifs
+**Audits 21g** — `security-reviewer` : **CONFORME** (3 faibles) ; `reviewer` : **PAS OK** (1 important). Appliqué :
+- 🟠 **Une remise validée pouvait devenir invalide** (quantité baissée, prix baissé, client au tarif gros) : le
+  total affiché était faux et, HORS LIGNE, le ticket partait puis était rejeté à la synchro, client parti.
+  `estimateCart` revérifie chaque remise avec la borne du serveur (`maxLineDiscountHt`, une seule définition,
+  aussi utilisée par la saisie) : encaissement ET devis bloqués, ligne signalée « à corriger ». Retirer une remise
+  (0) est toujours permis. Tests : bornes (quantité décimale et arrondi, sans coût = plus bas tarif, prix sous le
+  plancher → 0), remise puis « Moins » → bloqué ; contre-épreuve (revérification retirée) → 2 tests en échec.
+- Sécu F1 : une remise, même sans prix modifié, est tracée dans le journal comme un écart au tarif (vente, devis,
+  conversion) — e2e. F2 : verrou produit allégé en `FOR NO KEY UPDATE` (ne bloque plus les ventes du produit).
+- Tests : la remise part avec le devis ; renvoyer le même coût après une réception → 200.
+- ⚠️ **À trancher (MEDMEDBEN)** — sécu F3 : une remise accordée par un admin dans un DEVIS reste valable à la
+  conversion même si cet admin a été rétrogradé entre-temps (le plancher est revérifié). Choix actuel : la
+  remise est accordée à la création du devis. À confirmer.
+- ℹ️ Hors ligne, une remise au maximum met le net PILE sur le plancher : une réception à un prix plus haut
+  pendant la coupure ferait rejeter le ticket à la synchro (contrat de synchronisation, voulu).
+- Non fait : l'écran Devis n'affiche pas le détail des lignes (ni donc la remise) — le PDF du devis, si.
+
+**Prochaine étape précise** : **21h — Paramètres** (ADMIN) — EN COURS, non commité : table `StoreSettings`
+(migration additive `20260927235542_store_settings` créée par `db-migrator`), `PricingService` (tarifs et TVA :
+créer, renommer, défaut unique, (dés)activer, audités) + routes `POST/PATCH /pricing/{tiers,tax-rates}`. Reste :
+routes identité du magasin (`GET/PATCH /settings/store`, `settings.manage`) et `storeIdentity` lu en base
+(repli sur l'env), e2e, écran « Paramètres » de l'app ; puis audits. Ancien texte : tarifs
 (créer / renommer / désactiver, défaut), taux de TVA, identité du magasin imprimée (aujourd'hui lue dans l'env
 du serveur : `storeIdentity`) — vérifier le schéma avant toute migration (`db-migrator`, additive seulement).
 
