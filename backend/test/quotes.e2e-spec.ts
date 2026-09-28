@@ -32,6 +32,8 @@ describe('Devis (e2e)', () => {
       request(server).get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string) =>
       request(server).post(url).set('Authorization', `Bearer ${token}`),
+    patch: (url: string) =>
+      request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Produit au magasin : DETAIL / GROS en centimes, TVA 19 %, coût 1 000,00.
@@ -348,6 +350,122 @@ describe('Devis (e2e)', () => {
       }).expect(409);
       expect(conv.body.code).toBe('QUOTE_EXPIRED');
       expect(await stockOf(p)).toBe('5.000');
+    });
+
+    /// P1 bis n°21m : un BROUILLON se corrige (re-tarifé, mêmes règles de
+    /// prix, tracé) ; envoyé au client, il ne bouge plus.
+    it('brouillon modifiable par son auteur ou l’admin ; envoyé : figé', async () => {
+      const p = await product('5.000');
+      const quote = (
+        await createQuote(tokens.vendeur, {
+          lines: [{ productId: p, quantity: '1' }],
+        }).expect(201)
+      ).body;
+      const edit = (token: string, quantity: string, extra = {}) =>
+        as(token)
+          .patch(`/api/quotes/${quote.id}`)
+          .send({ lines: [{ productId: p, quantity, ...extra }] });
+
+      const edited = (await edit(tokens.vendeur, '3').expect(200)).body;
+      expect(edited).toMatchObject({
+        number: quote.number,
+        status: 'BROUILLON',
+        totalHt: 3 * 145000,
+      });
+      expect(edited.lines).toHaveLength(1);
+      const below = await edit(tokens.vendeur, '1', {
+        unitPriceHt: 50000,
+        priceEdited: true,
+      }).expect(422);
+      expect(below.body.code).toBe('PRICE_BELOW_COST');
+      await edit(tokens.vendeur, '1', { discountAmount: 1000 }).expect(403);
+      const inactive = await customer();
+      await prisma.customer.update({
+        where: { id: inactive },
+        data: { isActive: false },
+      });
+      await as(tokens.vendeur)
+        .patch(`/api/quotes/${quote.id}`)
+        .send({
+          customerId: inactive,
+          lines: [{ productId: p, quantity: '1' }],
+        })
+        .expect(422);
+      await edit(tokens.autreVendeur, '2').expect(403);
+      await edit(tokens.magasinier, '2').expect(403);
+      await edit(tokens.admin, '2').expect(200);
+      const audits = await prisma.auditLog.findMany({
+        where: { entityType: 'Quote', entityId: quote.id, action: 'UPDATE' },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(audits).toHaveLength(2);
+      // Les lignes remplacées restent lisibles dans l'audit.
+      expect(audits[0].oldValue).toMatchObject({
+        lines: [{ productId: p, quantity: '1.000', unitPriceHt: 145000 }],
+      });
+
+      await as(tokens.vendeur).post(`/api/quotes/${quote.id}/send`).expect(200);
+      const sent = await edit(tokens.vendeur, '4').expect(409);
+      expect(sent.body.code).toBe('INVALID_STATE_TRANSITION');
+      expect(await stockOf(p)).toBe('5.000');
+    });
+
+    /// Audits 21m : la remise que l'admin a accordée se reprend telle quelle
+    /// (pas une autre) ; un devis expiré se refait ; `customerId: null` le
+    /// remet au comptoir.
+    it('modification : remise de l’admin reprise, expiré refusé, comptoir', async () => {
+      const p = await product('5.000');
+      const c = await customer();
+      const quote = (
+        await createQuote(tokens.admin, {
+          customerId: c,
+          lines: [{ productId: p, quantity: '1', discountAmount: 5000 }],
+        }).expect(201)
+      ).body;
+      // Le vendeur (sans `sale.discount`) garde la remise accordée…
+      const kept = (
+        await as(tokens.admin)
+          .patch(`/api/quotes/${quote.id}`)
+          .send({
+            customerId: null,
+            lines: [{ productId: p, quantity: '2', discountAmount: 5000 }],
+          })
+          .expect(200)
+      ).body;
+      expect(kept.customerId).toBeNull();
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: {
+          userId: (
+            await prisma.user.findFirstOrThrow({
+              where: { email: { startsWith: 'e2e-quote-vendeur-' } },
+            })
+          ).id,
+        },
+      });
+      await as(tokens.vendeur)
+        .patch(`/api/quotes/${quote.id}`)
+        .send({
+          lines: [{ productId: p, quantity: '3', discountAmount: 5000 }],
+        })
+        .expect(200);
+      // … mais n'en accorde pas une autre.
+      await as(tokens.vendeur)
+        .patch(`/api/quotes/${quote.id}`)
+        .send({
+          lines: [{ productId: p, quantity: '3', discountAmount: 9000 }],
+        })
+        .expect(403);
+
+      await prisma.quote.update({
+        where: { id: quote.id },
+        data: { validUntil: new Date('2020-01-01T00:00:00Z') },
+      });
+      const expired = await as(tokens.vendeur)
+        .patch(`/api/quotes/${quote.id}`)
+        .send({ lines: [{ productId: p, quantity: '1' }] })
+        .expect(409);
+      expect(expired.body.code).toBe('QUOTE_EXPIRED');
     });
   });
 

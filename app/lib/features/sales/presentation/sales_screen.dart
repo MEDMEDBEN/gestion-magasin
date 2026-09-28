@@ -594,6 +594,25 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     }
   }
 
+  /// Devis BROUILLON corrigé (P1 bis n°21m) : le serveur re-tarife et peut
+  /// refuser (devis envoyé entre-temps, prix sous le coût…).
+  Future<void> _updateQuote() async {
+    setState(() => _busy = true);
+    try {
+      final quote = await ref.read(quoteActionsProvider).updateFromCart();
+      if (mounted) {
+        _snack(
+          context,
+          'Devis ${quote.number} mis à jour (${formatDA(quote.totalTtc)}).',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _checkout(CartEstimate estimate) async {
     final cart = ref.read(cartProvider);
     // Caisse CONNUE fermée (dernier état lu, même hors ligne) : une vente
@@ -801,6 +820,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             );
           },
         ),
+        if (cart.quote case final quote?) ...[
+          const SizedBox(height: 12),
+          AmpereInlineAlert(
+            tone: StatusTone.info,
+            message:
+                'Modification du devis ${quote.number} : le panier remplacera '
+                'ses lignes. « Vider le panier » abandonne la modification.',
+          ),
+        ],
         const SizedBox(height: 12),
         _CustomerPicker(customer: cart.customer),
         const SizedBox(height: 12),
@@ -857,23 +885,36 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             ),
           ],
           const SizedBox(height: 16),
-          SizedBox(
-            height: AmpereGeometry.touchPrimary,
-            child: FilledButton.icon(
-              onPressed: _busy || estimate.blocked
-                  ? null
-                  : () => _checkout(estimate),
-              icon: const Icon(LucideIcons.banknote, size: 18),
-              label: Text('Encaisser ${formatDA(estimate.totalTtc)}'),
+          if (cart.quote case final quote?)
+            // Un devis en cours de modification ne s'encaisse pas ici : il se
+            // met à jour, puis suit son cycle (envoi, acceptation, conversion).
+            SizedBox(
+              height: AmpereGeometry.touchPrimary,
+              child: FilledButton.icon(
+                onPressed: _busy || estimate.blocked ? null : _updateQuote,
+                icon: const Icon(LucideIcons.fileText, size: 18),
+                label: Text('Mettre à jour le devis ${quote.number}'),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: AmpereGeometry.touchPrimary,
+              child: FilledButton.icon(
+                onPressed: _busy || estimate.blocked
+                    ? null
+                    : () => _checkout(estimate),
+                icon: const Icon(LucideIcons.banknote, size: 18),
+                label: Text('Encaisser ${formatDA(estimate.totalTtc)}'),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          // Même panier, aucun encaissement, aucun mouvement de stock.
-          OutlinedButton.icon(
-            onPressed: _busy || estimate.blocked ? null : _makeQuote,
-            icon: const Icon(LucideIcons.fileText, size: 18),
-            label: const Text('Faire un devis'),
-          ),
+            const SizedBox(height: 8),
+            // Même panier, aucun encaissement, aucun mouvement de stock.
+            OutlinedButton.icon(
+              onPressed: _busy || estimate.blocked ? null : _makeQuote,
+              icon: const Icon(LucideIcons.fileText, size: 18),
+              label: const Text('Faire un devis'),
+            ),
+          ],
           TextButton(
             onPressed: _busy
                 ? null

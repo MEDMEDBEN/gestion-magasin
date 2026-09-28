@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { parseApiDate } from '../common/api-date';
-import { AuthenticatedUser } from '../common/auth.decorators';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { localDate, nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   ConvertQuoteDto,
   CreateQuoteDto,
+  UpdateQuoteDto,
   QuoteDto,
   QuoteListDto,
   QuoteListQueryDto,
@@ -124,19 +125,7 @@ export class QuotesService {
           totalTax: priced.totalTax,
           totalTtc: priced.totalTtc,
           note: dto.note ?? null,
-          lines: {
-            create: priced.lines.map((line) => ({
-              productId: line.productId,
-              priceTierId: line.priceTierId,
-              quantity: line.quantity,
-              unitPriceHt: line.unitPriceHt,
-              taxRate: line.taxRate,
-              discountAmount: line.discountAmount,
-              lineTotalHt: line.lineTotalHt,
-              lineTaxAmount: line.lineTaxAmount,
-              lineTotalTtc: line.lineTotalTtc,
-            })),
-          },
+          lines: { create: QuotesService.lineRows(priced.lines) },
         },
         include: QUOTE_INCLUDE,
       });
@@ -154,6 +143,134 @@ export class QuotesService {
       });
       return QuotesService.toDto(quote);
     });
+  }
+
+  /// Modification d'un BROUILLON non expiré (P1 bis n°21m) : par son auteur ou
+  /// l'ADMIN ; lignes remplacées et chiffrées par `priceCart` (tarif du client,
+  /// ou prix saisi — l'app renvoie le prix promis s'il diffère du tarif ;
+  /// plancher du coût ; remise : voir `granted`) ; audit avant/après. Envoyé,
+  /// accepté… : il ne se modifie plus (le client a reçu CE devis).
+  async update(
+    id: string,
+    dto: UpdateQuoteDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<QuoteDto> {
+    const validUntil =
+      dto.validUntil === undefined
+        ? undefined
+        : QuotesService.validUntil(dto.validUntil);
+    return this.prisma.$transaction(async (tx) => {
+      const before = await QuotesService.lock(tx, id);
+      if (before.userId !== user.id && !user.roles.includes(RoleCode.ADMIN)) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_PERMISSION,
+          'Seul l’auteur du devis (ou l’administrateur) le modifie',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      if (before.status !== 'BROUILLON') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Seul un devis brouillon se modifie : le client a reçu celui-ci',
+          HttpStatus.CONFLICT,
+        );
+      }
+      // Comme l'envoi et l'acceptation : un devis expiré se refait.
+      if (QuotesService.effectiveStatus(before) === 'EXPIRE') {
+        throw QuotesService.expired(before.number);
+      }
+      const customerId =
+        dto.customerId !== undefined ? dto.customerId : before.customerId;
+      const customer = customerId
+        ? await tx.customer.findFirst({
+            where: { id: customerId, isActive: true },
+          })
+        : null;
+      if (customerId && !customer) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'Client introuvable ou inactif',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      // Remise : `sale.discount`, ou celle que l'admin a DÉJÀ accordée sur ce
+      // produit, reprise telle quelle (comme à la conversion) — sinon l'auteur
+      // ne pourrait plus corriger un brouillon remisé par l'admin. Le plancher
+      // du coût reste vérifié par `priceCart`.
+      const granted = dto.lines.every(
+        (l) =>
+          !l.discountAmount ||
+          before.lines.some(
+            (b) =>
+              b.productId === l.productId &&
+              b.discountAmount === l.discountAmount,
+          ),
+      );
+      const priced = await SalesService.priceCart(
+        tx,
+        customer,
+        dto.lines,
+        user.permissions.includes(PERMISSIONS.SALE_DISCOUNT) || granted,
+      );
+      await tx.quoteLine.deleteMany({ where: { quoteId: id } });
+      const quote = await tx.quote.update({
+        where: { id },
+        data: {
+          customerId: customer?.id ?? null,
+          ...(validUntil !== undefined && { validUntil }),
+          ...(dto.note !== undefined && { note: dto.note }),
+          totalHt: priced.totalHt,
+          totalTax: priced.totalTax,
+          totalTtc: priced.totalTtc,
+          lines: { create: QuotesService.lineRows(priced.lines) },
+        },
+        include: QUOTE_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'Quote',
+        entityId: id,
+        // Les lignes remplacées disparaissent : l'audit garde ce qu'elles étaient.
+        oldValue: {
+          number: before.number,
+          customerId: before.customerId,
+          validUntil: before.validUntil,
+          totalTtc: before.totalTtc,
+          lines: before.lines.map((l) => ({
+            productId: l.productId,
+            quantity: l.quantity.toFixed(3),
+            unitPriceHt: l.unitPriceHt,
+            discountAmount: l.discountAmount,
+          })),
+        },
+        newValue: {
+          number: quote.number,
+          customerId: quote.customerId,
+          validUntil: quote.validUntil,
+          totalTtc: quote.totalTtc,
+          priceOverrides: QuotesService.overrides(priced.lines),
+        },
+      });
+      return QuotesService.toDto(quote);
+    });
+  }
+
+  /// Lignes chiffrées par `priceCart` → lignes de devis (création, modification).
+  private static lineRows(
+    lines: Awaited<ReturnType<typeof SalesService.priceCart>>['lines'],
+  ) {
+    return lines.map((line) => ({
+      productId: line.productId,
+      priceTierId: line.priceTierId,
+      quantity: line.quantity,
+      unitPriceHt: line.unitPriceHt,
+      taxRate: line.taxRate,
+      discountAmount: line.discountAmount,
+      lineTotalHt: line.lineTotalHt,
+      lineTaxAmount: line.lineTaxAmount,
+      lineTotalTtc: line.lineTotalTtc,
+    }));
   }
 
   async findAll(query: QuoteListQueryDto): Promise<QuoteListDto> {

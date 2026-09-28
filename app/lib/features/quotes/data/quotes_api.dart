@@ -8,6 +8,14 @@ import '../../../core/providers.dart';
 import '../../sales/data/sales_models.dart';
 import 'quote_models.dart';
 
+/// Ligne envoyée : produit, quantité, et le prix seulement s'il a été modifié.
+typedef QuoteLineInput = ({
+  String productId,
+  String quantity,
+  int? unitPriceHt,
+  int discountAmount,
+});
+
 /// Devis (spec §8quater). EN LIGNE uniquement : un devis se numérote et
 /// change d'état sur le serveur, et sa conversion est une vente complète qui
 /// doit être jugée au moment où elle a lieu.
@@ -36,32 +44,42 @@ class QuotesApi {
     required String id,
     String? customerId,
     String? validUntil,
-    required List<
-      ({
-        String productId,
-        String quantity,
-        int? unitPriceHt,
-        int discountAmount,
-      })
-    >
-    lines,
+    required List<QuoteLineInput> lines,
   }) => _post('/quotes', {
     'id': id,
     'customerId': ?customerId,
     'validUntil': ?validUntil,
-    'lines': [
-      for (final line in lines)
-        {
-          'productId': line.productId,
-          'quantity': line.quantity,
-          if (line.unitPriceHt != null) ...{
-            'unitPriceHt': line.unitPriceHt,
-            'priceEdited': true,
-          },
-          if (line.discountAmount > 0) 'discountAmount': line.discountAmount,
-        },
-    ],
+    'lines': _lines(lines),
   }, Quote.fromJson);
+
+  /// Devis BROUILLON corrigé (P1 bis n°21m) : lignes remplacées et re-tarifées
+  /// par le serveur. `customerId` null : devis comptoir.
+  Future<Quote> update(
+    String id, {
+    String? customerId,
+    required List<QuoteLineInput> lines,
+  }) {
+    return guardApi(() async {
+      final response = await _dio.patch<Map<String, dynamic>>(
+        '/quotes/$id',
+        data: {'customerId': customerId, 'lines': _lines(lines)},
+      );
+      return Quote.fromJson(response.data!);
+    });
+  }
+
+  static List<Map<String, Object?>> _lines(List<QuoteLineInput> lines) => [
+    for (final line in lines)
+      {
+        'productId': line.productId,
+        'quantity': line.quantity,
+        if (line.unitPriceHt != null) ...{
+          'unitPriceHt': line.unitPriceHt,
+          'priceEdited': true,
+        },
+        if (line.discountAmount > 0) 'discountAmount': line.discountAmount,
+      },
+  ];
 
   Future<Quote> send(String id) =>
       _post('/quotes/$id/send', null, Quote.fromJson);

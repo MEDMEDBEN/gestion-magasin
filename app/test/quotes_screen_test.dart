@@ -11,6 +11,9 @@ import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_api.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/quotes/application/quotes_controller.dart';
 import 'package:gestion_magasin/features/quotes/data/quote_models.dart';
 import 'package:gestion_magasin/features/quotes/data/quotes_api.dart';
@@ -116,6 +119,42 @@ class _FakeQuotesApi extends QuotesApi {
 
   @override
   Future<Uint8List> document(String id) async => Uint8List(4);
+
+  final updated = <(String, String?, List<QuoteLineInput>)>[];
+
+  @override
+  Future<Quote> update(
+    String id, {
+    String? customerId,
+    required List<QuoteLineInput> lines,
+  }) async {
+    updated.add((id, customerId, lines));
+    return _quote('1', QuoteStatus.draft);
+  }
+}
+
+/// Catalogue local réduit à une liste de produits.
+class _Catalog implements CatalogRepository {
+  _Catalog(this.products);
+
+  final List<Product> products;
+
+  @override
+  Stream<List<Product>> watchProducts({
+    String search = '',
+    Set<String>? categoryIds,
+    bool includeInactive = false,
+  }) => Stream.value(products);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _Tiers extends RecordingCatalogApi {
+  @override
+  Future<List<PriceTier>> priceTiers() async => const [
+    PriceTier(id: 'd', code: 'DETAIL', name: 'Détail', isDefault: true),
+  ];
 }
 
 final _openCash = CashSession(
@@ -138,6 +177,7 @@ Future<_FakeQuotesApi> _pump(
   WidgetTester tester,
   List<Quote> quotes, {
   CashSession? cash,
+  String userId = 'v',
 }) async {
   useScreenSize(tester, const Size(900, 1200));
   final api = _FakeQuotesApi(quotes);
@@ -146,7 +186,15 @@ Future<_FakeQuotesApi> _pump(
       overrides: _overrides(api, cash: cash),
       child: MaterialApp(
         theme: AppTheme.mobile(dark: true),
-        home: const Scaffold(body: QuotesScreen()),
+        home: Scaffold(
+          body: QuotesScreen(
+            user: authUser(
+              id: userId,
+              roles: const ['VENDEUR'],
+              permissions: const ['sale.create'],
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -306,6 +354,84 @@ void main() {
       expect(container.read(cartProvider).isEmpty, isTrue);
     },
   );
+
+  /// P1 bis n°21m : un brouillon revient dans le panier de la Vente ; un prix
+  /// égal au tarif redevient « au tarif », un prix modifié le reste ; la mise
+  /// à jour remplace ses lignes et vide le panier.
+  test('modifier un brouillon : panier chargé, puis mise à jour', () async {
+    final api = _FakeQuotesApi([]);
+    ProductPriceLine detail(int price) =>
+        ProductPriceLine(priceTierId: 'd', priceHt: price);
+    final container = ProviderContainer(
+      overrides: [
+        ..._overrides(api),
+        catalogRepositoryProvider.overrideWithValue(
+          _Catalog([
+            product(id: 'p1').copyWith(prices: [detail(145000)]),
+            product(id: 'p2', name: 'Câble').copyWith(prices: [detail(145000)]),
+          ]),
+        ),
+        catalogApiProvider.overrideWithValue(_Tiers()),
+      ],
+    );
+    addTearDown(container.dispose);
+    QuoteLine line(String productId, int price) => QuoteLine(
+      id: 'l-$productId',
+      productId: productId,
+      quantity: '2.500',
+      unitPriceHt: price,
+      taxRate: '19.00',
+      lineTotalHt: 0,
+      lineTaxAmount: 0,
+      lineTotalTtc: 0,
+    );
+    final draft = _quote(
+      '1',
+      QuoteStatus.draft,
+    ).copyWith(lines: [line('p1', 145000), line('p2', 130000)]);
+
+    await container.read(quoteActionsProvider).editInCart(draft);
+    final cart = container.read(cartProvider);
+    expect(cart.quote?.id, '1');
+    expect(cart.lines.map((l) => l.unitPriceHt), [null, 130000]);
+    expect(cart.lines.first.quantity, Decimal.parse('2.5'));
+
+    container.read(cartProvider.notifier).setQuantity('p1', Decimal.one);
+    await container.read(quoteActionsProvider).updateFromCart();
+    final (id, customerId, lines) = api.updated.single;
+    expect(id, '1');
+    expect(customerId, isNull);
+    expect(lines.map((l) => (l.productId, l.quantity, l.unitPriceHt)), [
+      ('p1', '1.000', null),
+      ('p2', '2.500', 130000),
+    ]);
+    expect(container.read(cartProvider).quote, isNull);
+    expect(container.read(cartProvider).isEmpty, isTrue);
+  });
+
+  testWidgets('seul un brouillon propose « Modifier »', (tester) async {
+    await _pump(tester, [
+      _quote('1', QuoteStatus.draft),
+      _quote('2', QuoteStatus.sent),
+    ]);
+    await tester.tap(find.textContaining('DV-2026-00001'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Modifier'), findsOneWidget);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('DV-2026-00002'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Modifier'), findsNothing);
+  });
+
+  testWidgets('le brouillon d’un collègue : pas de « Modifier »', (
+    tester,
+  ) async {
+    await _pump(tester, [_quote('1', QuoteStatus.draft)], userId: 'autre');
+    await tester.tap(find.textContaining('DV-2026-00001'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Modifier'), findsNothing);
+  });
 
   test('menu « Devis » : ADMIN et VENDEUR, jamais le magasinier', () {
     bool offered(AuthUser user) =>

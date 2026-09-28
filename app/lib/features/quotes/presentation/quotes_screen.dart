@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
+import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/amount_dialog.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/screen_state.dart';
+import '../../auth/data/auth_models.dart';
 import '../../sales/application/sales_controller.dart';
 import '../application/quotes_controller.dart';
 import '../data/quote_models.dart';
@@ -15,7 +18,9 @@ import '../data/quote_models.dart';
 /// recherche, même douchette, mêmes prix. Ici : les retrouver, les imprimer,
 /// suivre leur réponse et convertir en vente ceux que le client a acceptés.
 class QuotesScreen extends ConsumerWidget {
-  const QuotesScreen({super.key});
+  const QuotesScreen({super.key, required this.user});
+
+  final AuthUser user;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -122,6 +127,13 @@ class QuotesScreen extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop('print'),
             child: const Text('Imprimer / partager le PDF'),
           ),
+          // Miroir du serveur : son auteur, ou l'admin.
+          if (status.canEdit &&
+              (quote.userId == user.id || user.hasRole('ADMIN')))
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('edit'),
+              child: const Text('Modifier (dans le panier de la vente)'),
+            ),
           if (status.canSend)
             SimpleDialogOption(
               onPressed: () => Navigator.of(context).pop('send'),
@@ -151,6 +163,22 @@ class QuotesScreen extends ConsumerWidget {
       switch (action) {
         case 'print':
           await actions.print(quote);
+        case 'edit':
+          // Le panier est remplacé : jamais une vente en cours perdue en
+          // silence.
+          if (!ref.read(cartProvider).isEmpty &&
+              !await showAmpereConfirmDialog(
+                context,
+                title: 'Remplacer le panier ?',
+                body:
+                    'Le panier de la vente contient des articles : il sera '
+                    'remplacé par les lignes de ${quote.number}.',
+                confirmLabel: 'Remplacer',
+              )) {
+            return;
+          }
+          await actions.editInCart(quote);
+          goToDestination(ref, 'Vente');
         case 'convert':
           await _convert(context, ref, quote);
         default:

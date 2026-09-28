@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Ip,
   Param,
+  Patch,
   Post,
   Query,
   StreamableFile,
@@ -33,6 +34,7 @@ import { PERMISSIONS } from '../common/permissions';
 import {
   ConvertQuoteDto,
   CreateQuoteDto,
+  UpdateQuoteDto,
   QuoteDto,
   QuoteListDto,
   QuoteListQueryDto,
@@ -90,6 +92,24 @@ export class QuotesController {
     return new StreamableFile(pdf, {
       type: 'application/pdf',
       disposition: `inline; filename="${filename}"`,
+    });
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Modifie un devis BROUILLON (lignes remplacées et re-tarifées)',
+  })
+  @ApiOkResponse({ type: QuoteDto })
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  update(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: UpdateQuoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<QuoteDto> {
+    return this.quotes.update(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
     });
   }
 

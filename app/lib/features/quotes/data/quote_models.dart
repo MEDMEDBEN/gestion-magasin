@@ -29,6 +29,9 @@ enum QuoteStatus {
 
   /// Mêmes transitions que le serveur (`QuotesService`).
   bool get canSend => this == QuoteStatus.draft;
+
+  /// Seul un brouillon se corrige : envoyé, le client l'a entre les mains.
+  bool get canEdit => this == QuoteStatus.draft;
   bool get canAccept => this == QuoteStatus.draft || this == QuoteStatus.sent;
 
   /// Un devis expiré se clôt encore en « refusé » (le serveur l'accepte) : il

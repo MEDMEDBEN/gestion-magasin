@@ -74,6 +74,25 @@ export class CreateQuoteDto {
   lines!: CreateSaleLineDto[];
 }
 
+/// Modification d'un devis BROUILLON (P1 bis n°21m) : les lignes envoyées
+/// REMPLACENT les précédentes, chiffrées par la même règle que la vente (tarif
+/// du client, ou prix saisi `priceEdited`) ; validité et note inchangées si
+/// absentes.
+export class UpdateQuoteDto extends PickType(CreateQuoteDto, [
+  'validUntil',
+  'note',
+  'lines',
+] as const) {
+  @ApiPropertyOptional({
+    nullable: true,
+    type: String,
+    description: 'Client ; `null` : devis comptoir ; absent : inchangé.',
+  })
+  @IsCanonicalUuid()
+  @IsOptional()
+  customerId?: string | null;
+}
+
 /// Conversion d'un devis ACCEPTÉ en vente : les lignes et le client viennent du
 /// devis ; seul l'encaissement est à dire. Mutation d'ARGENT : clé
 /// d'idempotence obligatoire, comme `POST /sales`.

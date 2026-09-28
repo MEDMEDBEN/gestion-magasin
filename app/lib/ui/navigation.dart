@@ -90,7 +90,7 @@ List<AppDestination> destinationsFor(AuthUser user) => [
     AppDestination(
       icon: LucideIcons.fileText,
       label: 'Devis',
-      builder: (context, _) => const QuotesScreen(),
+      builder: (context, user) => QuotesScreen(user: user),
     ),
   // `/products`, `/categories`, `/locations` en lecture : 3 rôles + product.read.
   if (user.can('product.read'))

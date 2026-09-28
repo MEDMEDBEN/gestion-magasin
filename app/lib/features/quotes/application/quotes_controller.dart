@@ -6,7 +6,10 @@ import '../../../core/error/error_codes.dart';
 import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
+import '../../catalog/data/catalog_api.dart';
+import '../../catalog/data/catalog_repository.dart';
 import '../../sales/application/sales_controller.dart';
+import '../../sales/data/sales_api.dart';
 import '../../sales/data/sales_models.dart';
 import '../data/quote_models.dart';
 import '../data/quotes_api.dart';
@@ -56,21 +59,92 @@ class QuoteActions {
         id: id,
         customerId: cart.customer?.id,
         validUntil: validUntil == null ? null : isoDay(validUntil),
-        lines: [
-          for (final line in cart.lines)
-            (
-              productId: line.product.id,
-              quantity: quantityToJson(line.quantity),
-              unitPriceHt: line.unitPriceHt,
-              discountAmount: line.discountHt,
-            ),
-        ],
+        lines: _cartLines(cart),
       ),
     );
     _ref.read(cartProvider.notifier).clear();
     _refresh();
     return quote;
   }
+
+  static List<QuoteLineInput> _cartLines(CartState cart) => [
+    for (final line in cart.lines)
+      (
+        productId: line.product.id,
+        quantity: quantityToJson(line.quantity),
+        unitPriceHt: line.unitPriceHt,
+        discountAmount: line.discountHt,
+      ),
+  ];
+
+  /// Devis BROUILLON → panier de l'écran Vente (P1 bis n°21m) : même
+  /// recherche, mêmes prix, mêmes remises que pour le faire. Un prix de ligne
+  /// différent du tarif du client reste « modifié ».
+  Future<void> editInCart(Quote quote) async {
+    final products = {
+      for (final p
+          in await _ref.read(catalogRepositoryProvider).watchProducts().first)
+        p.id: p,
+    };
+    Customer? customer;
+    if (quote.customerId != null) {
+      // ponytail: retrouvé par son nom (50 résultats), faute de lecture par
+      // id côté vendeur ; plus de 50 homonymes → « introuvable ». Ajouter
+      // `GET /customers/:id` à l'API de vente si cela arrive.
+      final page = await _ref
+          .read(salesApiProvider)
+          .customers(query: quote.customerName);
+      customer = page.data.where((c) => c.id == quote.customerId).firstOrNull;
+      if (customer == null) throw _cannotEdit('son client est introuvable');
+    }
+    final tiers = await _ref.read(catalogApiProvider).priceTiers();
+    final tierId =
+        customer?.priceTierId ??
+        tiers.where((t) => t.isDefault).firstOrNull?.id;
+    final lines = <CartLine>[];
+    for (final line in quote.lines) {
+      final product = products[line.productId];
+      if (product == null) {
+        throw _cannotEdit('un de ses produits n’est plus au catalogue');
+      }
+      final tariff = product.prices
+          .where((p) => p.priceTierId == tierId)
+          .firstOrNull
+          ?.priceHt;
+      lines.add(
+        CartLine(
+          product,
+          parseQuantity(line.quantity)!,
+          unitPriceHt: line.unitPriceHt == tariff ? null : line.unitPriceHt,
+          discountHt: line.discountAmount,
+        ),
+      );
+    }
+    _ref
+        .read(cartProvider.notifier)
+        .loadQuote((id: quote.id, number: quote.number), lines, customer);
+  }
+
+  /// Le panier remplace les lignes du devis en cours de modification ; le
+  /// serveur chiffre avec les règles de la vente (tarif du client, ou prix
+  /// promis gardé comme prix modifié ; plancher ; remise de l'admin reprise).
+  Future<Quote> updateFromCart() async {
+    final cart = _ref.read(cartProvider);
+    final quote = await _api.update(
+      cart.quote!.id,
+      customerId: cart.customer?.id,
+      lines: _cartLines(cart),
+    );
+    _ref.read(cartProvider.notifier).clear();
+    _refresh();
+    return quote;
+  }
+
+  static ApiException _cannotEdit(String why) => ApiException(
+    statusCode: 422,
+    code: ErrorCodes.validationFailed,
+    message: 'Ce devis ne se modifie pas ici : $why.',
+  );
 
   Future<Quote> send(Quote quote) => _then(_api.send(quote.id));
   Future<Quote> accept(Quote quote) => _then(_api.accept(quote.id));

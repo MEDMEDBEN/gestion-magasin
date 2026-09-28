@@ -170,11 +170,20 @@ int? priceFloor(Product product) {
 /// coupure réutilise le même id et le serveur ne crée pas de seconde vente.
 @immutable
 class CartState {
-  const CartState({required this.saleId, this.lines = const [], this.customer});
+  const CartState({
+    required this.saleId,
+    this.lines = const [],
+    this.customer,
+    this.quote,
+  });
 
   final String saleId;
   final List<CartLine> lines;
   final Customer? customer;
+
+  /// Devis BROUILLON en cours de modification (P1 bis n°21m) : le panier le
+  /// met à jour au lieu d'encaisser ou d'en créer un nouveau.
+  final ({String id, String number})? quote;
 
   bool get isEmpty => lines.isEmpty;
 
@@ -185,6 +194,7 @@ class CartState {
     saleId: saleId,
     lines: lines ?? this.lines,
     customer: customer != null ? customer() : this.customer,
+    quote: quote,
   );
 }
 
@@ -252,6 +262,18 @@ class CartController extends Notifier<CartState> {
 
   /// Nouveau panier, nouvel identifiant de vente.
   void clear() => state = CartState(saleId: ref.read(uuidProvider).v7());
+
+  /// Panier rempli par un devis BROUILLON à modifier (remplace le panier).
+  void loadQuote(
+    ({String id, String number}) quote,
+    List<CartLine> lines,
+    Customer? customer,
+  ) => state = CartState(
+    saleId: ref.read(uuidProvider).v7(),
+    lines: lines,
+    customer: customer,
+    quote: quote,
+  );
 }
 
 final cartProvider = NotifierProvider<CartController, CartState>(
