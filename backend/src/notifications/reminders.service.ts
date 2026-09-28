@@ -52,10 +52,14 @@ export class RemindersService
 
   onApplicationBootstrap(): void {
     // 0 : désactivé (tests e2e — ils appellent `sweep` eux-mêmes).
-    const every = Number(
-      this.config.get<string>('REMINDERS_INTERVAL_MS') ?? 3_600_000,
-    );
-    if (!Number.isFinite(every) || every <= 0) return;
+    const raw = this.config.get<string>('REMINDERS_INTERVAL_MS')?.trim();
+    const every = raw ? Number(raw) : 3_600_000;
+    if (!Number.isFinite(every) || every <= 0) {
+      this.logger.warn(
+        `Rappels planifiés DÉSACTIVÉS (REMINDERS_INTERVAL_MS=${raw})`,
+      );
+      return;
+    }
     const run = () =>
       this.sweep().catch((error: unknown) =>
         this.logger.error('Balayage des rappels en échec', error as Error),
@@ -142,30 +146,60 @@ export class RemindersService
       );
     }
 
-    // Échéance de paiement proche ou passée, fournisseur encore créancier.
-    const due = await tx.purchaseOrder.findMany({
-      where: {
-        status: {
-          in: ['CONFIRMEE', 'PARTIELLEMENT_RECUE', 'RECUE', 'CLOTUREE'],
-        },
-        dueDate: { lte: soon },
-      },
-      include: { supplier: true },
-      orderBy: { dueDate: 'asc' },
-      take: MAX_PER_TYPE,
-    });
+    // Échéance de paiement proche ou passée, par COMMANDE : ce qu'elle a fait
+    // RÉELLEMENT entrer (réceptions, TTC figé) moins ce qui lui a été payé —
+    // la dette naît à la réception (décision 2026-09-16). Filtré en SQL AVANT
+    // la limite : un historique soldé ne masque jamais une dette récente.
+    const due = await tx.$queryRaw<
+      {
+        id: string;
+        number: string;
+        dueDate: Date;
+        supplierId: string;
+        supplierName: string;
+        remaining: number;
+      }[]
+    >`
+      SELECT po."id", po."number", po."dueDate", po."supplierId",
+             s."name" AS "supplierName",
+             (COALESCE(r."received", 0) - COALESCE(p."paid", 0))::int AS "remaining"
+      FROM "PurchaseOrder" po
+      JOIN "Supplier" s ON s."id" = po."supplierId"
+      LEFT JOIN (SELECT "purchaseOrderId", SUM("totalTtc") AS "received"
+                 FROM "Reception" GROUP BY "purchaseOrderId") r
+        ON r."purchaseOrderId" = po."id"
+      LEFT JOIN (SELECT "purchaseOrderId", SUM("amount") AS "paid"
+                 FROM "SupplierPayment" GROUP BY "purchaseOrderId") p
+        ON p."purchaseOrderId" = po."id"
+      WHERE po."status" IN ('CONFIRMEE', 'PARTIELLEMENT_RECUE', 'RECUE', 'CLOTUREE')
+        AND po."dueDate" <= ${soon}
+        AND COALESCE(r."received", 0) - COALESCE(p."paid", 0) > 0
+      ORDER BY po."dueDate" ASC
+      LIMIT ${MAX_PER_TYPE}`;
+    // Un paiement général (sans commande) réduit la dette du fournisseur : le
+    // reste d'une commande est plafonné par ce que l'on doit encore au total.
+    const balances = new Map<string, number>();
     for (const order of due) {
-      const { balanceDue } = await SuppliersService.debt(tx, order.supplier);
-      if (balanceDue <= 0) continue;
-      const overdue = order.dueDate! < today;
+      if (!balances.has(order.supplierId)) {
+        const supplier = await tx.supplier.findUniqueOrThrow({
+          where: { id: order.supplierId },
+        });
+        balances.set(
+          order.supplierId,
+          (await SuppliersService.debt(tx, supplier)).balanceDue,
+        );
+      }
+      const owed = Math.min(order.remaining, balances.get(order.supplierId)!);
+      if (owed <= 0) continue;
+      const overdue = order.dueDate < today;
       await remind({ type: 'DETTE_FOURNISSEUR', operationId: order.id }, () =>
         NotificationsService.notifyRoles(tx, [RoleCode.ADMIN], {
           type: 'DETTE_FOURNISSEUR',
           priority: overdue ? 'HAUTE' : 'NORMALE',
-          title: `${overdue ? 'Paiement en retard' : 'À payer'} : ${order.supplier.name}`,
+          title: `${overdue ? 'Paiement en retard' : 'À payer'} : ${order.supplierName}`,
           body:
-            `Commande ${order.number}, échéance le ${localDate(order.dueDate!)} ` +
-            `— reste dû au fournisseur ${formatDA(balanceDue)}.`,
+            `Commande ${order.number}, échéance le ${localDate(order.dueDate)} ` +
+            `— reste ${formatDA(owed)}.`,
           operationType: 'PURCHASE_ORDER',
           operationId: order.id,
         }),
@@ -179,46 +213,79 @@ export class RemindersService
     soon: Date,
     remind: Remind,
   ): Promise<void> {
-    const sales = await tx.sale.findMany({
-      where: {
-        status: 'VALIDEE',
-        dueDate: { lte: soon },
-        customerId: { not: null },
-      },
-      include: {
-        customer: { select: { name: true } },
-        payments: { select: { amount: true } },
-      },
-      orderBy: { dueDate: 'asc' },
-      take: MAX_PER_TYPE * 2,
-    });
-    // Un acompte général (sans vente) solde d'abord les dettes : un client à
-    // jour n'a rien à recevoir, même si une vente garde un « reste ».
+    // Ventes à crédit NON soldées seulement, filtrées en SQL avant la limite
+    // (sinon l'historique soldé finirait par occuper toute la fenêtre).
+    const sales = await tx.$queryRaw<
+      {
+        id: string;
+        number: string;
+        invoiceNumber: string | null;
+        dueDate: Date;
+        customerId: string;
+        customerName: string;
+        userId: string;
+        remaining: number;
+      }[]
+    >`
+      SELECT s."id", s."number", s."invoiceNumber", s."dueDate", s."customerId",
+             c."name" AS "customerName", s."userId",
+             (s."totalTtc" - s."paidAmount" - COALESCE(p."paid", 0))::int AS "remaining"
+      FROM "Sale" s
+      JOIN "Customer" c ON c."id" = s."customerId"
+      LEFT JOIN (SELECT "saleId", SUM("amount") AS "paid"
+                 FROM "CustomerPayment" WHERE "saleId" IS NOT NULL
+                 GROUP BY "saleId") p ON p."saleId" = s."id"
+      WHERE s."status" = 'VALIDEE'
+        AND s."dueDate" <= ${soon}
+        AND s."totalTtc" - s."paidAmount" - COALESCE(p."paid", 0) > 0
+      ORDER BY s."dueDate" ASC
+      LIMIT ${MAX_PER_TYPE * 2}`;
+    // Un acompte général (sans vente) solde d'abord les dettes : le reste
+    // rappelé est plafonné par la dette du client (0 : rien à rappeler).
     const debts = await SalesService.customerDebts(tx, [
-      ...new Set(sales.map((s) => s.customerId!)),
+      ...new Set(sales.map((s) => s.customerId)),
     ]);
+    // Le vendeur n'est prévenu que s'il VEND encore (un vendeur passé
+    // magasinier ne lit plus les ventes — docs/permissions.md).
+    const sellers = new Set(
+      (
+        await tx.user.findMany({
+          where: {
+            id: { in: [...new Set(sales.map((s) => s.userId))] },
+            roles: {
+              some: { code: { in: [RoleCode.VENDEUR, RoleCode.ADMIN] } },
+            },
+          },
+          select: { id: true },
+        })
+      ).map((u) => u.id),
+    );
     for (const sale of sales) {
-      const remaining =
-        sale.totalTtc -
-        sale.paidAmount -
-        sale.payments.reduce((sum, p) => sum + p.amount, 0);
-      if (remaining <= 0 || (debts.get(sale.customerId!) ?? 0) <= 0) continue;
-      const overdue = sale.dueDate! < today;
+      const owed = Math.min(sale.remaining, debts.get(sale.customerId) ?? 0);
+      if (owed <= 0) continue;
+      const overdue = sale.dueDate < today;
       const type = overdue ? 'DETTE_CLIENT_RETARD' : 'ECHEANCE_CLIENT';
       const input: NotifyInput = {
         type,
         priority: overdue ? 'HAUTE' : 'NORMALE',
-        title: `${overdue ? 'Dette en retard' : 'Échéance proche'} : ${sale.customer!.name}`,
+        title: `${overdue ? 'Dette en retard' : 'Échéance proche'} : ${sale.customerName}`,
         body:
           `Vente ${sale.invoiceNumber ?? sale.number}, échéance le ` +
-          `${localDate(sale.dueDate!)} — reste ${formatDA(remaining)}.`,
+          `${localDate(sale.dueDate)} — reste ${formatDA(owed)}.`,
         operationType: 'SALE',
         operationId: sale.id,
       };
-      // L'admin, et le vendeur de la vente (il ne voit que SES ventes).
+      // L'admin (sauf s'il est le vendeur : un seul rappel), et le vendeur.
       await remind({ type, operationId: sale.id }, async () => {
-        await NotificationsService.notifyRoles(tx, [RoleCode.ADMIN], input);
-        await NotificationsService.notifyUsers(tx, [sale.userId], input);
+        await NotificationsService.notifyRoles(
+          tx,
+          [RoleCode.ADMIN],
+          input,
+          sale.userId,
+        );
+        if (sellers.has(sale.userId)) {
+          await NotificationsService.notifyUsers(tx, [sale.userId], input);
+        }
       });
     }
   }

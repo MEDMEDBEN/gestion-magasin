@@ -75,6 +75,31 @@ describe('Rappels planifiés (e2e)', () => {
         },
       })
     ).id;
+    const depot = await prisma.location.findFirstOrThrow({
+      where: { type: 'DEPOT' },
+    });
+    await prisma.reception.create({
+      data: {
+        number: `BR-REM-${suffix}-1`,
+        supplierId: supplier.id,
+        purchaseOrderId: ids.duePo,
+        locationId: depot.id,
+        userId: ids.magasinier,
+        totalTtc: 300000,
+      },
+    });
+    // Échue mais rien reçu : aucune dette née, aucun rappel.
+    ids.unreceivedPo = (
+      await prisma.purchaseOrder.create({
+        data: {
+          number: `BC-REM-${suffix}-3`,
+          supplierId: supplier.id,
+          createdById: ids.admin,
+          status: 'CONFIRMEE',
+          dueDate: day(-1),
+        },
+      })
+    ).id;
 
     // Client à crédit : une vente due dans 2 jours, une autre en retard.
     const customer = await prisma.customer.create({
@@ -97,6 +122,37 @@ describe('Rappels planifiés (e2e)', () => {
       });
     ids.soonSale = (await sale(1, day(2))).id;
     ids.lateSale = (await sale(2, day(-1))).id;
+
+    const other = await prisma.customer.create({
+      data: { name: `Client bis REM ${suffix}`, creditLimit: 10_000_000 },
+    });
+    ids.other = other.id;
+    const saleBy = (n: number, userId: string) =>
+      prisma.sale.create({
+        data: {
+          number: `TK-REM-${suffix}-${n}`,
+          userId,
+          locationId: magasin.id,
+          customerId: other.id,
+          totalHt: 100000,
+          totalTax: 19000,
+          totalTtc: 119000,
+          paidAmount: 0,
+          dueDate: day(-1),
+        },
+      });
+    ids.adminSale = (await saleBy(4, ids.admin)).id;
+    // Vendue par un compte aujourd'hui MAGASINIER seulement.
+    ids.formerSellerSale = (await saleBy(5, ids.magasinier)).id;
+    // Acompte général partiel : 2 × 1 190 − 2 000 = 380,00 DA encore dus.
+    await prisma.customerPayment.create({
+      data: {
+        customerId: other.id,
+        userId: ids.vendeur,
+        amount: 200000,
+        method: 'ESPECES',
+      },
+    });
 
     // Client À JOUR grâce à un acompte général : rien à lui rappeler.
     const settled = await prisma.customer.create({
@@ -158,14 +214,15 @@ describe('Rappels planifiés (e2e)', () => {
       where: { assignedToId: ids.magasinier },
     });
     await prisma.customerPayment.deleteMany({
-      where: { customerId: { in: [ids.customer, ids.settled] } },
+      where: { customerId: { in: [ids.customer, ids.settled, ids.other] } },
     });
     await prisma.sale.deleteMany({
-      where: { customerId: { in: [ids.customer, ids.settled] } },
+      where: { customerId: { in: [ids.customer, ids.settled, ids.other] } },
     });
     await prisma.customer.deleteMany({
-      where: { id: { in: [ids.customer, ids.settled] } },
+      where: { id: { in: [ids.customer, ids.settled, ids.other] } },
     });
+    await prisma.reception.deleteMany({ where: { supplierId: ids.supplier } });
     await prisma.purchaseOrder.deleteMany({
       where: { supplierId: ids.supplier },
     });
@@ -184,6 +241,35 @@ describe('Rappels planifiés (e2e)', () => {
     );
     expect(await inbox(ids.admin, 'DETTE_FOURNISSEUR', ids.duePo)).toBe(1);
     expect(await inbox(ids.vendeur, 'DETTE_FOURNISSEUR', ids.duePo)).toBe(0);
+    // Le reste de LA commande (reçu 3 000 − payé 0), pas le solde global.
+    const supplierDebt = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: ids.admin,
+        type: 'DETTE_FOURNISSEUR',
+        operationId: ids.duePo,
+      },
+    });
+    expect(supplierDebt.body).toContain('reste 3 000,00 DA');
+    // Échue mais rien reçu : la dette n'est pas née.
+    expect(
+      await prisma.notification.count({
+        where: { operationId: ids.unreceivedPo },
+      }),
+    ).toBe(0);
+
+    // L'admin qui a lui-même vendu : UN rappel, pas deux.
+    expect(await inbox(ids.admin, 'DETTE_CLIENT_RETARD', ids.adminSale)).toBe(
+      1,
+    );
+    // Vendeur devenu magasinier : plus de rappel de vente (il ne les lit plus).
+    expect(
+      await inbox(ids.magasinier, 'DETTE_CLIENT_RETARD', ids.formerSellerSale),
+    ).toBe(0);
+    // Acompte général partiel : le reste rappelé est plafonné par la dette.
+    const capped = await prisma.notification.findFirstOrThrow({
+      where: { userId: ids.admin, operationId: ids.adminSale },
+    });
+    expect(capped.body).toContain('reste 380,00 DA');
 
     // Client : échéance proche et retard (admin + le vendeur de la vente).
     for (const user of [ids.admin, ids.vendeur]) {
@@ -223,7 +309,7 @@ describe('Rappels planifiés (e2e)', () => {
     ).toBe(before);
   });
 
-  it('tâche terminée, commande soldée : plus de rappel le lendemain', async () => {
+  it('tâche terminée, commande reçue : plus de rappel le lendemain', async () => {
     await prisma.planningTask.update({
       where: { id: ids.lateTask },
       data: { status: 'TERMINEE', completedAt: new Date() },

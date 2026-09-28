@@ -276,6 +276,32 @@ describe('Commandes fournisseurs (e2e)', () => {
       expect(refused.body.code).toBe('INVALID_STATE_TRANSITION');
     });
 
+    /// P1 bis n°21j : un fournisseur annonce un nouveau délai — les DATES
+    /// seules d'une commande engagée se modifient (auditées) ; le reste non.
+    it('commande confirmée : ses dates seules se modifient, au format jour', async () => {
+      const created = await order();
+      await as(tokens.admin)
+        .post(`/api/purchase-orders/${created.id}/confirm`)
+        .send({ expectedUpdatedAt: created.updatedAt })
+        .expect(200);
+      const moved = await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ expectedDate: '2026-12-15', dueDate: '2027-01-15' })
+        .expect(200);
+      expect(moved.body.status).toBe('CONFIRMEE');
+      expect(moved.body.expectedDate).toContain('2026-12-15');
+      // Une date avec heure et fuseau décalerait le jour : refusée.
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ expectedDate: '2026-12-15T23:30:00+01:00' })
+        .expect(400);
+      // Dates + autre chose : la règle « plus modifiable » tient.
+      await as(tokens.magasinier)
+        .patch(`/api/purchase-orders/${created.id}`)
+        .send({ expectedDate: '2026-12-16', note: 'Relance' })
+        .expect(409);
+    });
+
     it('annulation ADMIN : statut ANNULEE, auditée, jamais deux fois', async () => {
       const created = await order();
       await as(tokens.magasinier)

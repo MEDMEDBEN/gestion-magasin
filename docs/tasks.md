@@ -368,9 +368,31 @@ Au plus 200 rappels par type et par balayage (garde-fou). App : un rappel de tâ
 - ⚠️ Limite : les rappels sont relus à chaque balayage (état, pas événements) — un rappel manqué pendant un arrêt
   du serveur part au balayage suivant ; un rappel du jour n'est pas repoussé s'il a été lu.
 
-**Prochaine étape précise** : audits de 21i + 21j (lancés), appliquer ; puis **21k** mouvements de caisse
-manuels (entrée, sortie, prélèvement sur la session ouverte ; `CashSessionsService` a déjà `deposit`/sortie
-internes — exposer une route ADMIN/caissier + écran « Caisse »).
+**Audits 21i + 21j** — `security-reviewer` : **NON CONFORME** (2 moyens) ; `reviewer` : **PAS OK** (4 importants).
+21i conforme. Appliqué sur 21j :
+- 🟠 **Famine silencieuse** (prouvée par l'audit : 401 ventes soldées → plus AUCUN rappel) : les requêtes prenaient
+  les plus anciennes lignes, soldées comprises, AVANT de filtrer. Ventes et commandes impayées sont désormais
+  sélectionnées EN SQL avant la limite.
+- 🟠 **Dette fournisseur par commande** : reste = réceptions de LA commande − ses paiements, plafonné par le solde
+  du fournisseur ; une commande échue sans réception ne rappelle rien (la dette naît à la réception).
+- 🟠 **Vendeur passé magasinier** : ne reçoit plus de rappels de vente (il ne les lit plus). 🟠 **Admin qui a
+  vendu** : un seul rappel, plus deux. Reste rappelé plafonné par la dette réelle du client (acompte partiel).
+- 🟠 **Commande confirmée : ses DATES se modifient** (seules, auditées ; lignes/note restent refusées) — sinon un
+  nouveau délai annoncé par le fournisseur donnait un rappel « en retard » chaque jour. App : action « Changer
+  les dates ». Dates de commande au format JOUR seulement (une heure avec fuseau décalait le jour).
+- `REMINDERS_INTERVAL_MS` vide = défaut (1 h) ; désactivation volontaire journalisée. Cache de la dette par
+  fournisseur (plus de N+1). Préexistant corrigé : modifier une commande EFFAÇAIT sa note ; sélecteur de date qui
+  refusait une date ancienne.
+- Tests : dette par commande (montant exact), commande non reçue, admin-vendeur, ex-vendeur, plafond ; contre-
+  épreuves (3) → échecs ; commande confirmée : dates 200, date avec fuseau 400, dates + note 409.
+- Non fait : preuve e2e de la famine à 400+ lignes (le filtre SQL la rend structurelle) ; la clé d'idempotence
+  est par objet/jour, pas par destinataire (un admin créé dans la journée reçoit les rappels le lendemain).
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **605 e2e** ; app `flutter analyze`
+  propre · **+449 ~46**.
+
+**Prochaine étape précise** : **21k — mouvements de caisse manuels**, EN COURS (serveur fait, non commité :
+migration additive `cash_movement_mutation_id`, `POST /cash-sessions/:id/movements` idempotent, e2e) — reste
+l'écran (barre de caisse : « Entrée / Sortie / Prélèvement ») et les audits.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

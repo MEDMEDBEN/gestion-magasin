@@ -135,10 +135,10 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 21g. **Remise sur une vente** (ADMIN, champ existant côté serveur). _(2026-09-27 : livré, prouvé et audité)_
 21h. **Paramètres** (ADMIN) : tarifs, taux de TVA, identité du magasin imprimée (nom, NIF, RC, adresse). _(2026-09-28 : livré, prouvé et audité)_
 21i. **Commande fournisseur** : date de livraison prévue et échéance de paiement ; e-mail du fournisseur. _(2026-09-28 :
-     livré et prouvé ; audité avec 21j)_
+     livré, prouvé et audité avec 21j)_
 21j. **Notifications planifiées** : retard fournisseur, échéance client, dette client en retard, dette
-     fournisseur à payer, inventaire à faire, tâche du jour, tâche en retard. _(2026-09-28 : livré et
-     prouvé ; audit en cours)_
+     fournisseur à payer, inventaire à faire, tâche du jour, tâche en retard. _(2026-09-28 : livré,
+     prouvé et audité)_
 21k. **Mouvements de caisse manuels** : entrée, sortie, prélèvement (session ouverte).
 21l. **Retours** : retour client partiel (+ **facture d'avoir** si la vente est facturée) ; retour fournisseur.
 21m. **Indicateurs** : fournisseur (total acheté, produits fournis, livraisons à temps, évolution des prix

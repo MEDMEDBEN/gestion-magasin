@@ -304,5 +304,11 @@ void main() {
     expect(api.updated!.containsKey('expectedDate'), isTrue);
     expect(api.updated!['expectedDate'], isNull);
     expect(api.updated!['dueDate'], isNull);
+    // La note n'est pas effacée par une modification qui ne la porte pas.
+    expect(api.updated!.containsKey('note'), isFalse);
+
+    // Commande engagée : seules les dates partent (nouveau délai).
+    await actions.setDates('po1', expectedDate: DateTime(2026, 12, 15));
+    expect(api.updated, {'expectedDate': '2026-12-15', 'dueDate': null});
   });
 }

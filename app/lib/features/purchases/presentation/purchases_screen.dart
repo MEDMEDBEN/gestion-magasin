@@ -227,6 +227,14 @@ class PurchasesScreen extends ConsumerWidget {
               onPressed: () => Navigator.of(context).pop('view'),
               child: const Text('Voir les lignes'),
             ),
+          // Commande engagée : seules ses dates changent (nouveau délai).
+          if (!editable &&
+              order.status != PurchaseStatus.cancelled &&
+              rights.canWrite)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('dates'),
+              child: const Text('Changer les dates'),
+            ),
           SimpleDialogOption(
             onPressed: () => Navigator.of(context).pop('print'),
             child: const Text('Imprimer le bon de commande'),
@@ -251,6 +259,10 @@ class PurchasesScreen extends ConsumerWidget {
     }
     if (action == 'receive') {
       await openFormPanel<void>(context, ReceptionForm(order: order));
+      return;
+    }
+    if (action == 'dates') {
+      await _changeDates(context, ref, order);
       return;
     }
     if (action == 'close') {
@@ -308,6 +320,45 @@ class PurchasesScreen extends ConsumerWidget {
   }
 
   /// Reliquat abandonné : motif obligatoire, ce qui est reçu reste reçu.
+  /// Livraison prévue et échéance d'une commande engagée, choisies l'une
+  /// après l'autre (Annuler garde la date actuelle).
+  Future<void> _changeDates(
+    BuildContext context,
+    WidgetRef ref,
+    PurchaseOrder order,
+  ) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    Future<DateTime?> pick(String help, DateTime? current) {
+      final initial = current?.toLocal() ?? today;
+      return showDatePicker(
+        context: context,
+        helpText: help,
+        initialDate: initial,
+        firstDate: initial.isBefore(today) ? initial : today,
+        lastDate: today.add(const Duration(days: 730)),
+      );
+    }
+
+    final expected =
+        await pick('Nouvelle livraison prévue', order.expectedDate) ??
+        order.expectedDate?.toLocal();
+    if (!context.mounted) return;
+    final due =
+        await pick('Échéance de paiement', order.dueDate) ??
+        order.dueDate?.toLocal();
+    if (!context.mounted) return;
+    try {
+      await ref
+          .read(purchasesActionsProvider)
+          .setDates(order.id, expectedDate: expected, dueDate: due);
+      if (context.mounted) {
+        _snack(context, 'Dates de ${order.number} mises à jour.');
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+    }
+  }
+
   Future<void> _closeRemainder(
     BuildContext context,
     WidgetRef ref,

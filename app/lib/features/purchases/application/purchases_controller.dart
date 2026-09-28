@@ -65,10 +65,25 @@ class PurchasesActions {
             for (final e in dates.entries)
               if (e.value != null) e.key: e.value,
           })
-        : await _api.update(id, {'lines': payload, 'note': note, ...dates});
+        // La note n'est envoyée que si elle est fournie : le formulaire n'en a
+        // pas, elle ne doit pas être effacée à chaque modification.
+        : await _api.update(id, {'lines': payload, 'note': ?note, ...dates});
     _ref.invalidate(purchaseOrdersProvider);
     return order;
   }
+
+  /// Nouvelles dates d'une commande ENGAGÉE (le fournisseur annonce un autre
+  /// délai) : le serveur n'accepte, alors, que les dates.
+  Future<PurchaseOrder> setDates(
+    String id, {
+    DateTime? expectedDate,
+    DateTime? dueDate,
+  }) => _refresh(
+    _api.update(id, {
+      'expectedDate': expectedDate == null ? null : isoDay(expectedDate),
+      'dueDate': dueDate == null ? null : isoDay(dueDate),
+    }),
+  );
 
   Future<PurchaseOrder> markOrdered(String id) =>
       _refresh(_api.update(id, {'status': 'COMMANDEE'}));

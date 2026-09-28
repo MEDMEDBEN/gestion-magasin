@@ -87,11 +87,17 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
             onPressed: _locked
                 ? null
                 : () async {
+                    final initial = value ?? today;
+                    final earliest = today.subtract(const Duration(days: 365));
                     final picked = await showDatePicker(
                       context: context,
                       helpText: label,
-                      initialDate: value ?? today,
-                      firstDate: today.subtract(const Duration(days: 365)),
+                      initialDate: initial,
+                      // Une date plus ancienne reste affichable (sinon le
+                      // sélecteur refuse de s'ouvrir).
+                      firstDate: initial.isBefore(earliest)
+                          ? initial
+                          : earliest,
                       lastDate: today.add(const Duration(days: 730)),
                     );
                     if (picked != null) setState(() => onChanged(picked));

@@ -306,7 +306,9 @@ export class PurchaseOrdersService {
   }
 
   /// Modification tant que rien n'est reçu ni confirmé : les lignes envoyées
-  /// remplacent les précédentes, les totaux sont recalculés.
+  /// remplacent les précédentes, les totaux sont recalculés. Les DATES seules
+  /// (livraison prévue, échéance) restent modifiables sur une commande
+  /// engagée : un fournisseur annonce un nouveau délai (P1 bis n°21j).
   async update(
     id: string,
     dto: UpdatePurchaseOrderDto,
@@ -314,14 +316,28 @@ export class PurchaseOrdersService {
   ): Promise<PurchaseOrderDto> {
     return this.prisma.$transaction(async (tx) => {
       const before = await PurchaseOrdersService.lockOrder(tx, id);
-      if (!EDITABLE.includes(before.status)) {
+      const datesOnly =
+        dto.lines === undefined &&
+        dto.note === undefined &&
+        dto.status === undefined;
+      if (datesOnly && before.status === 'ANNULEE') {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Commande annulée : elle ne se modifie plus',
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (!datesOnly && !EDITABLE.includes(before.status)) {
         throw new BusinessException(
           ErrorCode.INVALID_STATE_TRANSITION,
           `Commande ${before.status.toLowerCase()} : elle ne se modifie plus`,
           HttpStatus.CONFLICT,
         );
       }
-      if (await tx.reception.count({ where: { purchaseOrderId: id } })) {
+      if (
+        !datesOnly &&
+        (await tx.reception.count({ where: { purchaseOrderId: id } }))
+      ) {
         throw new BusinessException(
           ErrorCode.INVALID_STATE_TRANSITION,
           'Des réceptions existent sur cette commande : elle ne se modifie plus',

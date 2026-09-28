@@ -1,3 +1,4 @@
+import { DAY_MESSAGE, DAY_PATTERN } from '../../common/dto/day-period.dto';
 import {
   ApiProperty,
   ApiPropertyOptional,
@@ -13,6 +14,7 @@ import {
   IsIn,
   IsInt,
   IsISO8601,
+  Matches,
   IsOptional,
   IsString,
   MaxLength,
@@ -64,13 +66,13 @@ export class CreatePurchaseOrderDto {
 
   @ApiProperty() @IsCanonicalUuid() supplierId!: string;
 
-  @ApiPropertyOptional({ description: 'Livraison attendue (ISO 8601).' })
-  @IsISO8601()
+  @ApiPropertyOptional({ description: 'Livraison attendue (AAAA-MM-JJ).' })
+  @Matches(DAY_PATTERN, { message: `expectedDate : ${DAY_MESSAGE}` })
   @IsOptional()
   expectedDate?: string;
 
-  @ApiPropertyOptional({ description: 'Échéance de paiement (ISO 8601).' })
-  @IsISO8601()
+  @ApiPropertyOptional({ description: 'Échéance de paiement (AAAA-MM-JJ).' })
+  @Matches(DAY_PATTERN, { message: `dueDate : ${DAY_MESSAGE}` })
   @IsOptional()
   dueDate?: string;
 
@@ -95,13 +97,13 @@ export class CreatePurchaseOrderDto {
 /// Modification d'une commande PAS ENCORE confirmée : les lignes envoyées
 /// REMPLACENT les précédentes (une commande n'a pas d'historique de brouillon).
 export class UpdatePurchaseOrderDto {
-  @ApiPropertyOptional({ description: 'Livraison attendue (ISO 8601).' })
-  @IsISO8601()
+  @ApiPropertyOptional({ description: 'Livraison attendue (AAAA-MM-JJ).' })
+  @Matches(DAY_PATTERN, { message: `expectedDate : ${DAY_MESSAGE}` })
   @IsOptional()
   expectedDate?: string | null;
 
-  @ApiPropertyOptional({ description: 'Échéance de paiement (ISO 8601).' })
-  @IsISO8601()
+  @ApiPropertyOptional({ description: 'Échéance de paiement (AAAA-MM-JJ).' })
+  @Matches(DAY_PATTERN, { message: `dueDate : ${DAY_MESSAGE}` })
   @IsOptional()
   dueDate?: string | null;
 
