@@ -92,6 +92,7 @@ aucune migration destructive sans confirmation).
 | Voir le total acheté / payé d'un client (un chiffre d'affaires) | ✅ | ❌ (`null`) | ❌ (`null`) |
 | Historique des ventes (`GET /sales`, recherche `q`) | ✅ toutes | ✅ les SIENNES | ❌ |
 | Annuler une vente (`POST /sales/:id/cancel`) | ✅ (`sale.cancel`) | ❌ | ❌ |
+| Retour client partiel / facture d'avoir (`POST /sales/:id/returns`) | ✅ (`sale.cancel`) | ❌ (voit les retours de SES ventes) | ❌ |
 | Entrée / sortie / prélèvement d'espèces sur SA caisse ouverte (`POST /cash-sessions/:id/movements`) | ✅ (toutes les caisses) | ✅ (`cash.session.manage`, la sienne) | ❌ |
 | Enregistrer paiement client | ✅ | ✅ | ❌ |
 | Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |

@@ -36,16 +36,62 @@ interface Period {
 export class BusinessReportService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /// CA HT par jour, net des retours du jour (un jour sans vente mais avec un
+  /// retour apparaît, négatif).
+  private static netByDay(
+    sales: { day: string; count: bigint; revenue: bigint }[],
+    returns: { day: string; revenue: bigint }[],
+  ) {
+    const days = new Map(
+      sales.map((r) => [
+        r.day,
+        { date: r.day, count: Number(r.count), revenueHt: Number(r.revenue) },
+      ]),
+    );
+    for (const r of returns) {
+      const day = days.get(r.day) ?? { date: r.day, count: 0, revenueHt: 0 };
+      day.revenueHt -= Number(r.revenue);
+      days.set(r.day, day);
+    }
+    return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   /// Rapport des ventes sur une période (spec §21).
   ///
   /// Uniquement les ventes **VALIDÉES** : une vente annulée n'est pas du chiffre
-  /// d'affaires, et un brouillon n'en est pas encore.
+  /// d'affaires, et un brouillon n'en est pas encore. Les RETOURS client de la
+  /// période (P1 bis n°21l, datés du jour du retour) sont déduits : CA, TVA,
+  /// quantités, coût et marge sont NETS ; leur montant est rendu à part.
   async sales(query: ReportPeriodQueryDto): Promise<SalesReportDto> {
     const period = BusinessReportService.period(query);
     const where = {
       status: 'VALIDEE' as const,
       soldAt: { gte: period.from, lt: period.toExclusive },
     };
+
+    const returned = {
+      createdAt: { gte: period.from, lt: period.toExclusive },
+    };
+    const [returnTotals, returnPerProduct, returnByDay] = await Promise.all([
+      this.prisma.saleReturn.aggregate({
+        where: returned,
+        _sum: { totalHt: true, totalTax: true, totalTtc: true },
+      }),
+      this.prisma.saleReturnLine.groupBy({
+        by: ['productId'],
+        where: { saleReturn: returned },
+        _sum: { quantity: true, lineTotalHt: true },
+      }),
+      this.prisma.$queryRaw<{ day: string; revenue: bigint }[]>`
+        SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Algiers', 'YYYY-MM-DD') AS "day",
+               COALESCE(SUM("totalHt"), 0) AS "revenue"
+        FROM "SaleReturn"
+        WHERE "createdAt" >= ${period.from}
+          AND "createdAt" < ${period.toExclusive}
+        GROUP BY 1
+      `,
+    ]);
+    const back = new Map(returnPerProduct.map((r) => [r.productId, r._sum]));
 
     const [totals, perProduct, byDay] = await Promise.all([
       this.prisma.sale.aggregate({
@@ -82,7 +128,16 @@ export class BusinessReportService {
     const products = new Map(
       (
         await this.prisma.product.findMany({
-          where: { id: { in: perProduct.map((row) => row.productId) } },
+          where: {
+            id: {
+              in: [
+                ...new Set([
+                  ...perProduct.map((row) => row.productId),
+                  ...back.keys(),
+                ]),
+              ],
+            },
+          },
           select: {
             id: true,
             lastPurchasePriceHt: true,
@@ -107,10 +162,17 @@ export class BusinessReportService {
       { name: string; revenueHt: number; quantity: Prisma.Decimal }
     >();
 
-    for (const row of perProduct) {
-      const product = products.get(row.productId);
-      const quantity = row._sum.quantity ?? new Prisma.Decimal(0);
-      const revenue = row._sum.lineTotalHt ?? 0;
+    // Ventes de la période MOINS retours de la période, produit par produit
+    // (un produit peut n'être que rendu : vendu avant la période).
+    const sold = new Map(perProduct.map((row) => [row.productId, row._sum]));
+    for (const productId of new Set([...sold.keys(), ...back.keys()])) {
+      const row = { productId, _sum: sold.get(productId) };
+      const product = products.get(productId);
+      const quantity = (row._sum?.quantity ?? new Prisma.Decimal(0)).minus(
+        back.get(productId)?.quantity ?? 0,
+      );
+      const revenue =
+        (row._sum?.lineTotalHt ?? 0) - (back.get(productId)?.lineTotalHt ?? 0);
       const unitCost = product?.lastPurchasePriceHt ?? null;
       if (unitCost === null) {
         uncostedRevenueHt += revenue;
@@ -127,26 +189,27 @@ export class BusinessReportService {
       bucket.revenueHt += revenue;
       bucket.quantity = bucket.quantity.add(quantity);
       categories.set(key, bucket);
-      discount += row._sum.discountAmount ?? 0;
+      discount += row._sum?.discountAmount ?? 0;
     }
 
     return {
       period: period.dto,
       totals: {
         count: totals._count,
-        revenueHt: totals._sum.totalHt ?? 0,
-        taxAmount: totals._sum.totalTax ?? 0,
-        revenueTtc: totals._sum.totalTtc ?? 0,
+        revenueHt:
+          (totals._sum.totalHt ?? 0) - (returnTotals._sum.totalHt ?? 0),
+        taxAmount:
+          (totals._sum.totalTax ?? 0) - (returnTotals._sum.totalTax ?? 0),
+        revenueTtc:
+          (totals._sum.totalTtc ?? 0) - (returnTotals._sum.totalTtc ?? 0),
+        returnsHt: returnTotals._sum.totalHt ?? 0,
+        returnsTtc: returnTotals._sum.totalTtc ?? 0,
         discountAmount: discount,
         costHt: cost,
         marginHt: cost === null ? null : costedRevenueHt - cost,
         uncostedRevenueHt,
       },
-      byDay: byDay.map((row) => ({
-        date: row.day,
-        count: Number(row.count),
-        revenueHt: Number(row.revenue),
-      })),
+      byDay: BusinessReportService.netByDay(byDay, returnByDay),
       byCategory: [...categories.entries()]
         .map(([id, bucket]) => ({
           categoryId: id === '' ? null : id,

@@ -74,6 +74,8 @@ enum OperationType {
   CONVERSATION
   PROBLEM
   MANUAL
+  SALE_RETURN
+  SUPPLIER_RETURN
 }
 
 enum SaleType {
@@ -111,6 +113,16 @@ enum DocumentType {
   TRANSFERT
   RECEPTION
   INVENTAIRE
+  RETOUR_CLIENT
+  AVOIR
+  RETOUR_FOURNISSEUR
+}
+
+/// Mode de remboursement d'un retour client : en espèces depuis la caisse
+/// ouverte, ou déduction de la dette du client.
+enum RefundMethod {
+  ESPECES
+  DETTE
 }
 
 enum CashSessionStatus {
@@ -298,6 +310,8 @@ model User {
   problemsAssigned        Problem[]                 @relation("ProblemAssignedTo")
   auditLogs               AuditLog[]
   syncMutations           SyncMutation[]
+  saleReturns             SaleReturn[]
+  supplierReturns         SupplierReturn[]
 
   @@index([isActive])
 }
@@ -404,6 +418,9 @@ model Location {
 
   problems Problem[]
 
+  saleReturns     SaleReturn[]
+  supplierReturns SupplierReturn[]
+
   @@index([type])
   @@index([parentId])
 }
@@ -449,6 +466,9 @@ model Product {
   transferLines  TransferLine[]
   inventoryLines InventoryLine[]
   problems       Problem[]
+
+  saleReturnLines     SaleReturnLine[]
+  supplierReturnLines SupplierReturnLine[]
 
   @@index([categoryId])
   @@index([mainSupplierId])
@@ -672,6 +692,7 @@ model Sale {
   lines         SaleLine[]
   payments      CustomerPayment[]
   cashMovements CashMovement[]
+  returns       SaleReturn[]
 
   @@index([customerId])
   @@index([userId])
@@ -704,6 +725,8 @@ model SaleLine {
   product   Product    @relation(fields: [productId], references: [id])
   priceTier PriceTier? @relation(fields: [priceTierId], references: [id])
 
+  returnLines SaleReturnLine[]
+
   @@index([saleId])
   @@index([productId])
 }
@@ -721,6 +744,9 @@ model CustomerPayment {
   /// Contre-passation : ce règlement ANNULE le règlement référencé (montant
   /// opposé). Jamais de suppression (règle 7) ; un règlement ne s'annule qu'une fois.
   reversesPaymentId String?       @unique @db.Uuid
+  /// Avoir d'un retour client déduit de la dette (P1 bis n°21l) : ce
+  /// règlement n'est pas un encaissement et ne se contre-passe pas.
+  saleReturnId      String?       @unique @db.Uuid
   createdAt         DateTime      @default(now())
 
   customer   Customer         @relation(fields: [customerId], references: [id])
@@ -728,6 +754,7 @@ model CustomerPayment {
   user       User             @relation(fields: [userId], references: [id])
   reverses   CustomerPayment? @relation("CustomerPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
   reversedBy CustomerPayment? @relation("CustomerPaymentReversal")
+  saleReturn SaleReturn?      @relation(fields: [saleReturnId], references: [id])
 
   @@index([customerId])
   @@index([saleId])
@@ -812,6 +839,7 @@ model CashSession {
   sales            Sale[]
   supplierPayments SupplierPayment[]
   movements        CashMovement[]
+  saleReturns      SaleReturn[]
 
   @@index([userId])
   @@index([status])
@@ -864,6 +892,7 @@ model Supplier {
   purchaseOrders PurchaseOrder[]
   receptions     Reception[]
   payments       SupplierPayment[]
+  returns        SupplierReturn[]
 
   @@index([name])
 }
@@ -926,9 +955,10 @@ model PurchaseOrder {
   createdBy   User     @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id])
   confirmedBy User?    @relation("PurchaseOrderConfirmedBy", fields: [confirmedById], references: [id])
 
-  lines      PurchaseLine[]
-  receptions Reception[]
-  payments   SupplierPayment[]
+  lines           PurchaseLine[]
+  receptions      Reception[]
+  payments        SupplierPayment[]
+  supplierReturns SupplierReturn[]
 
   @@index([supplierId])
   @@index([status])
@@ -1345,4 +1375,102 @@ model StoreSettings {
   nis       String?
   ai        String?
   updatedAt DateTime @updatedAt
+}
+
+// ───────────────────────────────────────────────────────────
+// RETOURS CLIENT / FOURNISSEUR (P1 bis n°21l)
+// ───────────────────────────────────────────────────────────
+
+/// Retour client (P1 bis n°21l) : une partie d'une vente revient. Stock +qté
+/// (mouvement RETOUR_CLIENT), remboursement en espèces (caisse ouverte) ou
+/// déduction de la dette. Vente facturée : facture d'avoir numérotée (règle 11).
+model SaleReturn {
+  id               String       @id @db.Uuid
+  number           String       @unique
+  /// AV-AAAA-NNNNNN, séquentiel sans trou, serveur — seulement si la vente est facturée.
+  creditNoteNumber String?      @unique
+  saleId           String       @db.Uuid
+  userId           String       @db.Uuid
+  locationId       String       @db.Uuid
+  cashSessionId    String?      @db.Uuid
+  refundMethod     RefundMethod
+  totalHt          Int
+  totalTax         Int
+  totalTtc         Int
+  reason           String
+  /// Identité du magasin figée sur l'avoir, comme sur la facture.
+  issuerSnapshot   Json?
+  clientMutationId String       @unique @db.Uuid
+  createdAt        DateTime     @default(now())
+
+  sale          Sale             @relation(fields: [saleId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
+  location      Location         @relation(fields: [locationId], references: [id])
+  cashSession   CashSession?     @relation(fields: [cashSessionId], references: [id])
+  lines         SaleReturnLine[]
+  creditPayment CustomerPayment?
+
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model SaleReturnLine {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  saleReturnId  String  @db.Uuid
+  saleLineId    String  @db.Uuid
+  productId     String  @db.Uuid
+  quantity      Decimal @db.Decimal(14, 3)
+  lineTotalHt   Int
+  lineTaxAmount Int
+  lineTotalTtc  Int
+
+  saleReturn SaleReturn @relation(fields: [saleReturnId], references: [id], onDelete: Cascade)
+  saleLine   SaleLine   @relation(fields: [saleLineId], references: [id])
+  product    Product    @relation(fields: [productId], references: [id])
+
+  @@index([saleReturnId])
+  @@index([saleLineId])
+}
+
+/// Retour fournisseur (P1 bis n°21l) : marchandise renvoyée depuis un lieu
+/// (mouvement RETOUR_FOURNISSEUR), dette fournisseur réduite du TTC.
+model SupplierReturn {
+  id               String   @id @db.Uuid
+  number           String   @unique
+  supplierId       String   @db.Uuid
+  purchaseOrderId  String?  @db.Uuid
+  userId           String   @db.Uuid
+  locationId       String   @db.Uuid
+  totalHt          Int
+  totalTax         Int
+  totalTtc         Int
+  reason           String
+  clientMutationId String   @unique @db.Uuid
+  createdAt        DateTime @default(now())
+
+  supplier      Supplier             @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder?       @relation(fields: [purchaseOrderId], references: [id])
+  user          User                 @relation(fields: [userId], references: [id])
+  location      Location             @relation(fields: [locationId], references: [id])
+  lines         SupplierReturnLine[]
+
+  @@index([supplierId])
+  @@index([createdAt])
+}
+
+model SupplierReturnLine {
+  id               String  @id @default(uuid(7)) @db.Uuid
+  supplierReturnId String  @db.Uuid
+  productId        String  @db.Uuid
+  quantity         Decimal @db.Decimal(14, 3)
+  unitPriceHt      Int
+  taxRate          Decimal @db.Decimal(5, 2)
+  lineTotalHt      Int
+  lineTaxAmount    Int
+  lineTotalTtc     Int
+
+  supplierReturn SupplierReturn @relation(fields: [supplierReturnId], references: [id], onDelete: Cascade)
+  product        Product        @relation(fields: [productId], references: [id])
+
+  @@index([supplierReturnId])
 }

@@ -46,12 +46,17 @@ import {
   renderExport,
 } from '../common/export/export';
 import { SalesService } from './sales.service';
+import { SaleReturnsService } from './sale-returns.service';
+import { CreateSaleReturnDto, SaleReturnDto } from './dto/sale-return.dto';
 
 @ApiTags('Ventes')
 @ApiBearerAuth()
 @Controller('sales')
 export class SalesController {
-  constructor(private readonly sales: SalesService) {}
+  constructor(
+    private readonly sales: SalesService,
+    private readonly returns: SaleReturnsService,
+  ) {}
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
   @RequirePermissions(PERMISSIONS.SALE_CREATE)
@@ -191,5 +196,63 @@ export class SalesController {
     @Ip() ip: string,
   ): Promise<SaleDto> {
     return this.sales.cancel(id, user, { userId: user.id, ipAddress: ip });
+  }
+
+  // ── Retours client et avoirs (P1 bis n°21l) ────────────────────────────────
+
+  /// Retour d'articles d'une vente : ADMIN (`sale.cancel`) — de l'argent sort
+  /// ou une dette baisse. Idempotent (`clientMutationId`).
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.SALE_CANCEL)
+  @Post(':id/returns')
+  @ApiOperation({
+    summary: 'Retour client (partiel) : stock, remboursement, avoir',
+    description:
+      'Espèces : sortie de la caisse ouverte (au plus ce que le client a payé) ; ' +
+      'dette : le reste dû baisse. Vente facturée : facture d’avoir AV numérotée.',
+  })
+  @ApiCreatedResponse({ type: SaleReturnDto })
+  createReturn(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: CreateSaleReturnDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<SaleReturnDto> {
+    return this.returns.create(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  @Get(':id/returns')
+  @ApiOperation({ summary: 'Retours d’une vente (le vendeur : ses ventes)' })
+  @ApiOkResponse({ type: [SaleReturnDto] })
+  listReturns(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<SaleReturnDto[]> {
+    return this.returns.forSale(id, user);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get('returns/:returnId/pdf')
+  @ApiOperation({
+    summary: 'Facture d’avoir (vente facturée) ou bon de retour',
+  })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async returnDocument(
+    @Param('returnId', CanonicalUuidPipe) returnId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    const { filename, pdf } = await this.returns.renderDocument(returnId, user);
+    return new StreamableFile(pdf, {
+      type: 'application/pdf',
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 }

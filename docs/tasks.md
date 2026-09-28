@@ -423,14 +423,34 @@ Appliqué :
 - **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **605 e2e** ; app `flutter analyze`
   propre · **+452 ~46**.
 
-**Prochaine étape précise** : **21l — retours et avoirs**, EN COURS : migration ADDITIVE
-`20260928140000_returns_credit_notes` créée et appliquée en dev par `db-migrator` (modèles `SaleReturn`,
-`SaleReturnLine`, `SupplierReturn`, `SupplierReturnLine`, enum `RefundMethod`, valeurs `RETOUR_CLIENT`/`AVOIR`/
-`RETOUR_FOURNISSEUR` et `SALE_RETURN`/`SUPPLIER_RETURN`) — NON commitée. Reste : services (retour client partiel :
-stock RETOUR_CLIENT, remboursement espèces depuis la caisse ou déduction de la dette, avoir numéroté AV si la
-vente est facturée ; retour fournisseur : stock RETOUR_FOURNISSEUR, dette réduite), prise en compte partout
-(dette client, reste d'une vente, rappels, rapports/CA, dette fournisseur), PDF d'avoir, écrans, tests, audits.
-Choix faits (à confirmer par MEDMEDBEN) : retours client réservés à l'ADMIN (`sale.cancel`), en ligne seulement.
+**21l (partie 1) — Retours client et factures d'avoir (livré)** — migrations ADDITIVES par `db-migrator` :
+`20260928140000_returns_credit_notes` (modèles de retours client ET fournisseur, enum `RefundMethod`, valeurs
+`RETOUR_CLIENT` / `AVOIR` / `RETOUR_FOURNISSEUR` et `SALE_RETURN` / `SUPPLIER_RETURN`) et
+`20260928150000_customer_payment_sale_return` (`CustomerPayment.saleReturnId`).
+- `POST /sales/:id/returns` (ADMIN + `sale.cancel` ; idempotent ; route au contrat d'argent) : lignes + quantités
+  (au plus le non encore rendu), UNE transaction : stock RETOUR_CLIENT (journal), numéro RC-AAAA-NNNNN, audit.
+  Montants au prorata de la ligne vendue (nette de remise) ; le DERNIER retour d'une ligne prend le reste exact.
+- Remboursement **ESPECES** : sortie de la caisse ouverte de l'opérateur, au plus ce que le client a réellement
+  payé sur la vente. **DETTE** : un règlement « Avoir RC-… » rattaché à la vente (`saleReturnId`) — toutes les
+  formules de dette existantes (fiche, retard, reste de la vente, rappels, accueil) le comptent sans règle
+  nouvelle ; il ne se contre-passe PAS (409) ; au plus le reste dû.
+- Vente **facturée** : **facture d'avoir AV-AAAA-NNNNNN** (numéro serveur, séquentiel sans trou, mentions vérifiées
+  AVANT le numéro, identité figée) ; `GET /sales/returns/:id/pdf` (avoir A4 ou bon de retour).
+- Une vente qui a des retours ne s'annule plus (409 : elle doublerait les retours).
+- **CA net des retours** : rapport d'activité (CA, TVA, quantités, coût, marge, catégories, courbe par jour ;
+  `returnsHt`/`returnsTtc` rendus à part) et CA du jour de l'accueil.
+- App : détail d'une vente → « Retour d'articles » (quantités bornées, espèces / déduction de la dette, motif),
+  liste des retours avec « Imprimer l'avoir » ; clé d'intention stable.
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **611 e2e** (+ `sale-returns.e2e` : 6 —
+  espèces, dernier retour = reste exact, sur-retour 422, rejeu, dette + avoir non contre-passable, espèces
+  refusées sur impayé, avoir AV + PDF + audit, ADMIN seul, CA net) ; contre-épreuves (3 gardes) → échecs ; app
+  `flutter analyze` propre · **+453 ~46**.
+- ⚠️ **À confirmer (MEDMEDBEN)** : retours réservés à l'ADMIN ; en ligne seulement ; « les plus vendus » (rapport
+  produits) ne déduit pas encore les retours.
+
+**Prochaine étape précise** : audits de 21l partie 1 (lancés), appliquer ; puis **21l partie 2 — retour
+fournisseur** (`POST /supplier-returns` : stock RETOUR_FOURNISSEUR depuis le dépôt, anti-stock-négatif, dette
+fournisseur réduite dans `SuppliersService.debt` ET l'accueil, bon RF PDF, écran Fournisseurs/Achats).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

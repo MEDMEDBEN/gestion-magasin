@@ -9,7 +9,9 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../application/sales_controller.dart';
+import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import 'sale_return_dialog.dart';
 import 'sales_screen.dart';
 
 /// Historique des ventes (spec §8, P1 bis n°21d) : retrouver une vente passée,
@@ -193,8 +195,38 @@ class _SaleDetailDialog extends ConsumerStatefulWidget {
 
 class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
   late Sale _sale = widget.sale;
+  late Future<List<SaleReturn>> _returns = ref
+      .read(salesApiProvider)
+      .saleReturns(widget.sale.id);
   bool _busy = false;
   String? _error;
+
+  /// Retour d'articles (ADMIN, P1 bis n°21l), puis vente et retours relus.
+  Future<void> _returnItems() async {
+    final previous = await _returns.catchError((_) => <SaleReturn>[]);
+    if (!mounted) return;
+    final done = await showSaleReturnDialog(
+      context,
+      sale: _sale,
+      previous: previous,
+    );
+    if (done == null || !mounted) return;
+    final api = ref.read(salesApiProvider);
+    final fresh = await api.sale(_sale.id).catchError((_) => _sale);
+    if (!mounted) return;
+    setState(() {
+      _sale = fresh;
+      _returns = api.saleReturns(_sale.id);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Retour ${done.creditNoteNumber ?? done.number} enregistré — '
+          '${formatDA(done.totalTtc)}',
+        ),
+      ),
+    );
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     setState(() {
@@ -308,6 +340,44 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
                   'Reste dû : ${formatDA(sale.remainingAmount)}'
                   '${sale.dueDate == null ? '' : ' · échéance ${formatDate(sale.dueDate!)}'}',
                 ),
+              FutureBuilder<List<SaleReturn>>(
+                future: _returns,
+                builder: (context, snapshot) {
+                  final returns = snapshot.data ?? const <SaleReturn>[];
+                  if (returns.isEmpty) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Divider(height: 20),
+                      const Text('Retours'),
+                      for (final r in returns)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${r.creditNoteNumber ?? r.number} · '
+                                '${formatDateTime(r.createdAt)} · '
+                                '${formatDA(r.totalTtc)} · '
+                                '${r.refundMethod == 'ESPECES' ? 'remboursé' : 'déduit de la dette'}',
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Imprimer l’avoir',
+                              icon: const Icon(Icons.print_outlined, size: 18),
+                              onPressed: _busy
+                                  ? null
+                                  : () => _run(
+                                      () => ref
+                                          .read(salesActionsProvider)
+                                          .printReturn(r),
+                                    ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  );
+                },
+              ),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 10),
@@ -323,8 +393,15 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
         ),
       ),
       actions: [
+        // Retour partiel (ADMIN + sale.cancel) : facturée ou non ; une vente
+        // facturée reçoit alors une facture d'avoir.
+        if (widget.rights.canCancelSales && !cancelled)
+          TextButton(
+            onPressed: _busy ? null : _returnItems,
+            child: const Text('Retour d’articles'),
+          ),
         // Miroir des gardes serveur : annulation ADMIN + sale.cancel ; une
-        // vente facturée ne s'annule pas (il faudra un avoir, P1 bis n°21l).
+        // vente facturée ne s'annule pas (elle passe par un avoir).
         if (widget.rights.canCancelSales &&
             !cancelled &&
             sale.invoiceNumber == null)

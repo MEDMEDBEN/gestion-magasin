@@ -545,6 +545,15 @@ export class SalesService {
           HttpStatus.CONFLICT,
         );
       }
+      // Des articles sont déjà revenus : l'annulation totale doublerait leur
+      // retour en stock et leur remboursement.
+      if (await tx.saleReturn.count({ where: { saleId: id } })) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Des retours existent sur cette vente : rendez le reste par un retour',
+          HttpStatus.CONFLICT,
+        );
+      }
       // Verrou client (comme règlement et vente) : un acompte simultané ne peut
       // pas passer entre le calcul de dette et l'annulation.
       if (sale.customerId) {

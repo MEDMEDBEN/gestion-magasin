@@ -105,7 +105,10 @@ export async function nextDocumentNumber(
     | 'BON_COMMANDE'
     | 'TRANSFERT'
     | 'RECEPTION'
-    | 'INVENTAIRE',
+    | 'INVENTAIRE'
+    | 'RETOUR_CLIENT'
+    | 'AVOIR'
+    | 'RETOUR_FOURNISSEUR',
   prefix: string,
   digits: number,
   year = localYear(new Date()),

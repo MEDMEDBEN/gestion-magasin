@@ -470,6 +470,15 @@ export class CustomersService {
             HttpStatus.NOT_FOUND,
           );
         }
+        // Un avoir (retour client déduit de la dette) n'est pas un
+        // encaissement : le contre-passer effacerait le retour de la dette.
+        if (original.saleReturnId) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Un avoir de retour ne se contre-passe pas',
+            HttpStatus.CONFLICT,
+          );
+        }
         if (original.reversesPaymentId || original.reversedBy) {
           throw new BusinessException(
             ErrorCode.INVALID_STATE_TRANSITION,

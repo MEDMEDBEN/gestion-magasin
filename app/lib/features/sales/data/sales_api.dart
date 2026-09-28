@@ -118,6 +118,34 @@ class SalesApi {
     });
   }
 
+  /// Une vente, relue (reste dû à jour après un retour ou un règlement).
+  Future<Sale> sale(String id) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>('/sales/$id');
+    return Sale.fromJson(response.data!);
+  });
+
+  /// Retours déjà enregistrés sur une vente.
+  Future<List<SaleReturn>> saleReturns(String saleId) => guardApi(() async {
+    final response = await _dio.get<List<dynamic>>('/sales/$saleId/returns');
+    return [
+      for (final row in response.data!)
+        SaleReturn.fromJson(row as Map<String, dynamic>),
+    ];
+  });
+
+  /// Retour client (ADMIN) : lignes, mode de remboursement, motif.
+  Future<SaleReturn> createReturn(String saleId, Map<String, dynamic> body) =>
+      _post('/sales/$saleId/returns', body, SaleReturn.fromJson);
+
+  /// Facture d'avoir (vente facturée) ou bon de retour.
+  Future<Uint8List> returnDocument(String returnId) => guardApi(() async {
+    final response = await _dio.get<List<int>>(
+      '/sales/returns/$returnId/pdf',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data!);
+  });
+
   /// Annulation d'une vente (ADMIN) : retours en stock, sortie de caisse.
   Future<Sale> cancelSale(String saleId) =>
       _post('/sales/$saleId/cancel', null, Sale.fromJson);

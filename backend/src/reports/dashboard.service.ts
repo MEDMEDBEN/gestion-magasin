@@ -67,17 +67,24 @@ export class DashboardService {
 
   /// Ventes VALIDÉES du jour : les miennes, ou toutes pour l'admin — le même
   /// cloisonnement que la liste des ventes et le planning.
+  /// CA NET des retours client du jour (P1 bis n°21l), même cloisonnement.
   private async salesOfDay(user: AuthenticatedUser, startOfDay: Date) {
-    const totals = await this.prisma.sale.aggregate({
-      where: {
-        status: 'VALIDEE',
-        soldAt: { gte: startOfDay },
-        ...(user.roles.includes(RoleCode.ADMIN) ? {} : { userId: user.id }),
-      },
-      _count: true,
-      _sum: { totalTtc: true },
-    });
-    return { count: totals._count, revenueTtc: totals._sum.totalTtc ?? 0 };
+    const mine = user.roles.includes(RoleCode.ADMIN) ? {} : { userId: user.id };
+    const [totals, returns] = await Promise.all([
+      this.prisma.sale.aggregate({
+        where: { status: 'VALIDEE', soldAt: { gte: startOfDay }, ...mine },
+        _count: true,
+        _sum: { totalTtc: true },
+      }),
+      this.prisma.saleReturn.aggregate({
+        where: { createdAt: { gte: startOfDay }, sale: mine },
+        _sum: { totalTtc: true },
+      }),
+    ]);
+    return {
+      count: totals._count,
+      revenueTtc: (totals._sum.totalTtc ?? 0) - (returns._sum.totalTtc ?? 0),
+    };
   }
 
   /// Alertes de stock. La règle (« stock <= seuil ») et la liste des

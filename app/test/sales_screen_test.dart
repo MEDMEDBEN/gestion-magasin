@@ -100,6 +100,34 @@ class _FakeSalesApi extends SalesApi {
         ],
       );
 
+  /// Retours envoyés (P1 bis n°21l).
+  final returnsSent = <Map<String, dynamic>>[];
+
+  @override
+  Future<List<SaleReturn>> saleReturns(String saleId) async => const [];
+
+  @override
+  Future<Sale> sale(String id) async => (await sales()).data.single;
+
+  @override
+  Future<SaleReturn> createReturn(
+    String saleId,
+    Map<String, dynamic> body,
+  ) async {
+    returnsSent.add(body);
+    return SaleReturn(
+      id: 'r1',
+      number: 'RC-2026-00001',
+      saleId: saleId,
+      refundMethod: body['refundMethod'] as String,
+      totalHt: 50000,
+      totalTtc: 59500,
+      reason: body['reason'] as String,
+      createdAt: DateTime.utc(2026, 9, 28),
+      lines: const [],
+    );
+  }
+
   /// Mouvements de caisse envoyés (P1 bis n°21k).
   final movements = <Map<String, dynamic>>[];
 
@@ -166,7 +194,19 @@ class _FakeSalesApi extends SalesApi {
           totalTtc: 119000,
           paidAmount: 19000,
           remainingAmount: 100000,
-          lines: const [],
+          lines: [
+            SaleLine(
+              id: 'l1',
+              productId: 'p1',
+              quantity: Decimal.fromInt(2),
+              unitPriceHt: 50000,
+              taxRate: '19.00',
+              discountAmount: 0,
+              lineTotalHt: 100000,
+              lineTaxAmount: 19000,
+              lineTotalTtc: 119000,
+            ),
+          ],
           soldAt: DateTime.utc(2026, 9, 20, 10),
         ),
       ],
@@ -1081,4 +1121,49 @@ void main() {
       );
     },
   );
+
+  /// P1 bis n°21l : retour partiel depuis l'historique (ADMIN).
+  testWidgets('retour d’articles : quantité bornée, motif, envoyé au serveur', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const ['sale.create', 'sale.cancel'],
+    );
+    await _pumpScreen(tester, api, [], user: admin);
+    await tester.tap(find.text('Historique'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'TK-2026-000007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Retour d’articles'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('rendable 2'), findsOneWidget);
+
+    // Plus que vendu : refusé à l'écran.
+    await tester.enterText(find.byType(TextField).at(1), '3');
+    await tester.enterText(find.byType(TextField).last, 'Défaut');
+    await tester.tap(find.text('Enregistrer le retour'));
+    await tester.pumpAndSettle();
+    expect(find.text('Quantité invalide sur une ligne'), findsOneWidget);
+    expect(api.returnsSent, isEmpty);
+
+    await tester.enterText(find.byType(TextField).at(1), '1');
+    await tester.tap(find.text('Enregistrer le retour'));
+    await tester.pumpAndSettle();
+    final sent = api.returnsSent.single;
+    expect(sent['lines'], [
+      {'saleLineId': 'l1', 'quantity': '1.000'},
+    ]);
+    expect(sent['reason'], 'Défaut');
+    // Vente à crédit avec un reste dû : déduction de la dette par défaut.
+    expect(sent['refundMethod'], 'DETTE');
+    expect(sent['clientMutationId'], isA<String>());
+    expect(
+      find.textContaining('Retour RC-2026-00001 enregistré'),
+      findsOneWidget,
+    );
+  });
 }

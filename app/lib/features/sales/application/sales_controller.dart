@@ -576,6 +576,48 @@ class SalesActions {
     return sale;
   }
 
+  /// Retour client (ADMIN, P1 bis n°21l). Mutation d'argent : la clé de
+  /// l'intention « rendre sur CETTE vente » survit aux nouveaux essais.
+  Future<SaleReturn> returnItems(
+    String saleId, {
+    required Map<String, Quantity> quantities,
+    required String refundMethod,
+    required String reason,
+  }) async {
+    final id = _ref.read(uuidProvider).v7();
+    try {
+      return await runMoneyMutation(
+        _ref,
+        'sale-return:$saleId',
+        (key) => _api.createReturn(saleId, {
+          'id': id,
+          'clientMutationId': key,
+          'lines': [
+            for (final e in quantities.entries)
+              {'saleLineId': e.key, 'quantity': quantityToJson(e.value)},
+          ],
+          'refundMethod': refundMethod,
+          'reason': reason,
+        }),
+      );
+    } finally {
+      _ref
+        ..invalidate(salesHistoryProvider)
+        ..invalidate(currentCashSessionProvider)
+        ..invalidate(stockByProductProvider)
+        ..invalidate(customerSearchProvider);
+    }
+  }
+
+  /// Imprime la facture d'avoir / le bon de retour.
+  Future<void> printReturn(SaleReturn ret) async {
+    final bytes = await _api.returnDocument(ret.id);
+    await _ref.read(printPdfProvider)(
+      bytes,
+      '${ret.creditNoteNumber ?? ret.number}.pdf',
+    );
+  }
+
   /// Annulation (ADMIN) : le stock revient, la caisse rend l'espèce.
   Future<Sale> cancel(String saleId) async {
     final sale = await _api.cancelSale(saleId);

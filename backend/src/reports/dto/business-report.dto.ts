@@ -76,6 +76,14 @@ export class SalesReportTotalsDto {
       'CA HT des produits vendus SANS coût connu, en centimes : exclu de la ' +
       'marge. À 0, la marge porte sur tout le CA.',
   })
+  @ApiProperty({
+    description: 'Retours client de la période, HT (déjà déduits).',
+  })
+  returnsHt!: number;
+  @ApiProperty({
+    description: 'Retours client de la période, TTC (déjà déduits).',
+  })
+  returnsTtc!: number;
   uncostedRevenueHt!: number;
 }
 

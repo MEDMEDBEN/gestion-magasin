@@ -11,6 +11,8 @@ export const MONEY_ROUTES = [
   '/api/cash-sessions/:id/close',
   // Entrée, sortie, prélèvement d'espèces (P1 bis n°21k).
   '/api/cash-sessions/:id/movements',
+  // Retour client : remboursement en espèces ou avoir sur la dette (21l).
+  '/api/sales/:id/returns',
   '/api/payments/customer',
   '/api/payments/customer/:id/reverse',
   '/api/payments/supplier',

@@ -158,3 +158,38 @@ abstract class CustomerPage with _$CustomerPage {
   factory CustomerPage.fromJson(Map<String, dynamic> json) =>
       _$CustomerPageFromJson(json);
 }
+
+/// Retour client (P1 bis n°21l) : un bon RC, et une facture d'avoir AV si la
+/// vente était facturée.
+@freezed
+abstract class SaleReturn with _$SaleReturn {
+  const factory SaleReturn({
+    required String id,
+    required String number,
+    String? creditNoteNumber,
+    required String saleId,
+    required String refundMethod,
+    required int totalHt,
+    required int totalTtc,
+    required String reason,
+    required DateTime createdAt,
+    required List<SaleReturnLine> lines,
+  }) = _SaleReturn;
+
+  factory SaleReturn.fromJson(Map<String, dynamic> json) =>
+      _$SaleReturnFromJson(json);
+}
+
+@freezed
+abstract class SaleReturnLine with _$SaleReturnLine {
+  const factory SaleReturnLine({
+    required String saleLineId,
+    required String productId,
+    @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
+    required Quantity quantity,
+    required int lineTotalTtc,
+  }) = _SaleReturnLine;
+
+  factory SaleReturnLine.fromJson(Map<String, dynamic> json) =>
+      _$SaleReturnLineFromJson(json);
+}
