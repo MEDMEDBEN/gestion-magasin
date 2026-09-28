@@ -52,18 +52,21 @@ describe('Retours fournisseur (e2e)', () => {
       },
     });
     productIds.push(product.id);
+    const orderId = await receive(product.id, '10', 120000);
+    return { productId: product.id, orderId };
+  };
+  /// Commande confirmée puis réceptionnée en entier au dépôt.
+  const receive = async (
+    productId: string,
+    quantity: string,
+    unitPriceHt: number,
+  ) => {
     const order = (
       await as(tokens.magasinier)
         .post('/api/purchase-orders')
         .send({
           supplierId,
-          lines: [
-            {
-              productId: product.id,
-              orderedQuantity: '10',
-              unitPriceHt: 120000,
-            },
-          ],
+          lines: [{ productId, orderedQuantity: quantity, unitPriceHt }],
         })
         .expect(201)
     ).body;
@@ -81,15 +84,15 @@ describe('Retours fournisseur (e2e)', () => {
         locationId: depotId,
         lines: [
           {
-            productId: product.id,
+            productId,
             purchaseLineId: confirmed.lines[0].id,
-            receivedQuantity: '10',
-            unitPriceHt: 120000,
+            receivedQuantity: quantity,
+            unitPriceHt,
           },
         ],
       })
       .expect(201);
-    return { productId: product.id, orderId: order.id as string };
+    return order.id as string;
   };
   const sendBack = (
     productId: string,
@@ -239,5 +242,54 @@ describe('Retours fournisseur (e2e)', () => {
       .get(`/api/suppliers/${supplierId}/returns`)
       .expect(403);
     await sendBack(productId, '1', { reason: '  ' }).expect(400);
+  });
+
+  /// Audit 21l : chaque unité vaut ce que SA réception a ajouté à la dette
+  /// (les plus récentes d'abord) — jamais tout au dernier prix.
+  it('prix changé entre deux réceptions : chaque lot à son prix', async () => {
+    const { productId } = await received(); // 10 u. à 1 200,00 HT
+    await receive(productId, '1', 1200000); // 1 u. à 12 000,00 HT
+    const before = await debt();
+    const res = await sendBack(productId, '11').expect(201);
+    // 1 × 12 000,00 + 10 × 1 200,00 = 24 000,00 HT ; TTC 19 %.
+    expect(res.body).toMatchObject({ totalHt: 2400000, totalTtc: 2856000 });
+    expect(await debt()).toBe(before - 2856000);
+  });
+
+  it('lieu : ni transit ni inconnu ; commande qui n’a pas livré ce produit : refusé', async () => {
+    const { productId } = await received();
+    const other = await received();
+    const transit = await prisma.location.findFirstOrThrow({
+      where: { type: 'TRANSIT' },
+    });
+    // Du stock au transit (marchandise en route) : seule la garde refuse.
+    await prisma.stock.create({
+      data: { productId, locationId: transit.id, quantity: '5' },
+    });
+    await sendBack(productId, '1', { locationId: transit.id }).expect(422);
+    await sendBack(productId, '1', { locationId: randomUUID() }).expect(422);
+    await sendBack(productId, '1', {
+      purchaseOrderId: other.orderId,
+    }).expect(422);
+    await sendBack(other.productId, '1', {
+      purchaseOrderId: other.orderId,
+    }).expect(201);
+    expect(await stockOf(productId)).toBe('10.000');
+  });
+
+  it('même clé, autre lieu ou autre motif : 409', async () => {
+    const { productId } = await received();
+    const magasin = await prisma.location.findFirstOrThrow({
+      where: { type: 'MAGASIN' },
+    });
+    const key = { clientMutationId: randomUUID() };
+    await sendBack(productId, '1', key).expect(201);
+    await sendBack(productId, '1', {
+      ...key,
+      locationId: magasin.id,
+    }).expect(409);
+    await sendBack(productId, '1', { ...key, reason: 'Autre motif' }).expect(
+      409,
+    );
   });
 });

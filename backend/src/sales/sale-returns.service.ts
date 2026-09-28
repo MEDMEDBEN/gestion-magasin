@@ -3,10 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
-import { nextDocumentNumber } from '../common/document-number';
+import { localYear, nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
-import { roundMoney, taxAmount } from '../common/money';
+import { roundMoney } from '../common/money';
 import { formatDA, formatDateTime } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, SaleReturn, SaleReturnLine } from '../generated/prisma/client';
@@ -31,8 +31,8 @@ type ReturnWithLines = SaleReturn & { lines: SaleReturnLine[] };
 ///   règle nouvelle. Il ne se contre-passe pas (garde dans CustomersService).
 /// - vente FACTURÉE : facture d'avoir AV-AAAA-NNNNNN, numéro serveur sans trou
 ///   (règle 11), identité du magasin figée comme sur la facture.
-/// Montants au prorata de la ligne vendue (net de remise) ; le dernier retour
-/// d'une ligne prend le RESTE exact (jamais d'écart d'arrondi cumulé).
+/// Montants au prorata de la ligne vendue (net de remise), arrondi cumulé : le
+/// dernier retour d'une ligne prend le RESTE exact, aucun ne passe sous 0.
 @Injectable()
 export class SaleReturnsService {
   constructor(
@@ -68,6 +68,7 @@ export class SaleReturnsService {
         user.id,
         done.saleId === saleId &&
           done.refundMethod === dto.refundMethod &&
+          done.reason === dto.reason &&
           asked === kept,
         {
           code: ErrorCode.CONFLICT,
@@ -142,17 +143,22 @@ export class SaleReturnsService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      const all = quantity.equals(left);
-      const lineTotalHt = all
-        ? line.lineTotalHt - (back?.lineTotalHt ?? 0)
-        : roundMoney(
-            new Prisma.Decimal(line.lineTotalHt)
-              .mul(quantity)
-              .div(line.quantity),
-          );
-      const lineTaxAmount = all
-        ? line.lineTaxAmount - (back?.lineTaxAmount ?? 0)
-        : taxAmount(lineTotalHt, line.taxRate);
+      // Arrondi CUMULÉ : (part de la ligne rendue après ce retour) − (déjà
+      // rendu). Jamais négatif, et le dernier retour prend le reste exact.
+      const upTo = (amount: number) =>
+        roundMoney(
+          new Prisma.Decimal(amount)
+            .mul(returned.plus(quantity))
+            .div(line.quantity),
+        );
+      const lineTotalHt = Math.max(
+        0,
+        upTo(line.lineTotalHt) - (back?.lineTotalHt ?? 0),
+      );
+      const lineTaxAmount = Math.max(
+        0,
+        upTo(line.lineTaxAmount) - (back?.lineTaxAmount ?? 0),
+      );
       return {
         line,
         quantity,
@@ -165,27 +171,16 @@ export class SaleReturnsService {
     const totalTax = lines.reduce((s, l) => s + l.lineTaxAmount, 0);
     const totalTtc = totalHt + totalTax;
 
-    // Ce que la vente a encaissé / doit encore — mêmes composantes que partout.
-    const [payments, refunds] = await Promise.all([
-      tx.customerPayment.aggregate({
-        where: { saleId },
-        _sum: { amount: true },
-      }),
-      tx.saleReturn.groupBy({
-        by: ['refundMethod'],
-        where: { saleId },
-        _sum: { totalTtc: true },
-      }),
-    ]);
-    const paidLater = payments._sum.amount ?? 0;
-    const refunded = (method: 'ESPECES' | 'DETTE') =>
-      refunds.find((r) => r.refundMethod === method)?._sum.totalTtc ?? 0;
-    // Les avoirs DETTE sont des règlements : on les retire de l'encaissé réel.
-    const reallyPaid =
-      sale.paidAmount + paidLater - refunded('DETTE') - refunded('ESPECES');
-    const stillDue = sale.totalTtc - sale.paidAmount - paidLater;
+    const { reallyPaid, stillDue } = await SaleReturnsService.cashKept(
+      tx,
+      sale,
+    );
 
-    const number = await nextDocumentNumber(tx, 'RETOUR_CLIENT', 'RC', 5);
+    // UN seul instant pour l'année des numéros ET la date du retour : à minuit
+    // le 31/12, jamais « AV-2026-… » daté de 2027 (comme la facture).
+    const createdAt = new Date();
+    const year = localYear(createdAt);
+    const number = await nextDocumentNumber(tx, 'RETOUR_CLIENT', 'RC', 5, year);
     let cashSessionId: string | null = null;
     if (dto.refundMethod === 'ESPECES') {
       if (totalTtc > reallyPaid) {
@@ -232,7 +227,7 @@ export class SaleReturnsService {
     let issuer: StoreIdentity | null = null;
     if (sale.invoiceNumber) {
       issuer = await storeIdentity(tx, this.config, true);
-      creditNoteNumber = await nextDocumentNumber(tx, 'AVOIR', 'AV', 6);
+      creditNoteNumber = await nextDocumentNumber(tx, 'AVOIR', 'AV', 6, year);
     }
 
     const created = await tx.saleReturn.create({
@@ -251,6 +246,7 @@ export class SaleReturnsService {
         reason: dto.reason,
         issuerSnapshot: issuer ? { ...issuer } : Prisma.JsonNull,
         clientMutationId: dto.clientMutationId,
+        createdAt,
         lines: {
           create: lines.map((l) => ({
             saleLineId: l.line.id,
@@ -301,11 +297,42 @@ export class SaleReturnsService {
         creditNoteNumber,
         sale: sale.invoiceNumber ?? sale.number,
         refundMethod: dto.refundMethod,
+        locationId: sale.locationId,
+        cashSessionId,
+        lines: lines.map((l) => ({
+          productId: l.line.productId,
+          quantity: formatQuantity(l.quantity),
+          lineTotalTtc: l.lineTotalTtc,
+        })),
         totalTtc,
         reason: dto.reason,
       },
     });
     return SaleReturnsService.toDto(created);
+  }
+
+  /// Ce que la vente a réellement encaissé et garde (payé − remboursé), et ce
+  /// qu'elle doit encore — mêmes composantes que partout. Les avoirs DETTE sont
+  /// des règlements : retirés de l'encaissé réel. Sous le verrou de la vente.
+  static async cashKept(
+    tx: Db,
+    sale: { id: string; paidAmount: number; totalTtc: number },
+  ): Promise<{ reallyPaid: number; stillDue: number }> {
+    const [payments, refunds] = await Promise.all([
+      tx.customerPayment.aggregate({
+        where: { saleId: sale.id },
+        _sum: { amount: true },
+      }),
+      tx.saleReturn.aggregate({
+        where: { saleId: sale.id },
+        _sum: { totalTtc: true },
+      }),
+    ]);
+    const paidLater = payments._sum.amount ?? 0;
+    return {
+      reallyPaid: sale.paidAmount + paidLater - (refunds._sum.totalTtc ?? 0),
+      stillDue: sale.totalTtc - sale.paidAmount - paidLater,
+    };
   }
 
   /// Retours d'une vente (le vendeur : les siennes seulement).

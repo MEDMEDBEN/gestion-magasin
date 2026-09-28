@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 import { ClientMutationId } from '../idempotency';
@@ -48,6 +48,12 @@ export class PaymentHistoryItemDto {
     description: 'Contre-passation qui annule ce paiement, s’il y en a une.',
   })
   reversedById!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Clients : avoir d’un retour déduit de la dette (ni espèces, ni contre-passable).',
+  })
+  saleReturnId?: string | null;
 }
 
 export class PaymentHistoryDto {

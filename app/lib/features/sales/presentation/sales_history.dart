@@ -198,8 +198,21 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
   late Future<List<SaleReturn>> _returns = ref
       .read(salesApiProvider)
       .saleReturns(widget.sale.id);
+  // Des articles déjà revenus : la vente ne se facture ni ne s'annule plus
+  // (miroir des gardes serveur).
+  bool _hasReturns = false;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchReturns();
+  }
+
+  void _watchReturns() => _returns.then((r) {
+    if (mounted) setState(() => _hasReturns = r.isNotEmpty);
+  }, onError: (_) {});
 
   /// Retour d'articles (ADMIN, P1 bis n°21l), puis vente et retours relus.
   Future<void> _returnItems() async {
@@ -218,6 +231,7 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
       _sale = fresh;
       _returns = api.saleReturns(_sale.id);
     });
+    _watchReturns();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -404,6 +418,7 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
         // vente facturée ne s'annule pas (elle passe par un avoir).
         if (widget.rights.canCancelSales &&
             !cancelled &&
+            !_hasReturns &&
             sale.invoiceNumber == null)
           TextButton(
             onPressed: _busy ? null : _cancel,
@@ -411,6 +426,7 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
           ),
         if (widget.rights.canInvoice &&
             !cancelled &&
+            !_hasReturns &&
             sale.invoiceNumber == null)
           OutlinedButton(
             onPressed: _busy

@@ -62,7 +62,9 @@ describe('Retours client (e2e)', () => {
     ).quantity.toFixed(3);
 
   /// Vente de 3 × 1 450 HT (TVA 19 %) : payée comptant, ou à crédit.
-  const sell = async (credit = false) => {
+  /// `unitPriceHt` : prix modifié (au-dessus du coût), pour des montants qui
+  /// ne se divisent pas juste.
+  const sell = async (credit = false, unitPriceHt?: number) => {
     const p = await product();
     let customerId: string | undefined;
     if (credit) {
@@ -81,7 +83,13 @@ describe('Retours client (e2e)', () => {
         .post('/api/sales')
         .send({
           customerId,
-          lines: [{ productId: p, quantity: '3' }],
+          lines: [
+            {
+              productId: p,
+              quantity: '3',
+              ...(unitPriceHt && { unitPriceHt, priceEdited: true }),
+            },
+          ],
           paidAmount: credit ? 0 : 517650,
           ...(credit && { dueDate: DUE_DATE }),
         })
@@ -283,6 +291,68 @@ describe('Retours client (e2e)', () => {
     );
     const other = await sell();
     await giveBack(sale.id, other.lineId, '1', 'ESPECES').expect(422);
+  });
+
+  /// Audit 21l : un montant qui ne se divise pas juste — trois retours d'une
+  /// unité rendent EXACTEMENT la vente (arrondi cumulé), HT comme TVA.
+  it('retours successifs sur un montant indivisible : total exact', async () => {
+    const { sale, lineId } = await sell(true, 145001);
+    const parts = [];
+    for (let i = 0; i < 3; i++) {
+      parts.push(
+        (await giveBack(sale.id, lineId, '1', 'DETTE').expect(201)).body,
+      );
+    }
+    const detail = (
+      await as(tokens.admin).get(`/api/sales/${sale.id}`).expect(200)
+    ).body;
+    expect(parts.reduce((s, p) => s + p.totalHt, 0)).toBe(detail.totalHt);
+    expect(parts.reduce((s, p) => s + p.totalTtc, 0)).toBe(sale.totalTtc);
+    expect(detail.remainingAmount).toBe(0);
+  });
+
+  /// Audit 21l : un ticket dont des articles sont revenus n'a pas d'avoir ;
+  /// le facturer ensuite déclarerait une TVA sur de la marchandise rendue.
+  it('ticket avec retour : ne se facture plus', async () => {
+    const { sale, lineId } = await sell();
+    await giveBack(sale.id, lineId, '1', 'ESPECES').expect(201);
+    const res = await as(tokens.admin)
+      .post(`/api/sales/${sale.id}/invoice`)
+      .expect(409);
+    expect(res.body.code).toBe('INVALID_STATE_TRANSITION');
+  });
+
+  /// Audit 21l : règlement de 100 %, tout remboursé en espèces, puis
+  /// contre-passation du règlement → les espèces sortiraient deux fois.
+  it('règlement dont la vente a été remboursée : ne se contre-passe plus', async () => {
+    const { sale, lineId, customerId } = await sell(true);
+    const payment = (
+      await as(tokens.admin)
+        .post('/api/payments/customer')
+        .send({ customerId, saleId: sale.id, amount: sale.totalTtc })
+        .expect(201)
+    ).body;
+    await giveBack(sale.id, lineId, '3', 'ESPECES').expect(201);
+    await as(tokens.admin)
+      .post(`/api/payments/customer/${payment.id}/reverse`)
+      .send({ reason: 'Erreur de saisie' })
+      .expect(409);
+    // Sans remboursement, la contre-passation reste possible.
+    const other = await sell(true);
+    const ok = (
+      await as(tokens.admin)
+        .post('/api/payments/customer')
+        .send({
+          customerId: other.customerId,
+          saleId: other.sale.id,
+          amount: other.sale.totalTtc,
+        })
+        .expect(201)
+    ).body;
+    await as(tokens.admin)
+      .post(`/api/payments/customer/${ok.id}/reverse`)
+      .send({ reason: 'Erreur de saisie' })
+      .expect(201);
   });
 
   /// CA NET des retours : le rapport d'activité et l'accueil déduisent ce qui

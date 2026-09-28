@@ -15,6 +15,7 @@ import {
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashSessionsService } from '../sales/cash-sessions.service';
+import { SaleReturnsService } from '../sales/sale-returns.service';
 import { SalesService } from '../sales/sales.service';
 import {
   CreateCustomerDto,
@@ -283,6 +284,12 @@ export class CustomersService {
     actor: ActorContext | null,
     paidAt: Date = new Date(),
   ): Promise<CustomerPaymentDto> {
+    // Verrous Vente → Client, l'ordre des retours et de l'annulation : le
+    // règlement référence la vente (clé étrangère) ; dans l'ordre inverse, un
+    // retour simultané sur la même vente pourrait s'interbloquer avec lui.
+    if (dto.saleId) {
+      await tx.$queryRaw`SELECT "id" FROM "Sale" WHERE "id" = ${dto.saleId}::uuid FOR UPDATE`;
+    }
     await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${dto.customerId}::uuid FOR UPDATE`;
     // Relu SOUS le verrou : le même règlement, envoyé en ligne (réponse perdue)
     // puis par la file, a pu se valider pendant l'attente — sans cette
@@ -420,13 +427,16 @@ export class CustomersService {
         id: p.id,
         amount: p.amount,
         method: p.method,
-        fromCash: true, // règlement client = espèces en caisse (décision 2026-09-15)
+        // Règlement client = espèces en caisse (décision 2026-09-15), sauf
+        // l'avoir d'un retour : une écriture, aucune espèce.
+        fromCash: !p.saleReturnId,
         paidAt: p.paidAt,
         userId: p.userId,
         saleId: p.saleId,
         note: p.note,
         reversesPaymentId: p.reversesPaymentId,
         reversedById: p.reversedBy?.id ?? null,
+        saleReturnId: p.saleReturnId,
       })),
       meta: { page: query.page, limit: query.limit, total },
     };
@@ -488,7 +498,27 @@ export class CustomersService {
             HttpStatus.CONFLICT,
           );
         }
+        // Verrous Vente → Client, l'ordre des retours et de l'annulation.
+        if (original.saleId) {
+          await tx.$queryRaw`SELECT "id" FROM "Sale" WHERE "id" = ${original.saleId}::uuid FOR UPDATE`;
+        }
         await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${original.customerId}::uuid FOR UPDATE`;
+        // Des articles déjà remboursés sur cette vente : contre-passer ce
+        // règlement ferait sortir des espèces que la vente n'a plus (le client
+        // serait remboursé deux fois).
+        if (original.saleId) {
+          const sale = await tx.sale.findUniqueOrThrow({
+            where: { id: original.saleId },
+          });
+          const { reallyPaid } = await SaleReturnsService.cashKept(tx, sale);
+          if (reallyPaid - original.amount < 0) {
+            throw new BusinessException(
+              ErrorCode.INVALID_STATE_TRANSITION,
+              'Des articles de cette vente ont déjà été remboursés : ce règlement ne se contre-passe plus',
+              HttpStatus.CONFLICT,
+            );
+          }
+        }
         const session = await CashSessionsService.lockOpenSession(tx, {
           userId: user.id,
         });

@@ -142,6 +142,8 @@ void main() {
           _payment('actif'),
           _payment('annule', reversedBy: 'r1'),
           _payment('r1', amount: -30000, reverses: 'annule'),
+          // L'avoir d'un retour client (21l) : jamais contre-passable.
+          _payment('avoir').copyWith(saleReturnId: 'sr1', fromCash: false),
         ],
         onReverse: (_, _) async {},
       );

@@ -4,10 +4,8 @@ import {
   SuppliersController,
 } from './suppliers.controller';
 import { StockModule } from '../stock/stock.module';
-import {
-  SupplierReturnsController,
-  SupplierReturnsService,
-} from './supplier-returns';
+import { SupplierReturnsController } from './supplier-returns.controller';
+import { SupplierReturnsService } from './supplier-returns.service';
 import { SuppliersService } from './suppliers.service';
 
 @Module({

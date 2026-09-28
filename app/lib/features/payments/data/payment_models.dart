@@ -21,12 +21,16 @@ abstract class PaymentHistoryItem with _$PaymentHistoryItem {
     String? note,
     String? reversesPaymentId,
     String? reversedById,
+
+    /// Avoir d'un retour client déduit de la dette : jamais contre-passable.
+    String? saleReturnId,
   }) = _PaymentHistoryItem;
 
   const PaymentHistoryItem._();
 
   /// Un paiement ordinaire, pas encore annulé : seul cas contre-passable.
-  bool get canBeReversed => reversesPaymentId == null && reversedById == null;
+  bool get canBeReversed =>
+      reversesPaymentId == null && reversedById == null && saleReturnId == null;
 
   factory PaymentHistoryItem.fromJson(Map<String, dynamic> json) =>
       _$PaymentHistoryItemFromJson(json);

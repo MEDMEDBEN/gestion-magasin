@@ -479,6 +479,16 @@ export class SalesService {
         );
       }
       if (sale!.invoiceNumber) return this.toDto(tx, sale!);
+      // Des articles sont déjà revenus sur ce ticket, SANS avoir (il n'était
+      // pas facturé) : la facture porterait une TVA sur de la marchandise
+      // rendue (règle 11). Sous le verrou de la vente, comme les retours.
+      if (await tx.saleReturn.count({ where: { saleId: id } })) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          'Des articles de ce ticket ont été rendus : il ne se facture plus',
+          HttpStatus.CONFLICT,
+        );
+      }
 
       // Mentions légales vérifiées AVANT d'attribuer le numéro : jamais un
       // numéro consommé pour une facture qu'on ne pourrait pas imprimer. Puis
