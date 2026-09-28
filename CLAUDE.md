@@ -11,7 +11,7 @@ Logiciel de gestion centralisé pour un magasin de matériel électrique + dép�
    - **`CONVENTIONS.md`** (racine) — conventions de code obligatoires (structure module NestJS / feature Flutter, DTO, format d'erreurs, pagination, money/decimal). À respecter par tout dev/agent pour que le code reste homogène d'une session à l'autre.
    - **`docs/permissions.md`** — matrice de permissions CRUD par rôle (à valider puis refléter exactement dans les guards).
 3. **`docs/context.md`** — décisions d'architecture + **Contrat de synchronisation offline** (à respecter à la lettre).
-4. **`docs/plan.md`** — ordre des features (P0 → P3) et liste exhaustive des tables de la Phase 0.
+4. **`docs/plan.md`** — ordre des features (P0 → P2 ; P3 retiré le 2026-09-28) et liste exhaustive des tables de la Phase 0.
 5. **`docs/tasks.md`** — état d'avancement / relais entre devs. **Toujours le lire en premier en début de session.**
 6. **`docs/DEPLOYMENT.md`** — infra, VPS, secrets.
 
@@ -67,7 +67,7 @@ infra/                  ← déploiement (voir docs/DEPLOYMENT.md)
 1. **Phase 0 (fondation, une seule fois)** : schéma Prisma complet pour P0 (liste exhaustive dans `docs/plan.md`) + contrat OpenAPI complet + auth de base + **contrat de synchronisation offline** (`docs/context.md`). Ne JAMAIS commencer une feature avant que la Phase 0 soit validée par les deux devs.
 2. **Par feature ensuite** : chaque feature (ex: "Ventes") est développée de bout en bout (DB → API → sécurité → UI → sync offline → tests) avant de passer à la suivante.
 3. **Le relais se fait ENTRE features, jamais au milieu d'une feature.**
-4. **Ordre des features** : suivre strictement `P0 → P1 → P2 → P3` tel que défini dans `docs/plan.md`.
+4. **Ordre des features** : suivre strictement `P0 → P1 → P2` (P3 retiré du plan le 2026-09-28, gardé en commentaire) tel que défini dans `docs/plan.md`.
 5. **Sécurité** : chaque feature doit être auditée par le subagent `security-reviewer` avant d'être considérée terminée.
 
 ## Protocole de relais (travail asynchrone, à des heures différentes)

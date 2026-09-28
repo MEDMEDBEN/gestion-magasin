@@ -92,7 +92,7 @@ Traçabilité / système
 - **PlanningTask** : `A_FAIRE → EN_COURS → TERMINEE` (+ `EN_RETARD` calculé si échéance dépassée)
 - **StockMovement.type** : `RECEPTION, VENTE, RETOUR_CLIENT, RETOUR_FOURNISSEUR, TRANSFERT_SORTIE, TRANSFERT_ENTREE, AJUSTEMENT_INVENTAIRE, PERTE_CASSE`
 
-## Ordre des features (P0 → P3), une feature = une tranche verticale complète
+## Ordre des features (P0 → P2 ; P3 retiré le 2026-09-28), une feature = une tranche verticale complète
 
 ### P0 — Cœur indispensable
 1. Authentification + utilisateurs + rôles/permissions
@@ -153,9 +153,12 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 23. Contact clients ciblé par modèle
 24. OCR factures / recherche photo (si pertinent)
 
-### P3 — Futur
+<!--
+### P3 — Futur (RETIRÉ du plan le 2026-09-28, décision MEDMEDBEN : incertain — gardé ici pour mémoire)
 25. E-commerce
 26. Intégrations supplémentaires
+Aucune feature P0/P1/P2 n'en dépend (vérifié le 2026-09-28). La spec les classe déjà hors périmètre.
+-->
 
 **Règle stricte** : ne pas commencer une feature de la phase N+1 tant que toutes les features de la phase N ne sont pas terminées ET testées (voir critère de "tâche terminée" dans `CLAUDE.md`).
 
