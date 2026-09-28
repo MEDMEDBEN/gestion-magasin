@@ -142,9 +142,10 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 21k. **Mouvements de caisse manuels** : entrée, sortie, prélèvement (session ouverte). _(2026-09-28 : livré, prouvé
      et audité)_
 21l. **Retours** : retour client partiel (+ **facture d'avoir** si la vente est facturée) ; retour fournisseur. _(2026-09-28 :
-     livré et prouvé ; audits à relancer)_
+     livré, prouvé et audité)_
 21m. **Indicateurs** : fournisseur (total acheté, produits fournis, livraisons à temps, évolution des prix
-     d'achat), graphiques du tableau de bord, modification d'un devis brouillon.
+     d'achat), graphiques du tableau de bord, modification d'un devis brouillon. _(2026-09-28 : modification d'un
+     devis brouillon, indicateurs fournisseur et graphique de l'accueil livrés)_
 21n. **Relevé de compte** client et fournisseur (PDF) ; suivi des chèques ; historique des prix de vente.
 
 ### P2 — Avancé

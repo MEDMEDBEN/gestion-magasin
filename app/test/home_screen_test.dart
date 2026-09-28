@@ -73,6 +73,47 @@ void main() {
     expect(find.text('Alertes de stock'), findsNothing);
   });
 
+  /// P1 bis n°21m : barres des 7 derniers jours, chaque montant lisible
+  /// (lecteur d'écran) ; un jour négatif (retours) n'empêche pas l'affichage.
+  testWidgets('ventes des 7 derniers jours : une barre par jour', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      user: _vendeur(),
+      summary: const DashboardSummary(
+        day: '2026-09-23',
+        sales: DashboardSales(
+          count: 1,
+          revenueTtc: 145000,
+          last7Days: [
+            DashboardDay(day: '2026-09-17', revenueTtc: 0),
+            DashboardDay(day: '2026-09-18', revenueTtc: 300000),
+            DashboardDay(day: '2026-09-19', revenueTtc: -20000),
+            DashboardDay(day: '2026-09-20', revenueTtc: 50000),
+            DashboardDay(day: '2026-09-21', revenueTtc: 0),
+            DashboardDay(day: '2026-09-22', revenueTtc: 90000),
+            DashboardDay(day: '2026-09-23', revenueTtc: 145000),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('Ventes des 7 derniers jours'), findsOneWidget);
+    expect(find.text('18/09'), findsOneWidget);
+    expect(find.text('23/09'), findsOneWidget);
+    // Chaque barre porte son montant, un jour négatif (retours) compris.
+    expect(find.byTooltip(formatDA(-20000)), findsOneWidget);
+    final handle = tester.ensureSemantics();
+    await tester.pumpAndSettle();
+    expect(
+      find.bySemanticsLabel('19/09/2026 : ${formatDA(-20000)}'),
+      findsOneWidget,
+    );
+    handle.dispose();
+    expect(find.byTooltip(formatDA(300000)), findsOneWidget);
+  });
+
   testWidgets('les montants sont formatés en dinars, jamais en centimes', (
     tester,
   ) async {

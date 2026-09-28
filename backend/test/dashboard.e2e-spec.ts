@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { localDate } from '../src/common/document-number';
@@ -110,6 +111,9 @@ describe('Tableau de bord (e2e)', () => {
     await prisma.supplierPayment.deleteMany({
       where: { supplierId: { in: supplierIds } },
     });
+    await prisma.saleReturn.deleteMany({
+      where: { sale: { userId: { in: userIds } } },
+    });
     await prisma.sale.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
     await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
@@ -158,12 +162,54 @@ describe('Tableau de bord (e2e)', () => {
     await sale(ids.autreVendeur, 250000);
     await sale(ids.vendeur, 990000, hier); // hors journée : ignorée
 
-    const mien = (await dashboard(tokens.vendeur).expect(200)).body.sales;
-    expect(mien).toEqual({ count: 1, revenueTtc: 150000 });
+    const body = (await dashboard(tokens.vendeur).expect(200)).body;
+    const mien = body.sales;
+    expect(mien).toMatchObject({ count: 1, revenueTtc: 150000 });
+    // P1 bis n°21m : 7 jours, aujourd'hui en dernier ; la vente d'hier y est,
+    // celles des collègues non.
+    const week = mien.last7Days as { day: string; revenueTtc: number }[];
+    expect(week).toHaveLength(7);
+    expect(week[6]).toEqual({ day: body.day, revenueTtc: 150000 });
+    expect(week.reduce((s, d) => s + d.revenueTtc, 0)).toBe(150000 + 990000);
 
     const tout = (await dashboard(tokens.admin).expect(200)).body.sales;
     expect(tout.count).toBe(avant.count + 2);
     expect(tout.revenueTtc).toBe(avant.revenueTtc + 400000);
+  });
+
+  /// Audits 21m : les retours sont déduits JOUR PAR JOUR, et seulement du
+  /// vendeur de la vente d'origine (jamais du graphique d'un collègue).
+  it('7 jours : retours déduits, cloisonnés par vendeur', async () => {
+    const week = async (token: string) =>
+      (await dashboard(token).expect(200)).body.sales.last7Days as {
+        revenueTtc: number;
+      }[];
+    const [vendeur, autre, admin] = await Promise.all(
+      [tokens.vendeur, tokens.autreVendeur, tokens.admin].map(week),
+    );
+    const vendue = await sale(ids.autreVendeur, 80000);
+    await prisma.saleReturn.create({
+      data: {
+        id: randomUUID(),
+        number: `E2E-DASH-RC-${suffix}`,
+        saleId: vendue.id,
+        userId: ids.vendeur,
+        locationId: magasinId,
+        refundMethod: 'ESPECES',
+        totalHt: 30000,
+        totalTax: 0,
+        totalTtc: 30000,
+        reason: 'Test',
+        clientMutationId: randomUUID(),
+      },
+    });
+    expect(await week(tokens.vendeur)).toEqual(vendeur);
+    expect((await week(tokens.autreVendeur))[6].revenueTtc).toBe(
+      autre[6].revenueTtc + 50000,
+    );
+    expect((await week(tokens.admin))[6].revenueTtc).toBe(
+      admin[6].revenueTtc + 50000,
+    );
   });
 
   it('une vente ANNULÉE ne compte pas dans le CA', async () => {
@@ -364,7 +410,12 @@ describe('Tableau de bord (e2e)', () => {
     });
 
     const apres = (await dashboard(token).expect(200)).body;
-    expect(apres.sales).toEqual({ count: 0, revenueTtc: 0 });
+    expect(apres.sales).toMatchObject({ count: 0, revenueTtc: 0 });
+    expect(
+      apres.sales.last7Days.every(
+        (d: { revenueTtc: number }) => d.revenueTtc === 0,
+      ),
+    ).toBe(true);
     expect(apres.suppliers).toBeNull();
   });
 });

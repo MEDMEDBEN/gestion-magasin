@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
@@ -272,6 +273,17 @@ class _Blocks extends StatelessWidget {
               ),
           ],
         ),
+        if (sales != null && sales.last7Days.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text('Ventes des 7 derniers jours', style: AmpereType.sectionTitle),
+          const SizedBox(height: 8),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: SalesWeekChart(days: sales.last7Days),
+            ),
+          ),
+        ],
         if (stock != null && stock.low.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text('À réapprovisionner', style: AmpereType.sectionTitle),
@@ -291,6 +303,72 @@ class _Blocks extends StatelessWidget {
               ),
             ),
         ],
+      ],
+    );
+  }
+}
+
+/// Barres du CA TTC par jour (P1 bis n°21m) : de simples boîtes, aucune
+/// bibliothèque de graphiques. Un jour négatif (retours > ventes) : barre
+/// minimale en couleur d'erreur. Chaque barre porte son montant (infobulle et
+/// lecteur d'écran).
+class SalesWeekChart extends StatelessWidget {
+  const SalesWeekChart({super.key, required this.days});
+
+  final List<DashboardDay> days;
+
+  static const _height = 110.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final top = days.fold<int>(
+      0,
+      (m, d) => d.revenueTtc > m ? d.revenueTtc : m,
+    );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (final (i, d) in days.indexed)
+          Expanded(
+            child: Semantics(
+              container: true,
+              label: '${formatIsoDay(d.day)} : ${formatDA(d.revenueTtc)}',
+              excludeSemantics: true,
+              child: Tooltip(
+                message: formatDA(d.revenueTtc),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        height: top <= 0 || d.revenueTtc <= 0
+                            ? 2
+                            : 2 + (_height - 2) * d.revenueTtc / top,
+                        decoration: BoxDecoration(
+                          color: d.revenueTtc < 0
+                              ? colors.error
+                              : i == days.length - 1
+                              ? colors.accent
+                              : colors.info,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(3),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        // « JJ/MM » ; un jour mal formé s'affiche tel quel.
+                        formatIsoDay(d.day).split('/').take(2).join('/'),
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }

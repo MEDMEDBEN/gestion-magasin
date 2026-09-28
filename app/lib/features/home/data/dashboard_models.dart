@@ -25,11 +25,24 @@ abstract class DashboardSummary with _$DashboardSummary {
       _$DashboardSummaryFromJson(json);
 }
 
+/// CA TTC d'une journée d'Alger, net des retours (peut être négatif).
+@freezed
+abstract class DashboardDay with _$DashboardDay {
+  const factory DashboardDay({required String day, required Money revenueTtc}) =
+      _DashboardDay;
+
+  factory DashboardDay.fromJson(Map<String, dynamic> json) =>
+      _$DashboardDayFromJson(json);
+}
+
 @freezed
 abstract class DashboardSales with _$DashboardSales {
   const factory DashboardSales({
     required int count,
     required Money revenueTtc,
+
+    /// 7 derniers jours, aujourd'hui en dernier (P1 bis n°21m).
+    @Default(<DashboardDay>[]) List<DashboardDay> last7Days,
   }) = _DashboardSales;
 
   factory DashboardSales.fromJson(Map<String, dynamic> json) =>

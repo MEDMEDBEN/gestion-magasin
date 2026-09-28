@@ -101,6 +101,7 @@ aucune migration destructive sans confirmation).
 | Gérer fournisseurs | ✅ | ❌ | ❌ |
 | Enregistrer paiement fournisseur | ✅ | ❌ | ❌ |
 | Consulter l'historique des paiements fournisseur | ✅ | ❌ | 👁️ (`supplier.read`) |
+| Indicateurs fournisseur (`GET /suppliers/:id/stats` : produits fournis, ponctualité, prix d'achat) | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Contre-passer un paiement fournisseur | ✅ | ❌ | ❌ |
 
 ## Achats / Réceptions
@@ -265,6 +266,7 @@ lecture en POST, parce qu'une liste de 200 produits ne tient pas dans une URL. P
 |---|---|---|---|
 | Créer un devis, le lire, son PDF | ✅ | ✅ | ❌ |
 | Envoyer / accepter / refuser | ✅ | ✅ | ❌ |
+| Modifier un devis BROUILLON (`PATCH /quotes/:id`, P1 bis n°21m) | ✅ (tous) | ✅ (les siens) | ❌ |
 | Convertir en vente (`POST /quotes/:id/convert`) | ✅ | ✅ (caisse, crédit : droits de la vente) | ❌ |
 | Remise dans un devis | ✅ | ❌ (reprise à la conversion si l'admin l'a accordée) | ❌ |
 

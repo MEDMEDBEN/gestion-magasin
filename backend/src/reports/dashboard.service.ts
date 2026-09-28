@@ -69,8 +69,19 @@ export class DashboardService {
   /// cloisonnement que la liste des ventes et le planning.
   /// CA NET des retours client du jour (P1 bis n°21l), même cloisonnement.
   private async salesOfDay(user: AuthenticatedUser, startOfDay: Date) {
-    const mine = user.roles.includes(RoleCode.ADMIN) ? {} : { userId: user.id };
-    const [totals, returns] = await Promise.all([
+    const admin = user.roles.includes(RoleCode.ADMIN);
+    const mine = admin ? {} : { userId: user.id };
+    // 7 jours d'Alger, aujourd'hui compris (P1 bis n°21m, graphique de
+    // l'accueil). Horodatages sans fuseau : déclarés UTC PUIS passés à
+    // l'heure d'Alger (même conversion que le rapport d'activité).
+    const DAY = 24 * 60 * 60 * 1000;
+    const since = startOfLocalDay(
+      new Date(startOfDay.getTime() + 12 * 3600_000 - 6 * DAY),
+    );
+    const mineSql = admin
+      ? Prisma.empty
+      : Prisma.sql`AND s."userId" = ${user.id}::uuid`;
+    const [totals, returns, soldByDay, returnedByDay] = await Promise.all([
       this.prisma.sale.aggregate({
         where: { status: 'VALIDEE', soldAt: { gte: startOfDay }, ...mine },
         _count: true,
@@ -80,10 +91,35 @@ export class DashboardService {
         where: { createdAt: { gte: startOfDay }, sale: mine },
         _sum: { totalTtc: true },
       }),
+      this.prisma.$queryRaw<{ day: string; revenue: bigint }[]>`
+        SELECT to_char((s."soldAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Algiers', 'YYYY-MM-DD') AS "day",
+               COALESCE(SUM(s."totalTtc"), 0) AS "revenue"
+        FROM "Sale" s
+        WHERE s."status"::text = 'VALIDEE' AND s."soldAt" >= ${since} ${mineSql}
+        GROUP BY 1`,
+      this.prisma.$queryRaw<{ day: string; revenue: bigint }[]>`
+        SELECT to_char((r."createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Africa/Algiers', 'YYYY-MM-DD') AS "day",
+               COALESCE(SUM(r."totalTtc"), 0) AS "revenue"
+        FROM "SaleReturn" r JOIN "Sale" s ON s."id" = r."saleId"
+        WHERE r."createdAt" >= ${since} ${mineSql}
+        GROUP BY 1`,
     ]);
+    const net = new Map<string, number>();
+    for (const r of soldByDay) net.set(r.day, Number(r.revenue));
+    for (const r of returnedByDay) {
+      net.set(r.day, (net.get(r.day) ?? 0) - Number(r.revenue));
+    }
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      // Midi de chaque jour : toujours dans la bonne journée d'Alger.
+      const day = localDate(
+        new Date(since.getTime() + 12 * 3600_000 + i * DAY),
+      );
+      return { day, revenueTtc: net.get(day) ?? 0 };
+    });
     return {
       count: totals._count,
       revenueTtc: (totals._sum.totalTtc ?? 0) - (returns._sum.totalTtc ?? 0),
+      last7Days,
     };
   }
 

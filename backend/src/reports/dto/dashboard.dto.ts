@@ -3,6 +3,14 @@ import { ApiProperty } from '@nestjs/swagger';
 /// Un bloc ABSENT (`null`) = le compte n'a pas le droit de le voir. L'écran
 /// n'affiche alors rien, jamais un zéro (qui se lirait « aucune alerte »).
 
+export class DashboardDayDto {
+  @ApiProperty({ example: '2026-09-23' }) day!: string;
+  @ApiProperty({
+    description: 'CA TTC du jour net des retours, en centimes (peut être < 0).',
+  })
+  revenueTtc!: number;
+}
+
 export class DashboardSalesDto {
   @ApiProperty({
     description: 'Ventes validées du jour (les miennes ; toutes pour l’admin).',
@@ -10,6 +18,12 @@ export class DashboardSalesDto {
   count!: number;
   @ApiProperty({ description: 'Chiffre d’affaires TTC du jour, en centimes.' })
   revenueTtc!: number;
+  @ApiProperty({
+    type: [DashboardDayDto],
+    description:
+      'Les 7 derniers jours (aujourd’hui compris, du plus ancien au plus récent), même cloisonnement.',
+  })
+  last7Days!: DashboardDayDto[];
 }
 
 export class DashboardLowStockDto {

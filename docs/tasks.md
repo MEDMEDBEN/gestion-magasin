@@ -465,13 +465,95 @@ RETOUR_FOURNISSEUR (journal), numéro RF-AAAA-NNNNN, audit.
   — stock, dette au prorata exact, RF, PDF, liste, audit ; borne du reçu ; produit jamais reçu ; jamais négatif en
   « vente sans stock » ; rejeu ; droits) ; contre-épreuves (borne du reçu ; garde anti-négatif) → échecs ; app
   `flutter analyze` propre · **+455 ~46**.
-- ⚠️ Les audits lancés sur la partie 1 se sont arrêtés (limite d'usage de l'API) : aucun résultat — ils sont à
-  relancer sur les DEUX parties.
 - Non fait : réimprimer un bon RF depuis la liste (à la création seulement).
 
-**Prochaine étape précise** : audits `reviewer` + `security-reviewer` de 21l (parties 1 et 2 : commits ceadca1 et
-suivant), appliquer ; puis **21m** (indicateurs fournisseur, graphiques de l'accueil, modification d'un devis
-brouillon) et **21n** (relevé de compte, suivi des chèques, historique des prix de vente).
+**Audits 21l (`reviewer` + `security-reviewer`, 2026-09-28) — corrections appliquées** (les deux : « non conforme »,
+aucune faille élevée) :
+- **Ticket avec retour ne se facture plus** (409 ; bouton « Émettre la facture » et « Annuler » masqués) : la
+  facture aurait porté une TVA sur de la marchandise rendue, sans avoir en face (règle 11).
+- **Contre-passation bornée** : un règlement d'une vente déjà remboursée en espèces ne se contre-passe plus si
+  l'encaissé réel de la vente passerait sous 0 (les espèces sortaient deux fois). Calcul « encaissé réel / reste
+  dû » en UN endroit (`SaleReturnsService.cashKept`), utilisé par le retour et la contre-passation.
+- **Verrous Vente → Client** aussi dans le règlement rattaché à une vente et la contre-passation (même ordre que
+  retour et annulation : plus d'interblocage possible avec un retour simultané).
+- **Retour fournisseur valorisé par lots** (`valueReturn`, testé à part) : chaque unité vaut ce que SA réception
+  avait ajouté à la dette, des plus récentes aux plus anciennes, arrondi cumulé par lot (Σ renvoyé = Σ reçu au
+  centime, plus de reliquat 0,01 DA) — avant : tout au dernier prix.
+- Retour fournisseur : lieu MAGASIN/DÉPÔT seulement (ni TRANSIT, ni inconnu → 422 au lieu de 500) ; la commande
+  citée doit avoir livré chaque produit renvoyé ; rejeu comparé aussi sur lieu, commande, motif (client : motif) ;
+  audit avec lignes, lieu, caisse ; PDF limité à 30/min ; fichier découpé (`dto/`, `.service.ts`,
+  `.controller.ts`) selon CONVENTIONS.
+- Retour client : arrondi CUMULÉ (jamais de HT/TVA négatif sur un petit dernier retour) ; un seul instant pour
+  l'année des numéros RC/AV et la date du retour.
+- Historique des règlements : l'avoir est affiché « hors caisse » et n'offre plus « Contre-passer »
+  (`saleReturnId` exposé).
+- **Preuve (2026-09-28)** : e2e `sale-returns` 9 (+3 : montant indivisible exact, ticket avec retour non
+  facturable, contre-passation après remboursement), `supplier-returns` 8 (+3 : lots à prix différents, lieu /
+  commande, rejeu), unit `valueReturn` 3 ; contre-épreuves (4 gardes : facture, contre-passation, lieu, commande)
+  → échecs ; app `flutter analyze` propre · **+455 ~46**.
+- ⚠️ **Décisions MEDMEDBEN** : (1) **remboursement mixte** (une vente payée 600 sur 1 000, article rendu en entier :
+  refusé aujourd'hui en espèces comme en dette) ; (2) une vente soldée par un **acompte général** (règlement sans
+  vente) ne peut plus rien rembourser ; (3) valorisation des retours fournisseur « plus récentes réceptions
+  d'abord » à confirmer ; (4) rapports : remise brute non nette des retours, rapport des achats non net des
+  retours fournisseur.
+- Non fait (mineur, noté) : retour fournisseur rendu en `Map` côté app (pas de modèle Freezed) ; l'app n'envoie
+  pas `purchaseOrderId` (facultatif).
+
+**21m (partie 1) — Modification d'un devis brouillon (livré)** : `PATCH /quotes/:id` (auteur ou ADMIN ; BROUILLON
+seulement, 409 sinon ; re-tarifé par `SalesService.priceCart` : plancher du coût, remise réservée ; audit UPDATE
+avec prix modifiés).
+- App : Devis → « Modifier (dans le panier de la vente) » sur un brouillon : ses lignes, son client, ses prix
+  modifiés et remises reviennent dans le panier de la Vente (confirmation si le panier n'est pas vide) ; l'écran
+  Vente affiche « Modification du devis … » et propose « Mettre à jour le devis … » au lieu d'« Encaisser » ;
+  « Vider le panier » abandonne. Un prix de ligne égal au tarif du client redevient « au tarif ».
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **154 unit** · **623 e2e** (`quotes` +1 : auteur,
+  admin, autre vendeur 403, magasinier 403, sous le coût 422, remise vendeur 403, envoyé 409, 2 audits, stock
+  intact) ; app `flutter analyze` propre ; `quotes_screen_test` 9 (+2 : panier chargé puis mise à jour ; seul un
+  brouillon propose « Modifier ») ; suite complète **+457 ~46**.
+- Limite : le client d'un devis est retrouvé par la recherche clients (nom, 50 résultats) ; client inactif ou
+  introuvable → modification refusée à l'écran (message).
+- **Audits (`reviewer` + `security-reviewer`, 2026-09-28) — appliqués** : sécurité conforme (2 mineurs) ; revue :
+  1 important. Corrigé : (1) la remise que l'admin a accordée sur un produit se REPREND telle quelle par l'auteur
+  (sinon un vendeur ne pouvait plus corriger un brouillon remisé ; une autre remise reste 403) ; (2) brouillon
+  EXPIRÉ → 409 `QUOTE_EXPIRED` (comme l'envoi) ; (3) « Modifier » proposé seulement à l'auteur ou à l'admin
+  (`QuotesScreen` reçoit l'utilisateur) ; (4) audit : lignes, client et validité d'avant/après ; (5) verrou
+  commun `lock()`, lignes via `lineRows()` ; (6) `customerId: null` (devis comptoir) déclaré nullable et testé.
+  Preuves : e2e `quotes` 24 (+1 : remise reprise / autre remise 403, expiré 409, comptoir) ; contre-épreuves
+  (remise reprise, expiré) → échecs ; app `quotes_screen_test` 10 (+1 : brouillon d'un collègue sans « Modifier »).
+- Comportement assumé : un prix de ligne différent du tarif actuel (tarif changé depuis) reste le prix PROMIS,
+  tracé comme prix modifié.
+
+**21m (partie 2) — Indicateurs fournisseur (livré et audité)** : `GET /suppliers/:id/stats` (ADMIN|MAGASINIER
++ `supplier.read`, mêmes gardes que la fiche ; 30/min) — lu des RÉCEPTIONS, datées par `receivedAt` (heure réelle,
+hors-ligne compris — la même référence que le « dernier prix » de la règle 5) : produits distincts reçus ;
+livraisons à l'heure (réceptions de commandes datées reçues au plus tard le jour prévu ACTUEL, heure d'Alger) ; par
+produit (100 plus récents) : premier, précédent et dernier prix HT, nombre de BONS (un produit sur deux lignes d'un
+bon = une réception). Total acheté = `receivedAmount` de la fiche (reçu net des retours), désormais lu par l'app.
+- App : fiche fournisseur → « Indicateurs » (total acheté, produits fournis, % à l'heure, prix par produit avec
+  évolution « (+4,5 %) » ; rien sous 0,05 %).
+- Audits : sécurité conforme (ajout `@Throttle`) ; revue : 1 important corrigé (`createdAt` → `receivedAt`) + compte
+  des bons, relais inutile, « -0,0 % ». Contre-épreuves (ordre `receivedAt`, jour d'Alger 23 h 30 UTC, bon en double)
+  → échecs.
+- Limite assumée : la ponctualité compare à la date prévue ACTUELLE (une commande replanifiée avant réception est
+  « à l'heure ») — à trancher par MEDMEDBEN.
+- ponytail : lignes de réception du fournisseur lues en mémoire (quelques milliers) ; agréger en SQL au-delà.
+
+**21m (partie 3) — Graphique de l'accueil (livré et audité)** : `DashboardSalesDto.last7Days` — CA TTC net
+des retours des 7 derniers jours d'Alger (aujourd'hui en dernier, jours sans vente à 0), MÊME cloisonnement que le
+CA du jour (le vendeur : les siennes). App : « Ventes des 7 derniers jours », barres en widgets simples (aucune
+bibliothèque), montant en infobulle et lu par le lecteur d'écran barre par barre ; jour négatif = barre vide.
+- Audits : sécurité conforme ; revue OK. Appliqué : retours déduits jour par jour ET cloisonnés testés (contre-
+  épreuves : filtre vendeur des retours, soustraction → échecs) ; jour négatif en couleur d'erreur ; barre du jour
+  par index ; libellé « JJ/MM » sans `substring` ; chaque barre = un nœud du lecteur d'écran (`container`).
+- Preuves : e2e `dashboard` 13 (7 jours, aujourd'hui en dernier, vente d'hier comptée, collègues exclus, retours
+  nets et cloisonnés ; rôle retiré → 0 partout) ; app `home_screen_test` +1.
+- **Preuves complètes 21m (2026-09-28)** : backend lint 0 · `tsc` propre · **154 unit** · **625 e2e** (+1 dashboard
+  ensuite : 13/13) ; app `flutter analyze` propre · **+461 ~46** (puis `home_screen_test` 9/9 après les mineurs).
+
+**Prochaine étape précise** : **21n** — (1) relevé de compte client et fournisseur en PDF (mouvements datés : ventes
+/ réceptions, règlements, avoirs / retours, solde courant ; via l'utilitaire PDF unique de CONVENTIONS) ; (2) suivi
+des chèques (règlement par chèque : n°, banque, échéance, statut encaissé / rejeté) ; (3) historique des prix de
+vente d'un produit. Décisions MEDMEDBEN en attente listées dans les blocs 21l/21m.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
