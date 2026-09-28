@@ -533,7 +533,7 @@ bon = une réception). Total acheté = `receivedAmount` de la fiche (reçu net d
   évolution « (+4,5 %) » ; rien sous 0,05 %).
 - Audits : sécurité conforme (ajout `@Throttle`) ; revue : 1 important corrigé (`createdAt` → `receivedAt`) + compte
   des bons, relais inutile, « -0,0 % ». Contre-épreuves (ordre `receivedAt`, jour d'Alger 23 h 30 UTC, bon en double)
-  → échecs.
+  → échecs. Preuves complètes : lint 0 · `tsc` · **156 unit** · **628 e2e** ; app analyze propre · **+463 ~46**.
 - Limite assumée : la ponctualité compare à la date prévue ACTUELLE (une commande replanifiée avant réception est
   « à l'heure ») — à trancher par MEDMEDBEN.
 - ponytail : lignes de réception du fournisseur lues en mémoire (quelques milliers) ; agréger en SQL au-delà.
@@ -550,10 +550,31 @@ bibliothèque), montant en infobulle et lu par le lecteur d'écran barre par bar
 - **Preuves complètes 21m (2026-09-28)** : backend lint 0 · `tsc` propre · **154 unit** · **625 e2e** (+1 dashboard
   ensuite : 13/13) ; app `flutter analyze` propre · **+461 ~46** (puis `home_screen_test` 9/9 après les mineurs).
 
-**Prochaine étape précise** : **21n** — (1) relevé de compte client et fournisseur en PDF (mouvements datés : ventes
-/ réceptions, règlements, avoirs / retours, solde courant ; via l'utilitaire PDF unique de CONVENTIONS) ; (2) suivi
-des chèques (règlement par chèque : n°, banque, échéance, statut encaissé / rejeté) ; (3) historique des prix de
-vente d'un produit. Décisions MEDMEDBEN en attente listées dans les blocs 21l/21m.
+**21n (partie 1) — Relevé de compte client et fournisseur (livré et audité)** : `GET /customers/:id/statement`
+(ADMIN + `customer.read` — tout le CA du client) et `GET /suppliers/:id/statement` (ADMIN|MAGASINIER +
+`supplier.read`), `?format=pdf|xlsx|csv`, droits relus en base, débit des exports. Modèle commun
+`common/export/statement.ts` (mise en forme seulement, via l'utilitaire d'export unique) : date, pièce, libellé,
+débit, crédit, solde courant. Mouvements lus des MÊMES composantes que la dette : le dernier solde EST la dette
+(client : ventes validées TTC / payé comptant, règlements, avoirs, contre-passations ; fournisseur : reprise,
+réceptions, retours, paiements, contre-passations). Taille vérifiée (comptes) AVANT lecture ; nom de fichier avec
+le nom du tiers, assaini.
+- App : fiche client (admin) et fiche fournisseur → « Relevé de compte (PDF) », enregistré sur le poste.
+- Audits : sécurité conforme (2 mineurs corrigés : taille avant lecture, matrice) ; revue : 3 importants corrigés
+  (preuves, test des signes fournisseur, matrice) + libellés accentués, motif des contre-passations fournisseur,
+  commentaire déplacé. Contre-épreuves (règlements retirés, route ouverte au vendeur, signe de la reprise, signe
+  des paiements) → échecs. Preuves complètes : lint 0 · `tsc` · **156 unit** · **628 e2e** ; app analyze propre · **+463 ~46**.
+- Non fait (noté) : numéro d'avoir dans la colonne Pièce (il est dans le libellé) ; retour remboursé en espèces
+  absent du relevé client (net nul) ; relevé > 2 000 lignes : PDF refusé, l'app ne propose que le PDF (Excel par
+  l'API) ; pas de filtre de période ; pas de test widget de l'action côté client (droit testé).
+
+**Décisions MEDMEDBEN (2026-09-28) — suivi des chèques** (remplacent « espèces uniquement » du 2026-09-15 pour les
+chèques) : chèques CLIENTS reçus ET chèques FOURNISSEURS émis ; un chèque client réduit la dette DÈS la remise
+(rejeté par la banque → la dette revient par contre-passation + alerte) ; le vendeur saisit, l'ADMIN statue
+(encaissé / rejeté).
+
+**Prochaine étape précise** : **21n partie 2 — suivi des chèques** (migration additive par `db-migrator` : n°,
+banque, échéance, statut EN_PORTEFEUILLE / ENCAISSE / REJETE sur `CustomerPayment` et `SupplierPayment` ; un
+chèque n'entre pas dans la caisse) ; puis **partie 3** — historique des prix de vente d'un produit.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

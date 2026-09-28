@@ -49,6 +49,7 @@ import {
 import {
   EXPORT_THROTTLE,
   EXPORT_TYPES,
+  ExportFormatQueryDto,
   exportResponse,
   renderExport,
 } from '../common/export/export';
@@ -77,6 +78,25 @@ export class CustomersController {
       ...page,
       data: page.data.map((c) => CustomersService.forViewer(c, user)),
     };
+  }
+
+  /// Relevé de compte (P1 bis n°21n) : ADMIN seul — il montre tout le chiffre
+  /// d'affaires d'un client, caché au vendeur (`docs/permissions.md`).
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.CUSTOMER_READ)
+  @RequireFreshAccess()
+  @Throttle(EXPORT_THROTTLE)
+  @Get(':id/statement')
+  @ApiOperation({ summary: 'Relevé de compte d’un client (PDF, Excel, CSV)' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async statement(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Query() query: ExportFormatQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(await this.customers.statement(id), query.format),
+    );
   }
 
   /// Export : MÊMES gardes que `GET /customers`, mêmes lignes.

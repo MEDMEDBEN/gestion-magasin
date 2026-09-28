@@ -122,6 +122,10 @@ class SuppliersApi {
     });
   }
 
+  /// Relevé de compte d'un fournisseur (P1 bis n°21n).
+  Future<ExportedFile> supplierStatement(String id, ExportFormat format) =>
+      fetchExport(_dio, '/suppliers/$id/statement', format);
+
   /// Fournisseurs, ou seulement ceux à qui l'on doit (`debtOnly`).
   Future<ExportedFile> exportSuppliers(
     ExportFormat format, {

@@ -197,4 +197,14 @@ void main() {
     expect((admin.canSeeAllCash, admin.canReversePayments), (true, true));
     expect((vendeur.canSeeAllCash, vendeur.canReversePayments), (false, false));
   });
+
+  /// P1 bis n°21n : miroir de `GET /customers/:id/statement` (ADMIN).
+  test('relevé de compte client : ADMIN + customer.read seulement', () {
+    SalesRights rights(String role) => SalesRights(
+      authUser(roles: [role], permissions: const ['customer.read']),
+    );
+    expect(rights('ADMIN').canReadStatements, isTrue);
+    expect(rights('VENDEUR').canReadStatements, isFalse);
+    expect(rights('MAGASINIER').canReadStatements, isFalse);
+  });
 }

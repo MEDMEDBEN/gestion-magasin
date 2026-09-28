@@ -49,6 +49,7 @@ import {
 import {
   EXPORT_THROTTLE,
   EXPORT_TYPES,
+  ExportFormatQueryDto,
   exportResponse,
   renderExport,
 } from '../common/export/export';
@@ -94,6 +95,27 @@ export class SuppliersController {
         await this.suppliers.exportDocument(query),
         query.format,
       ),
+    );
+  }
+
+  /// Relevé de compte (P1 bis n°21n) : mêmes lecteurs que la fiche et sa
+  /// dette ; droits relus en base, débit des exports.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.SUPPLIER_READ)
+  @RequireFreshAccess()
+  @Throttle(EXPORT_THROTTLE)
+  @Get(':id/statement')
+  @ApiOperation({
+    summary: 'Relevé de compte d’un fournisseur (PDF, Excel, CSV)',
+  })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async statement(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Query() query: ExportFormatQueryDto,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(await this.suppliers.statement(id), query.format),
     );
   }
 

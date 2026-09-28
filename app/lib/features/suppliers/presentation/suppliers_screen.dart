@@ -11,6 +11,7 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/history_dialog.dart';
 import '../../purchases/data/purchases_api.dart';
+import '../../../core/file_export.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/import_button.dart';
@@ -225,6 +226,11 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
               title: const Text('Indicateurs'),
               onTap: () => Navigator.of(context).pop('stats'),
             ),
+            ListTile(
+              leading: const Icon(LucideIcons.fileText, size: 18),
+              title: const Text('Relevé de compte (PDF)'),
+              onTap: () => Navigator.of(context).pop('statement'),
+            ),
             if (rights.canReturn) ...[
               ListTile(
                 leading: const Icon(LucideIcons.undo2, size: 18),
@@ -256,6 +262,24 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     if (action == 'pay') return _pay(supplier);
     if (action == 'edit') return _openForm(supplier);
     if (action == 'return') return _returnGoods(supplier);
+    if (action == 'statement') {
+      // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.
+      try {
+        final path = await ref.read(saveExportProvider)(
+          await ref
+              .read(suppliersApiProvider)
+              .supplierStatement(supplier.id, ExportFormat.pdf),
+        );
+        if (mounted) _snack(context, 'Enregistré sur ce poste : $path');
+      } on ApiException catch (error) {
+        if (mounted) _snack(context, error.userMessage);
+      } on Exception {
+        if (mounted) {
+          _snack(context, 'Le relevé n’a pas pu être enregistré sur ce poste.');
+        }
+      }
+      return;
+    }
     if (action == 'stats') {
       // P1 bis n°21m : lu des réceptions (le reçu fait foi, comme la dette).
       final api = ref.read(suppliersApiProvider);

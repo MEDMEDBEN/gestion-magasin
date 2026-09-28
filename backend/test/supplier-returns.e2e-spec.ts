@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
+import { amountText } from '../src/common/pdf/pdf';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
@@ -145,6 +146,10 @@ describe('Retours fournisseur (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.supplierPayment.deleteMany({
+      where: { supplierId, reversesPaymentId: { not: null } },
+    });
+    await prisma.supplierPayment.deleteMany({ where: { supplierId } });
     await prisma.supplierReturn.deleteMany({ where: { supplierId } });
     const receptions = await prisma.reception.findMany({
       where: { supplierId },
@@ -242,6 +247,55 @@ describe('Retours fournisseur (e2e)', () => {
       .get(`/api/suppliers/${supplierId}/returns`)
       .expect(403);
     await sendBack(productId, '1', { reason: '  ' }).expect(400);
+  });
+
+  /// P1 bis n°21n : relevé fournisseur — réceptions, retours, paiements ; le
+  /// dernier solde est la dette ; vendeur exclu.
+  it('relevé de compte fournisseur : dernier solde = dette', async () => {
+    const { productId } = await received();
+    await sendBack(productId, '2').expect(201);
+    // Les cas de signe : reprise NÉGATIVE (avance au fournisseur), paiement,
+    // contre-passation.
+    await prisma.supplier.update({
+      where: { id: supplierId },
+      data: { openingBalance: -50000 },
+    });
+    const payment = (
+      await as(tokens.admin)
+        .post('/api/payments/supplier')
+        .send({ supplierId, amount: 70000, fromCash: false })
+        .expect(201)
+    ).body;
+    await as(tokens.admin)
+      .post(`/api/payments/supplier/${payment.id}/reverse`)
+      .send({ clientMutationId: randomUUID(), reason: 'Erreur de saisie' })
+      .expect(201);
+    await as(tokens.admin)
+      .post('/api/payments/supplier')
+      .send({ supplierId, amount: 30000, fromCash: false })
+      .expect(201);
+    const csv = (
+      await as(tokens.magasinier)
+        .get(`/api/suppliers/${supplierId}/statement?format=csv`)
+        .buffer(true)
+        .parse((r, done) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200)
+    ).body as Buffer;
+    const rows = csv.toString('utf-8').trim().split(/\r?\n/);
+    expect(rows[rows.length - 1].trim().split(';').pop()).toBe(
+      amountText(await debt()),
+    );
+    await as(tokens.vendeur)
+      .get(`/api/suppliers/${supplierId}/statement?format=pdf`)
+      .expect(403);
+    await prisma.supplier.update({
+      where: { id: supplierId },
+      data: { openingBalance: 0 },
+    });
   });
 
   /// Audit 21l : chaque unité vaut ce que SA réception a ajouté à la dette

@@ -97,12 +97,14 @@ aucune migration destructive sans confirmation).
 | Enregistrer paiement client | ✅ | ✅ | ❌ |
 | Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |
 | Contre-passer un règlement client | ✅ | ❌ | ❌ |
+| Relevé de compte client PDF/Excel/CSV (`GET /customers/:id/statement`, P1 bis n°21n) | ✅ (`customer.read`, droits relus) | ❌ (tout le CA du client) | ❌ |
 | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Gérer fournisseurs | ✅ | ❌ | ❌ |
 | Enregistrer paiement fournisseur | ✅ | ❌ | ❌ |
 | Consulter l'historique des paiements fournisseur | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Indicateurs fournisseur (`GET /suppliers/:id/stats` : produits fournis, ponctualité, prix d'achat) | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Contre-passer un paiement fournisseur | ✅ | ❌ | ❌ |
+| Relevé de compte fournisseur (`GET /suppliers/:id/statement`, P1 bis n°21n) | ✅ | ❌ | 👁️ (`supplier.read`, droits relus) |
 
 ## Achats / Réceptions
 | Action | Admin | Vendeur/Caissier | Magasinier |

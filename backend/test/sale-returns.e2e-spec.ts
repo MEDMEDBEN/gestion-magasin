@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
+import { amountText } from '../src/common/pdf/pdf';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
@@ -353,6 +354,51 @@ describe('Retours client (e2e)', () => {
       .post(`/api/payments/customer/${ok.id}/reverse`)
       .send({ reason: 'Erreur de saisie' })
       .expect(201);
+  });
+
+  /// P1 bis n°21n : le relevé de compte finit sur la dette affichée — ventes,
+  /// règlement, avoir, contre-passation compris. ADMIN seul.
+  it('relevé de compte client : dernier solde = dette ; ADMIN seul', async () => {
+    const { sale, lineId, customerId } = await sell(true);
+    const paid = (
+      await as(tokens.admin)
+        .post('/api/payments/customer')
+        .send({ customerId, saleId: sale.id, amount: 100000 })
+        .expect(201)
+    ).body;
+    await giveBack(sale.id, lineId, '1', 'DETTE').expect(201);
+    await as(tokens.admin)
+      .post(`/api/payments/customer/${paid.id}/reverse`)
+      .send({ reason: 'Erreur de saisie' })
+      .expect(201);
+    const debt = (
+      await as(tokens.admin).get(`/api/customers/${customerId}`).expect(200)
+    ).body.balanceDue as number;
+
+    const csv = (
+      await as(tokens.admin)
+        .get(`/api/customers/${customerId}/statement?format=csv`)
+        .buffer(true)
+        .parse((r, done) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => done(null, Buffer.concat(chunks)));
+        })
+        .expect(200)
+    ).body as Buffer;
+    const rows = csv.toString('utf-8').trim().split(/\r?\n/);
+    // Vente, règlement, avoir, contre-passation.
+    expect(rows.filter((l) => /\d{2}\/\d{2}\/\d{4}/.test(l))).toHaveLength(4);
+    expect(rows[rows.length - 1].trim().split(';').pop()).toBe(
+      amountText(debt),
+    );
+    await as(tokens.admin)
+      .get(`/api/customers/${customerId}/statement?format=pdf`)
+      .expect(200)
+      .expect('content-type', 'application/pdf');
+    await as(tokens.vendeur)
+      .get(`/api/customers/${customerId}/statement?format=pdf`)
+      .expect(403);
   });
 
   /// CA NET des retours : le rapport d'activité et l'accueil déduisent ce qui

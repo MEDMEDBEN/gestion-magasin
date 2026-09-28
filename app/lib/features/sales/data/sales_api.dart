@@ -256,6 +256,10 @@ class SalesApi {
     );
   }
 
+  /// Relevé de compte d'un client (P1 bis n°21n, ADMIN).
+  Future<ExportedFile> customerStatement(String id, ExportFormat format) =>
+      fetchExport(_dio, '/customers/$id/statement', format);
+
   /// Clients, ou seulement ceux qui ont une dette (`debtOnly`).
   Future<ExportedFile> exportCustomers(
     ExportFormat format, {

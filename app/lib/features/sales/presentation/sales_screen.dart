@@ -11,6 +11,7 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../core/file_export.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/amount_dialog.dart';
 import '../../../ui/widgets/form_panel.dart';
@@ -55,7 +56,9 @@ class SalesRights {
       canDiscount = user.hasRole('ADMIN') && user.can('sale.discount'),
       // Tarif et plafond de crédit d'un client : conditions commerciales.
       canManageCustomerTerms =
-          user.hasRole('ADMIN') && user.can('price.manage');
+          user.hasRole('ADMIN') && user.can('price.manage'),
+      // Relevé de compte : ADMIN + customer.read (tout le CA d'un client).
+      canReadStatements = user.hasRole('ADMIN') && user.can('customer.read');
 
   final bool canSell;
   final bool canInvoice;
@@ -74,6 +77,7 @@ class SalesRights {
   final bool canCancelSales;
   final bool canDiscount;
   final bool canManageCustomerTerms;
+  final bool canReadStatements;
 }
 
 enum _Section { sale, history, customers, cashSessions }
@@ -1430,11 +1434,34 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
             onPressed: () => Navigator.of(context).pop('history'),
             child: const Text('Historique des règlements'),
           ),
+          if (rights.canReadStatements)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('statement'),
+              child: const Text('Relevé de compte (PDF)'),
+            ),
         ],
       ),
     );
     if (!mounted || action == null) return;
     if (action == 'pay') return _pay(customer);
+    if (action == 'statement') {
+      // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.
+      try {
+        final path = await ref.read(saveExportProvider)(
+          await ref
+              .read(salesApiProvider)
+              .customerStatement(customer.id, ExportFormat.pdf),
+        );
+        if (mounted) _snack(context, 'Enregistré sur ce poste : $path');
+      } on ApiException catch (error) {
+        if (mounted) _snack(context, error.userMessage);
+      } on Exception {
+        if (mounted) {
+          _snack(context, 'Le relevé n’a pas pu être enregistré sur ce poste.');
+        }
+      }
+      return;
+    }
     if (action == 'edit') return _create(customer);
     if (action == 'sales') {
       final api = ref.read(salesApiProvider);

@@ -126,6 +126,12 @@ class _FakeSuppliersApi extends SuppliersApi {
   final exports = <String>[];
 
   @override
+  Future<ExportedFile> supplierStatement(String id, ExportFormat format) async {
+    exports.add('relevé $id ${format.name}');
+    return ExportedFile(Uint8List(1), 'releve-fournisseur.${format.name}');
+  }
+
+  @override
   Future<ExportedFile> exportSuppliers(
     ExportFormat format, {
     bool debtOnly = false,
@@ -440,6 +446,23 @@ void main() {
     expect(find.text('75 %'), findsOneWidget);
     expect(find.text('DIS-16A — Disjoncteur'), findsOneWidget);
     expect(find.text('${formatDA(115000)} HT (+4,5 %)'), findsOneWidget);
+  });
+
+  /// P1 bis n°21n : relevé de compte depuis la fiche, enregistré sur le poste.
+  testWidgets('relevé de compte fournisseur : PDF enregistré', (tester) async {
+    final api = await _pump(tester, _admin());
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Relevé de compte (PDF)'));
+    await tester.tap(find.text('Relevé de compte (PDF)'));
+    await tester.pumpAndSettle();
+    expect(api.exports, ['relevé s1 pdf']);
+    expect(
+      find.text(
+        'Enregistré sur ce poste : C:/Téléchargements/releve-fournisseur.pdf',
+      ),
+      findsOneWidget,
+    );
   });
 
   test('évolution du prix d’achat', () {

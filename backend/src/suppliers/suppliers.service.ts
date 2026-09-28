@@ -26,8 +26,20 @@ import {
   SupplierStatsDto,
   UpdateSupplierDto,
 } from './dto/supplier.dto';
-import { collectAll, ExportDocument, section } from '../common/export/export';
+import {
+  assertExportable,
+  collectAll,
+  ExportDocument,
+  section,
+} from '../common/export/export';
 import { localDate } from '../common/document-number';
+import {
+  PAYMENT_METHOD_LABEL,
+  signedMinus,
+  StatementEntry,
+  statementDocument,
+  statementFilename,
+} from '../common/export/statement';
 
 type Db = Prisma.TransactionClient;
 
@@ -177,6 +189,91 @@ export class SuppliersService {
     const supplier = await this.prisma.supplier.findUnique({ where: { id } });
     if (!supplier) throw SuppliersService.notFound();
     return this.toDto(this.prisma, supplier);
+  }
+
+  /// Relevé de compte (P1 bis n°21n) : reprise de l'existant, réceptions,
+  /// retours, paiements et contre-passations — les MÊMES composantes que
+  /// `debt` : le dernier solde EST la dette envers ce fournisseur.
+  async statement(id: string): Promise<ExportDocument> {
+    const supplier = await this.prisma.supplier.findUnique({ where: { id } });
+    if (!supplier) throw SuppliersService.notFound();
+    // Taille vérifiée AVANT de tout charger en mémoire.
+    const mine = { supplierId: id };
+    assertExportable(
+      (
+        await Promise.all([
+          this.prisma.reception.count({ where: mine }),
+          this.prisma.supplierReturn.count({ where: mine }),
+          this.prisma.supplierPayment.count({ where: mine }),
+        ])
+      ).reduce((a, b) => a + b, 0),
+    );
+    const [receptions, returns, payments] = await Promise.all([
+      this.prisma.reception.findMany({
+        where: { supplierId: id },
+        select: { receivedAt: true, number: true, totalTtc: true },
+      }),
+      this.prisma.supplierReturn.findMany({
+        where: { supplierId: id },
+        select: { createdAt: true, number: true, totalTtc: true },
+      }),
+      this.prisma.supplierPayment.findMany({
+        where: { supplierId: id },
+        select: {
+          paidAt: true,
+          amount: true,
+          method: true,
+          note: true,
+          reversesPaymentId: true,
+        },
+      }),
+    ]);
+    const entries: StatementEntry[] = [
+      ...(supplier.openingBalance
+        ? [
+            {
+              at: supplier.createdAt,
+              piece: null,
+              label: 'Reprise de l’existant',
+              ...signedMinus(-supplier.openingBalance),
+            },
+          ]
+        : []),
+      ...receptions.map((r) => ({
+        at: r.receivedAt,
+        piece: r.number,
+        label: 'Réception',
+        plus: r.totalTtc,
+        minus: 0,
+      })),
+      ...returns.map((r) => ({
+        at: r.createdAt,
+        piece: r.number,
+        label: 'Retour de marchandise',
+        plus: 0,
+        minus: r.totalTtc,
+      })),
+      ...payments.map((p) => ({
+        at: p.paidAt,
+        piece: null,
+        label: p.reversesPaymentId
+          ? `Contre-passation${p.note ? ` : ${p.note}` : ''}`
+          : `Paiement (${PAYMENT_METHOD_LABEL[p.method]})`,
+        ...signedMinus(p.amount),
+      })),
+    ];
+    return statementDocument({
+      title: `Relevé de compte — ${supplier.name}`,
+      subtitle: 'Solde : ce que le magasin doit au fournisseur',
+      filename: statementFilename(
+        'fournisseur',
+        supplier.name,
+        localDate(new Date()),
+      ),
+      plusHeader: 'Crédit',
+      minusHeader: 'Débit',
+      entries,
+    });
   }
 
   /// Indicateurs (P1 bis n°21m) : produits fournis, livraisons à l'heure,

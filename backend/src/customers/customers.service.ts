@@ -27,7 +27,20 @@ import {
   CreateCustomerPaymentDto,
   UpdateCustomerDto,
 } from './dto/customer.dto';
-import { collectAll, ExportDocument, section } from '../common/export/export';
+import {
+  assertExportable,
+  collectAll,
+  ExportDocument,
+  section,
+} from '../common/export/export';
+import {
+  PAYMENT_METHOD_LABEL,
+  signedMinus,
+  StatementEntry,
+  statementDocument,
+  statementFilename,
+} from '../common/export/statement';
+import { localDate } from '../common/document-number';
 
 type Db = Prisma.TransactionClient;
 
@@ -38,6 +51,82 @@ const PAYMENT_SORT_FIELDS = ['paidAt', 'amount'] as const;
 @Injectable()
 export class CustomersService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /// Relevé de compte (P1 bis n°21n) : ventes validées (TTC dû, payé
+  /// comptant), règlements, avoirs et contre-passations — les MÊMES composantes
+  /// que `SalesService.customerAccounts` : le dernier solde EST la dette. Un
+  /// retour remboursé en espèces n'y figure pas (rendu et remboursé : net nul).
+  async statement(id: string): Promise<ExportDocument> {
+    const customer = await this.prisma.customer.findUnique({ where: { id } });
+    if (!customer) throw CustomersService.notFound();
+    // Taille vérifiée AVANT de tout charger en mémoire.
+    const saleWhere = { customerId: id, status: 'VALIDEE' as const };
+    assertExportable(
+      (
+        await Promise.all([
+          this.prisma.sale.count({ where: saleWhere }),
+          this.prisma.customerPayment.count({ where: { customerId: id } }),
+        ])
+      ).reduce((a, b) => a + b, 0),
+    );
+    const [sales, payments] = await Promise.all([
+      this.prisma.sale.findMany({
+        where: saleWhere,
+        select: {
+          soldAt: true,
+          number: true,
+          invoiceNumber: true,
+          totalTtc: true,
+          paidAmount: true,
+        },
+      }),
+      this.prisma.customerPayment.findMany({
+        where: { customerId: id },
+        select: {
+          paidAt: true,
+          amount: true,
+          method: true,
+          note: true,
+          saleReturnId: true,
+          reversesPaymentId: true,
+        },
+      }),
+    ]);
+    const entries: StatementEntry[] = [
+      ...sales.map((s) => ({
+        at: s.soldAt,
+        piece: s.invoiceNumber ?? s.number,
+        label:
+          s.paidAmount > 0
+            ? `Vente (payé comptant ${formatDA(s.paidAmount)})`
+            : 'Vente à crédit',
+        plus: s.totalTtc,
+        minus: s.paidAmount,
+      })),
+      ...payments.map((p) => ({
+        at: p.paidAt,
+        piece: null,
+        label: p.saleReturnId
+          ? (p.note ?? 'Avoir')
+          : p.reversesPaymentId
+            ? `Contre-passation${p.note ? ` : ${p.note}` : ''}`
+            : `Règlement (${PAYMENT_METHOD_LABEL[p.method]})`,
+        ...signedMinus(p.amount),
+      })),
+    ];
+    return statementDocument({
+      title: `Relevé de compte — ${customer.name}`,
+      subtitle: 'Solde : ce que le client doit au magasin',
+      filename: statementFilename(
+        'client',
+        customer.name,
+        localDate(new Date()),
+      ),
+      plusHeader: 'Débit',
+      minusHeader: 'Crédit',
+      entries,
+    });
+  }
 
   /// Export de la liste (spec §8quinquies) : les lignes de `findAll`, avec ses
   /// filtres. `debtOnly` en fait l'export des dettes clients.
