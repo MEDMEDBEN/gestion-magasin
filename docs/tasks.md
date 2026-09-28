@@ -300,13 +300,25 @@ refuse de toute façon : `DISCOUNT_NOT_ALLOWED`, déjà prouvé en e2e).
   pendant la coupure ferait rejeter le ticket à la synchro (contrat de synchronisation, voulu).
 - Non fait : l'écran Devis n'affiche pas le détail des lignes (ni donc la remise) — le PDF du devis, si.
 
-**Prochaine étape précise** : **21h — Paramètres** (ADMIN) — EN COURS, non commité : table `StoreSettings`
-(migration additive `20260927235542_store_settings` créée par `db-migrator`), `PricingService` (tarifs et TVA :
-créer, renommer, défaut unique, (dés)activer, audités) + routes `POST/PATCH /pricing/{tiers,tax-rates}`. Reste :
-routes identité du magasin (`GET/PATCH /settings/store`, `settings.manage`) et `storeIdentity` lu en base
-(repli sur l'env), e2e, écran « Paramètres » de l'app ; puis audits. Ancien texte : tarifs
-(créer / renommer / désactiver, défaut), taux de TVA, identité du magasin imprimée (aujourd'hui lue dans l'env
-du serveur : `storeIdentity`) — vérifier le schéma avant toute migration (`db-migrator`, additive seulement).
+**21h — Paramètres (livré)** : entrée de menu « Paramètres » (ADMIN avec `price.manage` ou `settings.manage`).
+- **Identité du magasin** imprimée sur tickets, factures, devis, bons : table `StoreSettings` (une ligne ;
+  migration ADDITIVE `20260927235542_store_settings`, créée et vérifiée par `db-migrator` : un seul
+  `CREATE TABLE`). Chaque champ vide retombe sur `STORE_*` de l'environnement — un déploiement existant ne
+  change pas. `GET/PATCH /settings/store` (ADMIN + `settings.manage`), audité. `storeIdentity` déplacé dans
+  `settings/store-settings.ts`, lu en base par les 3 générateurs de documents ; facture refusée sans NIF + RC
+  (« à renseigner dans Paramètres »).
+- **Tarifs et taux de TVA** : `PricingService` — créer, renommer, désigner par défaut (UN seul : l'ancien perd
+  le titre), (dés)activer ; le défaut ne se désactive pas ; codes uniques ; taux 0-100 à 2 décimales ; nouveau
+  taux = ventes FUTURES ; tout audité. `POST/PATCH /pricing/{tiers,tax-rates}` (ADMIN + `price.manage`) ;
+  `?includeInactive=true` pour l'écran.
+- App : écran Paramètres (identité : n'envoie que les champs changés ; tarifs et taux : menus limités aux gestes
+  acceptés par le serveur) ; la TVA redescend par la synchro du catalogue.
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **146 unit** · **593 e2e** (+ `settings.e2e` : 5,
+  dont facture refusée sans RC puis acceptée une fois le RC saisi) ; app `flutter analyze` propre · **+448 ~46**.
+
+**Prochaine étape précise** : audits de 21h (lancés), appliquer ; puis **21i** — commande fournisseur : date de
+livraison prévue et échéance de paiement (colonnes `expectedDate` / `dueDate` DÉJÀ au schéma) dans le formulaire
+et la liste ; e-mail du fournisseur dans sa fiche.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

@@ -22,6 +22,7 @@ import '../features/scan/presentation/scan_screen.dart';
 import '../features/stock/presentation/stock_screen.dart';
 import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/transfers/presentation/transfers_screen.dart';
+import '../features/settings/presentation/settings_screen.dart';
 import '../features/users/presentation/users_screen.dart';
 
 /// Une destination de navigation (entrée de sidebar desktop, onglet mobile).
@@ -197,6 +198,14 @@ List<AppDestination> destinationsFor(AuthUser user) => [
       icon: LucideIcons.shield,
       label: 'Utilisateurs',
       builder: (context, _) => const UsersScreen(),
+    ),
+  // `/pricing` (écritures) : ADMIN + price.manage ; `/settings/store` :
+  // ADMIN + settings.manage. L'écran montre ce que chaque droit permet.
+  if (SettingsRights(user).any)
+    AppDestination(
+      icon: LucideIcons.settings,
+      label: 'Paramètres',
+      builder: (context, user) => SettingsScreen(user: user),
     ),
   // `/audit-logs` : @Roles(ADMIN) + audit.read (lecture relue en base).
   if (user.hasRole('ADMIN') && user.can('audit.read'))

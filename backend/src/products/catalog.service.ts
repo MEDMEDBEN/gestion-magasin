@@ -11,7 +11,6 @@ import { CatalogChangesDto, CatalogChangesQueryDto } from './dto/catalog.dto';
 import {
   CategoryDto,
   CreateCategoryDto,
-  PriceTierDto,
   TaxRateDto,
   UpdateCategoryDto,
 } from './dto/product.dto';
@@ -171,27 +170,6 @@ export class CatalogService {
 
   private static async lockCategories(tx: Db) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CATEGORY_NAMES_LOCK}::int, 0)`;
-  }
-
-  async priceTiers(): Promise<PriceTierDto[]> {
-    const rows = await this.prisma.priceTier.findMany({
-      where: { isActive: true },
-      orderBy: [{ isDefault: 'desc' }, { code: 'asc' }],
-    });
-    return rows.map(({ id, code, name, isDefault }) => ({
-      id,
-      code,
-      name,
-      isDefault,
-    }));
-  }
-
-  async taxRates(): Promise<TaxRateDto[]> {
-    const rows = await this.prisma.taxRate.findMany({
-      where: { isActive: true },
-      orderBy: [{ isDefault: 'desc' }, { rate: 'asc' }],
-    });
-    return rows.map(CatalogService.taxRateToDto);
   }
 
   /// Descente delta du catalogue (docs/context.md : catalogue complet en local,

@@ -6,7 +6,8 @@ import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
 import { formatDateTime } from '../common/pdf/pdf';
-import { renderA4Document, storeIdentity } from '../sales/sale-document';
+import { renderA4Document } from '../sales/sale-document';
+import { storeIdentity } from '../settings/store-settings';
 import { ConfigService } from '@nestjs/config';
 import { roundMoney, taxAmount } from '../common/money';
 import { formatQuantity, parseQuantity } from '../common/quantity';
@@ -274,7 +275,7 @@ export class PurchaseOrdersService {
           ? [`Livraison souhaitée : ${day(order.expectedDate)}`]
           : []),
       ],
-      store: storeIdentity(this.config, false),
+      store: await storeIdentity(this.prisma, this.config, false),
       partyLabel: 'Fournisseur',
       customer: supplier,
       products: new Map(products.map((p) => [p.id, p])),

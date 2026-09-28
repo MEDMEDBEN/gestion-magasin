@@ -1,3 +1,4 @@
+import { SettingsModule } from './settings/settings.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -68,6 +69,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     ProblemsModule,
     SyncModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

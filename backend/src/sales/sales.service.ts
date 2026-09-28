@@ -31,7 +31,8 @@ import {
   SaleTypeDto,
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
-import { renderSaleDocument, storeIdentity } from './sale-document';
+import { renderSaleDocument } from './sale-document';
+import { storeIdentity } from '../settings/store-settings';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
@@ -437,7 +438,11 @@ export class SalesService {
       }),
     ]);
     // Pas de facture sans mentions légales ; un ticket, lui, reste imprimable.
-    const store = storeIdentity(this.config, !!sale.invoiceNumber);
+    const store = await storeIdentity(
+      this.prisma,
+      this.config,
+      !!sale.invoiceNumber,
+    );
     const pdf = await renderSaleDocument({
       sale,
       store,

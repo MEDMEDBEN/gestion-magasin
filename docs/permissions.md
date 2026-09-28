@@ -238,6 +238,17 @@ Chaque bon a la garde du DÉTAIL qu'il imprime. L'import est de la **saisie en m
 le vendeur crée à l'unité (clients). Création seulement ; un doublon est refusé. Le modèle à remplir porte la garde
 de son import (prouvé par `export-guards.spec.ts`).
 
+## Paramètres (P1 bis n°21h, ajouté le 2026-09-28)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Lire les tarifs / taux actifs (`GET /pricing/{tiers,tax-rates}`) | ✅ | ✅ (`price.read`) | ✅ (`price.read`) |
+| Créer, renommer, désigner par défaut, (dés)activer un tarif ou un taux de TVA | ✅ (`price.manage`) | ❌ | ❌ |
+| Lire / modifier l'identité du magasin imprimée (`/settings/store`) | ✅ (`settings.manage`) | ❌ | ❌ |
+
+Un seul tarif (et un seul taux) par défaut ; le défaut ne se désactive pas. Un nouveau taux de TVA vaut pour les
+ventes FUTURES (chaque ligne vendue garde le sien). Identité : un champ vide retombe sur la variable
+d'environnement `STORE_*` du serveur.
+
 ## Étiquettes code-barres (P1 n°21b, ajouté le 2026-09-27)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

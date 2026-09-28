@@ -21,7 +21,8 @@ import {
   QuoteStatus,
 } from './dto/quote.dto';
 import { CreateSaleDto, SaleDto } from './dto/sale.dto';
-import { renderA4Document, storeIdentity } from './sale-document';
+import { renderA4Document } from './sale-document';
+import { storeIdentity } from '../settings/store-settings';
 import { ConfigService } from '@nestjs/config';
 import { SalesService } from './sales.service';
 
@@ -395,7 +396,7 @@ export class QuotesService {
           ? `Valable jusqu’au ${quote.validUntil.split('-').reverse().join('/')}`
           : 'Sans date de validité',
       ],
-      store: storeIdentity(this.config, false),
+      store: await storeIdentity(this.prisma, this.config, false),
       customer,
       products: new Map(products.map((p) => [p.id, p])),
       lines: quote.lines,

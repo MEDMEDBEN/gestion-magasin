@@ -1323,3 +1323,18 @@ model Problem {
   @@index([status, createdAt])
   @@index([reportedById])
 }
+
+/// Identité du magasin imprimée sur les documents (P1 bis n°21h, Paramètres).
+/// Une seule ligne (id = 1). Un champ vide retombe sur la variable
+/// d'environnement STORE_* correspondante (déploiements existants inchangés).
+model StoreSettings {
+  id        Int      @id @default(1)
+  name      String?
+  address   String?
+  phone     String?
+  nif       String?
+  rc        String?
+  nis       String?
+  ai        String?
+  updatedAt DateTime @updatedAt
+}

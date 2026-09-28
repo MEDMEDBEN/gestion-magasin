@@ -59,6 +59,14 @@ import {
   UpdateProductDto,
 } from './dto/product.dto';
 import { ProductsService } from './products.service';
+import { PricingService } from './pricing.service';
+import {
+  CreatePriceTierDto,
+  CreateTaxRateDto,
+  ListPricingQueryDto,
+  UpdatePriceTierDto,
+  UpdateTaxRateDto,
+} from './dto/pricing.dto';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -337,24 +345,85 @@ export class CategoriesController {
 @ApiBearerAuth()
 @Controller('pricing')
 export class PricingController {
-  constructor(private readonly catalogService: CatalogService) {}
+  constructor(private readonly pricing: PricingService) {}
 
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRICE_READ)
   @Get('tiers')
-  @ApiOperation({ summary: 'Tarifs actifs (DETAIL, GROS…)' })
+  @ApiOperation({ summary: 'Tarifs (actifs ; tous avec includeInactive)' })
   @ApiOkResponse({ type: [PriceTierDto] })
-  tiers(): Promise<PriceTierDto[]> {
-    return this.catalogService.priceTiers();
+  tiers(@Query() query: ListPricingQueryDto): Promise<PriceTierDto[]> {
+    return this.pricing.priceTiers(query.includeInactive);
   }
 
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRICE_READ)
   @Get('tax-rates')
-  @ApiOperation({ summary: 'Taux de TVA actifs' })
+  @ApiOperation({ summary: 'Taux de TVA (actifs ; tous avec includeInactive)' })
   @ApiOkResponse({ type: [TaxRateDto] })
-  taxRates(): Promise<TaxRateDto[]> {
-    return this.catalogService.taxRates();
+  taxRates(@Query() query: ListPricingQueryDto): Promise<TaxRateDto[]> {
+    return this.pricing.taxRates(query.includeInactive);
+  }
+
+  // ── Paramètres (P1 bis n°21h) : ADMIN + price.manage ─────────────────────
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  @Post('tiers')
+  @ApiOperation({ summary: 'Crée un tarif' })
+  @ApiCreatedResponse({ type: PriceTierDto })
+  createTier(
+    @Body() dto: CreatePriceTierDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PriceTierDto> {
+    return this.pricing.createTier(dto, actorOf(user, ip));
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  @Patch('tiers/:id')
+  @ApiOperation({
+    summary: 'Renomme, désigne par défaut, (dés)active un tarif',
+  })
+  @ApiOkResponse({ type: PriceTierDto })
+  updateTier(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: UpdatePriceTierDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PriceTierDto> {
+    return this.pricing.updateTier(id, dto, actorOf(user, ip));
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  @Post('tax-rates')
+  @ApiOperation({ summary: 'Crée un taux de TVA' })
+  @ApiCreatedResponse({ type: TaxRateDto })
+  createTaxRate(
+    @Body() dto: CreateTaxRateDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<TaxRateDto> {
+    return this.pricing.createTaxRate(dto, actorOf(user, ip));
+  }
+
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  @Patch('tax-rates/:id')
+  @ApiOperation({
+    summary:
+      'Modifie un taux de TVA (le nouveau taux vaut pour les ventes futures)',
+  })
+  @ApiOkResponse({ type: TaxRateDto })
+  updateTaxRate(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: UpdateTaxRateDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<TaxRateDto> {
+    return this.pricing.updateTaxRate(id, dto, actorOf(user, ip));
   }
 }
 

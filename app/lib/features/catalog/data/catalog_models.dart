@@ -119,6 +119,7 @@ abstract class PriceTier with _$PriceTier {
     required String code,
     required String name,
     required bool isDefault,
+    @Default(true) bool isActive,
   }) = _PriceTier;
 
   factory PriceTier.fromJson(Map<String, dynamic> json) =>

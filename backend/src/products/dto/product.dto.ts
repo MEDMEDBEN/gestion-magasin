@@ -434,6 +434,7 @@ export class PriceTierDto {
   @ApiProperty({ example: 'DETAIL' }) code!: string;
   @ApiProperty() name!: string;
   @ApiProperty() isDefault!: boolean;
+  @ApiProperty() isActive!: boolean;
 }
 
 export class TaxRateDto {

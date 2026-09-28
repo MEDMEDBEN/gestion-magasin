@@ -1,7 +1,3 @@
-import { HttpStatus } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { BusinessException } from '../common/business.exception';
-import { ErrorCode } from '../common/error-codes';
 import {
   formatDA,
   formatDateTime,
@@ -10,16 +6,10 @@ import {
   UNIT_LABEL,
 } from '../common/pdf/pdf';
 import { Prisma } from '../generated/prisma/client';
+import { StoreIdentity } from '../settings/store-settings';
 import { SaleDto } from './dto/sale.dto';
 
 /// Identité du vendeur imprimée en tête (variables STORE_* ; vides = omises).
-export interface StoreIdentity {
-  name: string;
-  address?: string;
-  phone?: string;
-  /// Mentions légales (NIF, RC, NIS, AI) déjà mises en forme, une par entrée.
-  legal: string[];
-}
 
 export interface SaleDocumentData {
   sale: SaleDto;
@@ -48,33 +38,6 @@ function designation(
     name: p?.name ?? productId,
     sku: p?.sku ?? '',
     unit: UNIT_LABEL[p?.unit ?? ''] ?? '',
-  };
-}
-
-/// Identité du magasin imprimée en tête des documents (variables STORE_*).
-/// `requireLegal` : une facture exige ses mentions légales ; un ticket, un devis
-/// ou un bon de commande reste imprimable sans.
-export function storeIdentity(
-  config: ConfigService,
-  requireLegal: boolean,
-): StoreIdentity {
-  const env = (key: string) => config.get<string>(key)?.trim() || undefined;
-  if (requireLegal && !(env('STORE_NIF') && env('STORE_RC'))) {
-    throw new BusinessException(
-      ErrorCode.STORE_IDENTITY_MISSING,
-      'Mentions légales du magasin absentes (STORE_NIF, STORE_RC) : facture non imprimable',
-      HttpStatus.UNPROCESSABLE_ENTITY,
-    );
-  }
-  const legal = (['NIF', 'RC', 'NIS', 'AI'] as const).flatMap((key) => {
-    const value = env(`STORE_${key}`);
-    return value ? [`${key} : ${value}`] : [];
-  });
-  return {
-    name: env('STORE_NAME') ?? 'Magasin',
-    address: env('STORE_ADDRESS'),
-    phone: env('STORE_PHONE'),
-    legal,
   };
 }
 
