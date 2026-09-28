@@ -39,6 +39,7 @@ describe('Caisse (e2e)', () => {
       ['vendeur', RoleCode.VENDEUR],
       ['vendeur2', RoleCode.VENDEUR],
       ['vendeur3', RoleCode.VENDEUR],
+      ['caissier', RoleCode.VENDEUR],
       ['magasinier', RoleCode.MAGASINIER],
     ] as const) {
       const email = `e2e-cash-${key}-${suffix}@test.local`;
@@ -59,6 +60,9 @@ describe('Caisse (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.cashMovement.deleteMany({
+      where: { userId: { in: userIds } },
+    });
     await prisma.cashSession.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await e2e.app.close();
@@ -111,6 +115,92 @@ describe('Caisse (e2e)', () => {
       orderBy: { createdAt: 'asc' },
     });
     expect(audit.map((a) => a.action)).toEqual(['CREATE', 'VALIDATE']);
+  });
+
+  /// P1 bis n°21k : entrée, sortie, prélèvement — avec motif, jamais sous 0,
+  /// rejouables sans double effet, comptés dans le rapport Z, audités.
+  it('mouvements manuels : entrée, sortie, prélèvement, rapport Z juste', async () => {
+    const session = (
+      await as(tokens.caissier)
+        .post('/api/cash-sessions')
+        .send({ locationId: magasinId, openingFloat: 100000 })
+        .expect(201)
+    ).body as { id: string };
+    const move = (token: string, body: object) =>
+      as(token).post(`/api/cash-sessions/${session.id}/movements`).send(body);
+
+    const key = '0192f3a0-0000-7000-8000-00000000c0de';
+    const entree = {
+      clientMutationId: key,
+      type: 'ENTREE',
+      amount: 20000,
+      note: 'Monnaie',
+    };
+    const first = await move(tokens.caissier, entree).expect(200);
+    expect(first.body.currentAmount).toBe(120000);
+    // Réponse perdue, même clé : la caisse est rendue, rien n'est ajouté.
+    const replay = await move(tokens.caissier, entree).expect(200);
+    expect(replay.body.currentAmount).toBe(120000);
+    // Même clé, autre montant : 409.
+    await move(tokens.caissier, { ...entree, amount: 1 }).expect(409);
+
+    await move(tokens.caissier, {
+      type: 'SORTIE',
+      amount: 15000,
+      note: 'Achat ampoules atelier',
+    }).expect(200);
+    // Le tiroir ne descend jamais sous 0.
+    const tooMuch = await move(tokens.caissier, {
+      type: 'PRELEVEMENT',
+      amount: 999999,
+      note: 'Coffre',
+    }).expect(422);
+    expect(tooMuch.body.code).toBe('CASH_INSUFFICIENT');
+    const after = await move(tokens.caissier, {
+      type: 'PRELEVEMENT',
+      amount: 50000,
+      note: 'Dépôt banque',
+    }).expect(200);
+    // 1 000 + 200 − 150 − 500 = 550,00 DA dans le tiroir.
+    expect(after.body.currentAmount).toBe(55000);
+
+    // Motif obligatoire ; type inconnu refusé ; un collègue : 404.
+    await move(tokens.caissier, {
+      type: 'ENTREE',
+      amount: 100,
+      note: '',
+    }).expect(400);
+    await move(tokens.caissier, {
+      type: 'VENTE_ESPECES',
+      amount: 100,
+      note: 'Non',
+    }).expect(400);
+    await move(tokens.vendeur2, {
+      type: 'ENTREE',
+      amount: 100,
+      note: 'Autrui',
+    }).expect(404);
+
+    const closed = await as(tokens.caissier)
+      .post(`/api/cash-sessions/${session.id}/close`)
+      .send({ countedAmount: 55000 })
+      .expect(200);
+    expect(closed.body).toMatchObject({ expectedAmount: 55000, difference: 0 });
+    // Caisse clôturée : plus aucun mouvement.
+    await move(tokens.caissier, {
+      type: 'ENTREE',
+      amount: 100,
+      note: 'Tard',
+    }).expect(409);
+
+    const audit = await prisma.auditLog.count({
+      where: {
+        entityType: 'CashSession',
+        entityId: session.id,
+        action: 'UPDATE',
+      },
+    });
+    expect(audit).toBe(3);
   });
 
   it('chacun sa caisse : un collègue ne la voit ni ne la clôture ; l’ADMIN voit le rapport', async () => {

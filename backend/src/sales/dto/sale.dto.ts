@@ -23,6 +23,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
@@ -292,6 +293,36 @@ export class CloseCashSessionDto {
   @MaxLength(500)
   @IsOptional()
   note?: string;
+}
+
+/// Mouvements MANUELS d'une caisse ouverte (P1 bis n°21k) : entrée
+/// (monnaie apportée), sortie (dépense payée en espèces), prélèvement (retrait
+/// vers le coffre / la banque). Toujours avec un motif.
+export const MANUAL_CASH_MOVEMENTS = [
+  'ENTREE',
+  'SORTIE',
+  'PRELEVEMENT',
+] as const;
+
+export class CreateCashMovementDto {
+  @ClientMutationId()
+  clientMutationId!: string;
+
+  @ApiProperty({ enum: MANUAL_CASH_MOVEMENTS })
+  @IsIn(MANUAL_CASH_MOVEMENTS)
+  type!: (typeof MANUAL_CASH_MOVEMENTS)[number];
+
+  @ApiProperty({ example: 500000, description: 'Montant en centimes (> 0).' })
+  @IsInt()
+  @Min(1)
+  @Max(MAX_MONEY)
+  amount!: number;
+
+  @ApiProperty({ example: 'Monnaie pour le fond', description: 'Motif.' })
+  @IsString()
+  @MinLength(2, { message: 'note : motif obligatoire (2 caractères au moins)' })
+  @MaxLength(200)
+  note!: string;
 }
 
 export class CashSessionDto {

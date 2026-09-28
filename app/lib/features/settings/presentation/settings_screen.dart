@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/widgets/fields_dialog.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -60,49 +61,6 @@ void _snack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
-}
-
-/// Petit formulaire en dialogue : `null` si annulé.
-Future<Map<String, String>?> _askFields(
-  BuildContext context, {
-  required String title,
-  required List<({String key, String label, String initial})> fields,
-}) {
-  final controllers = {
-    for (final f in fields) f.key: TextEditingController(text: f.initial),
-  };
-  return showDialog<Map<String, String>>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text(title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final f in fields)
-            TextField(
-              controller: controllers[f.key],
-              decoration: InputDecoration(labelText: f.label),
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Annuler'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop({
-            for (final e in controllers.entries) e.key: e.value.text.trim(),
-          }),
-          child: const Text('Enregistrer'),
-        ),
-      ],
-    ),
-  ).whenComplete(() {
-    for (final c in controllers.values) {
-      c.dispose();
-    }
-  });
 }
 
 class _Section extends StatelessWidget {
@@ -286,7 +244,7 @@ class _TiersCard extends ConsumerWidget {
         icon: const Icon(Icons.add, size: 18),
         label: const Text('Nouveau tarif'),
         onPressed: () async {
-          final values = await _askFields(
+          final values = await askFields(
             context,
             title: 'Nouveau tarif',
             fields: const [
@@ -326,7 +284,7 @@ class _TiersCard extends ConsumerWidget {
                       tooltip: 'Actions',
                       onSelected: (choice) async {
                         if (choice == 'rename') {
-                          final values = await _askFields(
+                          final values = await askFields(
                             context,
                             title: 'Renommer ${tier.code}',
                             fields: [
@@ -422,7 +380,7 @@ class _TaxRatesCard extends ConsumerWidget {
         icon: const Icon(Icons.add, size: 18),
         label: const Text('Nouveau taux'),
         onPressed: () async {
-          final values = await _askFields(
+          final values = await askFields(
             context,
             title: 'Nouveau taux de TVA',
             fields: const [
@@ -467,7 +425,7 @@ class _TaxRatesCard extends ConsumerWidget {
                       tooltip: 'Actions',
                       onSelected: (choice) async {
                         if (choice == 'edit') {
-                          final values = await _askFields(
+                          final values = await askFields(
                             context,
                             title: 'Modifier ${rate.code}',
                             fields: [

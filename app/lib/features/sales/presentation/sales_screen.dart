@@ -14,6 +14,7 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/amount_dialog.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/fields_dialog.dart';
 import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/export_button.dart';
@@ -238,6 +239,29 @@ class _CashBar extends ConsumerWidget {
                             'Caisse ouverte · ${formatDA(cash.currentAmount)}',
                         tone: StatusTone.ok,
                       ),
+                // Pas de mouvement sur une caisse encore en file : le serveur
+                // ne la connaît pas.
+                if (cash.status != cashPendingSync)
+                  PopupMenuButton<String>(
+                    tooltip: 'Mouvement de caisse',
+                    icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
+                    onSelected: (type) =>
+                        _cashMovement(context, ref, cash, type),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'ENTREE',
+                        child: Text('Entrée d’espèces'),
+                      ),
+                      PopupMenuItem(
+                        value: 'SORTIE',
+                        child: Text('Sortie (dépense)'),
+                      ),
+                      PopupMenuItem(
+                        value: 'PRELEVEMENT',
+                        child: Text('Prélèvement (coffre, banque)'),
+                      ),
+                    ],
+                  ),
                 TextButton(
                   onPressed: () => _closeCash(context, ref, cash),
                   child: const Text('Clôturer'),
@@ -245,6 +269,51 @@ class _CashBar extends ConsumerWidget {
               ],
             ),
     );
+  }
+
+  /// Entrée, sortie ou prélèvement : montant, puis motif (obligatoire).
+  Future<void> _cashMovement(
+    BuildContext context,
+    WidgetRef ref,
+    CashSession cash,
+    String type,
+  ) async {
+    const titles = {
+      'ENTREE': 'Entrée d’espèces',
+      'SORTIE': 'Sortie d’espèces',
+      'PRELEVEMENT': 'Prélèvement',
+    };
+    final amount = await askAmount(
+      context,
+      title: titles[type]!,
+      label: 'Montant',
+      confirm: 'Continuer',
+      help: 'Dans le tiroir : ${formatDA(cash.currentAmount)}',
+    );
+    if (amount == null || amount <= 0 || !context.mounted) return;
+    final note = (await askFields(
+      context,
+      title: '${titles[type]!} de ${formatDA(amount)}',
+      fields: const [(key: 'note', label: 'Motif', initial: '')],
+    ))?['note'];
+    if (note == null || !context.mounted) return;
+    if (note.length < 2) {
+      _snack(context, 'Motif obligatoire');
+      return;
+    }
+    try {
+      final after = await ref
+          .read(salesActionsProvider)
+          .cashMovement(cash.id, type: type, amount: amount, note: note);
+      if (context.mounted) {
+        _snack(
+          context,
+          '${titles[type]!} enregistrée — tiroir : ${formatDA(after.currentAmount)}',
+        );
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+    }
   }
 
   Future<void> _openCash(BuildContext context, WidgetRef ref) async {

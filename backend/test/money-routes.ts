@@ -9,6 +9,8 @@ export const MONEY_ROUTES = [
   '/api/sales',
   '/api/cash-sessions',
   '/api/cash-sessions/:id/close',
+  // Entrée, sortie, prélèvement d'espèces (P1 bis n°21k).
+  '/api/cash-sessions/:id/movements',
   '/api/payments/customer',
   '/api/payments/customer/:id/reverse',
   '/api/payments/supplier',

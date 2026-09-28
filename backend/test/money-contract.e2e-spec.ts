@@ -114,6 +114,11 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
       '/api/sales': { lines: [{ productId, quantity: '1' }], paidAmount: 0 },
       '/api/cash-sessions': { locationId: magasinId, openingFloat: 0 },
       '/api/cash-sessions/:id/close': { countedAmount: 0 },
+      '/api/cash-sessions/:id/movements': {
+        type: 'ENTREE',
+        amount: 100,
+        note: 'Monnaie',
+      },
       '/api/payments/customer': { customerId: zero, amount: 1 },
       '/api/payments/customer/:id/reverse': { reason: 'Erreur' },
       '/api/payments/supplier': {

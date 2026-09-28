@@ -390,9 +390,26 @@ Au plus 200 rappels par type et par balayage (garde-fou). App : un rappel de tâ
 - **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **605 e2e** ; app `flutter analyze`
   propre · **+449 ~46**.
 
-**Prochaine étape précise** : **21k — mouvements de caisse manuels**, EN COURS (serveur fait, non commité :
-migration additive `cash_movement_mutation_id`, `POST /cash-sessions/:id/movements` idempotent, e2e) — reste
-l'écran (barre de caisse : « Entrée / Sortie / Prélèvement ») et les audits.
+**21k — Mouvements de caisse manuels (livré)** : `POST /cash-sessions/:id/movements` — ENTREE (monnaie apportée),
+SORTIE (dépense payée en espèces), PRELEVEMENT (vers le coffre / la banque) ; motif obligatoire ; caisse OUVERTE ;
+le tiroir ne descend jamais sous 0 (`CASH_INSUFFICIENT`, par le chemin unique `withdraw`) ; vendeur : SA caisse
+(404 sinon), admin : toutes ; audité ; **idempotent** (`clientMutationId` — migration ADDITIVE
+`cash_movement_mutation_id` par `db-migrator` : colonne nullable + index unique ; route ajoutée au contrat des
+routes d'argent, qui prouve le 400 sans clé). Comptés dans le rapport Z (entrées / sorties). App : menu
+« Mouvement de caisse » dans la barre de caisse (montant, puis motif), clé d'intention stable
+(`runMoneyMutation`) ; en ligne seulement (une caisse encore en file n'a pas le menu).
+- **Défaut trouvé par le test d'écran** : un champ de dialogue était libéré pendant l'animation de fermeture
+  (erreur Flutter) — même motif dans l'écran Paramètres. Dialogue partagé `ui/widgets/fields_dialog.dart` qui
+  possède ses champs ; aucune autre occurrence dans l'app.
+- **Preuve (2026-09-28)** : backend lint 0 · e2e caisse / contrat d'argent / synchro caisse **16/16** (dont :
+  entrée, rejeu même clé sans double effet, même clé autre montant 409, sortie, prélèvement > tiroir 422, motif
+  vide 400, type inconnu 400, caisse d'un collègue 404, caisse clôturée 409, rapport Z juste, 3 audits) ; app
+  `flutter analyze` propre · **+450 ~46**.
+
+**Prochaine étape précise** : audits de 21k (lancés), appliquer ; puis **21l — retours** : retour client
+PARTIEL (mouvement RETOUR_CLIENT, remboursement espèces ou avoir sur la dette) + **facture d'avoir** numérotée
+si la vente est facturée (règle 11 : numéro serveur, séquentiel) ; retour fournisseur (RETOUR_FOURNISSEUR,
+dette réduite). Vérifier le schéma avant (`db-migrator`, additif).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

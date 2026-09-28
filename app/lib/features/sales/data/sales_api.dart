@@ -34,6 +34,10 @@ class SalesApi {
   Future<CashSession> closeCashSession(String id, Map<String, dynamic> body) =>
       _post('/cash-sessions/$id/close', body, CashSession.fromJson);
 
+  /// Entrée, sortie ou prélèvement d'espèces (caisse ouverte, en ligne).
+  Future<CashSession> cashMovement(String id, Map<String, dynamic> body) =>
+      _post('/cash-sessions/$id/movements', body, CashSession.fromJson);
+
   // ── Ventes ──────────────────────────────────────────────────────────────
   /// Corps d'une vente — le MÊME pour `POST /sales` et pour la file hors-ligne
   /// (payload `SALE`). Le client n'envoie JAMAIS de prix : produit + quantité ;

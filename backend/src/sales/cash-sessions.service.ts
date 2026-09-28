@@ -14,6 +14,7 @@ import {
   CashSessionListDto,
   CashSessionListQueryDto,
   CloseCashSessionDto,
+  CreateCashMovementDto,
   OpenCashSessionDto,
 } from './dto/sale.dto';
 
@@ -256,6 +257,74 @@ export class CashSessionsService {
     };
   }
 
+  /// Mouvement MANUEL sur une caisse ouverte (P1 bis n°21k) : entrée,
+  /// sortie ou prélèvement, avec motif. Mutation d'argent : clé
+  /// d'idempotence (un renvoi rend la caisse, sans rien ressortir). Le tiroir
+  /// ne descend jamais sous 0 ; la caisse doit être OUVERTE ; le vendeur
+  /// n'agit que sur SA caisse, l'admin sur toutes. Audité.
+  async addMovement(
+    id: string,
+    dto: CreateCashMovementDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<CashSessionDto> {
+    const replay = async () => {
+      const done = await this.prisma.cashMovement.findUnique({
+        where: { clientMutationId: dto.clientMutationId },
+      });
+      if (!done) return null;
+      assertSameMutation(
+        done,
+        user.id,
+        done.cashSessionId === id &&
+          done.type === dto.type &&
+          done.amount === dto.amount,
+        {
+          code: ErrorCode.CONFLICT,
+          message: 'Ce mouvement de caisse a déjà été enregistré autrement',
+        },
+      );
+      const session = await this.prisma.cashSession.findUniqueOrThrow({
+        where: { id },
+      });
+      return this.toDto(this.prisma, session);
+    };
+    return runOnce(replay, () =>
+      this.prisma.$transaction(async (tx) => {
+        const session = await CashSessionsService.lockOpenSession(tx, { id });
+        CashSessionsService.assertCanSee(
+          session ?? (await tx.cashSession.findUnique({ where: { id } })),
+          user,
+        );
+        if (!session) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Cette caisse est clôturée : aucun mouvement possible',
+            HttpStatus.CONFLICT,
+          );
+        }
+        const movement = {
+          userId: user.id,
+          amount: dto.amount,
+          note: dto.note,
+          clientMutationId: dto.clientMutationId,
+        };
+        if (dto.type === 'ENTREE') {
+          await CashSessionsService.deposit(tx, session, movement);
+        } else {
+          await CashSessionsService.withdraw(tx, session, movement, dto.type);
+        }
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'CashSession',
+          entityId: session.id,
+          newValue: { movement: dto.type, amount: dto.amount, note: dto.note },
+        });
+        return this.toDto(tx, session);
+      }),
+    );
+  }
+
   /// Rapport Z : le vendeur ne voit que SA session, l'admin toutes.
   async report(id: string, user: AuthenticatedUser): Promise<CashSessionDto> {
     const session = await this.prisma.cashSession.findUnique({ where: { id } });
@@ -321,7 +390,14 @@ export class CashSessionsService {
   static async withdraw(
     tx: Db,
     session: CashSession,
-    movement: { userId: string; amount: number; note: string; saleId?: string },
+    movement: {
+      userId: string;
+      amount: number;
+      note: string;
+      saleId?: string;
+      clientMutationId?: string;
+    },
+    type: 'SORTIE' | 'PRELEVEMENT' = 'SORTIE',
   ): Promise<void> {
     const inDrawer = await CashSessionsService.drawerAmount(tx, session);
     if (movement.amount > inDrawer) {
@@ -336,9 +412,10 @@ export class CashSessionsService {
         cashSessionId: session.id,
         userId: movement.userId,
         saleId: movement.saleId ?? null,
-        type: 'SORTIE',
+        type,
         amount: movement.amount,
         note: movement.note,
+        clientMutationId: movement.clientMutationId ?? null,
       },
     });
   }
@@ -348,7 +425,13 @@ export class CashSessionsService {
   static async deposit(
     tx: Db,
     session: CashSession,
-    movement: { userId: string; amount: number; note: string; saleId?: string },
+    movement: {
+      userId: string;
+      amount: number;
+      note: string;
+      saleId?: string;
+      clientMutationId?: string;
+    },
   ): Promise<void> {
     await tx.cashMovement.create({
       data: {
@@ -358,6 +441,7 @@ export class CashSessionsService {
         type: 'ENTREE',
         amount: movement.amount,
         note: movement.note,
+        clientMutationId: movement.clientMutationId ?? null,
       },
     });
   }

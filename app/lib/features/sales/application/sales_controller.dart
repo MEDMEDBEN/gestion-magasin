@@ -456,6 +456,29 @@ class SalesActions {
     return outcome;
   }
 
+  /// Mouvement MANUEL de caisse (P1 bis n°21k) : `ENTREE`, `SORTIE` ou
+  /// `PRELEVEMENT`, avec motif. Mutation d'argent : la clé de l'intention
+  /// survit aux nouveaux essais (jamais deux sorties). En ligne seulement.
+  Future<CashSession> cashMovement(
+    String sessionId, {
+    required String type,
+    required int amount,
+    required String note,
+  }) async {
+    final session = await runMoneyMutation(
+      _ref,
+      'cash-move:$sessionId:$type:$amount:$note',
+      (key) => _api.cashMovement(sessionId, {
+        'clientMutationId': key,
+        'type': type,
+        'amount': amount,
+        'note': note,
+      }),
+    );
+    _ref.invalidate(currentCashSessionProvider);
+    return session;
+  }
+
   Future<int> _pendingAfterSync() async {
     final userId = _ref.read(currentUserIdProvider);
     if (userId == null) return 0;

@@ -65,6 +65,15 @@ class _FakeSalesApi extends SalesApi {
   /// Client demandé à l'historique des achats (filtre serveur).
   final historyAsked = <String?>[];
 
+  /// Mouvements de caisse envoyés (P1 bis n°21k).
+  final movements = <Map<String, dynamic>>[];
+
+  @override
+  Future<CashSession> cashMovement(String id, Map<String, dynamic> body) async {
+    movements.add(body);
+    return cash!.copyWith(currentAmount: cash!.currentAmount - 50000);
+  }
+
   /// Recherches envoyées à l'historique des ventes, et ventes annulées.
   final searches = <String?>[];
   final cancelled = <String>[];
@@ -935,5 +944,43 @@ void main() {
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
     expect(find.textContaining('trop forte'), findsNothing);
+  });
+
+  /// P1 bis n°21k : entrée / sortie / prélèvement, avec motif, en ligne.
+  testWidgets('caisse : prélèvement avec motif, clé d’idempotence envoyée', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    await _pumpScreen(tester, api, []);
+    await tester.tap(find.byTooltip('Mouvement de caisse'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Prélèvement (coffre, banque)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '500');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    // Sans motif : refusé à l'écran, rien d'envoyé.
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Motif obligatoire'), findsOneWidget);
+    expect(api.movements, isEmpty);
+
+    await tester.tap(find.byTooltip('Mouvement de caisse'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Prélèvement (coffre, banque)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '500');
+    await tester.tap(find.text('Continuer'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Dépôt banque');
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(api.movements.single, {
+      'clientMutationId': isA<String>(),
+      'type': 'PRELEVEMENT',
+      'amount': 50000,
+      'note': 'Dépôt banque',
+    });
   });
 }

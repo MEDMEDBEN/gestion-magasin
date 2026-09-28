@@ -33,6 +33,7 @@ import {
   CashSessionListDto,
   CashSessionListQueryDto,
   CloseCashSessionDto,
+  CreateCashMovementDto,
   OpenCashSessionDto,
 } from './dto/sale.dto';
 
@@ -88,6 +89,29 @@ export class CashSessionsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CashSessionDto | null> {
     return this.cashSessions.current(user);
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.CASH_SESSION_MANAGE)
+  @Post(':id/movements')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Entrée, sortie ou prélèvement d’espèces (caisse ouverte)',
+    description:
+      'Motif obligatoire ; le tiroir ne descend jamais sous 0 ; idempotent ' +
+      '(`clientMutationId`) ; audité. Le vendeur agit sur SA caisse.',
+  })
+  @ApiOkResponse({ type: CashSessionDto })
+  addMovement(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Body() dto: CreateCashMovementDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<CashSessionDto> {
+    return this.cashSessions.addMovement(id, dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)

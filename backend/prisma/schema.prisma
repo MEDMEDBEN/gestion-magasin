@@ -641,7 +641,7 @@ model Sale {
   /// mentions légales) : une facture réimprimée reste celle émise, même si
   /// les Paramètres changent ensuite (CLAUDE.md règle 11). Null : ticket.
   issuerSnapshot   Json?
-  type            SaleType       @default(TICKET)
+  type             SaleType       @default(TICKET)
   status           SaleStatus     @default(VALIDEE)
   customerId       String?        @db.Uuid
   userId           String         @db.Uuid
@@ -819,14 +819,18 @@ model CashSession {
 }
 
 model CashMovement {
-  id            String           @id @default(uuid(7)) @db.Uuid
-  cashSessionId String           @db.Uuid
-  userId        String           @db.Uuid
-  saleId        String?          @db.Uuid
-  type          CashMovementType
-  amount        Int
-  note          String?
-  createdAt     DateTime         @default(now())
+  id               String           @id @default(uuid(7)) @db.Uuid
+  cashSessionId    String           @db.Uuid
+  userId           String           @db.Uuid
+  saleId           String?          @db.Uuid
+  type             CashMovementType
+  amount           Int
+  note             String?
+  /// Clé d'idempotence d'un mouvement MANUEL (entrée, sortie, prélèvement —
+  /// P1 bis n°21k) : un renvoi après coupure ne sort pas deux fois l'argent.
+  /// Null pour les mouvements internes (vente, paiement…), déjà couverts.
+  clientMutationId String?          @unique @db.Uuid
+  createdAt        DateTime         @default(now())
 
   cashSession CashSession @relation(fields: [cashSessionId], references: [id], onDelete: Cascade)
   user        User        @relation(fields: [userId], references: [id])
