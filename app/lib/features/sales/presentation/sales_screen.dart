@@ -396,6 +396,12 @@ class _CashBar extends ConsumerWidget {
   }
 }
 
+const _movementLabel = {
+  'ENTREE': 'Entrée',
+  'SORTIE': 'Sortie',
+  'PRELEVEMENT': 'Prélèvement',
+};
+
 /// Rapport Z d'une session (clôture ou consultation admin).
 Future<void> _showZReport(BuildContext context, CashSession report) {
   return showDialog<void>(
@@ -424,6 +430,16 @@ Future<void> _showZReport(BuildContext context, CashSession report) {
             'Écart : ${formatDA(report.difference ?? 0)}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
+          if (report.movements.isNotEmpty) ...[
+            const Divider(height: 20),
+            const Text('Mouvements hors vente'),
+            for (final m in report.movements)
+              Text(
+                '${formatDateTime(m.createdAt)} · ${_movementLabel[m.type] ?? m.type} '
+                '${formatDA(m.amount)} · ${m.userFullName}'
+                '${m.note == null ? '' : ' · ${m.note}'}',
+              ),
+          ],
         ],
       ),
       actions: [
@@ -487,7 +503,21 @@ class _CashSessionsSection extends ConsumerWidget {
                             ? StatusTone.ok
                             : StatusTone.warn,
                       ),
-                      onTap: () => _showZReport(context, s),
+                      // Rapport complet relu au serveur (détail des mouvements).
+                      onTap: () async {
+                        try {
+                          final report = await ref
+                              .read(salesApiProvider)
+                              .cashReport(s.id);
+                          if (context.mounted) {
+                            await _showZReport(context, report);
+                          }
+                        } on ApiException catch (error) {
+                          if (context.mounted) {
+                            _snack(context, error.userMessage);
+                          }
+                        }
+                      },
                     ),
                   ),
               ],

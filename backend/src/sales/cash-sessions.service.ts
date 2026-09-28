@@ -15,6 +15,7 @@ import {
   CashSessionListQueryDto,
   CloseCashSessionDto,
   CreateCashMovementDto,
+  MAX_MONEY,
   OpenCashSessionDto,
 } from './dto/sale.dto';
 
@@ -245,7 +246,10 @@ export class CashSessionsService {
         newValue: CashSessionsService.closeAudit(closed),
       });
     }
-    return this.toDto(tx, closed);
+    return {
+      ...(await this.toDto(tx, closed)),
+      movements: await CashSessionsService.movements(tx, id),
+    };
   }
 
   /// Trace d'une clôture : attendu, compté, écart (centimes).
@@ -278,7 +282,8 @@ export class CashSessionsService {
         user.id,
         done.cashSessionId === id &&
           done.type === dto.type &&
-          done.amount === dto.amount,
+          done.amount === dto.amount &&
+          done.note === dto.note,
         {
           code: ErrorCode.CONFLICT,
           message: 'Ce mouvement de caisse a déjà été enregistré autrement',
@@ -318,7 +323,13 @@ export class CashSessionsService {
           action: 'UPDATE',
           entityType: 'CashSession',
           entityId: session.id,
-          newValue: { movement: dto.type, amount: dto.amount, note: dto.note },
+          newValue: {
+            movement: dto.type,
+            amount: dto.amount,
+            note: dto.note,
+            clientMutationId: dto.clientMutationId,
+            sessionOwnerId: session.userId,
+          },
         });
         return this.toDto(tx, session);
       }),
@@ -329,7 +340,30 @@ export class CashSessionsService {
   async report(id: string, user: AuthenticatedUser): Promise<CashSessionDto> {
     const session = await this.prisma.cashSession.findUnique({ where: { id } });
     CashSessionsService.assertCanSee(session, user);
-    return this.toDto(this.prisma, session!);
+    return {
+      ...(await this.toDto(this.prisma, session!)),
+      movements: await CashSessionsService.movements(this.prisma, id),
+    };
+  }
+
+  /// Entrées, sorties, prélèvements d'une session, avec leur auteur et leur
+  /// motif : une sortie fictive qui « couvre » un écart se voit au rapport Z.
+  static async movements(db: Db | PrismaService, cashSessionId: string) {
+    const rows = await db.cashMovement.findMany({
+      where: {
+        cashSessionId,
+        type: { in: ['ENTREE', 'SORTIE', 'PRELEVEMENT'] },
+      },
+      include: { user: { select: { fullName: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((m) => ({
+      type: m.type,
+      amount: m.amount,
+      note: m.note,
+      userFullName: m.user.fullName,
+      createdAt: m.createdAt,
+    }));
   }
 
   private static assertCanSee(
@@ -433,6 +467,14 @@ export class CashSessionsService {
       clientMutationId?: string;
     },
   ): Promise<void> {
+    const inDrawer = await CashSessionsService.drawerAmount(tx, session);
+    if (inDrawer + movement.amount > MAX_MONEY) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Entrée refusée : la caisse dépasserait ${formatDA(MAX_MONEY)}`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
     await tx.cashMovement.create({
       data: {
         cashSessionId: session.id,

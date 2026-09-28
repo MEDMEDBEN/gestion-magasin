@@ -465,18 +465,26 @@ class SalesActions {
     required int amount,
     required String note,
   }) async {
-    final session = await runMoneyMutation(
-      _ref,
-      'cash-move:$sessionId:$type:$amount:$note',
-      (key) => _api.cashMovement(sessionId, {
-        'clientMutationId': key,
-        'type': type,
-        'amount': amount,
-        'note': note,
-      }),
-    );
-    _ref.invalidate(currentCashSessionProvider);
-    return session;
+    // Intention = CETTE caisse, CE type : ni montant ni motif, ressaisis
+    // (autrement) au nouvel essai après une coupure — une clé neuve ferait
+    // sortir l'argent deux fois. Un montant différent : 409, l'utilisateur
+    // vérifie ; le succès libère la clé (un 2e mouvement voulu en est un neuf).
+    try {
+      return await runMoneyMutation(
+        _ref,
+        'cash-move:$sessionId:$type',
+        (key) => _api.cashMovement(sessionId, {
+          'clientMutationId': key,
+          'type': type,
+          'amount': amount,
+          'note': note,
+        }),
+      );
+    } finally {
+      // Succès ou refus (caisse clôturée, tiroir insuffisant) : la barre relit
+      // l'état réel.
+      _ref.invalidate(currentCashSessionProvider);
+    }
   }
 
   Future<int> _pendingAfterSync() async {

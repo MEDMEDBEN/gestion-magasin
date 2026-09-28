@@ -406,10 +406,31 @@ routes d'argent, qui prouve le 400 sans clé). Comptés dans le rapport Z (entr�
   vide 400, type inconnu 400, caisse d'un collègue 404, caisse clôturée 409, rapport Z juste, 3 audits) ; app
   `flutter analyze` propre · **+450 ~46**.
 
-**Prochaine étape précise** : audits de 21k (lancés), appliquer ; puis **21l — retours** : retour client
-PARTIEL (mouvement RETOUR_CLIENT, remboursement espèces ou avoir sur la dette) + **facture d'avoir** numérotée
-si la vente est facturée (règle 11 : numéro serveur, séquentiel) ; retour fournisseur (RETOUR_FOURNISSEUR,
-dette réduite). Vérifier le schéma avant (`db-migrator`, additif).
+**Audits 21k** — `reviewer` : **PAS OK** (1 important) ; `security-reviewer` : **CONFORME avec réserves** (2 moyens).
+Appliqué :
+- 🟠 **Clé d'idempotence** : elle contenait le MOTIF ; ressaisi autrement après une coupure, la même sortie
+  d'argent passait deux fois. Clé = caisse + type ; le serveur compare aussi le motif au rejeu (autre contenu →
+  409, la clé est libérée, l'utilisateur vérifie). Test : réponse perdue puis motif retapé → MÊME clé ;
+  contre-épreuve (motif remis dans la clé) → échec.
+- 🟠 **Une sortie fictive masquait un écart sans que rien ne le montre** : le rapport Z (clôture ET consultation
+  admin, désormais relu au serveur) liste chaque entrée / sortie / prélèvement avec montant, auteur, motif, heure.
+- 🟠 **Dépassement d'entier bloquant la clôture** : une entrée qui porterait le tiroir au-delà du plafond d'un
+  montant est refusée (422).
+- Motif fait d'espaces refusé (400) ; audit : clé du mouvement + titulaire de la caisse ; barre de caisse relue
+  même après un refus ; e2e : l'admin agit sur la caisse d'un vendeur.
+- Non fait (accepté) : clés d'intention en mémoire seulement (préexistant, toutes les mutations d'argent en
+  ligne) ; verrou pris avant le contrôle d'appartenance (quelques ms, ids non exposés aux vendeurs).
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **605 e2e** ; app `flutter analyze`
+  propre · **+452 ~46**.
+
+**Prochaine étape précise** : **21l — retours et avoirs**, EN COURS : migration ADDITIVE
+`20260928140000_returns_credit_notes` créée et appliquée en dev par `db-migrator` (modèles `SaleReturn`,
+`SaleReturnLine`, `SupplierReturn`, `SupplierReturnLine`, enum `RefundMethod`, valeurs `RETOUR_CLIENT`/`AVOIR`/
+`RETOUR_FOURNISSEUR` et `SALE_RETURN`/`SUPPLIER_RETURN`) — NON commitée. Reste : services (retour client partiel :
+stock RETOUR_CLIENT, remboursement espèces depuis la caisse ou déduction de la dette, avoir numéroté AV si la
+vente est facturée ; retour fournisseur : stock RETOUR_FOURNISSEUR, dette réduite), prise en compte partout
+(dette client, reste d'une vente, rappels, rapports/CA, dette fournisseur), PDF d'avoir, écrans, tests, audits.
+Choix faits (à confirmer par MEDMEDBEN) : retours client réservés à l'ADMIN (`sale.cancel`), en ligne seulement.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

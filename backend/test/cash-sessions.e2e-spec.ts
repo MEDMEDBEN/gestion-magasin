@@ -164,6 +164,31 @@ describe('Caisse (e2e)', () => {
     // 1 000 + 200 − 150 − 500 = 550,00 DA dans le tiroir.
     expect(after.body.currentAmount).toBe(55000);
 
+    // L'admin agit sur la caisse d'un vendeur (docs/permissions.md).
+    await move(tokens.admin, {
+      type: 'ENTREE',
+      amount: 100,
+      note: 'Appoint admin',
+    }).expect(200);
+    await move(tokens.caissier, {
+      type: 'SORTIE',
+      amount: 100,
+      note: 'Rendu appoint',
+    }).expect(200);
+    // Le tiroir ne dépasse jamais le plafond d'un montant (sinon la clôture
+    // échouerait : colonnes entières).
+    await move(tokens.caissier, {
+      type: 'ENTREE',
+      amount: 2_000_000_000,
+      note: 'Trop',
+    }).expect(422);
+    // Motif fait d'espaces : refusé comme vide.
+    await move(tokens.caissier, {
+      type: 'ENTREE',
+      amount: 100,
+      note: '   ',
+    }).expect(400);
+
     // Motif obligatoire ; type inconnu refusé ; un collègue : 404.
     await move(tokens.caissier, {
       type: 'ENTREE',
@@ -186,6 +211,22 @@ describe('Caisse (e2e)', () => {
       .send({ countedAmount: 55000 })
       .expect(200);
     expect(closed.body).toMatchObject({ expectedAmount: 55000, difference: 0 });
+    // Le rapport Z MONTRE chaque mouvement : qui, combien, pourquoi (une
+    // sortie fictive qui couvrirait un écart se voit).
+    expect(closed.body.movements).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'PRELEVEMENT',
+          amount: 50000,
+          note: 'Dépôt banque',
+        }),
+        expect.objectContaining({ type: 'ENTREE', note: 'Appoint admin' }),
+      ]),
+    );
+    const report = await as(tokens.admin)
+      .get(`/api/cash-sessions/${session.id}/report`)
+      .expect(200);
+    expect(report.body.movements).toHaveLength(5);
     // Caisse clôturée : plus aucun mouvement.
     await move(tokens.caissier, {
       type: 'ENTREE',
@@ -200,7 +241,7 @@ describe('Caisse (e2e)', () => {
         action: 'UPDATE',
       },
     });
-    expect(audit).toBe(3);
+    expect(audit).toBe(5);
   });
 
   it('chacun sa caisse : un collègue ne la voit ni ne la clôture ; l’ADMIN voit le rapport', async () => {

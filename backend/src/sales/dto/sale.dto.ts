@@ -6,7 +6,7 @@ import {
 } from '@nestjs/swagger';
 import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
 import { ExportFormatQueryDto } from '../../common/export/export';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   PaginationMetaDto,
   PaginationQueryDto,
@@ -319,10 +319,23 @@ export class CreateCashMovementDto {
   amount!: number;
 
   @ApiProperty({ example: 'Monnaie pour le fond', description: 'Motif.' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @MinLength(2, { message: 'note : motif obligatoire (2 caractères au moins)' })
   @MaxLength(200)
   note!: string;
+}
+
+/// Mouvement hors vente d'une caisse (entrée, sortie, prélèvement), montré
+/// au rapport Z : qui, combien, pourquoi (audit 21k).
+export class CashMovementLineDto {
+  @ApiProperty({ enum: ['ENTREE', 'SORTIE', 'PRELEVEMENT'] }) type!: string;
+  @ApiProperty() amount!: number;
+  @ApiProperty({ nullable: true }) note!: string | null;
+  @ApiProperty() userFullName!: string;
+  @ApiProperty() createdAt!: Date;
 }
 
 export class CashSessionDto {
@@ -358,6 +371,12 @@ export class CashSessionDto {
   @ApiProperty({ nullable: true }) closedAt!: Date | null;
   @ApiPropertyOptional({ description: 'Caissier (liste admin).' })
   userFullName?: string;
+  @ApiPropertyOptional({
+    type: [CashMovementLineDto],
+    description:
+      'Rapport Z (clôture, consultation) : chaque entrée, sortie, prélèvement.',
+  })
+  movements?: CashMovementLineDto[];
 }
 
 export class CashSessionListQueryDto extends PaginationQueryDto {

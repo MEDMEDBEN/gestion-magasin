@@ -26,10 +26,27 @@ abstract class CashSession with _$CashSession {
     int? difference,
     required DateTime openedAt,
     DateTime? closedAt,
+
+    /// Rapport Z : entrées, sorties, prélèvements (qui, combien, pourquoi).
+    @Default(<CashMovementLine>[]) List<CashMovementLine> movements,
   }) = _CashSession;
 
   factory CashSession.fromJson(Map<String, dynamic> json) =>
       _$CashSessionFromJson(json);
+}
+
+@freezed
+abstract class CashMovementLine with _$CashMovementLine {
+  const factory CashMovementLine({
+    required String type,
+    required int amount,
+    String? note,
+    required String userFullName,
+    required DateTime createdAt,
+  }) = _CashMovementLine;
+
+  factory CashMovementLine.fromJson(Map<String, dynamic> json) =>
+      _$CashMovementLineFromJson(json);
 }
 
 @freezed

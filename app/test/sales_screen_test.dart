@@ -65,12 +65,54 @@ class _FakeSalesApi extends SalesApi {
   /// Client demandé à l'historique des achats (filtre serveur).
   final historyAsked = <String?>[];
 
+  @override
+  Future<CashSessionPage> cashSessions({int limit = 100}) async =>
+      CashSessionPage(
+        data: [
+          CashSession(
+            id: 'z1',
+            userFullName: 'Caissier',
+            status: 'CLOTUREE',
+            openingFloat: 100000,
+            cashSalesAmount: 0,
+            cashSalesCount: 0,
+            currentAmount: 55000,
+            expectedAmount: 55000,
+            countedAmount: 55000,
+            difference: 0,
+            openedAt: DateTime.utc(2026, 9, 28, 8),
+          ),
+        ],
+        meta: PageMeta(page: 1, limit: limit, total: 1),
+      );
+
+  @override
+  Future<CashSession> cashReport(String id) async =>
+      (await cashSessions()).data.single.copyWith(
+        movements: [
+          CashMovementLine(
+            type: 'PRELEVEMENT',
+            amount: 50000,
+            note: 'Dépôt banque',
+            userFullName: 'Admin',
+            createdAt: DateTime.utc(2026, 9, 28, 12),
+          ),
+        ],
+      );
+
   /// Mouvements de caisse envoyés (P1 bis n°21k).
   final movements = <Map<String, dynamic>>[];
+
+  /// Premier envoi perdu (réponse jamais reçue).
+  bool loseNextMovement = false;
 
   @override
   Future<CashSession> cashMovement(String id, Map<String, dynamic> body) async {
     movements.add(body);
+    if (loseNextMovement) {
+      loseNextMovement = false;
+      throw _noNetwork;
+    }
     return cash!.copyWith(currentAmount: cash!.currentAmount - 50000);
   }
 
@@ -983,4 +1025,60 @@ void main() {
       'note': 'Dépôt banque',
     });
   });
+
+  /// Audit 21k : une sortie qui couvrirait un écart doit SE VOIR au rapport Z.
+  testWidgets('rapport Z (admin) : chaque mouvement, son auteur, son motif', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 1400));
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const ['sale.create', 'cash.report.read'],
+    );
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), [], user: admin);
+    await tester.tap(find.text('Caisses'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Caissier'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mouvements hors vente'), findsOneWidget);
+    expect(find.textContaining('Prélèvement'), findsOneWidget);
+    expect(find.textContaining('Admin · Dépôt banque'), findsOneWidget);
+  });
+
+  /// Revue 21k : la clé ne dépend ni du montant ni du motif, ressaisis au
+  /// nouvel essai — sinon une sortie perdue sur le réseau passerait DEUX fois.
+  test(
+    'mouvement de caisse : même clé au nouvel essai, motif retapé',
+    () async {
+      final api = _FakeSalesApi(cash: _openCash)..loseNextMovement = true;
+      final container = ProviderContainer(
+        overrides: [
+          salesApiProvider.overrideWithValue(api),
+          currentUserIdProvider.overrideWithValue('v'),
+        ],
+      );
+      addTearDown(container.dispose);
+      final actions = container.read(salesActionsProvider);
+      await expectLater(
+        actions.cashMovement(
+          'cash',
+          type: 'SORTIE',
+          amount: 50000,
+          note: 'Dépôt banque',
+        ),
+        throwsA(isA<ApiException>()),
+      );
+      await actions.cashMovement(
+        'cash',
+        type: 'SORTIE',
+        amount: 50000,
+        note: 'depot banque',
+      );
+      expect(
+        api.movements[1]['clientMutationId'],
+        api.movements[0]['clientMutationId'],
+      );
+    },
+  );
 }

@@ -34,6 +34,14 @@ class SalesApi {
   Future<CashSession> closeCashSession(String id, Map<String, dynamic> body) =>
       _post('/cash-sessions/$id/close', body, CashSession.fromJson);
 
+  /// Rapport Z d'une session, avec le détail des mouvements.
+  Future<CashSession> cashReport(String id) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/cash-sessions/$id/report',
+    );
+    return CashSession.fromJson(response.data!);
+  });
+
   /// Entrée, sortie ou prélèvement d'espèces (caisse ouverte, en ligne).
   Future<CashSession> cashMovement(String id, Map<String, dynamic> body) =>
       _post('/cash-sessions/$id/movements', body, CashSession.fromJson);
