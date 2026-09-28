@@ -3,11 +3,21 @@ import {
   SupplierPaymentsController,
   SuppliersController,
 } from './suppliers.controller';
+import { StockModule } from '../stock/stock.module';
+import {
+  SupplierReturnsController,
+  SupplierReturnsService,
+} from './supplier-returns';
 import { SuppliersService } from './suppliers.service';
 
 @Module({
-  controllers: [SuppliersController, SupplierPaymentsController],
-  providers: [SuppliersService],
+  imports: [StockModule],
+  controllers: [
+    SuppliersController,
+    SupplierPaymentsController,
+    SupplierReturnsController,
+  ],
+  providers: [SuppliersService, SupplierReturnsService],
   exports: [SuppliersService],
 })
 export class SuppliersModule {}

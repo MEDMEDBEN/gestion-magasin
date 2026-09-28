@@ -20,6 +20,8 @@ import '../../payments/presentation/payment_history_dialog.dart';
 import '../data/suppliers_api.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
+import '../../sales/application/sales_controller.dart';
+import 'supplier_return_dialog.dart';
 
 /// Droits fournisseurs, MIROIRS des guards serveur (`docs/permissions.md`) :
 /// le vendeur n'a AUCUN accès, seul l'admin écrit et paie.
@@ -33,7 +35,11 @@ class SupplierRights {
       // Garde de la liste des commandes (`GET /purchase-orders`).
       canSeePurchases =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
-          user.can('purchase.create');
+          user.can('purchase.create'),
+      // Retour de marchandise : gardes de la réception (P1 bis n°21l).
+      canReturn =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('reception.create');
 
   /// Contre-passation : même droit que le paiement (ADMIN).
 
@@ -41,6 +47,7 @@ class SupplierRights {
   final bool canWrite;
   final bool canPay;
   final bool canSeePurchases;
+  final bool canReturn;
 }
 
 void _snack(BuildContext context, String message) {
@@ -201,6 +208,18 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 title: const Text('Historique des achats'),
                 onTap: () => Navigator.of(context).pop('purchases'),
               ),
+            if (rights.canReturn) ...[
+              ListTile(
+                leading: const Icon(LucideIcons.undo2, size: 18),
+                title: const Text('Retour de marchandise'),
+                onTap: () => Navigator.of(context).pop('return'),
+              ),
+              ListTile(
+                leading: const Icon(LucideIcons.fileText, size: 18),
+                title: const Text('Retours de marchandise'),
+                onTap: () => Navigator.of(context).pop('returns'),
+              ),
+            ],
             ListTile(
               leading: const Icon(LucideIcons.history, size: 18),
               title: const Text('Historique des paiements'),
@@ -219,6 +238,25 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     if (!mounted) return;
     if (action == 'pay') return _pay(supplier);
     if (action == 'edit') return _openForm(supplier);
+    if (action == 'return') return _returnGoods(supplier);
+    if (action == 'returns') {
+      final actions = ref.read(suppliersActionsProvider);
+      await showHistory(
+        context,
+        title: 'Retours — ${supplier.name}',
+        empty: 'Aucune marchandise renvoyée à ce fournisseur.',
+        load: () async => [
+          for (final r in await actions.returns(supplier.id))
+            (
+              title: r['number'] as String,
+              subtitle:
+                  '${formatDate(DateTime.parse(r['createdAt'] as String).toLocal())} · ${r['reason']}',
+              trailing: '${formatDA(r['totalTtc'] as int)} TTC',
+            ),
+        ],
+      );
+      return;
+    }
     if (action == 'purchases') {
       final api = ref.read(purchasesApiProvider);
       await showHistory(
@@ -248,6 +286,35 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
             : null,
       );
     }
+  }
+
+  /// Retour de marchandise, puis impression du bon qui l'accompagne.
+  Future<void> _returnGoods(Supplier supplier) async {
+    final done = await showSupplierReturnDialog(context, supplier);
+    if (done == null || !mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Retour ${done['number']} enregistré — dette réduite de '
+            '${formatDA(done['totalTtc'] as int)}',
+          ),
+          action: SnackBarAction(
+            label: 'Imprimer le bon',
+            onPressed: () async {
+              try {
+                final pdf = await ref
+                    .read(suppliersActionsProvider)
+                    .returnDocument(done['id'] as String);
+                await ref.read(printPdfProvider)(pdf, '${done['number']}.pdf');
+              } on Exception {
+                if (mounted) _snack(context, 'Impression impossible.');
+              }
+            },
+          ),
+        ),
+      );
   }
 
   Future<void> _openForm(Supplier? existing) =>

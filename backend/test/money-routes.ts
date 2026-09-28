@@ -13,6 +13,8 @@ export const MONEY_ROUTES = [
   '/api/cash-sessions/:id/movements',
   // Retour client : remboursement en espèces ou avoir sur la dette (21l).
   '/api/sales/:id/returns',
+  // Retour fournisseur : la dette fournisseur baisse.
+  '/api/supplier-returns',
   '/api/payments/customer',
   '/api/payments/customer/:id/reverse',
   '/api/payments/supplier',

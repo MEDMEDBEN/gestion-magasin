@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,6 +46,34 @@ class SuppliersApi {
       return SupplierPayment.fromJson(response.data!);
     });
   }
+
+  /// Retour de marchandise (P1 bis n°21l) : rend `id`, `number`, `totalTtc`…
+  Future<Map<String, dynamic>> returnGoods(Map<String, Object?> body) =>
+      guardApi(() async {
+        final response = await _dio.post<Map<String, dynamic>>(
+          '/supplier-returns',
+          data: body,
+        );
+        return response.data!;
+      });
+
+  /// Retours à ce fournisseur (200 plus récents).
+  Future<List<Map<String, dynamic>>> returns(String supplierId) =>
+      guardApi(() async {
+        final response = await _dio.get<List<dynamic>>(
+          '/suppliers/$supplierId/returns',
+        );
+        return [for (final r in response.data!) r as Map<String, dynamic>];
+      });
+
+  /// Bon de retour fournisseur (PDF).
+  Future<Uint8List> returnDocument(String id) => guardApi(() async {
+    final response = await _dio.get<List<int>>(
+      '/supplier-returns/$id/pdf',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data!);
+  });
 
   Future<PaymentHistoryPage> payments(String supplierId) {
     return guardApi(() async {

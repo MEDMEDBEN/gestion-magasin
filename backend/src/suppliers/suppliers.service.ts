@@ -40,8 +40,10 @@ export class SuppliersService {
   /// reprise de l'existant + marchandise RÉELLEMENT reçue (TTC figé à la
   /// réception) − paiements. La commande seule n'endette pas : la dette naît à
   /// la réception (décision MEDMEDBEN 2026-09-16).
+  /// Les RETOURS fournisseur (P1 bis n°21l) se retranchent du reçu : « Reçu »
+  /// est NET des marchandises renvoyées.
   static async debt(db: Db | PrismaService, supplier: Supplier) {
-    const [paid, received] = await Promise.all([
+    const [paid, received, returned] = await Promise.all([
       db.supplierPayment.aggregate({
         where: { supplierId: supplier.id },
         _sum: { amount: true },
@@ -50,9 +52,14 @@ export class SuppliersService {
         where: { supplierId: supplier.id },
         _sum: { totalTtc: true },
       }),
+      db.supplierReturn.aggregate({
+        where: { supplierId: supplier.id },
+        _sum: { totalTtc: true },
+      }),
     ]);
     const paidAmount = paid._sum.amount ?? 0;
-    const receivedAmount = received._sum.totalTtc ?? 0;
+    const receivedAmount =
+      (received._sum.totalTtc ?? 0) - (returned._sum.totalTtc ?? 0);
     return {
       paidAmount,
       receivedAmount,
@@ -125,7 +132,7 @@ export class SuppliersService {
     // Deux agrégats groupés pour toute la page (jamais une requête, ni un
     // chargement de lignes, par fournisseur).
     const ids = rows.map((r) => r.id);
-    const [paid, received] = await Promise.all([
+    const [paid, received, returned] = await Promise.all([
       this.prisma.supplierPayment.groupBy({
         by: ['supplierId'],
         where: { supplierId: { in: ids } },
@@ -136,11 +143,23 @@ export class SuppliersService {
         where: { supplierId: { in: ids } },
         _sum: { totalTtc: true },
       }),
+      this.prisma.supplierReturn.groupBy({
+        by: ['supplierId'],
+        where: { supplierId: { in: ids } },
+        _sum: { totalTtc: true },
+      }),
     ]);
     const paidBy = new Map(paid.map((p) => [p.supplierId, p._sum.amount ?? 0]));
+    // Reçu NET des retours fournisseur (même règle que `debt`).
     const receivedBy = new Map(
       received.map((r) => [r.supplierId, r._sum.totalTtc ?? 0]),
     );
+    for (const r of returned) {
+      receivedBy.set(
+        r.supplierId,
+        (receivedBy.get(r.supplierId) ?? 0) - (r._sum.totalTtc ?? 0),
+      );
+    }
     const data = rows.map((row) =>
       SuppliersService.toDtoWith(
         row,

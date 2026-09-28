@@ -203,7 +203,7 @@ export class DashboardService {
   /// effacer ce qu'on doit aux autres. Le total d'accueil réconcilie alors avec
   /// la liste Fournisseurs.
   private async supplierDebt() {
-    const [suppliers, received, paid] = await Promise.all([
+    const [suppliers, received, paid, returned] = await Promise.all([
       this.prisma.supplier.findMany({
         select: { id: true, openingBalance: true },
       }),
@@ -214,6 +214,10 @@ export class DashboardService {
       this.prisma.supplierPayment.groupBy({
         by: ['supplierId'],
         _sum: { amount: true },
+      }),
+      this.prisma.supplierReturn.groupBy({
+        by: ['supplierId'],
+        _sum: { totalTtc: true },
       }),
     ]);
     const balances = new Map(
@@ -229,6 +233,13 @@ export class DashboardService {
       balances.set(
         row.supplierId,
         (balances.get(row.supplierId) ?? 0) - (row._sum.amount ?? 0),
+      );
+    }
+    // Retours fournisseur : la dette baisse (P1 bis n°21l).
+    for (const row of returned) {
+      balances.set(
+        row.supplierId,
+        (balances.get(row.supplierId) ?? 0) - (row._sum.totalTtc ?? 0),
       );
     }
     let debt = 0;

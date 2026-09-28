@@ -8,6 +8,8 @@ import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
+import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
+import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_api.dart';
 import 'package:gestion_magasin/features/purchases/data/purchases_models.dart';
@@ -17,9 +19,18 @@ import 'package:gestion_magasin/features/suppliers/presentation/suppliers_screen
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
+import 'support/catalog_fakes.dart';
 import 'support/fakes.dart';
 
 class _FakeSuppliersApi extends SuppliersApi {
+  final returnsSent = <Map<String, Object?>>[];
+
+  @override
+  Future<Map<String, dynamic>> returnGoods(Map<String, Object?> body) async {
+    returnsSent.add(body);
+    return {'id': 'rf1', 'number': 'RF-2026-00001', 'totalTtc': 428400};
+  }
+
   _FakeSuppliersApi() : super(Dio());
 
   Map<String, Object?>? payment;
@@ -141,6 +152,7 @@ AuthUser _admin({bool purchases = true}) => authUser(
     'supplier.write',
     'supplier.payment.create',
     if (purchases) 'purchase.create',
+    if (purchases) 'reception.create',
   ],
 );
 
@@ -154,6 +166,21 @@ Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
       overrides: [
         suppliersApiProvider.overrideWithValue(api),
         purchasesApiProvider.overrideWithValue(_purchases),
+        activeProductsProvider.overrideWith(
+          (ref) => Stream.value([product(id: 'p1', name: 'Disjoncteur')]),
+        ),
+        locationsProvider.overrideWith(
+          (ref) => Stream.value([
+            StorageLocation(
+              id: 'depot',
+              code: 'DEP',
+              name: 'Dépôt',
+              type: 'DEPOT',
+              isActive: true,
+              updatedAt: DateTime.utc(2026),
+            ),
+          ]),
+        ),
         saveExportProvider.overrideWithValue(
           (file) async => 'C:/Téléchargements/${file.filename}',
         ),
@@ -337,5 +364,47 @@ void main() {
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
     expect(find.text('Historique des achats'), findsNothing);
+  });
+
+  /// P1 bis n°21l : retour de marchandise depuis la fiche fournisseur.
+  testWidgets('retour de marchandise : produit, quantité, dépôt, motif', (
+    tester,
+  ) async {
+    final api = await _pump(tester, _admin());
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Retour de marchandise'));
+    await tester.tap(find.text('Retour de marchandise'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Produit'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.textContaining('Disjoncteur').last);
+    await tester.pumpAndSettle();
+    final fields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(fields.at(0), '3');
+    await tester.enterText(fields.at(1), 'Lot défectueux');
+    await tester.tap(find.text('Enregistrer le retour'));
+    await tester.pumpAndSettle();
+    final sent = api.returnsSent.single;
+    expect(sent['supplierId'], 's1');
+    expect(sent['locationId'], 'depot');
+    expect(sent['lines'], [
+      {'productId': 'p1', 'quantity': '3.000'},
+    ]);
+    expect(sent['clientMutationId'], isA<String>());
+    expect(find.textContaining('RF-2026-00001'), findsOneWidget);
+  });
+
+  testWidgets('sans le droit de réception : pas de retour proposé', (
+    tester,
+  ) async {
+    await _pump(tester, _admin(purchases: false));
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    expect(find.text('Retour de marchandise'), findsNothing);
   });
 }

@@ -109,6 +109,7 @@ aucune migration destructive sans confirmation).
 | Créer / modifier commande fournisseur | ✅ | ❌ | ✅ |
 | Confirmer / annuler commande | ✅ | ❌ | ❌ |
 | Réceptionner (partielle incluse) sur une commande confirmée | ✅ | ❌ | ✅ |
+| Retour de marchandise au fournisseur (`POST /supplier-returns`, bon RF) | ✅ (`reception.create`) | ❌ | ✅ (`reception.create`) |
 | Réceptionner **hors commande** | ✅ | ❌ | ❌ |
 
 **Décisions du 2026-09-20 (audit sécurité de P0 #7)**

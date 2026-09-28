@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/quantity.dart';
 
 import '../../../core/mutation_keys.dart';
 import '../../../core/providers.dart';
@@ -88,6 +92,43 @@ extension SupplierPaymentsActions on SuppliersActions {
     );
     _ref.invalidate(supplierSearchProvider);
   }
+}
+
+extension SupplierReturnActions on SuppliersActions {
+  /// Retour de marchandise : la dette baisse. Mutation d'argent — la clé de
+  /// l'intention « renvoyer à CE fournisseur » survit aux nouveaux essais.
+  Future<Map<String, dynamic>> returnGoods(
+    String supplierId, {
+    required String productId,
+    required Quantity quantity,
+    required String locationId,
+    required String reason,
+  }) async {
+    final id = _ref.read(uuidProvider).v7();
+    try {
+      return await runMoneyMutation(
+        _ref,
+        'supplier-return:$supplierId',
+        (key) => _api.returnGoods({
+          'id': id,
+          'clientMutationId': key,
+          'supplierId': supplierId,
+          'locationId': locationId,
+          'lines': [
+            {'productId': productId, 'quantity': quantityToJson(quantity)},
+          ],
+          'reason': reason,
+        }),
+      );
+    } finally {
+      _ref.invalidate(supplierSearchProvider);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> returns(String supplierId) =>
+      _api.returns(supplierId);
+
+  Future<Uint8List> returnDocument(String id) => _api.returnDocument(id);
 }
 
 final suppliersActionsProvider = Provider(SuppliersActions.new);

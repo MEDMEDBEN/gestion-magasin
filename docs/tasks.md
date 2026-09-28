@@ -448,9 +448,30 @@ Appliqué :
 - ⚠️ **À confirmer (MEDMEDBEN)** : retours réservés à l'ADMIN ; en ligne seulement ; « les plus vendus » (rapport
   produits) ne déduit pas encore les retours.
 
-**Prochaine étape précise** : audits de 21l partie 1 (lancés), appliquer ; puis **21l partie 2 — retour
-fournisseur** (`POST /supplier-returns` : stock RETOUR_FOURNISSEUR depuis le dépôt, anti-stock-négatif, dette
-fournisseur réduite dans `SuppliersService.debt` ET l'accueil, bon RF PDF, écran Fournisseurs/Achats).
+**21l (partie 2) — Retours fournisseur (livré)** : `POST /supplier-returns` (ADMIN|MAGASINIER + `reception.create`,
+gardes de la réception dont c'est l'opération inverse ; idempotent ; route au contrat d'argent), `GET
+/suppliers/:id/returns`, `GET /supplier-returns/:id/pdf` (bon de retour A4). UNE transaction : stock
+RETOUR_FOURNISSEUR (journal), numéro RF-AAAA-NNNNN, audit.
+- **Prix jamais saisi** : celui de la dernière réception de ce produit chez ce fournisseur ; TTC au prorata du TTC
+  figé à cette réception (ce qui avait augmenté la dette). **Quantité bornée** par le reçu de ce fournisseur non
+  encore renvoyé.
+- Journal de stock : un renvoi ne passe JAMAIS en négatif, même pour un produit « vente sans stock autorisée » ; un
+  produit désactivé peut être renvoyé (régularisation).
+- **Dette fournisseur** : « Reçu » est désormais NET des retours — fiche et liste (`SuppliersService`), accueil,
+  rappels DETTE_FOURNISSEUR par commande.
+- App : fiche fournisseur → « Retour de marchandise » (produit, quantité, lieu, motif ; « Imprimer le bon » à la
+  suite) et « Retours de marchandise » (liste).
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **616 e2e** (+ `supplier-returns.e2e` : 5
+  — stock, dette au prorata exact, RF, PDF, liste, audit ; borne du reçu ; produit jamais reçu ; jamais négatif en
+  « vente sans stock » ; rejeu ; droits) ; contre-épreuves (borne du reçu ; garde anti-négatif) → échecs ; app
+  `flutter analyze` propre · **+455 ~46**.
+- ⚠️ Les audits lancés sur la partie 1 se sont arrêtés (limite d'usage de l'API) : aucun résultat — ils sont à
+  relancer sur les DEUX parties.
+- Non fait : réimprimer un bon RF depuis la liste (à la création seulement).
+
+**Prochaine étape précise** : audits `reviewer` + `security-reviewer` de 21l (parties 1 et 2 : commits ceadca1 et
+suivant), appliquer ; puis **21m** (indicateurs fournisseur, graphiques de l'accueil, modification d'un devis
+brouillon) et **21n** (relevé de compte, suivi des chèques, historique des prix de vente).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

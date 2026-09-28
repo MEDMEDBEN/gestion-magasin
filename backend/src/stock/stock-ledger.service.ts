@@ -120,8 +120,12 @@ export class StockLedgerService {
     // qu'on vient de désactiver gèlerait son stock résiduel pour toujours — il
     // n'existe aucun autre chemin pour le solder (invariant 4 de CONVENTIONS :
     // une régularisation ne doit jamais être bloquée par une désactivation).
+    // Un RETOUR FOURNISSEUR aussi : renvoyer un produit défectueux qu'on ne
+    // vend plus ne doit pas être bloqué (P1 bis n°21l).
     const regularizing =
-      input.operationType === 'INVENTORY' || input.operationType === 'MANUAL';
+      input.operationType === 'INVENTORY' ||
+      input.operationType === 'MANUAL' ||
+      input.operationType === 'SUPPLIER_RETURN';
     const finishingTransfer =
       location.type === 'TRANSIT' && input.operationType === 'TRANSFER';
     if (
@@ -176,10 +180,12 @@ export class StockLedgerService {
 
     // Seule une SORTIE peut être refusée : une entrée ne rend jamais le disponible « plus
     // négatif », et la bloquer empêcherait de régulariser un stock déjà en négatif.
+    // « Vente sans stock » autorise une VENTE à découvert, jamais un renvoi au
+    // fournisseur : on ne rend que ce qu'on a (P1 bis n°21l).
     if (
       input.quantity.isNegative() &&
       availableAfter.isNegative() &&
-      !product.allowBackorder
+      (!product.allowBackorder || input.operationType === 'SUPPLIER_RETURN')
     ) {
       throw new BusinessException(
         ErrorCode.STOCK_NEGATIVE,

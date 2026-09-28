@@ -162,7 +162,7 @@ export class RemindersService
     >`
       SELECT po."id", po."number", po."dueDate", po."supplierId",
              s."name" AS "supplierName",
-             (COALESCE(r."received", 0) - COALESCE(p."paid", 0))::int AS "remaining"
+             (COALESCE(r."received", 0) - COALESCE(b."returned", 0) - COALESCE(p."paid", 0))::int AS "remaining"
       FROM "PurchaseOrder" po
       JOIN "Supplier" s ON s."id" = po."supplierId"
       LEFT JOIN (SELECT "purchaseOrderId", SUM("totalTtc") AS "received"
@@ -171,9 +171,12 @@ export class RemindersService
       LEFT JOIN (SELECT "purchaseOrderId", SUM("amount") AS "paid"
                  FROM "SupplierPayment" GROUP BY "purchaseOrderId") p
         ON p."purchaseOrderId" = po."id"
+      LEFT JOIN (SELECT "purchaseOrderId", SUM("totalTtc") AS "returned"
+                 FROM "SupplierReturn" GROUP BY "purchaseOrderId") b
+        ON b."purchaseOrderId" = po."id"
       WHERE po."status" IN ('CONFIRMEE', 'PARTIELLEMENT_RECUE', 'RECUE', 'CLOTUREE')
         AND po."dueDate" <= ${soon}
-        AND COALESCE(r."received", 0) - COALESCE(p."paid", 0) > 0
+        AND COALESCE(r."received", 0) - COALESCE(b."returned", 0) - COALESCE(p."paid", 0) > 0
       ORDER BY po."dueDate" ASC
       LIMIT ${MAX_PER_TYPE}`;
     // Un paiement général (sans commande) réduit la dette du fournisseur : le
