@@ -83,6 +83,10 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   late ProductUnit _unit;
   String? _categoryId;
   String? _taxRateId;
+
+  /// Nouveau produit : le taux de TVA PAR DÉFAUT (Paramètres) est proposé une
+  /// fois, dès que les taux sont connus.
+  bool _defaultTaxApplied = false;
   String? _storageLocationId;
   String? _mainSupplierId;
   late bool _allowBackorder;
@@ -491,6 +495,13 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final colors = AmpereColors.of(context);
     final categories = ref.watch(categoriesProvider).value ?? const [];
     final taxRates = ref.watch(taxRatesProvider).value ?? const [];
+    if (widget.existing == null && !_defaultTaxApplied && taxRates.isNotEmpty) {
+      _defaultTaxApplied = true;
+      _taxRateId ??= taxRates
+          .where((t) => t.isDefault && t.isActive)
+          .firstOrNull
+          ?.id;
+    }
     final priceTiers =
         ref.watch(priceTiersProvider).value ?? const <PriceTier>[];
     // Stock en ligne, si le compte peut le lire : état affiché sur la fiche.

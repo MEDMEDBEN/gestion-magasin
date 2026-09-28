@@ -1,4 +1,3 @@
-import { SettingsModule } from './settings/settings.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -29,6 +28,7 @@ import { TransfersModule } from './transfers/transfers.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { SalesModule } from './sales/sales.module';
 import { StorageModule } from './storage/storage.module';
+import { SettingsModule } from './settings/settings.module';
 import { SyncModule } from './sync/sync.module';
 import { UsersModule } from './users/users.module';
 

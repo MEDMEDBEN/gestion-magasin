@@ -1,4 +1,6 @@
 import { ConfigService } from '@nestjs/config';
+import { execSync } from 'child_process';
+import { join } from 'path';
 import * as request from 'supertest';
 import { RoleCode } from '../src/common/auth.decorators';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -201,11 +203,11 @@ describe('Paramètres (e2e)', () => {
       // IMPRIMÉE : ticket, facture, devis et bons lisent `storeIdentity`.
       // Une facture exige NIF ET RC : sans RC (ni env), refusée…
       const config = e2e.app.get(ConfigService);
-      if (!config.get<string>('STORE_RC')) {
-        await expect(storeIdentity(prisma, config, true)).rejects.toThrow(
-          'Paramètres',
-        );
-      }
+      // L'env de test n'a pas de RC : sinon cette preuve n'aurait pas de sens.
+      expect(config.get<string>('STORE_RC') ?? '').toBe('');
+      await expect(storeIdentity(prisma, config, true)).rejects.toThrow(
+        'Paramètres',
+      );
       // … RC saisi dans Paramètres : acceptée, avec les deux mentions.
       await as(tokens.admin)
         .patch('/api/settings/store')
@@ -235,6 +237,111 @@ describe('Paramètres (e2e)', () => {
       ).body;
       expect(cleared.name).toBe(process.env.STORE_NAME?.trim() || null);
     });
+  });
+
+  describe('robustesse (audits 21h)', () => {
+    it('`null` dans une modification : 400, jamais une 500', async () => {
+      for (const body of [{ name: null }, { isActive: null }]) {
+        await as(tokens.admin)
+          .patch(`/api/pricing/tiers/${defaultTierId}`)
+          .send(body)
+          .expect(400);
+      }
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
+        .send({ rate: null })
+        .expect(400);
+    });
+
+    it('identité : arabe, emoji, retour à la ligne refusés (illisibles au PDF)', async () => {
+      for (const name of ['كهرباء النور', 'Nour ⚡', 'Ligne 1\nNIF : faux']) {
+        await as(tokens.admin)
+          .patch('/api/settings/store')
+          .send({ name })
+          .expect(400);
+      }
+    });
+
+    it('rien de changé : pas de ligne d’audit', async () => {
+      const count = () =>
+        prisma.auditLog.count({
+          where: { entityId: defaultTierId, entityType: 'PriceTier' },
+        });
+      const before = await count();
+      await as(tokens.admin)
+        .patch(`/api/pricing/tiers/${defaultTierId}`)
+        .send({})
+        .expect(200);
+      expect(await count()).toBe(before);
+    });
+
+    it('TVA : un seul défaut, le défaut ne se désactive pas', async () => {
+      const other = (
+        await as(tokens.admin)
+          .post('/api/pricing/tax-rates')
+          .send({ code: `TVA7_${suffix}`, name: 'TVA 7 %', rate: '7' })
+          .expect(201)
+      ).body;
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${other.id}`)
+        .send({ isDefault: true })
+        .expect(200);
+      expect(
+        (await prisma.taxRate.findMany({ where: { isDefault: true } })).map(
+          (t) => t.id,
+        ),
+      ).toEqual([other.id]);
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${other.id}`)
+        .send({ isActive: false })
+        .expect(409);
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
+        .send({ isDefault: true })
+        .expect(200);
+    });
+
+    /// Le seed tourne à CHAQUE démarrage du conteneur : il ne doit jamais
+    /// défaire un réglage de l'admin (il réécrivait noms, taux et défauts).
+    it('seed relancé : les réglages de l’admin tiennent, un seul défaut', async () => {
+      const mine = (
+        await as(tokens.admin)
+          .post('/api/pricing/tiers')
+          .send({ code: `SEED_${suffix}`, name: 'Défaut admin' })
+          .expect(201)
+      ).body;
+      await as(tokens.admin)
+        .patch(`/api/pricing/tiers/${mine.id}`)
+        .send({ isDefault: true })
+        .expect(200);
+      const tva19 = await prisma.taxRate.findUniqueOrThrow({
+        where: { code: 'TVA19' },
+      });
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${tva19.id}`)
+        .send({ name: `TVA dix-neuf ${suffix}` })
+        .expect(200);
+      try {
+        execSync('node -r ts-node/register/transpile-only src/seed.ts', {
+          cwd: join(__dirname, '..'),
+          env: process.env,
+          stdio: 'pipe',
+        });
+        const defaults = await prisma.priceTier.findMany({
+          where: { isDefault: true },
+        });
+        expect(defaults.map((t) => t.id)).toEqual([mine.id]);
+        expect(
+          (await prisma.taxRate.findUniqueOrThrow({ where: { code: 'TVA19' } }))
+            .name,
+        ).toBe(`TVA dix-neuf ${suffix}`);
+      } finally {
+        await prisma.taxRate.update({
+          where: { id: tva19.id },
+          data: { name: tva19.name },
+        });
+      }
+    }, 60_000);
   });
 
   describe('qui peut régler', () => {

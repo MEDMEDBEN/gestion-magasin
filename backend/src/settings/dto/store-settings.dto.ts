@@ -1,6 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+
+/// Imprimable par les polices standard des PDF (jeu WinAnsi : latin, accents,
+/// €, guillemets…), sur UNE ligne. L'arabe n'y est pas : refusé plutôt
+/// qu'imprimé illisible sur une facture (police à embarquer : décision en
+/// attente, docs/tasks.md).
+const PRINTABLE = /^[ -~ -ÿ‘’“”–—…€Œœ]*$/;
+const PRINTABLE_MESSAGE =
+  'caractères non imprimables sur les documents (arabe, emoji, retour à la ligne…)';
 
 /// Vide → `null` : le champ retombe sur la variable d'environnement.
 const trimOrNull = ({ value }: { value: unknown }) =>
@@ -23,42 +31,49 @@ export class StoreSettingsDto {
 export class UpdateStoreSettingsDto {
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(120)
   @IsOptional()
   name?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(300)
   @IsOptional()
   address?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(30)
   @IsOptional()
   phone?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(40)
   @IsOptional()
   nif?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(40)
   @IsOptional()
   rc?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(40)
   @IsOptional()
   nis?: string | null;
 
   @Transform(trimOrNull)
   @IsString()
+  @Matches(PRINTABLE, { message: `$property : ${PRINTABLE_MESSAGE}` })
   @MaxLength(40)
   @IsOptional()
   ai?: string | null;

@@ -106,11 +106,17 @@ Future<Map<String, String>?> _askFields(
 }
 
 class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.child, this.action});
+  const _Section({
+    required this.title,
+    required this.child,
+    this.action,
+    this.note,
+  });
 
   final String title;
   final Widget child;
   final Widget? action;
+  final String? note;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -131,6 +137,7 @@ class _Section extends StatelessWidget {
               ?action,
             ],
           ),
+          if (note != null) Text(note!),
           const SizedBox(height: 8),
           child,
         ],
@@ -386,7 +393,9 @@ class _TaxRatesCard extends ConsumerWidget {
     try {
       await action();
       ref.invalidate(settingsTaxRatesProvider);
-      // Les taux descendent par la synchro du catalogue (lecture hors ligne).
+      // Les taux descendent par la synchro du catalogue ; le serveur ne livre
+      // une modification qu'après quelques secondes : elle arrivera à la
+      // synchro suivante si celle-ci est trop tôt.
       await ref.read(catalogSyncProvider.notifier).refresh();
     } on ApiException catch (error) {
       if (context.mounted) _snack(context, error.userMessage);
@@ -405,6 +414,10 @@ class _TaxRatesCard extends ConsumerWidget {
     final rates = ref.watch(settingsTaxRatesProvider);
     return _Section(
       title: 'Taux de TVA',
+      note:
+          'Un nouveau taux vaut pour les ventes futures. Les ventes faites HORS '
+          'LIGNE avant le changement seront refusées à leur synchronisation : '
+          'synchronisez les postes avant de modifier un taux.',
       action: TextButton.icon(
         icon: const Icon(Icons.add, size: 18),
         label: const Text('Nouveau taux'),

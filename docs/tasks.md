@@ -323,9 +323,37 @@ commande, envoyées à la création, effacées par `null` en modification ; list
 Fiche fournisseur : champ e-mail. Test : dates au format jour, effacement par `null`. **Preuve** : app `flutter
 analyze` propre · **+449 ~46** (backend inchangé). Audit : groupé avec 21j (petit périmètre, app seule).
 
-**Prochaine étape précise** : appliquer les audits de 21h (sécurité CONFORME reçu : moyen = identité figée sur une
-facture émise ; relecture en cours) ; puis **21j** notifications planifiées (retard fournisseur, échéances,
-dettes, inventaire, tâches).
+**Audits 21h** — `security-reviewer` : **CONFORME** (1 moyen, 5 faibles) ; `reviewer` : **PAS OK** (4 importants).
+Tout appliqué :
+- 🔴 **Le seed écrasait les réglages de l'admin à CHAQUE démarrage du conteneur** (TVA19 revenait à 19 %, DETAIL
+  redevenait défaut → deux défauts, renommages perdus). Le seed crée ce qui manque et ne réécrit plus rien ; le
+  défaut n'est posé que s'il n'en existe aucun. e2e : seed relancé après réglages → réglages intacts, un seul
+  défaut ; contre-épreuve (ancien seed) → échec.
+- 🟠 **Facture : identité FIGÉE à l'émission** (règle 11 — migration additive `sale_issuer_snapshot`, colonne
+  `Sale.issuerSnapshot`, par `db-migrator`) : une facture réimprimée reste celle émise. Et les mentions (NIF + RC)
+  sont vérifiées AVANT d'attribuer le numéro : plus jamais un numéro consommé sans facture imprimable. e2e : sans
+  NIF/RC → 422, compteur inchangé ; mentions retirées APRÈS émission → la facture se réimprime quand même.
+  Contre-épreuves : les deux gardes retirées → échecs. La suite des ventes pose ses mentions en base.
+- 🟠 Client rattaché à un tarif DÉSACTIVÉ : l'app appliquait encore ce tarif (409 « le tarif a changé » à chaque
+  essai) ; elle retombe maintenant sur le défaut, comme le serveur (test). Hors ligne, la liste des tarifs est
+  inconnue : l'app garde le tarif du client et le serveur tranche à la synchro (limite notée).
+- 🟠 `null` dans une modification de tarif/taux → 400 (c'était une 500) ; messages en français.
+- 🟠 Logique de l'identité sortie du contrôleur (`SettingsService`, ligne verrouillée).
+- Identité : arabe, emoji, retours à la ligne REFUSÉS (400) — illisibles sur les PDF (polices WinAnsi) ; pas
+  d'audit quand rien ne change ; message précis « pas de prix dans le tarif appliqué » ; le taux de TVA PAR
+  DÉFAUT est présélectionné à la création d'un produit (il ne servait à rien) ; avertissement dans Paramètres :
+  changer un taux fait refuser les ventes hors ligne antérieures ; test de métadonnées des gardes (admin SANS
+  `price.manage` / `settings.manage`).
+- Non fait (accepté) : pas d'index unique partiel sur `isDefault` (écritures sérialisées, seed corrigé) ; le
+  plancher sans coût compte encore les tarifs désactivés (règle provisoire du 2026-09-22 — à trancher) ; une valeur
+  `STORE_*` de l'environnement ne s'efface pas depuis l'écran (elle est la valeur de repli).
+- **Preuve (2026-09-28)** : backend lint 0 · `tsc` propre · **151 unit** · **600 e2e** ; app `flutter analyze`
+  propre · **+449 ~46**.
+
+**Prochaine étape précise** : **21j — notifications planifiées** : aucune tâche horaire n'existe au serveur ;
+7 types définis ne sont jamais émis (RETARD_FOURNISSEUR, ECHEANCE_CLIENT, DETTE_CLIENT_RETARD, DETTE_FOURNISSEUR,
+INVENTAIRE_A_FAIRE, TACHE_DU_JOUR, TACHE_EN_RETARD). Ajouter un balayage quotidien idempotent (une notification
+par objet et par jour), dans `src/notifications/`, puis audits (avec 21i).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

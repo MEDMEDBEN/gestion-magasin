@@ -67,35 +67,46 @@ async function seedLocations(): Promise<void> {
   console.log('  ✔ emplacements MAGASIN / DEPOT / TRANSIT');
 }
 
+/// Tarifs et taux de TVA de départ. Le seed tourne à CHAQUE démarrage du
+/// conteneur : il crée ce qui manque et ne réécrit JAMAIS ce que l'admin a
+/// réglé dans Paramètres (nom, taux, défaut, actif). Le défaut n'est posé que
+/// s'il n'y en a encore aucun — jamais deux défauts.
 async function seedPricingReferences(): Promise<void> {
+  const tierDefault = await prisma.priceTier.count({
+    where: { isDefault: true },
+  });
   const tiers = [
-    { code: 'DETAIL', name: 'Détail', isDefault: true },
+    { code: 'DETAIL', name: 'Détail', isDefault: tierDefault === 0 },
     { code: 'GROS', name: 'Gros', isDefault: false },
   ];
   for (const tier of tiers) {
     await prisma.priceTier.upsert({
       where: { code: tier.code },
-      update: { name: tier.name, isDefault: tier.isDefault },
+      update: {},
       create: tier,
     });
   }
 
+  const taxDefault = await prisma.taxRate.count({ where: { isDefault: true } });
   const taxRates = [
-    { code: 'TVA19', name: 'TVA 19 %', rate: '19.00', isDefault: true },
+    {
+      code: 'TVA19',
+      name: 'TVA 19 %',
+      rate: '19.00',
+      isDefault: taxDefault === 0,
+    },
     { code: 'TVA0', name: 'Exonéré (0 %)', rate: '0.00', isDefault: false },
   ];
   for (const taxRate of taxRates) {
     await prisma.taxRate.upsert({
       where: { code: taxRate.code },
-      update: {
-        name: taxRate.name,
-        rate: taxRate.rate,
-        isDefault: taxRate.isDefault,
-      },
+      update: {},
       create: taxRate,
     });
   }
-  console.log('  ✔ tarifs DETAIL/GROS + TVA 19 %/0 %');
+  console.log(
+    '  ✔ tarifs DETAIL/GROS + TVA 19 %/0 % (réglages existants gardés)',
+  );
 }
 
 async function seedAdminUser(): Promise<void> {

@@ -83,6 +83,13 @@ describe('Ventes (e2e)', () => {
     e2e = await createE2eApp();
     prisma = e2e.prisma;
     server = e2e.server;
+    // Mentions légales du magasin (Paramètres) : une facture les exige AVANT
+    // d'attribuer son numéro (P1 bis n°21h).
+    await prisma.storeSettings.upsert({
+      where: { id: 1 },
+      create: { id: 1, nif: '000016001234567', rc: '16/00-1234567B20' },
+      update: { nif: '000016001234567', rc: '16/00-1234567B20' },
+    });
     magasinId = (
       await prisma.location.findFirstOrThrow({ where: { type: 'MAGASIN' } })
     ).id;
@@ -121,6 +128,7 @@ describe('Ventes (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.storeSettings.deleteMany();
     const sales = await prisma.sale.findMany({
       where: { userId: { in: userIds } },
       select: { id: true },
@@ -841,19 +849,7 @@ describe('Ventes (e2e)', () => {
       const invoiced = await as(tokens.vendeur)
         .post(`/api/sales/${sale.id}/invoice`)
         .expect(200);
-      // Mentions légales absentes : pas de facture imprimable (le ticket, si).
-      const configured = Boolean(process.env.STORE_NIF && process.env.STORE_RC);
-      if (!configured) {
-        await pdf(tokens.vendeur, 422);
-        process.env.STORE_NIF = '000123456789012';
-        process.env.STORE_RC = '16/00-1234567B20';
-      }
-      const invoice = await pdf(tokens.vendeur).finally(() => {
-        if (!configured) {
-          delete process.env.STORE_NIF;
-          delete process.env.STORE_RC;
-        }
-      });
+      const invoice = await pdf(tokens.vendeur);
       expect(invoice.headers['content-disposition']).toContain(
         `${invoiced.body.invoiceNumber}.pdf`,
       );
@@ -880,6 +876,84 @@ describe('Ventes (e2e)', () => {
         .post(`/api/sales/${sale.id}/invoice`)
         .expect(404);
       await as(tokens.vendeur).get(`/api/sales/${sale.id}`).expect(404);
+    });
+  });
+
+  /// Règle 11 : un numéro de facture n'est JAMAIS consommé pour une facture
+  /// qu'on ne pourrait pas imprimer ; une facture émise se réimprime À
+  /// L'IDENTIQUE, même après un changement des Paramètres.
+  describe('facture et identité du magasin', () => {
+    const cashSale = async () => {
+      const p = await product('10.000');
+      return (
+        await as(tokens.vendeur)
+          .post('/api/sales')
+          .send({
+            lines: [{ productId: p, quantity: '1' }],
+            paidAmount: 172550,
+          })
+          .expect(201)
+      ).body as { id: string };
+    };
+
+    it('sans NIF ni RC : facture refusée, AUCUN numéro consommé', async () => {
+      const sale = await cashSale();
+      const year = new Date().getFullYear();
+      const counter = () =>
+        prisma.invoiceCounter.findUnique({
+          where: { documentType_year: { documentType: 'FACTURE', year } },
+        });
+      const before = (await counter())?.lastNumber ?? 0;
+      const saved = await prisma.storeSettings.findUniqueOrThrow({
+        where: { id: 1 },
+      });
+      await prisma.storeSettings.update({
+        where: { id: 1 },
+        data: { nif: null, rc: null },
+      });
+      try {
+        if (!process.env.STORE_NIF || !process.env.STORE_RC) {
+          const res = await as(tokens.vendeur)
+            .post(`/api/sales/${sale.id}/invoice`)
+            .expect(422);
+          expect(res.body.code).toBe('STORE_IDENTITY_MISSING');
+          expect((await counter())?.lastNumber ?? 0).toBe(before);
+        }
+      } finally {
+        await prisma.storeSettings.update({
+          where: { id: 1 },
+          data: { nif: saved.nif, rc: saved.rc },
+        });
+      }
+    });
+
+    it('identité FIGÉE à l’émission : la réimpression ne change pas', async () => {
+      const sale = await cashSale();
+      await as(tokens.vendeur)
+        .post(`/api/sales/${sale.id}/invoice`)
+        .expect(200);
+      const row = await prisma.sale.findUniqueOrThrow({
+        where: { id: sale.id },
+      });
+      expect(row.issuerSnapshot).toMatchObject({
+        legal: expect.arrayContaining(['NIF : 000016001234567']) as unknown,
+      });
+      // Les mentions sont ensuite RETIRÉES des Paramètres : une facture neuve
+      // serait refusée ; la facture émise, elle, se réimprime (identité figée).
+      await prisma.storeSettings.update({
+        where: { id: 1 },
+        data: { nif: null, rc: null },
+      });
+      try {
+        if (!process.env.STORE_NIF || !process.env.STORE_RC) {
+          await as(tokens.vendeur).get(`/api/sales/${sale.id}/pdf`).expect(200);
+        }
+      } finally {
+        await prisma.storeSettings.update({
+          where: { id: 1 },
+          data: { nif: '000016001234567', rc: '16/00-1234567B20' },
+        });
+      }
     });
   });
 

@@ -32,7 +32,7 @@ import {
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
 import { renderSaleDocument } from './sale-document';
-import { storeIdentity } from '../settings/store-settings';
+import { StoreIdentity, storeIdentity } from '../settings/store-settings';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
@@ -437,12 +437,20 @@ export class SalesService {
         select: { fullName: true },
       }),
     ]);
-    // Pas de facture sans mentions légales ; un ticket, lui, reste imprimable.
-    const store = await storeIdentity(
-      this.prisma,
-      this.config,
-      !!sale.invoiceNumber,
-    );
+    // Facture : l'identité FIGÉE à son émission (règle 11) — la réimprimer
+    // après un changement des Paramètres rend le document émis. Ticket :
+    // l'identité du jour.
+    const frozen = sale.invoiceNumber
+      ? (
+          await this.prisma.sale.findUnique({
+            where: { id: sale.id },
+            select: { issuerSnapshot: true },
+          })
+        )?.issuerSnapshot
+      : null;
+    const store = frozen
+      ? (frozen as unknown as StoreIdentity)
+      : await storeIdentity(this.prisma, this.config, !!sale.invoiceNumber);
     const pdf = await renderSaleDocument({
       sale,
       store,
@@ -472,6 +480,10 @@ export class SalesService {
       }
       if (sale!.invoiceNumber) return this.toDto(tx, sale!);
 
+      // Mentions légales vérifiées AVANT d'attribuer le numéro : jamais un
+      // numéro consommé pour une facture qu'on ne pourrait pas imprimer. Puis
+      // l'identité est FIGÉE sur la facture (règle 11).
+      const issuer = await storeIdentity(tx, this.config, true);
       // UN seul instant pour l'année du numéro ET la date de facture : à minuit
       // le 31/12, jamais « FA-2026-… » daté de 2027.
       const invoicedAt = new Date();
@@ -484,7 +496,12 @@ export class SalesService {
       );
       const invoiced = await tx.sale.update({
         where: { id },
-        data: { type: 'FACTURE', invoiceNumber, invoicedAt },
+        data: {
+          type: 'FACTURE',
+          invoiceNumber,
+          invoicedAt,
+          issuerSnapshot: { ...issuer },
+        },
         include: SALE_INCLUDE,
       });
       await writeAudit(tx, actor, {
@@ -855,7 +872,10 @@ export class SalesService {
     if (unitPriceHt === null || floor === null) {
       throw new BusinessException(
         ErrorCode.PRICE_NOT_DEFINED,
-        `« ${product.name} » n’a pas de prix de vente : l’administrateur doit le définir`,
+        product.prices.length > 0
+          ? `« ${product.name} » n’a pas de prix dans le tarif appliqué : ` +
+              'l’administrateur doit le renseigner (Catalogue, fiche produit)'
+          : `« ${product.name} » n’a pas de prix de vente : l’administrateur doit le définir`,
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }

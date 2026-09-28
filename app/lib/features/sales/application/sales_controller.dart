@@ -305,8 +305,17 @@ CartEstimate estimateCart(
   CartState cart, {
   required String? defaultTierId,
   required Map<String, Decimal> taxRates,
+  Set<String>? activeTierIds,
 }) {
-  final tierId = cart.customer?.priceTierId ?? defaultTierId;
+  // MÊME règle que le serveur (`priceCart`) : le tarif du client s'il est
+  // encore ACTIF, sinon le tarif par défaut. Liste des tarifs inconnue (hors
+  // ligne) : celui du client — le serveur tranche à la synchro.
+  final customerTier = cart.customer?.priceTierId;
+  final tierId =
+      customerTier != null &&
+          (activeTierIds == null || activeTierIds.contains(customerTier))
+      ? customerTier
+      : defaultTierId;
   var ht = 0;
   var tax = 0;
   final missing = <Product>[];
@@ -358,6 +367,7 @@ final cartEstimateProvider = Provider.autoDispose<CartEstimate>((ref) {
     ref.watch(cartProvider),
     defaultTierId: tiers.where((t) => t.isDefault).firstOrNull?.id,
     taxRates: {for (final r in rates) r.id: Decimal.parse(r.rate)},
+    activeTierIds: tiers.isEmpty ? null : {for (final t in tiers) t.id},
   );
 });
 

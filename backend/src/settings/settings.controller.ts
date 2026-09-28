@@ -1,12 +1,10 @@
 import { Body, Controller, Get, Ip, Patch } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { writeAudit } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
@@ -15,15 +13,11 @@ import {
   Roles,
 } from '../common/auth.decorators';
 import { PERMISSIONS } from '../common/permissions';
-import { PrismaService } from '../prisma/prisma.service';
 import {
   StoreSettingsDto,
   UpdateStoreSettingsDto,
 } from './dto/store-settings.dto';
-import { STORE_FIELDS, storeSettings } from './store-settings';
-
-/// Identifiant fixe de la ligne unique dans le journal (colonne UUID).
-const STORE_SETTINGS_AUDIT_ID = '00000000-0000-7000-8000-000000000001';
+import { SettingsService } from './settings.service';
 
 /// Paramètres (P1 bis n°21h) : identité du magasin imprimée sur les tickets,
 /// factures, devis et bons. ADMIN + `settings.manage`, lecture comprise (les
@@ -34,10 +28,7 @@ const STORE_SETTINGS_AUDIT_ID = '00000000-0000-7000-8000-000000000001';
 @Roles(RoleCode.ADMIN)
 @RequirePermissions(PERMISSIONS.SETTINGS_MANAGE)
 export class SettingsController {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly settings: SettingsService) {}
 
   @Get('store')
   @ApiOperation({
@@ -45,7 +36,7 @@ export class SettingsController {
   })
   @ApiOkResponse({ type: StoreSettingsDto })
   store(): Promise<StoreSettingsDto> {
-    return storeSettings(this.prisma, this.config);
+    return this.settings.store();
   }
 
   @Patch('store')
@@ -58,32 +49,6 @@ export class SettingsController {
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<StoreSettingsDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const before = await storeSettings(tx, this.config);
-      const data = Object.fromEntries(
-        STORE_FIELDS.filter((f) => dto[f] !== undefined).map((f) => [
-          f,
-          dto[f],
-        ]),
-      );
-      await tx.storeSettings.upsert({
-        where: { id: 1 },
-        create: { id: 1, ...data },
-        update: data,
-      });
-      const after = await storeSettings(tx, this.config);
-      await writeAudit(
-        tx,
-        { userId: user.id, ipAddress: ip },
-        {
-          action: 'UPDATE',
-          entityType: 'StoreSettings',
-          entityId: STORE_SETTINGS_AUDIT_ID,
-          oldValue: { ...before },
-          newValue: { ...after },
-        },
-      );
-      return after;
-    });
+    return this.settings.updateStore(dto, { userId: user.id, ipAddress: ip });
   }
 }

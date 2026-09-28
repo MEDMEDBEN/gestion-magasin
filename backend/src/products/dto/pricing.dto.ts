@@ -9,7 +9,7 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { booleanQuery } from '../../common/validation';
+import { booleanQuery, IsOptionalNotNull } from '../../common/validation';
 
 /// Paramètres de prix (P1 bis n°21h) : tarifs et taux de TVA, gérés par
 /// l'ADMIN (`price.manage`). Un seul élément par défaut ; le défaut ne se
@@ -47,8 +47,8 @@ export class CreatePriceTierDto {
   @ApiProperty({ example: 'Revendeur' })
   @Transform(trim)
   @IsString()
-  @MinLength(2)
-  @MaxLength(60)
+  @MinLength(2, { message: 'name : 2 caractères au moins' })
+  @MaxLength(60, { message: 'name : 60 caractères au plus' })
   name!: string;
 }
 
@@ -56,21 +56,21 @@ export class UpdatePriceTierDto {
   @ApiPropertyOptional()
   @Transform(trim)
   @IsString()
-  @MinLength(2)
-  @MaxLength(60)
-  @IsOptional()
+  @MinLength(2, { message: 'name : 2 caractères au moins' })
+  @MaxLength(60, { message: 'name : 60 caractères au plus' })
+  @IsOptionalNotNull()
   name?: string;
 
   @ApiPropertyOptional({
     description: 'Seul `true` : désigner un autre défaut retire l’ancien.',
   })
   @IsIn([true])
-  @IsOptional()
+  @IsOptionalNotNull()
   isDefault?: true;
 
   @ApiPropertyOptional()
   @IsBoolean()
-  @IsOptional()
+  @IsOptionalNotNull()
   isActive?: boolean;
 }
 
@@ -84,8 +84,8 @@ export class CreateTaxRateDto {
   @ApiProperty({ example: 'TVA 9 %' })
   @Transform(trim)
   @IsString()
-  @MinLength(2)
-  @MaxLength(60)
+  @MinLength(2, { message: 'name : 2 caractères au moins' })
+  @MaxLength(60, { message: 'name : 60 caractères au plus' })
   name!: string;
 
   @ApiProperty({ example: '9.00', description: 'Pourcentage, en chaîne.' })
@@ -98,9 +98,9 @@ export class UpdateTaxRateDto {
   @ApiPropertyOptional()
   @Transform(trim)
   @IsString()
-  @MinLength(2)
-  @MaxLength(60)
-  @IsOptional()
+  @MinLength(2, { message: 'name : 2 caractères au moins' })
+  @MaxLength(60, { message: 'name : 60 caractères au plus' })
+  @IsOptionalNotNull()
   name?: string;
 
   @ApiPropertyOptional({
@@ -110,16 +110,16 @@ export class UpdateTaxRateDto {
   })
   @IsString()
   @Matches(RATE, { message: RATE_MESSAGE })
-  @IsOptional()
+  @IsOptionalNotNull()
   rate?: string;
 
   @ApiPropertyOptional({ description: 'Seul `true`.' })
   @IsIn([true])
-  @IsOptional()
+  @IsOptionalNotNull()
   isDefault?: true;
 
   @ApiPropertyOptional()
   @IsBoolean()
-  @IsOptional()
+  @IsOptionalNotNull()
   isActive?: boolean;
 }

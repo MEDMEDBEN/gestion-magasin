@@ -331,6 +331,50 @@ void main() {
     );
     expect(estimate.lineTotalsHt, {'p1': 362500});
 
+    // Client au tarif GROS désactivé : le tarif par défaut s'applique, comme
+    // au serveur (sinon 409 « le tarif a changé » à chaque essai).
+    final pro = CartState(
+      saleId: 's',
+      lines: [CartLine(_cable(), Decimal.one)],
+      customer: const Customer(
+        id: 'c',
+        name: 'Pro',
+        priceTierId: 'gros',
+        creditLimit: 0,
+        balanceDue: 0,
+        isActive: true,
+      ),
+    );
+    final grosPrice = _cable().copyWith(
+      prices: const [
+        ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
+        ProductPriceLine(priceTierId: 'gros', priceHt: 120000),
+      ],
+    );
+    final proCart = CartState(
+      saleId: 's',
+      lines: [CartLine(grosPrice, Decimal.one)],
+      customer: pro.customer,
+    );
+    expect(
+      estimateCart(
+        proCart,
+        defaultTierId: 'detail',
+        taxRates: const {},
+        activeTierIds: const {'detail', 'gros'},
+      ).totalHt,
+      120000,
+    );
+    expect(
+      estimateCart(
+        proCart,
+        defaultTierId: 'detail',
+        taxRates: const {},
+        activeTierIds: const {'detail'},
+      ).totalHt,
+      145000,
+    );
+
     // Borne de la remise = celle du serveur : net ≥ plancher × quantité.
     final costed = _cable().copyWith(lastPurchasePriceHt: 100000);
     final q = Decimal.parse('2.5');

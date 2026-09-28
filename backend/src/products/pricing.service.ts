@@ -85,13 +85,17 @@ export class PricingService {
       const after = PricingService.tierToDto(
         await tx.priceTier.update({ where: { id }, data: dto }),
       );
-      await writeAudit(tx, actor, {
-        action: 'UPDATE',
-        entityType: 'PriceTier',
-        entityId: id,
-        oldValue: { ...PricingService.tierToDto(before) },
-        newValue: { ...after },
-      });
+      const oldValue = { ...PricingService.tierToDto(before) };
+      // Rien de changé (corps vide, valeurs identiques) : pas d'audit.
+      if (JSON.stringify(oldValue) !== JSON.stringify({ ...after })) {
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'PriceTier',
+          entityId: id,
+          oldValue,
+          newValue: { ...after },
+        });
+      }
       return after;
     });
   }
@@ -142,13 +146,19 @@ export class PricingService {
       const after = CatalogService.taxRateToDto(
         await tx.taxRate.update({ where: { id }, data: dto }),
       );
-      await writeAudit(tx, actor, {
-        action: 'UPDATE',
-        entityType: 'TaxRate',
-        entityId: id,
-        oldValue: PricingService.taxAudit(CatalogService.taxRateToDto(before)),
-        newValue: PricingService.taxAudit(after),
-      });
+      const oldValue = PricingService.taxAudit(
+        CatalogService.taxRateToDto(before),
+      );
+      const newValue = PricingService.taxAudit(after);
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        await writeAudit(tx, actor, {
+          action: 'UPDATE',
+          entityType: 'TaxRate',
+          entityId: id,
+          oldValue,
+          newValue,
+        });
+      }
       return after;
     });
   }

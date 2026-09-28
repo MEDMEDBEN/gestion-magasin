@@ -6,6 +6,8 @@ import {
 } from '../auth.decorators';
 import { PERMISSIONS } from '../permissions';
 import { ImportsController } from '../../imports/imports.controller';
+import { PricingController } from '../../products/products.controller';
+import { SettingsController } from '../../settings/settings.controller';
 import { CustomersController } from '../../customers/customers.controller';
 import { InventoryController } from '../../inventory/inventory.controller';
 import { PurchaseOrdersController } from '../../purchases/purchase-orders.controller';
@@ -74,5 +76,30 @@ describe('gardes des imports', () => {
     ]);
     expect(meta(controller, route, PERMISSIONS_KEY)).toEqual(permissions);
     expect(meta(controller, template, PERMISSIONS_KEY)).toEqual(permissions);
+  });
+});
+
+/// Paramètres (P1 bis n°21h) : chaque écriture de prix exige ADMIN +
+/// `price.manage` ; l'identité du magasin, ADMIN + `settings.manage` (au
+/// niveau du contrôleur, lecture comprise).
+describe('gardes des Paramètres', () => {
+  it.each(['createTier', 'updateTier', 'createTaxRate', 'updateTaxRate'])(
+    'PricingController.%s',
+    (method) => {
+      const controller = PricingController as Controller;
+      expect(meta(controller, method, ROLES_KEY)).toEqual([RoleCode.ADMIN]);
+      expect(meta(controller, method, PERMISSIONS_KEY)).toEqual([
+        PERMISSIONS.PRICE_MANAGE,
+      ]);
+    },
+  );
+
+  it('SettingsController', () => {
+    expect(Reflect.getMetadata(ROLES_KEY, SettingsController)).toEqual([
+      RoleCode.ADMIN,
+    ]);
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, SettingsController)).toEqual([
+      PERMISSIONS.SETTINGS_MANAGE,
+    ]);
   });
 });

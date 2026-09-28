@@ -9,8 +9,6 @@ import { Prisma } from '../generated/prisma/client';
 import { StoreIdentity } from '../settings/store-settings';
 import { SaleDto } from './dto/sale.dto';
 
-/// Identité du vendeur imprimée en tête (variables STORE_* ; vides = omises).
-
 export interface SaleDocumentData {
   sale: SaleDto;
   store: StoreIdentity;
