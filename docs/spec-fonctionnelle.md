@@ -48,6 +48,7 @@ Gérer le stock dépôt ; rechercher/scanner ; gérer les emplacements ; récept
 - Login obligatoire : identifiant (email/téléphone) + mot de passe (argon2).
 - **Session persistante** : access token 15 min + **refresh token longue durée (90 jours, glissant)** stocké chiffré (`flutter_secure_storage`). L'utilisateur se connecte **une seule fois** ; l'access token est renouvelé silencieusement tant qu'il utilise l'app → il ne ressaisit jamais son mot de passe.
 - Re-login requis uniquement si : refresh expiré, session révoquée, compte désactivé, ou déconnexion volontaire. Refresh **révocable** via la table `RefreshToken`.
+- **Démarrage sans réseau** (2026-09-29) : l'app s'ouvre sur le dernier compte reconnu par le serveur depuis moins de 72 h, puis revérifie la session dès que le serveur répond — détail et risque accepté dans `docs/context.md` (journal, 2026-09-29).
 - Optionnel : verrou **PIN / biométrie** à l'ouverture de l'app (confort + sécurité), sans re-login serveur.
 - Après login, le serveur renvoie le rôle → l'app affiche **la vue propre au rôle** et déclenche la synchronisation.
 

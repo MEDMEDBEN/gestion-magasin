@@ -252,3 +252,20 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
 
 **Chèques (P1 bis n°21n, 2026-09-28)** : un règlement client par chèque ne passe JAMAIS par la file hors-ligne —
 le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin doit connaître le chèque pour le suivre.
+
+- **2026-09-29 (MEDMEDBEN) — Ouverture de l'app SANS réseau.** Avant, une app lancée hors ligne (ou serveur en
+  panne) restait sur « Serveur injoignable » : le hors-ligne ne servait que si la coupure survenait app ouverte.
+  Désormais, la **fiche du compte** (JSON, `flutter_secure_storage`, jamais Drift) est gardée à chaque réponse du
+  serveur sur le compte (`/auth/me`, connexion) ; au démarrage sans serveur, elle ouvre la session si :
+  refresh token présent, fiche du MÊME compte que l'access token (`sub`), pas de mot de passe temporaire, et
+  dernier contact reconnu ≤ `maxOfflineDuration` (72 h) — âge mesuré jusqu'à l'instant le plus tardif déjà vu
+  par l'appareil (`offline_seen_at`, relevé toutes les 30 s hors ligne) : reculer l'horloge ne rend pas de temps.
+  La borne vaut aussi app OUVERTE : dépassée, retour à « serveur injoignable », sans rien effacer (file, tokens).
+  Au retour du serveur (réseau revenu, ou battement de 30 s), `/auth/me` revérifie : droits mis à jour, ou
+  session fermée (refresh refusé, compte désactivé, plus aucun rôle, compte introuvable) avec purge des tokens,
+  de la fiche et des documents hors ligne. En ligne, la fiche est relue toutes les heures. Un simple
+  renouvellement de token ne rajeunit PAS la fiche.
+  **Risque accepté par MEDMEDBEN** : un compte désactivé peut encore OUVRIR l'app hors ligne ≤ 72 h sur un
+  appareil où il était connecté (lecture du catalogue local, coûts d'achat compris) ; rien de ce qu'il fait ne
+  passe — chaque mutation est rejugée au sync, et la session tombe dès que le serveur répond. Plafond connu :
+  qui recule l'horloge à chaque lancement gagne au plus le temps passé app fermée.

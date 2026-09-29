@@ -163,6 +163,7 @@ class FakeAuthApi implements AuthApi {
     bool allDevices = false,
   }) async {
     logoutCalls.add(allDevices);
+    await beforeLogout?.call();
     if (logoutFailure != null) throw logoutFailure!;
     return allDevices ? allDevicesRevoked : 1;
   }
@@ -182,8 +183,22 @@ class FakeAuthApi implements AuthApi {
     );
   }
 
+  /// Réponse de `/auth/me` en échec (hors ligne, session révoquée…).
+  ApiException? meFailure;
+
+  /// Retardent la réponse (tests de course entre vérification et session).
+  Future<void> Function()? beforeMe;
+  Future<void> Function()? beforeLogout;
+
   @override
-  Future<AuthUser> me() async => user;
+  Future<AuthUser> me() async {
+    // La réponse est celle de l'instant de la requête, même servie en retard.
+    final answer = user;
+    final failure = meFailure;
+    await beforeMe?.call();
+    if (failure != null) throw failure;
+    return answer;
+  }
 
   @override
   Future<AuthSession> login({
@@ -286,10 +301,50 @@ class MemoryTokenStore extends TokenStore {
     refresh = refreshToken;
   }
 
+  /// Fiche gardée pour le démarrage hors ligne, et instant du dernier contact.
+  String? offlineUser;
+  DateTime? serverContactAt;
+  DateTime? offlineSeen;
+
+  /// Retarde l'écriture de la fiche (tests de course avec la déconnexion).
+  Future<void> Function()? beforeSaveOfflineUser;
+
+  @override
+  Future<void> saveOfflineUser(String userJson) async {
+    await beforeSaveOfflineUser?.call();
+    offlineUser = userJson;
+    serverContactAt = DateTime.now().toUtc();
+    offlineSeen = null;
+  }
+
+  @override
+  Future<({String userJson, DateTime serverContactAt, DateTime? lastSeen})?>
+  readOfflineUser() async {
+    final json = offlineUser;
+    final at = serverContactAt;
+    return json == null || at == null
+        ? null
+        : (userJson: json, serverContactAt: at, lastSeen: offlineSeen);
+  }
+
+  @override
+  Future<void> markOfflineSeen() async {
+    final now = DateTime.now().toUtc();
+    if (offlineSeen == null || now.isAfter(offlineSeen!)) offlineSeen = now;
+  }
+
+  @override
+  Future<void> clearOfflineUser() async {
+    offlineUser = null;
+    serverContactAt = null;
+    offlineSeen = null;
+  }
+
   @override
   Future<void> clear() async {
     access = null;
     refresh = null;
+    await clearOfflineUser();
   }
 
   @override
