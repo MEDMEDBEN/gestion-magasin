@@ -644,8 +644,33 @@ Spec §28 (sans IA) : le système prépare, l'utilisateur vérifie, l'admin conf
   qui porte le tampon « BROUILLON ») : faut-il le réserver aux commandes envoyées / confirmées ? ; une commande
   confirmée avec un prix à 0 fausse les marges (signalé à la préparation, pas bloqué).
 
-**Prochaine étape précise** : audits de P2 n°22, preuves complètes, commit ; puis **P2 n°23** (contact clients ciblé :
-pour un nouveau produit, clients ayant acheté une catégorie similaire ; message par modèle validé avant envoi).
+### P2 n°23 — Contact clients ciblé (livré et audité)
+Spec §28 : pour un nouveau produit, les clients qui ont acheté une catégorie similaire ; message par modèle validé
+avant envoi.
+- `GET /products/:id/prospects` (ADMIN + `product.read` + `customer.read`, droits relus en base, 30/min — la liste
+  révèle ce que chaque client achète) : clients ACTIFS ayant une vente validée dans la catégorie du produit ou une
+  catégorie de la même famille (racine + sous-catégories), du plus fidèle (nombre de ventes) au plus récent, 100 au plus ; chacun
+  avec un message à modèle FIXE à son nom (« Bonjour X, Nous venons de recevoir un nouveau produit : … Il pourrait
+  vous intéresser … » + nom du magasin). Produit sans catégorie → 422.
+- App : fiche produit (ADMIN) → « Clients à prévenir » : liste (téléphone, e-mail, achats, dernier achat), message
+  dépliable et « Copier le message » par client. L'envoi reste un geste humain (aucune intégration).
+- Preuves : e2e `prospects` 2 (catégorie + sœurs, client inactif exclu, ordre, message ; vendeur 403, sans
+  catégorie 422, inconnu 404) ; contre-épreuves (clients actifs, catégories sœurs) → échecs ; app
+  `catalog_screen_test` +1.
+- ponytail : 5 000 ventes les plus récentes lues en mémoire.
+- **Audits (2026-09-29) — appliqués** : sécurité conforme ; revue : 1 important — « catégorie similaire » était
+  asymétrique (un produit rangé à la RACINE ignorait ses sous-catégories) → toujours la FAMILLE (racine + toutes ses
+  sous-catégories). Aussi : clients sans téléphone ni e-mail exclus, sauts de ligne retirés du nom dans le message,
+  droit app aligné (+ `product.read`), bouton masqué sans catégorie ; tests : vente comptoir, vente annulée,
+  client injoignable, produit à la racine. Contre-épreuves (famille, joignables) → échecs.
+- Limite notée : une vente entièrement retournée compte encore comme un achat (acceptable pour un ciblage).
+- **Preuves complètes (2026-09-29)** : lint 0 · `tsc` · **156 unit** · **643 e2e** ; app analyze propre · **+471 ~46**.
+
+**Décision MEDMEDBEN (2026-09-29)** : le **scan des factures (P2 n°24, OCR)** RESTE au plan — à faire après n°23.
+
+**Prochaine étape précise** : audits de P2 n°23, preuves complètes, commit ; puis **P2 n°24** — scan d'une facture
+fournisseur pour pré-remplir une réception (lignes produit / quantité / prix proposées, TOUJOURS corrigeables avant
+validation, jamais source de vérité — spec §28).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

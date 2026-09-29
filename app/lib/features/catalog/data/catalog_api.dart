@@ -48,6 +48,16 @@ class CatalogApi {
         return [for (final r in response.data!) r as Map<String, dynamic>];
       });
 
+  /// Clients à prévenir d'un produit (P2 n°23, ADMIN) : `name`, `phone`,
+  /// `email`, `purchases`, `lastPurchaseAt`, `message`.
+  Future<List<Map<String, dynamic>>> prospects(String productId) =>
+      guardApi(() async {
+        final response = await _dio.get<List<dynamic>>(
+          '/products/$productId/prospects',
+        );
+        return [for (final r in response.data!) r as Map<String, dynamic>];
+      });
+
   Future<List<PriceTier>> priceTiers() {
     return guardApi(() async {
       final response = await _dio.get<List<dynamic>>('/pricing/tiers');

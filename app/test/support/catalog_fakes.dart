@@ -96,6 +96,19 @@ class RecordingCatalogApi extends CatalogApi {
   ];
 
   @override
+  Future<List<Map<String, dynamic>>> prospects(String productId) async => [
+    {
+      'customerId': 'c1',
+      'name': 'Électricité Benali',
+      'phone': '0550 00 00 01',
+      'email': null,
+      'purchases': 3,
+      'lastPurchaseAt': '2026-09-20T10:00:00.000Z',
+      'message': 'Bonjour Électricité Benali, nouveau produit : Câble 3G2.5.',
+    },
+  ];
+
+  @override
   Future<CatalogChanges> changes({String? cursor, int limit = 500}) async =>
       const CatalogChanges(
         products: [],

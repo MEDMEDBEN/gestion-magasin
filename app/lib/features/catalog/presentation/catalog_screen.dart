@@ -34,6 +34,11 @@ class CatalogRights {
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
       canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
+      // `GET /products/:id/prospects` (P2 n°23) : ADMIN + customer.read.
+      canContactCustomers =
+          user.hasRole('ADMIN') &&
+          user.can('product.read') &&
+          user.can('customer.read'),
       // `POST /products/labels` : les 3 rôles + product.read ET price.read.
       canPrintLabels = user.can('product.read') && user.can('price.read'),
       // `POST /imports/products` : ADMIN + product.write ET price.manage.
@@ -51,6 +56,7 @@ class CatalogRights {
   final bool canReadStock;
   final bool canReadSuppliers;
   final bool canSetPrices;
+  final bool canContactCustomers;
   final bool canPrintLabels;
   final bool canImportProducts;
 }
@@ -104,6 +110,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
         canReadStock: rights.canReadStock,
         canReadSuppliers: rights.canReadSuppliers,
         canSetPrices: rights.canSetPrices,
+        canContactCustomers: rights.canContactCustomers,
       ),
     );
     if (saved == null || saved == product) return;

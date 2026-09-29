@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
@@ -11,6 +12,7 @@ import { Prisma, Product } from '../generated/prisma/client';
 import { randomUUID } from 'crypto';
 import { detectImageFormat } from '../common/image-format';
 import { PrismaService } from '../prisma/prisma.service';
+import { storeIdentity } from '../settings/store-settings';
 import { StorageService } from '../storage/storage.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import { labelFor, renderLabels } from './labels';
@@ -18,6 +20,7 @@ import {
   CreateProductDto,
   LabelsDto,
   PriceChangeDto,
+  ProspectDto,
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
@@ -64,6 +67,7 @@ export class ProductsService {
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,
     private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {}
 
   /// Étiquettes des produits demandés, dans l'ordre demandé, chacune répétée
@@ -285,6 +289,91 @@ export class ProductsService {
       newValue: { tier: tier.code, priceHt: dto.priceHt },
     });
     return ProductsService.toDto(updated);
+  }
+
+  /// Contact clients ciblé (P2 n°23, spec §28) : pour un produit, les clients
+  /// ACTIFS qui ont acheté (vente validée) dans sa catégorie ou une catégorie
+  /// sœur (même parent), du plus fidèle au moins fidèle — 100 au plus. Chacun
+  /// reçoit un message à modèle fixe à son nom, que l'utilisateur relit avant
+  /// de l'envoyer lui-même (aucune intégration d'envoi).
+  async prospects(id: string): Promise<ProspectDto[]> {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      select: {
+        name: true,
+        sku: true,
+        category: { select: { id: true, parentId: true } },
+      },
+    });
+    if (!product) throw ProductsService.notFound();
+    if (!product.category) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Produit sans catégorie : impossible de trouver des clients proches',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    // La FAMILLE du produit (l'arbre a deux niveaux) : sa catégorie racine et
+    // toutes les sous-catégories de cette racine — même périmètre, que le
+    // produit soit rangé à la racine ou dans une sous-catégorie.
+    const root = product.category.parentId ?? product.category.id;
+    const categories = (
+      await this.prisma.category.findMany({
+        where: { OR: [{ id: root }, { parentId: root }] },
+        select: { id: true },
+      })
+    ).map((c) => c.id);
+    // ponytail: ventes lues en mémoire (5 000 plus récentes) ; agréger en SQL
+    // si l'historique d'un magasin dépasse ce volume.
+    const sales = await this.prisma.sale.findMany({
+      where: {
+        status: 'VALIDEE',
+        // Actif et JOIGNABLE : un client sans téléphone ni e-mail ne se
+        // prévient pas (une vente comptoir, sans client, est exclue d'office).
+        customer: {
+          isActive: true,
+          OR: [{ phone: { not: null } }, { email: { not: null } }],
+        },
+        lines: { some: { product: { categoryId: { in: categories } } } },
+      },
+      select: { customerId: true, soldAt: true },
+      orderBy: { soldAt: 'desc' },
+      take: 5000,
+    });
+    const byCustomer = new Map<string, { count: number; last: Date }>();
+    for (const sale of sales) {
+      const seen = byCustomer.get(sale.customerId!);
+      if (seen) seen.count++;
+      else byCustomer.set(sale.customerId!, { count: 1, last: sale.soldAt });
+    }
+    const ranked = [...byCustomer.entries()]
+      .sort((a, b) => b[1].count - a[1].count || +b[1].last - +a[1].last)
+      .slice(0, 100);
+    const [customers, store] = await Promise.all([
+      this.prisma.customer.findMany({
+        where: { id: { in: ranked.map(([id]) => id) } },
+        select: { id: true, name: true, phone: true, email: true },
+      }),
+      storeIdentity(this.prisma, this.config, false),
+    ]);
+    return ranked.map(([customerId, stats]) => {
+      const c = customers.find((row) => row.id === customerId)!;
+      return {
+        customerId,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        purchases: stats.count,
+        lastPurchaseAt: stats.last,
+        message: [
+          // Nom saisi librement : jamais de saut de ligne dans le message.
+          `Bonjour ${c.name.replace(/\s+/g, ' ')},`,
+          `Nous venons de recevoir un nouveau produit : ${product.name} (réf. ${product.sku}).`,
+          'Il pourrait vous intéresser : passez nous voir ou répondez à ce message.',
+          store.name,
+        ].join('\n'),
+      };
+    });
   }
 
   /// Historique des prix de vente d'un produit (P1 bis n°21n), du plus récent

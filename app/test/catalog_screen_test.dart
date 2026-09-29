@@ -248,6 +248,31 @@ void main() {
     },
   );
 
+  /// P2 n°23 : l'admin voit les clients à prévenir ; pas le vendeur.
+  testWidgets('fiche produit : clients à prévenir (ADMIN seul)', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 2600));
+    await tester.pumpWidget(
+      wrap(
+        authUser(
+          roles: const ['ADMIN'],
+          permissions: const [..._allProductPermissions, 'customer.read'],
+        ),
+        desktop: true,
+        products: [product(name: 'Câble 3G2.5', categoryId: 'cat')],
+        categories: [category()],
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Câble 3G2.5'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clients à prévenir'));
+    await tester.pumpAndSettle();
+    expect(find.text('Électricité Benali'), findsOneWidget);
+    expect(find.textContaining('3 achat(s)'), findsOneWidget);
+  });
+
   /// P1 bis n°21n : l'historique des prix de vente, depuis la fiche produit.
   testWidgets('fiche produit : historique des prix de vente', (tester) async {
     useScreenSize(tester, const Size(1400, 2600));
@@ -266,7 +291,8 @@ void main() {
     expect(
       find.text('DETAIL : premier prix → ${formatDA(145000)}'),
       findsOneWidget,
-    );
+    ); // P2 n°23 : réservé à l'admin.
+    expect(find.text('Clients à prévenir'), findsNothing);
   });
 
   testWidgets(

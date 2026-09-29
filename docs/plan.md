@@ -152,7 +152,7 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 ### P2 — Avancé
 22. Commande fournisseur préparée automatiquement + message par modèle (email/WhatsApp) _(2026-09-29 : livré,
     prouvé et audité)_
-23. Contact clients ciblé par modèle
+23. Contact clients ciblé par modèle _(2026-09-29 : livré, prouvé et audité)_
 24. OCR factures / recherche photo (si pertinent)
 
 <!--

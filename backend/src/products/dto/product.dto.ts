@@ -407,6 +407,19 @@ export class CategoryDto {
   @ApiProperty() updatedAt!: Date;
 }
 
+/// Un client à prévenir d'un nouveau produit (P2 n°23).
+export class ProspectDto {
+  @ApiProperty() customerId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ nullable: true }) phone!: string | null;
+  @ApiProperty({ nullable: true }) email!: string | null;
+  @ApiProperty({ description: 'Ventes de la catégorie à ce client.' })
+  purchases!: number;
+  @ApiProperty() lastPurchaseAt!: Date;
+  @ApiProperty({ description: 'Message à modèle fixe, au nom de ce client.' })
+  message!: string;
+}
+
 /// Un changement de tarif (P1 bis n°21n) : lu de l'AUDIT, où `setPriceInTx`
 /// l'écrit à chaque fois (écran, import) — aucune table de plus.
 export class PriceChangeDto {

@@ -22,6 +22,7 @@ import '../data/catalog_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../../suppliers/data/suppliers_models.dart';
 import 'product_photo.dart';
+import 'prospects_dialog.dart';
 
 /// Création, modification ou consultation d'un produit.
 ///
@@ -36,6 +37,7 @@ class ProductForm extends ConsumerStatefulWidget {
     this.canReadStock = false,
     this.canReadSuppliers = false,
     this.canSetPrices = false,
+    this.canContactCustomers = false,
   });
 
   final Product? existing;
@@ -49,6 +51,9 @@ class ProductForm extends ConsumerStatefulWidget {
 
   /// ADMIN + `price.manage` : les prix sont modifiables ; sinon lecture seule.
   final bool canSetPrices;
+
+  /// ADMIN + `customer.read` : « Clients à prévenir » (P2 n°23).
+  final bool canContactCustomers;
 
   @override
   ConsumerState<ProductForm> createState() => _ProductFormState();
@@ -368,13 +373,24 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       children: [
         _priceFields(colors, tiers),
         if (product != null)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _showPriceHistory(product),
-              icon: const Icon(Icons.history, size: 18),
-              label: const Text('Historique des prix'),
-            ),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () => _showPriceHistory(product),
+                icon: const Icon(Icons.history, size: 18),
+                label: const Text('Historique des prix'),
+              ),
+              if (widget.canContactCustomers && product.categoryId != null)
+                TextButton.icon(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (_) => ProspectsDialog(product: product),
+                  ),
+                  icon: const Icon(Icons.campaign_outlined, size: 18),
+                  label: const Text('Clients à prévenir'),
+                ),
+            ],
           ),
       ],
     );

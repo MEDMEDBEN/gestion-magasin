@@ -55,6 +55,7 @@ import {
   ProductListDto,
   ProductListQueryDto,
   PriceChangeDto,
+  ProspectDto,
   SetProductPriceDto,
   TaxRateDto,
   UpdateCategoryDto,
@@ -240,6 +241,23 @@ export class ProductsController {
       await this.productsService.removeImage(id, actorOf(user, ip)),
       user,
     );
+  }
+
+  /// Contact clients ciblé (P2 n°23) : ADMIN seul — la liste révèle ce que
+  /// chaque client achète (le vendeur ne voit que SES ventes).
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.CUSTOMER_READ)
+  @RequireFreshAccess()
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @Get(':id/prospects')
+  @ApiOperation({
+    summary: 'Clients ayant acheté une catégorie proche, avec leur message',
+  })
+  @ApiOkResponse({ type: [ProspectDto] })
+  prospects(
+    @Param('id', CanonicalUuidPipe) id: string,
+  ): Promise<ProspectDto[]> {
+    return this.productsService.prospects(id);
   }
 
   /// Mêmes lecteurs que les prix eux-mêmes : les trois rôles avec

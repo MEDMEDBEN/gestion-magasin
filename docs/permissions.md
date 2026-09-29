@@ -266,6 +266,13 @@ d'environnement `STORE_*` du serveur.
 Garde : les trois rôles + `product.read` **ET** `price.read` (le prix est imprimé). Aucune écriture : une
 lecture en POST, parce qu'une liste de 200 produits ne tient pas dans une URL. Produits actifs seulement.
 
+## Contact clients ciblé (P2 n°23, ajouté le 2026-09-29)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Clients à prévenir d'un produit (`GET /products/:id/prospects`) | ✅ (`product.read` + `customer.read`, droits relus) | ❌ | ❌ |
+
+La liste révèle ce que chaque client achète : réservée à l'ADMIN, comme le total acheté d'un client.
+
 ## Historique des prix de vente (P1 bis n°21n, ajouté le 2026-09-29)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
