@@ -38,6 +38,11 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/prisma.config.ts ./
 COPY --from=build /app/dist ./dist
 
+# Dossier des fichiers joints (STORAGE_DIR) créé ICI au nom de `node` : un
+# volume Docker neuf reprend le propriétaire du dossier de l'image. Sans cela,
+# il appartient à root et aucun envoi de photo ne passe (vérifié le 2026-09-29).
+RUN mkdir -p /app/var/storage && chown node:node /app/var/storage
+
 # Jamais root dans le conteneur : `node` existe déjà dans l'image officielle.
 USER node
 

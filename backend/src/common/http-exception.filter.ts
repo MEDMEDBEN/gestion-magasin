@@ -51,6 +51,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    // Envoi de fichier mal formé (champ inattendu, trop de fichiers…) : faute
+    // du client. NestJS ne reconnaît plus certains messages de multer 2.x
+    // (« Unexpected file field ») et les laissait finir en 500 (vérifié le
+    // 2026-09-29). La taille, elle, reste traduite en 413 par NestJS.
+    if (exception instanceof Error && exception.name === 'MulterError') {
+      response.status(HttpStatus.BAD_REQUEST).json({
+        statusCode: HttpStatus.BAD_REQUEST,
+        message: `Envoi de fichier invalide : ${exception.message}`,
+        error: HttpStatus[HttpStatus.BAD_REQUEST],
+        code: ErrorCode.VALIDATION_FAILED,
+      });
+      return;
+    }
+
     // Toute exception non maîtrisée : on logue en interne, on ne fuit rien au client.
     this.logger.error('Exception non gérée', exception as Error);
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({

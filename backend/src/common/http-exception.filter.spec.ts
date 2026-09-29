@@ -49,6 +49,19 @@ describe('HttpExceptionFilter', () => {
     );
   });
 
+  it('un envoi de fichier mal formé (multer) est un 400, pas une panne', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { MulterError } = require('multer') as {
+      MulterError: new (code: string, field?: string) => Error;
+    };
+    const { status, body } = run(
+      new MulterError('LIMIT_UNEXPECTED_FILE', 'file'),
+    );
+
+    expect(status).toBe(400);
+    expect(body.code).toBe('VALIDATION_FAILED');
+  });
+
   it('pose RATE_LIMITED sur un 429 du throttler', () => {
     const { status, body } = run(
       new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
