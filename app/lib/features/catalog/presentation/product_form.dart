@@ -21,6 +21,7 @@ import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../../suppliers/data/suppliers_models.dart';
+import '../../scan/presentation/scan_screen.dart';
 import 'product_photo.dart';
 import 'prospects_dialog.dart';
 
@@ -635,12 +636,17 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           autocorrect: false,
           enableSuggestions: false,
           style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
-          decoration: deco(
-            LucideIcons.scanBarcode,
-            helper: _isEdit
-                ? 'Corrigez un code mal saisi, ou scannez le bon'
-                : 'Scannez le code fabricant — vide : un code interne est généré',
-          ),
+          decoration:
+              deco(
+                LucideIcons.scanBarcode,
+                helper: _isEdit
+                    ? 'Corrigez un code mal saisi, ou scannez le bon'
+                    : 'Scannez le code fabricant — vide : un code interne est généré',
+              ).copyWith(
+                suffixIcon: _locked
+                    ? null
+                    : CameraScanButton(onCode: (code) => _barcode.text = code),
+              ),
           validator: (v) => (v != null && RegExp(r'\s').hasMatch(v.trim()))
               ? 'Sans espace'
               : null,

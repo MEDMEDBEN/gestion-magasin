@@ -31,6 +31,7 @@ import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 import '../../cheques/presentation/cheque_dialog.dart';
+import '../../scan/presentation/scan_screen.dart';
 import 'customer_form.dart';
 import 'sales_history.dart';
 
@@ -814,9 +815,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               autofocus: true,
               autocorrect: false,
               style: AmpereType.input.copyWith(color: colors.ink),
-              decoration: const InputDecoration(
-                prefixIcon: Icon(LucideIcons.scanBarcode, size: 17),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(LucideIcons.scanBarcode, size: 17),
                 hintText: 'Scanner un code-barres ou chercher un produit',
+                suffixIcon: CameraScanButton(
+                  onCode: (code) => _scan(code, products),
+                ),
               ),
               onSubmitted: (value) {
                 _scan(value, products);

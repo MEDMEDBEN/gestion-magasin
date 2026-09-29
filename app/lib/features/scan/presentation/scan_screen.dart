@@ -166,3 +166,80 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     }
   }
 }
+
+/// Bouton caméra à poser dans un champ de recherche (spec §27) : sur
+/// téléphone, il ouvre la caméra et rend le premier code lu à `onCode`. Au
+/// poste (pas de caméra), il ne s'affiche pas — la douchette tape le code.
+class CameraScanButton extends StatelessWidget {
+  const CameraScanButton({super.key, required this.onCode});
+
+  final void Function(String code) onCode;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!scannerSupported) return const SizedBox.shrink();
+    return IconButton(
+      tooltip: 'Scanner avec la caméra',
+      icon: const Icon(Icons.qr_code_scanner, size: 20),
+      onPressed: () async {
+        final code = await Navigator.of(context).push<String>(
+          MaterialPageRoute(builder: (_) => const _CameraScanPage()),
+        );
+        if (code != null) onCode(code);
+      },
+    );
+  }
+}
+
+class _CameraScanPage extends StatefulWidget {
+  const _CameraScanPage();
+
+  @override
+  State<_CameraScanPage> createState() => _CameraScanPageState();
+}
+
+class _CameraScanPageState extends State<_CameraScanPage> {
+  final _controller = MobileScannerController(
+    formats: const [
+      BarcodeFormat.ean13,
+      BarcodeFormat.ean8,
+      BarcodeFormat.code128,
+      BarcodeFormat.code39,
+    ],
+  );
+  bool _done = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Viser le code-barres')),
+      body: MobileScanner(
+        controller: _controller,
+        onDetect: (capture) {
+          final value = firstBarcode(capture.barcodes.map((b) => b.rawValue));
+          if (value == null || _done) return;
+          _done = true;
+          Navigator.of(context).pop(value);
+        },
+        placeholderBuilder: (_) =>
+            const ScreenStateView(status: ScreenStatus.loading),
+        errorBuilder: (context, error) => ScreenStateView(
+          status: ScreenStatus.error,
+          title: 'Caméra indisponible',
+          message: error.errorCode == MobileScannerErrorCode.permissionDenied
+              ? 'L’accès à la caméra est refusé : autorisez-le dans les '
+                    'réglages du téléphone, puis réessayez.'
+              : 'La caméra n’a pas démarré. Fermez les autres applications '
+                    'qui l’utilisent, puis réessayez.',
+          onRetry: () => unawaited(_controller.start()),
+        ),
+      ),
+    );
+  }
+}

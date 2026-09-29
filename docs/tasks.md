@@ -700,6 +700,8 @@ Spec §28 : « OCR factures … jamais source de vérité, toujours corrigeable 
   besoin exprimé).
 
 ### 🏁 ÉTAT AU 2026-09-29 — PLAN P0 → P2 ENTIÈREMENT CODÉ (P3 retiré)
+
+**Ajout 2026-09-29 (demande MEDMEDBEN) — bouton caméra dans les recherches.** `CameraScanButton` (`app/lib/features/scan/presentation/scan_screen.dart`) : sur téléphone seulement, ouvre la caméra et rend le code lu. Posé dans la recherche Catalogue, Stock, le champ Vente (ajoute au panier comme la douchette) et le champ code-barres de la fiche produit. Aucun changement serveur. Preuves : `flutter analyze` 0 issue, `flutter test` 473 OK. **À tester sur téléphone.** Étiquettes « rayon » (nom, prix, référence, code-barres) : déjà là (P1 n°21b, rouleau thermique 50 × 30 mm ou planche A4) — **format exact à fournir par MEDMEDBEN** (constante `ROLL` dans `backend/src/products/labels.ts`).
 Tout est commité et poussé sur `develop` (dernier : `013b782`, P2 n°24). Dernières preuves complètes : backend
 lint 0 · `tsc` · 163 unit (+2 restaurés) · 646 e2e ; app analyze propre · +473 ~46. `main` n'a PAS été mergé :
 le merge `develop → main` attend l'accord EXPLICITE de MEDMEDBEN.

@@ -18,6 +18,7 @@ import '../../catalog/data/catalog_models.dart';
 import '../application/stock_controller.dart';
 import '../data/stock_api.dart';
 import '../data/stock_models.dart';
+import '../../scan/presentation/scan_screen.dart';
 import 'loss_form.dart';
 import 'stock_status.dart';
 
@@ -156,10 +157,24 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection> {
                   decoration: InputDecoration(
                     hintText: 'Nom, référence, code-barres',
                     prefixIcon: const Icon(LucideIcons.search, size: 17),
-                    suffixIcon: IconButton(
-                      tooltip: 'Actualiser le stock',
-                      icon: const Icon(LucideIcons.refreshCw, size: 17),
-                      onPressed: () => ref.invalidate(stockByProductProvider),
+                    suffixIcon: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CameraScanButton(
+                          onCode: (code) {
+                            _search.text = code;
+                            ref
+                                .read(productFilterProvider.notifier)
+                                .setSearch(code);
+                          },
+                        ),
+                        IconButton(
+                          tooltip: 'Actualiser le stock',
+                          icon: const Icon(LucideIcons.refreshCw, size: 17),
+                          onPressed: () =>
+                              ref.invalidate(stockByProductProvider),
+                        ),
+                      ],
                     ),
                   ),
                   onChanged: ref.read(productFilterProvider.notifier).setSearch,

@@ -17,6 +17,7 @@ import '../data/catalog_models.dart';
 import 'catalog_lists.dart';
 import '../../../core/file_import.dart';
 import '../../../ui/widgets/import_button.dart';
+import '../../scan/presentation/scan_screen.dart';
 import 'category_form.dart';
 import 'labels_dialog.dart';
 import 'desktop/products_table.dart';
@@ -339,7 +340,12 @@ class _ProductsSection extends ConsumerWidget {
                         : 'Nom, référence, code-barres',
                     prefixIcon: const Icon(LucideIcons.search, size: 17),
                     suffixIcon: filter.search.isEmpty
-                        ? null
+                        ? CameraScanButton(
+                            onCode: (code) {
+                              search.text = code;
+                              notifier.setSearch(code);
+                            },
+                          )
                         : IconButton(
                             tooltip: 'Effacer',
                             icon: const Icon(LucideIcons.x, size: 17),
