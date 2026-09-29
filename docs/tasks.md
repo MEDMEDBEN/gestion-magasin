@@ -699,8 +699,20 @@ Spec §28 : « OCR factures … jamais source de vérité, toujours corrigeable 
   parfois — d'où le bilan et la correction avant enregistrement. « Recherche photo » de produit : non faite (hors
   besoin exprimé).
 
-**Prochaine étape précise** : audits de P2 n°24, preuves complètes, commit. **P0 → P2 sont alors codés** : reste
-l'essai du scanner sur téléphone (MEDMEDBEN) et la relecture humaine des écrans ajoutés depuis 21d.
+### 🏁 ÉTAT AU 2026-09-29 — PLAN P0 → P2 ENTIÈREMENT CODÉ (P3 retiré)
+Tout est commité et poussé sur `develop` (dernier : `013b782`, P2 n°24). Dernières preuves complètes : backend
+lint 0 · `tsc` · 163 unit (+2 restaurés) · 646 e2e ; app analyze propre · +473 ~46. `main` n'a PAS été mergé :
+le merge `develop → main` attend l'accord EXPLICITE de MEDMEDBEN.
+
+**Prochaine étape précise** — rien à coder dans le plan ; tout dépend de MEDMEDBEN :
+1. **Essais sur téléphone** (APK) : scanner de codes-barres (P1 n°13, jamais essayé sur appareil) et scan de facture
+   (P2 n°24, jamais essayé sur une vraie photo) ; aussi un scan dans le conteneur Docker de prod (modèle Tesseract).
+2. **Relecture humaine** des écrans ajoutés depuis 21d (historique des ventes → n°24).
+3. **Décisions en attente** (blocs ci-dessus) : retours (remboursement mixte, acompte général, ordre des retours
+   fournisseur), ponctualité (date prévue actuelle), message au fournisseur (modèle étendu, proposé pour un
+   brouillon, prix 0 à la confirmation), recherche photo de produit (n°24, non faite).
+4. **Merge `develop → main`** après validation.
+Ensuite : corrections issues de ces retours, dans l'ordre où MEDMEDBEN les donne.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
