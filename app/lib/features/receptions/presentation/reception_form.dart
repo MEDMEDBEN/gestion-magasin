@@ -15,6 +15,7 @@ import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../../purchases/data/purchases_models.dart';
 import '../application/receptions_controller.dart';
+import 'invoice_scan.dart';
 
 /// Une ligne de commande à réceptionner : quantité reçue saisie, reste connu.
 class _LineFields {
@@ -60,6 +61,31 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
       l.dispose();
     }
     super.dispose();
+  }
+
+  /// Photo de la facture de livraison → quantités REÇUES proposées (P2 n°24),
+  /// pour les produits de CETTE commande seulement ; le reste est listé. Rien
+  /// n'est enregistré avant « Réceptionner ».
+  Future<void> _fromInvoice() async {
+    final scanned = await scanInvoice(context, ref);
+    if (scanned == null || !mounted) return;
+    final applied = <ScannedLine>[];
+    final ignored = <ScannedLine>[];
+    setState(() {
+      for (final l in scanned) {
+        final fields = _lines
+            .where((f) => f.line.productId == l.productId)
+            .firstOrNull;
+        final quantity = l.quantity;
+        if (fields == null || quantity == null) {
+          ignored.add(l);
+          continue;
+        }
+        fields.received.text = formatQuantity(quantity);
+        applied.add(l);
+      }
+    });
+    await showScanSummary(context, applied: applied, ignored: ignored);
   }
 
   /// Ce que la réception ajoutera à la dette, hors TVA (le serveur fait foi).
@@ -161,7 +187,16 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
               'fournisseur n’augmentent que de ces quantités ; une livraison '
               'supérieure au reste à recevoir est refusée.',
         ),
-        const SizedBox(height: 16),
+        // P2 n°24 : quantités proposées depuis une photo de la facture.
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _saving ? null : _fromInvoice,
+            icon: const Icon(LucideIcons.scanText, size: 16),
+            label: const Text('Lire la facture (photo)'),
+          ),
+        ),
+        const SizedBox(height: 8),
         const AmpereFieldLabel('Emplacement de réception'),
         DropdownButtonFormField<String>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +21,7 @@ import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
 import 'package:gestion_magasin/features/receptions/data/receptions_models.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
+import 'package:gestion_magasin/core/photos.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
@@ -98,6 +101,24 @@ class _FakeReceptionsApi extends ReceptionsApi {
   }) async => existing;
 
   @override
+  Future<List<Map<String, dynamic>>> scanInvoice(Uint8List jpeg) async => [
+    {
+      'text': 'CAB-3G25 Cable 3G2,5 60 1 200,00 72 000,00',
+      'productId': 'p1',
+      'productName': 'Câble 3G2,5',
+      'quantity': '60.000',
+      'unitPriceHt': 120000,
+    },
+    {
+      'text': 'Gaine ICTA 20 5 35,00 175,00',
+      'productId': null,
+      'productName': null,
+      'quantity': '5.000',
+      'unitPriceHt': 3500,
+    },
+  ];
+
+  @override
   Future<Reception> create(Map<String, Object?> fields) async {
     sent.add(fields);
     return Reception(
@@ -162,6 +183,9 @@ Future<_FakeReceptionsApi> _pump(
         // Une écriture (en ligne ou en file) appartient au compte connecté.
         currentUserIdProvider.overrideWithValue('magasinier'),
         documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
+        pickDocumentPhotoProvider.overrideWithValue(
+          () async => Uint8List.fromList([1, 2, 3]),
+        ),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
@@ -312,6 +336,27 @@ void main() {
       ]);
     },
   );
+
+  /// P2 n°24 : la facture lue propose la quantité reçue de la ligne de la
+  /// commande ; la ligne inconnue est seulement listée.
+  testWidgets('lire la facture : quantité reçue proposée, à vérifier', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      _magasinier(),
+      orders: [_order(PurchaseStatus.confirmed)],
+    );
+    await _openReceptionForm(tester);
+    await tester.tap(find.text('Lire la facture (photo)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Facture lue — à vérifier'), findsOneWidget);
+    expect(find.text('Gaine ICTA 20 5 35,00 175,00'), findsOneWidget);
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, '60'), findsOneWidget);
+    expect(api.sent, isEmpty);
+  });
 
   testWidgets('surlivraison bloquée avant l’envoi', (tester) async {
     final api = await _pump(

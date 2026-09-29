@@ -129,6 +129,7 @@ lib/features/<feature>/
 Pour éviter que deux agents utilisent des outils différents pour le même besoin :
 - **PDF** (ticket, facture, devis, bons, rapports) : générés **côté serveur** par UN moteur centralisé dans `backend/src/common/pdf/`. Ne pas mélanger deux moteurs. **Moteur retenu (2026-09-15) : `pdfkit`** (`common/pdf/pdf.ts` → `renderPdf`), polices standard — pas de Chromium dans l'image. Côté app, impression/partage d'un PDF reçu : paquet `printing` uniquement.
 - **Excel / CSV** : `exceljs`, centralisé dans `common/export/`.
+- **Lecture de texte d'une image (OCR, factures — P2 n°24)** : `tesseract.js` avec le modèle français LIVRÉ (`@tesseract.js-data/fra`, aucun téléchargement), centralisé dans `backend/src/receptions/invoice-scan.ts`. Jamais une source de vérité : des lignes proposées, corrigées avant validation.
 - **Codes-barres** (image EAN-13 / Code128) : `bwip-js`, centralisé dans `common/barcode/`. La **génération du code interne** (si le produit n'en a pas) passe par un service unique qui garantit l'unicité (séquence + contrainte DB, retry sur collision).
 - **Étiquettes** : composition (nom, prix, image code-barres) en PDF via le même moteur PDF ; deux gabarits — planche A4 et rouleau thermique.
 - **Fichiers joints** (photos, documents archivés) : uniquement via `StorageService` (`backend/src/storage/`), qui écrit dans un dossier privé du serveur — jamais d'URL publique, jamais d'accès direct au disque ailleurs. Les documents non archivés sont générés à la demande.

@@ -17,6 +17,41 @@ final pickPhotoProvider = Provider<Future<Uint8List?> Function()>(
   },
 );
 
+/// Photo d'un DOCUMENT (facture à lire, P2 n°24) : l'appareil photo sur
+/// mobile, un fichier sur desktop ; niveaux de gris, ≤ 2 200 px — assez grand
+/// pour que le texte reste lisible, sous les 5 Mo acceptés par le serveur.
+final pickDocumentPhotoProvider = Provider<Future<Uint8List?> Function()>(
+  (ref) => () async {
+    final mobile =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    final file = await ImagePicker().pickImage(
+      source: mobile ? ImageSource.camera : ImageSource.gallery,
+    );
+    if (file == null) return null;
+    final jpeg = await compute(compressDocument, await file.readAsBytes());
+    // Annuler rend `null` ; une image illisible est une ERREUR (message).
+    if (jpeg == null) throw const FormatException('Image illisible');
+    return jpeg;
+  },
+);
+
+/// Niveaux de gris, ≤ 2 200 px de côté, JPEG qualité 85. `null` si illisible.
+Uint8List? compressDocument(Uint8List bytes) {
+  final img.Image? decoded;
+  try {
+    decoded = img.decodeImage(bytes);
+  } catch (_) {
+    return null;
+  }
+  if (decoded == null) return null;
+  const max = 2200;
+  final resized = decoded.width >= decoded.height
+      ? (decoded.width > max ? img.copyResize(decoded, width: max) : decoded)
+      : (decoded.height > max ? img.copyResize(decoded, height: max) : decoded);
+  return img.encodeJpg(img.grayscale(resized), quality: 85);
+}
+
 /// JPEG ≤ 1024 px de côté, qualité 80 : quelques centaines de ko, loin des 2 Mo
 /// acceptés par le serveur. `null` si le fichier n'est pas une image lisible.
 Uint8List? compressPhoto(Uint8List bytes) {

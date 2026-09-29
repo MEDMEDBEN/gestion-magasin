@@ -668,9 +668,39 @@ avant envoi.
 
 **Décision MEDMEDBEN (2026-09-29)** : le **scan des factures (P2 n°24, OCR)** RESTE au plan — à faire après n°23.
 
-**Prochaine étape précise** : audits de P2 n°23, preuves complètes, commit ; puis **P2 n°24** — scan d'une facture
-fournisseur pour pré-remplir une réception (lignes produit / quantité / prix proposées, TOUJOURS corrigeables avant
-validation, jamais source de vérité — spec §28).
+### P2 n°24 — Scan des factures fournisseur (livré et audité)
+Spec §28 : « OCR factures … jamais source de vérité, toujours corrigeable avant validation ».
+- `POST /receptions/scan-invoice` (ADMIN|MAGASINIER + `reception.create`, 6/min, JPEG/PNG ≤ 5 Mo vérifiés sur
+  le contenu) : **Tesseract** (`tesseract.js`, modèle FRANÇAIS livré avec le serveur — aucun téléchargement,
+  fonctionne sans Internet ; moteur créé au 1er scan et gardé) → texte → lignes PROPOSÉES : produit reconnu par
+  code-barres / référence (mot exact) sinon par nom contenu (accents ignorés, le plus long gagne) ; quantité et prix
+  unitaire HT lus parmi les nombres restants (format français, « q prix total » vérifié par q × prix ≈ total).
+  Rien n'est écrit en base.
+- App : photo « document » (appareil photo sur mobile, fichier sur desktop ; niveaux de gris ≤ 2 200 px) ;
+  **commande** → « Remplir depuis une facture » (lignes des produits reconnus, quantité et prix) ; **réception** →
+  « Lire la facture (photo) » (quantités reçues des lignes de la commande) ; bilan « à vérifier » (repris / non
+  reconnus). On enregistre ensuite par le chemin habituel et ses contrôles.
+- Preuves : unit `invoice-scan.spec` 4 (nombres français, référence, nom accentué, ligne inconnue) ; e2e
+  `invoice-scan` 2 — VRAIE reconnaissance sur une image de facture (`test/fixtures/invoice.png`) : produit, 10 ×
+  1 200,00 ; vendeur 403 ; non-image 422 ; app `receptions_test` +1, `purchases_screen_test` +1.
+- **Audits (2026-09-29) — appliqués** : sécurité — **1 critique** : une image corrompue portant une signature PNG
+  faisait TOMBER tout le serveur (tesseract.js relançait l'erreur dans son écouteur) → `errorHandler` ; image
+  « bombe » (20 000 × 20 000 dans un petit fichier) refusée AVANT l'OCR (dimensions lues dans l'en-tête, 25 Mpx
+  max) ; délai de 60 s et moteur JETÉ puis recréé après toute erreur. Revue — 3 importants : « 5 350,00 1 750,00 »
+  était lu comme 5 350 (découpages énumérés, celui que le total confirme gagne ; millions gérés) ; un nom court
+  (« Vis ») était reconnu dans « Devis » (mots entiers ; codes ≥ 6 / référence ≥ 3 en mot exact) ; moteur mort
+  jamais recréé. Aussi : bilan avec le texte lu, quantités additionnées si un produit revient deux fois, 200
+  lignes max, double appui ignoré, photo illisible / caméra refusée signalées, état du produit de test restauré.
+  Tests : unit `invoice-scan` 6 + `image-format` 3 ; e2e `invoice-scan` 3 (+ PNG corrompu → 422 puis le serveur lit
+  encore, bombe → 422) ; contre-épreuve (sans `errorHandler`) → échec.
+- **Preuves complètes (2026-09-29)** : lint 0 · `tsc` · **163 unit** (+2 de `image-format.spec` restaurés après un
+  écrasement accidentel : 5/5) · **646 e2e** ; app analyze propre · **+473 ~46**.
+- Limites : photo seulement (pas de PDF) ; qualité dépendante de la photo (à plat, nette) ; la lecture se trompe
+  parfois — d'où le bilan et la correction avant enregistrement. « Recherche photo » de produit : non faite (hors
+  besoin exprimé).
+
+**Prochaine étape précise** : audits de P2 n°24, preuves complètes, commit. **P0 → P2 sont alors codés** : reste
+l'essai du scanner sur téléphone (MEDMEDBEN) et la relecture humaine des écrans ajoutés depuis 21d.
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

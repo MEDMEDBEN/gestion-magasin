@@ -28,3 +28,41 @@ export function detectImageFormat(bytes: Buffer): ImageFormat | null {
   }
   return null;
 }
+
+/// Dimensions lues dans l'EN-TÊTE d'un PNG (IHDR) ou d'un JPEG (segment SOF),
+/// sans décoder l'image : une « bombe » (petit fichier, image immense) se
+/// refuse avant d'être décompressée. `null` : en-tête illisible.
+export function imageDimensions(
+  bytes: Buffer,
+): { width: number; height: number } | null {
+  const format = detectImageFormat(bytes);
+  if (format?.contentType === 'image/png') {
+    if (bytes.length < 24 || bytes.toString('ascii', 12, 16) !== 'IHDR') {
+      return null;
+    }
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  if (format?.contentType === 'image/jpeg') {
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) return null;
+      const marker = bytes[offset + 1];
+      const length = bytes.readUInt16BE(offset + 2);
+      // SOF0 à SOF15, hors DHT (C4), JPG (C8) et DAC (CC).
+      if (
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc
+      ) {
+        return {
+          height: bytes.readUInt16BE(offset + 5),
+          width: bytes.readUInt16BE(offset + 7),
+        };
+      }
+      offset += 2 + length;
+    }
+  }
+  return null;
+}

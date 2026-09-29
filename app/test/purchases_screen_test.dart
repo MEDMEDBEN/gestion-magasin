@@ -16,6 +16,8 @@ import 'package:gestion_magasin/features/suppliers/data/suppliers_api.dart';
 import 'package:gestion_magasin/features/suppliers/data/suppliers_models.dart';
 import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/core/photos.dart';
+import 'package:gestion_magasin/features/receptions/data/receptions_api.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
@@ -148,6 +150,10 @@ Future<_FakePurchasesApi> _pump(
         currentUserIdProvider.overrideWithValue('u'),
         documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
         suppliersApiProvider.overrideWithValue(_FakeSuppliersApi()),
+        receptionsApiProvider.overrideWithValue(_ScanningReceptionsApi()),
+        pickDocumentPhotoProvider.overrideWithValue(
+          () async => Uint8List.fromList([1, 2, 3]),
+        ),
         activeProductsProvider.overrideWith(
           (ref) => Stream.value([
             product(id: 'p1', name: 'Câble 3G2,5', sku: 'CAB-3G25'),
@@ -162,6 +168,29 @@ Future<_FakePurchasesApi> _pump(
   );
   await tester.pumpAndSettle();
   return api;
+}
+
+/// Lecture de facture (P2 n°24) : une ligne reconnue, une inconnue.
+class _ScanningReceptionsApi extends ReceptionsApi {
+  _ScanningReceptionsApi() : super(Dio());
+
+  @override
+  Future<List<Map<String, dynamic>>> scanInvoice(Uint8List jpeg) async => [
+    {
+      'text': 'CAB-3G25 Cable 3G2,5 40 1 150,00 46 000,00',
+      'productId': 'p1',
+      'productName': 'Câble 3G2,5',
+      'quantity': '40.000',
+      'unitPriceHt': 115000,
+    },
+    {
+      'text': 'Gaine ICTA 20 5 35,00 175,00',
+      'productId': null,
+      'productName': null,
+      'quantity': '5.000',
+      'unitPriceHt': 3500,
+    },
+  ];
 }
 
 final printedPdfs = <String>[];
@@ -207,6 +236,28 @@ void main() {
       expect(api.created!['id'], isA<String>());
     },
   );
+
+  /// P2 n°24 : la facture lue remplit la ligne vide ; on vérifie, puis on
+  /// enregistre par le chemin habituel.
+  testWidgets('nouvelle commande remplie depuis une facture', (tester) async {
+    final api = await _pump(tester, _magasinier());
+    await tester.tap(find.text('Nouvelle commande'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Sonelec').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remplir depuis une facture'));
+    await tester.pumpAndSettle();
+    expect(find.text('Gaine ICTA 20 5 35,00 175,00'), findsOneWidget);
+    await tester.tap(find.text('Vérifier'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enregistrer la commande'));
+    await tester.pumpAndSettle();
+    expect(api.created!['lines'], [
+      {'productId': 'p1', 'orderedQuantity': '40.000', 'unitPriceHt': 115000},
+    ]);
+  });
 
   testWidgets('formulaire incomplet : rien n’est envoyé', (tester) async {
     final api = await _pump(tester, _magasinier());

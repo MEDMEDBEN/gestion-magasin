@@ -7,9 +7,13 @@ import {
   Post,
   Query,
   StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiConsumes,
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiOkResponse,
@@ -42,13 +46,39 @@ import {
   exportResponse,
   renderExport,
 } from '../common/export/export';
+import { DOCUMENT_UPLOAD_LIMITS } from '../common/uploads';
+import { InvoiceScanDto, InvoiceScanService } from './invoice-scan';
 import { ReceptionsService } from './receptions.service';
 
 @ApiTags('Réceptions')
 @ApiBearerAuth()
 @Controller('receptions')
 export class ReceptionsController {
-  constructor(private readonly receptions: ReceptionsService) {}
+  constructor(
+    private readonly receptions: ReceptionsService,
+    private readonly invoices: InvoiceScanService,
+  ) {}
+
+  /// Lecture d'une photo de facture (P2 n°24) : des lignes PROPOSÉES, jamais
+  /// enregistrées — l'app pré-remplit la commande ou la réception, que
+  /// l'utilisateur corrige et valide. Mêmes lecteurs que la réception ;
+  /// débit bridé : la reconnaissance de texte occupe le serveur.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.RECEPTION_CREATE)
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  @Post('scan-invoice')
+  @UseInterceptors(FileInterceptor('image', { limits: DOCUMENT_UPLOAD_LIMITS }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary:
+      'Lit une facture (photo) : lignes produit / quantité / prix proposées',
+  })
+  @ApiOkResponse({ type: InvoiceScanDto })
+  scanInvoice(
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<InvoiceScanDto> {
+    return this.invoices.scan(file);
+  }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.RECEPTION_CREATE)

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -30,6 +32,26 @@ class ReceptionsApi {
         data: fields,
       );
       return Reception.fromJson(response.data!);
+    });
+  }
+
+  /// Lecture d'une photo de facture (P2 n°24) : lignes PROPOSÉES (`text`,
+  /// `productId`, `productName`, `quantity`, `unitPriceHt`), jamais
+  /// enregistrées.
+  Future<List<Map<String, dynamic>>> scanInvoice(Uint8List jpeg) {
+    return guardApi(() async {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/receptions/scan-invoice',
+        data: FormData.fromMap({
+          'image': MultipartFile.fromBytes(jpeg, filename: 'facture.jpg'),
+        }),
+        // La lecture prend quelques secondes sur le serveur.
+        options: Options(receiveTimeout: const Duration(seconds: 90)),
+      );
+      return [
+        for (final l in response.data!['lines'] as List<dynamic>)
+          l as Map<String, dynamic>,
+      ];
     });
   }
 

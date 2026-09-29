@@ -13,6 +13,7 @@ import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../receptions/presentation/invoice_scan.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../application/purchases_controller.dart';
 import '../data/purchases_models.dart';
@@ -65,6 +66,57 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
   String? _error;
 
   bool get _locked => widget.readOnly || _saving;
+
+  /// Photo de facture → lignes PROPOSÉES (P2 n°24) : les produits reconnus
+  /// s'ajoutent (ou mettent à jour leur ligne), une ligne vide est remplacée ;
+  /// le bilan dit quoi vérifier. Rien n'est enregistré avant « Enregistrer ».
+  Future<void> _fromInvoice() async {
+    final scanned = await scanInvoice(context, ref);
+    if (scanned == null || !mounted) return;
+    final applied = [
+      for (final l in scanned)
+        if (l.productId != null) l,
+    ];
+    final ignored = [
+      for (final l in scanned)
+        if (l.productId == null) l,
+    ];
+    setState(() {
+      _lines.removeWhere((l) {
+        final empty = l.productId == null && l.quantity.text.isEmpty;
+        if (empty) l.dispose();
+        return empty;
+      });
+      // Un produit présent deux fois sur la facture : quantités ADDITIONNÉES.
+      final seen = <String>{};
+      for (final l in applied) {
+        var fields = _lines
+            .where((f) => f.productId == l.productId)
+            .firstOrNull;
+        if (fields == null) {
+          if (_lines.length >= 200) {
+            ignored.add(l);
+            continue;
+          }
+          fields = _LineFields(productId: l.productId);
+          _lines.add(fields);
+        }
+        if (l.quantity case final q?) {
+          final before = parseQuantity(fields.quantity.text);
+          fields.quantity.text = formatQuantity(
+            seen.contains(l.productId) && before != null ? before + q : q,
+          );
+        }
+        if (l.unitPriceHt case final p?) {
+          fields.price.text = formatDA(p, withSymbol: false);
+        }
+        seen.add(l.productId!);
+      }
+      applied.removeWhere(ignored.contains);
+      if (_lines.isEmpty) _lines.add(_LineFields());
+    });
+    await showScanSummary(context, applied: applied, ignored: ignored);
+  }
 
   /// Date facultative : livraison prévue (retard fournisseur), échéance de
   /// paiement (dette fournisseur à payer).
@@ -218,15 +270,23 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
         const SizedBox(height: 8),
         for (var i = 0; i < _lines.length; i++) _lineRow(i, products, colors),
         if (!_locked)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _lines.length >= 200
-                  ? null
-                  : () => setState(() => _lines.add(_LineFields())),
-              icon: const Icon(LucideIcons.plus, size: 16),
-              label: const Text('Ajouter une ligne'),
-            ),
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: _lines.length >= 200
+                    ? null
+                    : () => setState(() => _lines.add(_LineFields())),
+                icon: const Icon(LucideIcons.plus, size: 16),
+                label: const Text('Ajouter une ligne'),
+              ),
+              // P2 n°24 : lignes proposées depuis une photo de facture.
+              TextButton.icon(
+                onPressed: _fromInvoice,
+                icon: const Icon(LucideIcons.scanText, size: 16),
+                label: const Text('Remplir depuis une facture'),
+              ),
+            ],
           ),
         const Divider(height: 24),
         Text(
