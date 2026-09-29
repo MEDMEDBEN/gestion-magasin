@@ -5,8 +5,8 @@ import '../../../core/error/api_exception.dart';
 import '../../../core/providers.dart';
 import 'replenishment_models.dart';
 
-/// Réapprovisionnement (spec §19). Lecture seule : commander passe par la
-/// commande fournisseur existante, pas par cet écran.
+/// Réapprovisionnement (spec §19) et préparation des commandes (P2 n°22) :
+/// des BROUILLONS, une par fournisseur principal, à vérifier dans Achats.
 class ReplenishmentApi {
   ReplenishmentApi(this._dio);
 
@@ -31,6 +31,23 @@ class ReplenishmentApi {
       return ReplenishmentPage.fromJson(response.data!);
     });
   }
+
+  /// Rend `orders` (id, number, supplierName, lineCount) et `withoutSupplier`
+  /// (noms des produits sans fournisseur principal).
+  Future<Map<String, dynamic>> prepareOrders(
+    List<({String productId, String quantity})> lines,
+  ) => guardApi(() async {
+    final response = await _dio.post<Map<String, dynamic>>(
+      '/replenishment/orders',
+      data: {
+        'lines': [
+          for (final l in lines)
+            {'productId': l.productId, 'quantity': l.quantity},
+        ],
+      },
+    );
+    return response.data!;
+  });
 }
 
 final replenishmentApiProvider = Provider<ReplenishmentApi>(

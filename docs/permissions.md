@@ -114,6 +114,7 @@ aucune migration destructive sans confirmation).
 | Créer / modifier commande fournisseur | ✅ | ❌ | ✅ |
 | Confirmer / annuler commande | ✅ | ❌ | ❌ |
 | Réceptionner (partielle incluse) sur une commande confirmée | ✅ | ❌ | ✅ |
+| Préparer des commandes BROUILLON depuis le réapprovisionnement (`POST /replenishment/orders`, P2 n°22) ; message au fournisseur (`GET /purchase-orders/:id/message`) | ✅ | ❌ | ✅ (`purchase.create`) |
 | Retour de marchandise au fournisseur (`POST /supplier-returns`, bon RF) | ✅ (`reception.create`) | ❌ | ✅ (`reception.create`) |
 | Réceptionner **hors commande** | ✅ | ❌ | ❌ |
 

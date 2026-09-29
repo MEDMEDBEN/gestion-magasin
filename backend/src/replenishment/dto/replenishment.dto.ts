@@ -1,6 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayNotEmpty,
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { PaginationMetaDto } from '../../common/dto/pagination.dto';
 import {
   booleanQuery,
@@ -96,4 +108,54 @@ export class ReplenishmentListDto {
       'Le filtre `supplierId`, lui, le restreint comme le reste.',
   })
   outOfStockCount!: number;
+}
+
+/// Une ligne retenue sur la liste « à racheter » : produit et quantité (celle
+/// proposée, éventuellement ajustée).
+export class PrepareOrderLineDto {
+  @ApiProperty() @IsCanonicalUuid() productId!: string;
+
+  @ApiProperty({ example: '12.000' })
+  @IsString()
+  @MaxLength(20)
+  quantity!: string;
+}
+
+/// Préparation des commandes (P1 bis → P2 n°22, spec §28).
+export class PrepareOrdersDto {
+  @ApiProperty({ type: [PrepareOrderLineDto] })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => PrepareOrderLineDto)
+  lines!: PrepareOrderLineDto[];
+}
+
+export class PreparedOrderDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ example: 'BC-2026-00012' }) number!: string;
+  @ApiProperty() supplierId!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty() lineCount!: number;
+}
+
+export class PrepareOrdersResultDto {
+  @ApiProperty({
+    type: [PreparedOrderDto],
+    description: 'Commandes BROUILLON créées, une par fournisseur principal.',
+  })
+  orders!: PreparedOrderDto[];
+
+  @ApiProperty({
+    type: [String],
+    description: 'Produits laissés de côté : sans fournisseur principal.',
+  })
+  withoutSupplier!: string[];
+
+  @ApiProperty({
+    description:
+      'Lignes au prix 0 (dernier prix d’achat inconnu) : à compléter.',
+  })
+  unpricedLines!: number;
 }

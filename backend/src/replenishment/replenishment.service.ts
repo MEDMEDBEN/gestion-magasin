@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { formatQuantity } from '../common/quantity';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { ActorContext } from '../audit/audit-writer';
+import { AuthenticatedUser } from '../common/auth.decorators';
+import { BusinessException } from '../common/business.exception';
+import { ErrorCode } from '../common/error-codes';
+import { formatQuantity, parseQuantity } from '../common/quantity';
 import {
   isLowStock,
   isOutOfStock,
@@ -8,7 +12,10 @@ import {
 } from '../common/replenishment';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { PurchaseOrdersService } from '../purchases/purchase-orders.service';
 import {
+  PrepareOrdersDto,
+  PrepareOrdersResultDto,
   ReplenishmentLineDto,
   ReplenishmentListDto,
   ReplenishmentQueryDto,
@@ -16,7 +23,10 @@ import {
 
 @Injectable()
 export class ReplenishmentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly purchaseOrders: PurchaseOrdersService,
+  ) {}
 
   /// Ce qu'il faut racheter (spec §19).
   ///
@@ -108,5 +118,114 @@ export class ReplenishmentService {
       meta: { page: query.page, limit: query.limit, total: lines.length },
       outOfStockCount,
     };
+  }
+
+  /// Commandes préparées automatiquement (P2 n°22, spec §28, sans IA) : les
+  /// lignes retenues sont regroupées par FOURNISSEUR PRINCIPAL et deviennent une
+  /// commande BROUILLON chacune, au dernier prix d'achat connu (0 s'il n'y en a
+  /// pas : à compléter). Elles passent par `PurchaseOrdersService.create` —
+  /// mêmes validations, même numérotation, même audit. L'utilisateur vérifie
+  /// puis l'admin confirme : rien n'est commandé ici.
+  async prepareOrders(
+    dto: PrepareOrdersDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<PrepareOrdersResultDto> {
+    const ids = dto.lines.map((l) => l.productId);
+    if (new Set(ids).size !== ids.length) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'lines : un produit par ligne',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const products = await this.prisma.product.findMany({
+      where: { id: { in: ids }, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        lastPurchasePriceHt: true,
+        mainSupplier: { select: { id: true, name: true, isActive: true } },
+      },
+    });
+    if (products.length !== ids.length) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'lines : produit introuvable ou désactivé',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const bySupplier = new Map<
+      string,
+      {
+        name: string;
+        lines: {
+          productId: string;
+          orderedQuantity: string;
+          unitPriceHt: number;
+        }[];
+      }
+    >();
+    const withoutSupplier: string[] = [];
+    for (const line of dto.lines) {
+      const product = products.find((p) => p.id === line.productId)!;
+      const quantity = parseQuantity(line.quantity, 'lines.quantity');
+      if (quantity.lessThanOrEqualTo(0)) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          `Quantité invalide pour « ${product.name} »`,
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      const supplier = product.mainSupplier;
+      if (!supplier?.isActive) {
+        withoutSupplier.push(product.name);
+        continue;
+      }
+      const group = bySupplier.get(supplier.id) ?? {
+        name: supplier.name,
+        lines: [],
+      };
+      group.lines.push({
+        productId: product.id,
+        orderedQuantity: formatQuantity(quantity),
+        unitPriceHt: product.lastPurchasePriceHt ?? 0,
+      });
+      bySupplier.set(supplier.id, group);
+    }
+    // Au plus 20 fournisseurs (donc 20 brouillons) par préparation.
+    if (bySupplier.size > 20) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `${bySupplier.size} fournisseurs : préparez-en 20 au plus à la fois`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    // ponytail: une commande après l'autre (chacune sa transaction) : un
+    // fournisseur en erreur n'annule pas les brouillons déjà créés — ce ne
+    // sont que des brouillons, visibles et annulables par l'admin.
+    const orders: PrepareOrdersResultDto['orders'] = [];
+    for (const [supplierId, group] of bySupplier) {
+      const order = await this.purchaseOrders.create(
+        {
+          supplierId,
+          lines: group.lines,
+          note: 'Préparée depuis le réapprovisionnement',
+        },
+        user,
+        actor,
+      );
+      orders.push({
+        id: order.id,
+        number: order.number,
+        supplierId,
+        supplierName: group.name,
+        lineCount: group.lines.length,
+      });
+    }
+    const unpricedLines = [...bySupplier.values()]
+      .flatMap((g) => g.lines)
+      .filter((l) => l.unitPriceHt === 0).length;
+    return { orders, withoutSupplier, unpricedLines };
   }
 }

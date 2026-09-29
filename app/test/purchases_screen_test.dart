@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/providers.dart';
@@ -88,6 +87,14 @@ class _FakePurchasesApi extends PurchasesApi {
     documents.add(id);
     return Uint8List(4);
   }
+
+  @override
+  Future<Map<String, dynamic>> message(String id) async => {
+    'text': 'Bonjour,\nNous souhaitons commander :\n- 10 pce de Disjoncteur',
+    'supplierName': 'Sonelec',
+    'email': 'achats@sonelec.dz',
+    'phone': null,
+  };
 }
 
 class _FakeSuppliersApi extends SuppliersApi {
@@ -242,6 +249,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.documents, ['o1']);
     expect(printedPdfs, ['BC-2026-00007.pdf']);
+  });
+
+  /// P2 n°22 : message à modèle fixe, copié pour l'e-mail ou WhatsApp.
+  testWidgets('message au fournisseur : affiché puis copié', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    await _pump(tester, _admin(), orders: [_order(PurchaseStatus.ordered)]);
+    await tester.tap(find.textContaining('BC-2026-00007'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Message au fournisseur'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Nous souhaitons commander'), findsOneWidget);
+    expect(find.text('E-mail : achats@sonelec.dz'), findsOneWidget);
+    await tester.tap(find.text('Copier le message'));
+    await tester.pumpAndSettle();
+    expect(copied, contains('10 pce de Disjoncteur'));
   });
 
   testWidgets('MAGASINIER : ni confirmation ni annulation', (tester) async {

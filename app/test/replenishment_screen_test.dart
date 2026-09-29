@@ -43,6 +43,21 @@ class _FakeReplenishmentApi extends ReplenishmentApi {
       outOfStockCount: items.where((l) => l.isOutOfStock).length,
     );
   }
+
+  final prepared = <List<({String productId, String quantity})>>[];
+
+  @override
+  Future<Map<String, dynamic>> prepareOrders(
+    List<({String productId, String quantity})> lines,
+  ) async {
+    prepared.add(lines);
+    return {
+      'orders': [
+        {'id': 'po1', 'number': 'BC-2026-00012', 'lineCount': 1},
+      ],
+      'withoutSupplier': ['Gaine ICTA'],
+    };
+  }
 }
 
 ReplenishmentLine _line({
@@ -164,6 +179,43 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(TextField, '50'), findsOneWidget);
+  });
+
+  /// P2 n°22 : les quantités AFFICHÉES (ajustées comprises) partent au serveur,
+  /// qui prépare des brouillons ; les produits sans fournisseur sont nommés.
+  testWidgets('préparer les commandes : quantités saisies envoyées', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      items: [
+        _line(),
+        _line(productId: 'p2', name: 'Gaine ICTA', supplierName: null),
+      ],
+    );
+    await tester.enterText(_fieldOf('Câble 2,5 mm²'), '50');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Préparer les commandes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Préparer'));
+    await tester.pumpAndSettle();
+
+    expect(api.prepared.single, [
+      (productId: 'p1', quantity: '50.000'),
+      (productId: 'p2', quantity: '32.000'),
+    ]);
+
+    // Un champ VIDÉ écarte la ligne (jamais la proposition en silence).
+    await tester.enterText(_fieldOf('Gaine ICTA'), '');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Préparer les commandes'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 écarté(s) à 0'), findsOneWidget);
+    await tester.tap(find.text('Préparer'));
+    await tester.pumpAndSettle();
+    expect(api.prepared.last, [(productId: 'p1', quantity: '50.000')]);
+    expect(find.textContaining('1 commande(s) préparée(s)'), findsOneWidget);
+    expect(find.textContaining('Gaine ICTA'), findsWidgets);
   });
 
   /// Le montant suit la quantité SAISIE : un montant figé sur la proposition

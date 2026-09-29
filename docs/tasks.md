@@ -613,8 +613,39 @@ l'auteur n'est renvoyé qu'à l'ADMIN (donnée d'audit).
   tous) → échec. Preuves complètes : lint 0 · `tsc` · **156 unit** · **637 e2e** ; app analyze propre ·
   **+468 ~46**.
 
-**Prochaine étape précise** : **P1 bis est entièrement codée et auditée** → relecture humaine par MEDMEDBEN (décisions en attente listées dans les blocs 21l → 21n), puis
-**P2 n°22** (commande fournisseur préparée automatiquement + message par modèle).
+**Décision MEDMEDBEN (2026-09-29) — chèques** : option ajoutée par lui (non demandée par le client) : on la laisse
+TELLE QUELLE ; ses deux questions (plafond de crédit libéré dès la remise, alerte à la saisie) sont ABANDONNÉES.
+
+### P2 n°22 — Commande fournisseur préparée automatiquement (livré et audité)
+Spec §28 (sans IA) : le système prépare, l'utilisateur vérifie, l'admin confirme.
+- `POST /replenishment/orders` (ADMIN|MAGASINIER + `purchase.create`, mêmes gardes que la commande ; 10/min) :
+  lignes retenues (produit, quantité) → une commande **BROUILLON** par fournisseur principal ACTIF, au dernier prix
+  d'achat (0 s'il est inconnu : à compléter), par `PurchaseOrdersService.create` (validations, numérotation,
+  audit) ; produits sans fournisseur (ou fournisseur désactivé) rendus dans `withoutSupplier`.
+- `GET /purchase-orders/:id/message` : message à modèle FIXE (« Bonjour …, Nous souhaitons commander : - Q unité de
+  PRODUIT (réf.) … Merci de confirmer. Commande BC-… ») + e-mail et téléphone du fournisseur. Aucune intégration
+  d'envoi (spec : « si intégration ») : l'app le COPIE pour l'e-mail ou WhatsApp.
+- App : réapprovisionnement → « Préparer les commandes » (quantités affichées, ajustées comprises ; confirmation ;
+  ouvre Achats) ; commande → « Message au fournisseur » (texte sélectionnable, « Copier le message »). En-tête du
+  réapprovisionnement passé en `Wrap` (le bouton débordait sur mobile).
+- Preuves : e2e `prepare-orders` 3 ; app `replenishment_screen_test` +1, `purchases_screen_test` +1.
+- ponytail : brouillons créés un par un (un échec n'annule pas les précédents : ce ne sont que des brouillons,
+  annulables par l'admin ; l'app invite alors à vérifier Achats) ; pas de clé d'idempotence (le bouton est bloqué
+  pendant l'appel ; une réponse perdue + nouvel essai ferait des doublons).
+- **Audits (2026-09-29) — appliqués** : revue 2 importants — seule la PAGE affichée partait (la confirmation dit
+  maintenant « N affichés sur X à racheter ») ; un champ VIDÉ reprenait la proposition en silence et « 0 »
+  bloquait tout (vide = 0, les lignes à 0 sont écartées). Sécurité conforme (mineurs). Aussi : message refusé pour
+  une commande annulée / reçue / clôturée (409) ; 20 fournisseurs au plus par préparation ; nombre de lignes à
+  prix 0 signalé (`unpricedLines`) ; quantités du message formatées par Decimal ; commentaires remis en place.
+  Contre-épreuves (statut du message, champ vidé) → échecs. Preuves complètes : lint 0 · `tsc` · **156 unit** ·
+  **640 e2e** ; app analyze propre · **+470 ~46**.
+- ⚠️ **À valider (MEDMEDBEN)** : le modèle de message est ÉTENDU à plusieurs produits (liste, unité, référence, n°
+  de commande) — la spec n'en donne qu'un par phrase ; le message est proposé aussi pour un BROUILLON (comme le PDF,
+  qui porte le tampon « BROUILLON ») : faut-il le réserver aux commandes envoyées / confirmées ? ; une commande
+  confirmée avec un prix à 0 fausse les marges (signalé à la préparation, pas bloqué).
+
+**Prochaine étape précise** : audits de P2 n°22, preuves complètes, commit ; puis **P2 n°23** (contact clients ciblé :
+pour un nouveau produit, clients ayant acheté une catégorie similaire ; message par modèle validé avant envoi).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Ip, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -7,6 +7,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import {
+  AuthenticatedUser,
+  CurrentUser,
   RequireFreshAccess,
   RequirePermissions,
   RoleCode,
@@ -14,6 +16,8 @@ import {
 } from '../common/auth.decorators';
 import { PERMISSIONS } from '../common/permissions';
 import {
+  PrepareOrdersDto,
+  PrepareOrdersResultDto,
   ReplenishmentQueryDto,
   ReplenishmentListDto,
 } from './dto/replenishment.dto';
@@ -27,8 +31,8 @@ import { ReplenishmentService } from './replenishment.service';
 /// liste porte les derniers prix d'achat et le fournisseur principal.
 ///
 /// Cet écran ne commande RIEN par lui-même : il propose, l'utilisateur ajuste,
-/// puis passe par la commande fournisseur existante. La préparation
-/// automatique de la commande est explicitement remise à P2 (n°22).
+/// puis `POST /replenishment/orders` prépare des commandes BROUILLON (P2 n°22)
+/// par le chemin de la commande fournisseur ; l'admin les confirme.
 @ApiTags('Réapprovisionnement')
 @ApiBearerAuth()
 @Controller('replenishment')
@@ -60,5 +64,28 @@ export class ReplenishmentController {
     @Query() query: ReplenishmentQueryDto,
   ): Promise<ReplenishmentListDto> {
     return this.replenishment.findAll(query);
+  }
+
+  /// Mêmes gardes que `POST /purchase-orders` : c'en est la préparation.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Post('orders')
+  @ApiOperation({
+    summary: 'Prépare des commandes BROUILLON, une par fournisseur principal',
+    description:
+      'Les produits sans fournisseur principal actif sont rendus dans ' +
+      '`withoutSupplier`. Prix : dernier prix d’achat (0 s’il est inconnu).',
+  })
+  @ApiOkResponse({ type: PrepareOrdersResultDto })
+  prepareOrders(
+    @Body() dto: PrepareOrdersDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<PrepareOrdersResultDto> {
+    return this.replenishment.prepareOrders(dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 }

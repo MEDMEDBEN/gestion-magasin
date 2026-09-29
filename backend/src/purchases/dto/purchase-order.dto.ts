@@ -230,3 +230,11 @@ export class PurchaseOrderListDto {
   @ApiProperty({ type: [PurchaseOrderDto] }) data!: PurchaseOrderDto[];
   @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
 }
+
+/// Message au fournisseur à modèle fixe (P2 n°22) et ses coordonnées.
+export class PurchaseOrderMessageDto {
+  @ApiProperty() text!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty({ nullable: true }) email!: string | null;
+  @ApiProperty({ nullable: true }) phone!: string | null;
+}

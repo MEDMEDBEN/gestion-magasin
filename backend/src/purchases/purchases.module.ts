@@ -5,5 +5,7 @@ import { PurchaseOrdersService } from './purchase-orders.service';
 @Module({
   controllers: [PurchaseOrdersController],
   providers: [PurchaseOrdersService],
+  // La préparation automatique (P2 n°22) crée ses brouillons par ce chemin.
+  exports: [PurchaseOrdersService],
 })
 export class PurchasesModule {}

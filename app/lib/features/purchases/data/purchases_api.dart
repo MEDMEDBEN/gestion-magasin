@@ -70,6 +70,15 @@ class PurchasesApi {
   }
 
   /// PDF rendu serveur, pour l'impression / le partage (garde du détail).
+  /// Message à modèle fixe (P2 n°22) : `text`, `supplierName`, `email`,
+  /// `phone`.
+  Future<Map<String, dynamic>> message(String id) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/purchase-orders/$id/message',
+    );
+    return response.data!;
+  });
+
   Future<Uint8List> document(String id) async {
     final response = await guardBytes(
       () => _dio.get<List<int>>(

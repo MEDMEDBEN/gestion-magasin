@@ -37,6 +37,7 @@ import {
   ConfirmPurchaseOrderDto,
   CreatePurchaseOrderDto,
   PurchaseOrderDto,
+  PurchaseOrderMessageDto,
   PurchaseOrderListDto,
   PurchaseOrderExportQueryDto,
   PurchaseOrderListQueryDto,
@@ -116,6 +117,18 @@ export class PurchaseOrdersController {
     @Param('id', CanonicalUuidPipe) id: string,
   ): Promise<PurchaseOrderDto> {
     return this.orders.findOne(id);
+  }
+
+  /// Message au fournisseur (P2 n°22). MÊMES gardes que le détail.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.PURCHASE_CREATE)
+  @Get(':id/message')
+  @ApiOperation({ summary: 'Message de commande au fournisseur (modèle fixe)' })
+  @ApiOkResponse({ type: PurchaseOrderMessageDto })
+  message(
+    @Param('id', CanonicalUuidPipe) id: string,
+  ): Promise<PurchaseOrderMessageDto> {
+    return this.orders.message(id);
   }
 
   /// Bon de commande PDF, à envoyer au fournisseur. MÊMES gardes que le détail.

@@ -8,11 +8,14 @@ import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
+import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/data/catalog_models.dart' show productUnitShort;
 import '../application/replenishment_controller.dart';
+import '../data/replenishment_api.dart';
 import '../data/replenishment_models.dart';
 
 /// Réapprovisionnement (spec §19) : ce qu'il faut racheter, du plus urgent au
@@ -40,6 +43,75 @@ class _ReplenishmentScreenState extends ConsumerState<ReplenishmentScreen> {
 
   ReplenishmentFilter get _filter => (outOfStockOnly: _outOfStockOnly);
 
+  bool _preparing = false;
+
+  /// P2 n°22 : les lignes affichées (quantités ajustées comprises) deviennent
+  /// des commandes BROUILLON, une par fournisseur principal ; on les vérifie
+  /// ensuite dans Achats, où l'admin les confirme.
+  Future<void> _prepare(List<ReplenishmentLine> lines, int total) async {
+    // Quantité AFFICHÉE ; une ligne à 0 (ou vidée) est écartée.
+    final toSend = [
+      for (final l in lines)
+        (
+          productId: l.productId,
+          quantity:
+              _adjusted[l.productId] ?? quantityFromJson(l.suggestedQuantity),
+        ),
+    ].where((l) => l.quantity > Quantity.zero).toList();
+    if (toSend.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Aucune quantité à commander.')),
+      );
+      return;
+    }
+    final skipped = lines.length - toSend.length;
+    final sure = await showAmpereConfirmDialog(
+      context,
+      title: 'Préparer les commandes ?',
+      body:
+          '${toSend.length} produit(s) affiché(s)'
+          '${total > lines.length ? ' (sur $total à racheter : les autres ne sont pas affichés)' : ''}'
+          '${skipped > 0 ? ', $skipped écarté(s) à 0' : ''} → une commande '
+          'BROUILLON par fournisseur principal, au dernier prix d’achat. Rien '
+          'n’est envoyé ni confirmé.',
+      confirmLabel: 'Préparer',
+    );
+    if (!sure || !mounted) return;
+    setState(() => _preparing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref.read(replenishmentApiProvider).prepareOrders([
+        for (final l in toSend)
+          (productId: l.productId, quantity: quantityToJson(l.quantity)),
+      ]);
+      final orders = result['orders'] as List<dynamic>;
+      final missing = (result['withoutSupplier'] as List<dynamic>)
+          .cast<String>();
+      final unpriced = result['unpricedLines'] as int? ?? 0;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${orders.length} commande(s) préparée(s) — à vérifier dans Achats'
+            '${unpriced == 0 ? '' : ' · $unpriced ligne(s) sans prix d’achat connu (0) : à compléter'}'
+            '${missing.isEmpty ? '' : ' · sans fournisseur principal : ${missing.join(', ')}'}',
+          ),
+        ),
+      );
+      if (orders.isNotEmpty && mounted) goToDestination(ref, 'Achats');
+    } on ApiException catch (error) {
+      // Des brouillons ont pu être créés pour d'autres fournisseurs.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${error.userMessage} — vérifiez les brouillons dans Achats.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _preparing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -53,14 +125,25 @@ class _ReplenishmentScreenState extends ConsumerState<ReplenishmentScreen> {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Row(
+          // Wrap : sur mobile, le bouton passe à la ligne au lieu de déborder.
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilterChip(
                 label: const Text('Ruptures seulement'),
                 selected: _outOfStockOnly,
                 onSelected: (on) => setState(() => _outOfStockOnly = on),
               ),
-              const Spacer(),
+              if (page.value case final data? when data.data.isNotEmpty)
+                FilledButton.icon(
+                  onPressed: _preparing
+                      ? null
+                      : () => _prepare(data.data, data.meta.total),
+                  icon: const Icon(Icons.playlist_add_check, size: 18),
+                  label: const Text('Préparer les commandes'),
+                ),
               if (page.value case final data?)
                 Text(
                   data.outOfStockCount == 0
@@ -267,7 +350,11 @@ class _QuantityFieldState extends State<_QuantityField> {
         isDense: true,
         prefixIcon: Icon(LucideIcons.shoppingCart, size: 16),
       ),
-      onChanged: (text) => widget.onChanged(parseQuantity(text)),
+      // Champ VIDÉ = 0 : la ligne est écartée de la préparation (P2 n°22),
+      // jamais remplacée en silence par la proposition.
+      onChanged: (text) => widget.onChanged(
+        text.trim().isEmpty ? Quantity.zero : parseQuantity(text),
+      ),
     );
   }
 }

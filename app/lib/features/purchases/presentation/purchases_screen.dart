@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -168,6 +169,68 @@ class PurchasesScreen extends ConsumerWidget {
     );
   }
 
+  /// Message à modèle fixe (P2 n°22) : à copier dans un e-mail ou WhatsApp —
+  /// aucune intégration d'envoi (spec §28 : « si intégration »).
+  Future<void> _showMessage(
+    BuildContext context,
+    WidgetRef ref,
+    PurchaseOrder order,
+  ) async {
+    final Map<String, dynamic> message;
+    try {
+      message = await ref.read(purchasesApiProvider).message(order.id);
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+      return;
+    }
+    if (!context.mounted) return;
+    final text = message['text'] as String;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Message à ${message['supplierName']}'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(text),
+              const SizedBox(height: 12),
+              Text(
+                [
+                  if (message['email'] != null) 'E-mail : ${message['email']}',
+                  if (message['phone'] != null)
+                    'Téléphone / WhatsApp : ${message['phone']}',
+                ].join('\n'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Fermer'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              if (context.mounted) {
+                _snack(
+                  context,
+                  'Message copié : collez-le dans l’e-mail ou WhatsApp.',
+                );
+              }
+            },
+            icon: const Icon(Icons.copy, size: 18),
+            label: const Text('Copier le message'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _openActions(
     BuildContext context,
     WidgetRef ref,
@@ -239,6 +302,11 @@ class PurchasesScreen extends ConsumerWidget {
             onPressed: () => Navigator.of(context).pop('print'),
             child: const Text('Imprimer le bon de commande'),
           ),
+          if (order.status != PurchaseStatus.cancelled)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('message'),
+              child: const Text('Message au fournisseur'),
+            ),
         ],
       ),
     );
@@ -255,6 +323,10 @@ class PurchasesScreen extends ConsumerWidget {
           _snack(context, 'Impression impossible sur ce poste.');
         }
       }
+      return;
+    }
+    if (action == 'message') {
+      await _showMessage(context, ref, order);
       return;
     }
     if (action == 'receive') {

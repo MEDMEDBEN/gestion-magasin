@@ -5,7 +5,7 @@ import { parseApiDate } from '../common/api-date';
 import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { ErrorCode } from '../common/error-codes';
-import { formatDateTime } from '../common/pdf/pdf';
+import { formatDateTime, UNIT_LABEL } from '../common/pdf/pdf';
 import { renderA4Document } from '../sales/sale-document';
 import { storeIdentity } from '../settings/store-settings';
 import { ConfigService } from '@nestjs/config';
@@ -29,6 +29,7 @@ import {
   CreatePurchaseOrderDto,
   PurchaseLineInputDto,
   PurchaseOrderDto,
+  PurchaseOrderMessageDto,
   PurchaseOrderListDto,
   PurchaseOrderExportQueryDto,
   PurchaseOrderListQueryDto,
@@ -234,6 +235,54 @@ export class PurchaseOrdersService {
     return {
       data: rows.map(PurchaseOrdersService.toDto),
       meta: { page: query.page, limit: query.limit, total },
+    };
+  }
+
+  /// Message au fournisseur (P2 n°22, spec §28) : modèle FIXE de la spec,
+  /// étendu à plusieurs produits — « Bonjour, nous souhaitons commander : » puis
+  /// une ligne par produit (quantité, unité, nom, référence), « Merci de
+  /// confirmer. » et le n° de commande. Avec les coordonnées du fournisseur :
+  /// l'app le COPIE (e-mail, WhatsApp), aucune intégration d'envoi. Pas pour
+  /// une commande annulée, reçue ou clôturée.
+  async message(id: string): Promise<PurchaseOrderMessageDto> {
+    const order = await this.findOne(id);
+    if (['ANNULEE', 'RECUE', 'CLOTUREE'].includes(order.status)) {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        'Commande annulée, reçue ou clôturée : rien à commander',
+        HttpStatus.CONFLICT,
+      );
+    }
+    const [products, supplier] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: order.lines.map((l) => l.productId) } },
+        select: { id: true, name: true, sku: true, unit: true },
+      }),
+      this.prisma.supplier.findUniqueOrThrow({
+        where: { id: order.supplierId },
+        select: { name: true, contactName: true, email: true, phone: true },
+      }),
+    ]);
+    const lines = order.lines.map((line) => {
+      const product = products.find((p) => p.id === line.productId)!;
+      // Decimal normalise les zéros de fin (« 12.500 » → « 12.5 »).
+      const quantity = new Prisma.Decimal(line.orderedQuantity)
+        .toString()
+        .replace('.', ',');
+      return `- ${quantity} ${UNIT_LABEL[product.unit] ?? ''} de ${product.name} (réf. ${product.sku})`;
+    });
+    const text = [
+      `Bonjour${supplier.contactName ? ` ${supplier.contactName}` : ''},`,
+      'Nous souhaitons commander :',
+      ...lines,
+      'Merci de confirmer.',
+      `Commande ${order.number}`,
+    ].join('\n');
+    return {
+      text,
+      supplierName: supplier.name,
+      email: supplier.email,
+      phone: supplier.phone,
     };
   }
 
