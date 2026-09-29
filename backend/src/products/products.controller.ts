@@ -34,6 +34,7 @@ import { ActorContext } from '../audit/audit-writer';
 import {
   AuthenticatedUser,
   CurrentUser,
+  RequireFreshAccess,
   RequirePermissions,
   RoleCode,
   Roles,
@@ -53,6 +54,7 @@ import {
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
+  PriceChangeDto,
   SetProductPriceDto,
   TaxRateDto,
   UpdateCategoryDto,
@@ -238,6 +240,24 @@ export class ProductsController {
       await this.productsService.removeImage(id, actorOf(user, ip)),
       user,
     );
+  }
+
+  /// Mêmes lecteurs que les prix eux-mêmes : les trois rôles avec
+  /// `product.read` ET `price.read`.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.PRICE_READ)
+  // L'auteur (donnée d'audit) dépend du rôle ADMIN : relu en base.
+  @RequireFreshAccess()
+  @Get(':id/price-history')
+  @ApiOperation({
+    summary: 'Historique des prix de vente (changements de tarif)',
+  })
+  @ApiOkResponse({ type: [PriceChangeDto] })
+  priceHistory(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<PriceChangeDto[]> {
+    return this.productsService.priceHistory(id, user);
   }
 
   @Roles(...ALL_ROLES)

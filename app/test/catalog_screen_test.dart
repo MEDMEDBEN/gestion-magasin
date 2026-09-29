@@ -248,6 +248,27 @@ void main() {
     },
   );
 
+  /// P1 bis n°21n : l'historique des prix de vente, depuis la fiche produit.
+  testWidgets('fiche produit : historique des prix de vente', (tester) async {
+    useScreenSize(tester, const Size(1400, 2600));
+    await tester.pumpWidget(
+      wrap(_vendeur(), desktop: true, products: [product(name: 'Câble 3G2.5')]),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Câble 3G2.5'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Historique des prix'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('DETAIL : ${formatDA(145000)} → ${formatDA(150000)}'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('DETAIL : premier prix → ${formatDA(145000)}'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'filtre catégorie : on choisit une catégorie, puis « Toutes » le retire',
     (tester) async {
@@ -525,7 +546,7 @@ void main() {
   testWidgets('prix d’achat : colonnes Vente/Achat, coût dans la fiche', (
     tester,
   ) async {
-    useScreenSize(tester, const Size(1400, 1600));
+    useScreenSize(tester, const Size(1400, 2600));
     await tester.pumpWidget(
       wrap(
         _admin(),

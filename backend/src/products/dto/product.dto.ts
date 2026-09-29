@@ -407,6 +407,24 @@ export class CategoryDto {
   @ApiProperty() updatedAt!: Date;
 }
 
+/// Un changement de tarif (P1 bis n°21n) : lu de l'AUDIT, où `setPriceInTx`
+/// l'écrit à chaque fois (écran, import) — aucune table de plus.
+export class PriceChangeDto {
+  @ApiProperty() at!: Date;
+  @ApiProperty({ example: 'DETAIL' }) tier!: string;
+  @ApiProperty({
+    nullable: true,
+    description: 'Centimes ; null : premier prix.',
+  })
+  oldPriceHt!: number | null;
+  @ApiProperty({ description: 'Centimes.' }) newPriceHt!: number;
+  @ApiProperty({
+    nullable: true,
+    description: 'Auteur du changement — ADMIN seulement (donnée d’audit).',
+  })
+  by!: string | null;
+}
+
 export class SetProductPriceDto {
   @ApiProperty({ description: 'Tarif concerné (DETAIL, GROS…)' })
   @IsCanonicalUuid()

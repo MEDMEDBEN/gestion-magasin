@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/photos.dart';
@@ -11,10 +12,12 @@ import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../application/catalog_controller.dart';
 import '../../stock/application/stock_controller.dart';
 import '../../stock/presentation/stock_status.dart';
+import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../../suppliers/data/suppliers_models.dart';
@@ -357,7 +360,48 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     );
   }
 
+  /// Tarifs, puis (produit existant) leur historique (P1 bis n°21n).
   Widget _pricesSection(AmpereColors colors, List<PriceTier> tiers) {
+    final product = widget.existing;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _priceFields(colors, tiers),
+        if (product != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => _showPriceHistory(product),
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('Historique des prix'),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showPriceHistory(Product product) {
+    final api = ref.read(catalogApiProvider);
+    return showHistory(
+      context,
+      title: 'Prix de vente — ${product.name}',
+      empty: 'Aucun changement de tarif enregistré.',
+      load: () async => [
+        for (final h in await api.priceHistory(product.id))
+          (
+            title:
+                '${h['tier']} : ${h['oldPriceHt'] == null ? 'premier prix' : formatDA(h['oldPriceHt'] as int)} → ${formatDA(h['newPriceHt'] as int)}',
+            subtitle: [
+              formatDateTime(DateTime.parse(h['at'] as String).toLocal()),
+              if (h['by'] != null) h['by'] as String,
+            ].join(' · '),
+            trailing: '',
+          ),
+      ],
+    );
+  }
+
+  Widget _priceFields(AmpereColors colors, List<PriceTier> tiers) {
     final existing = {
       for (final p in widget.existing?.prices ?? const <ProductPriceLine>[])
         p.priceTierId: p.priceHt,

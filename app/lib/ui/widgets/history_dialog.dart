@@ -42,7 +42,7 @@ Future<void> showHistory(
             if (items.isEmpty) {
               return ScreenStateView(
                 status: ScreenStatus.empty,
-                title: 'Aucun achat',
+                title: 'Rien à afficher',
                 message: empty,
               );
             }

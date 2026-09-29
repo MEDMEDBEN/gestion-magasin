@@ -37,8 +37,17 @@ class CatalogApi {
   Future<Product> updateProduct(String id, Map<String, Object?> changes) =>
       _send('PATCH', '/products/$id', changes, Product.fromJson);
 
-  /// Photo déjà compressée par l'app (JPEG ≤ 1024 px). Le serveur vérifie le
-  /// type sur le contenu et renvoie le produit avec sa nouvelle `imageKey`.
+  /// Historique des prix de vente (P1 bis n°21n), le plus récent d'abord :
+  /// `at`, `tier`, `oldPriceHt` (null : premier prix), `newPriceHt`, `by`
+  /// (auteur, rempli pour l'admin seulement).
+  Future<List<Map<String, dynamic>>> priceHistory(String productId) =>
+      guardApi(() async {
+        final response = await _dio.get<List<dynamic>>(
+          '/products/$productId/price-history',
+        );
+        return [for (final r in response.data!) r as Map<String, dynamic>];
+      });
+
   Future<List<PriceTier>> priceTiers() {
     return guardApi(() async {
       final response = await _dio.get<List<dynamic>>('/pricing/tiers');
@@ -60,6 +69,8 @@ class CatalogApi {
     });
   }
 
+  /// Photo déjà compressée par l'app (JPEG ≤ 1024 px). Le serveur vérifie le
+  /// type sur le contenu et renvoie le produit avec sa nouvelle `imageKey`.
   Future<Product> uploadImage(String productId, Uint8List jpeg) {
     return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(

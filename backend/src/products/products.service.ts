@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
-import { AuthenticatedUser } from '../common/auth.decorators';
+import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { internalBarcode, normalizeBarcode } from '../common/barcode/barcode';
 import { BusinessException } from '../common/business.exception';
 import { parseSort } from '../common/dto/pagination.dto';
@@ -17,6 +17,7 @@ import { labelFor, renderLabels } from './labels';
 import {
   CreateProductDto,
   LabelsDto,
+  PriceChangeDto,
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
@@ -284,6 +285,44 @@ export class ProductsService {
       newValue: { tier: tier.code, priceHt: dto.priceHt },
     });
     return ProductsService.toDto(updated);
+  }
+
+  /// Historique des prix de vente d'un produit (P1 bis n°21n), du plus récent
+  /// au plus ancien (200 derniers). L'auteur est une donnée d'audit : montré à
+  /// l'ADMIN seulement.
+  async priceHistory(
+    id: string,
+    user: AuthenticatedUser,
+  ): Promise<PriceChangeDto[]> {
+    if (!(await this.prisma.product.findUnique({ where: { id } }))) {
+      throw ProductsService.notFound();
+    }
+    const admin = user.roles.includes(RoleCode.ADMIN);
+    const rows = await this.prisma.auditLog.findMany({
+      where: { entityType: 'ProductPrice', entityId: id },
+      // Id uuid v7 en second : ordre stable entre deux tarifs d'un même import.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 200,
+      include: admin ? { user: { select: { fullName: true } } } : undefined,
+    });
+    // Une entrée d'audit d'une autre forme est ignorée, jamais une erreur 500.
+    return rows.flatMap((row) => {
+      const before = (row.oldValue ?? {}) as { priceHt?: number | null };
+      const after = (row.newValue ?? {}) as { tier?: string; priceHt?: number };
+      if (typeof after.tier !== 'string' || typeof after.priceHt !== 'number') {
+        return [];
+      }
+      return {
+        at: row.createdAt,
+        tier: after.tier,
+        oldPriceHt: before.priceHt ?? null,
+        newPriceHt: after.priceHt,
+        by: admin
+          ? ((row as { user?: { fullName: string } | null }).user?.fullName ??
+            null)
+          : null,
+      };
+    });
   }
 
   async openImage(id: string) {

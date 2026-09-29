@@ -265,6 +265,14 @@ d'environnement `STORE_*` du serveur.
 Garde : les trois rôles + `product.read` **ET** `price.read` (le prix est imprimé). Aucune écriture : une
 lecture en POST, parce qu'une liste de 200 produits ne tient pas dans une URL. Produits actifs seulement.
 
+## Historique des prix de vente (P1 bis n°21n, ajouté le 2026-09-29)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Lire l'historique des tarifs d'un produit (`GET /products/:id/price-history`) | ✅ (avec l'auteur) | ✅ (`price.read`, sans l'auteur) | ✅ (`price.read`, sans l'auteur) |
+
+Lu de l'audit des tarifs (mêmes lecteurs que les prix) ; l'auteur est une donnée d'audit, montré à l'ADMIN seul,
+rôle relu en base (`@RequireFreshAccess`).
+
 ## Devis (P1 n°21a, ajouté le 2026-09-26)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

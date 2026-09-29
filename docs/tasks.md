@@ -600,9 +600,21 @@ chèques) : chèques CLIENTS reçus ET chèques FOURNISSEURS émis ; un chèque 
   remise (conséquence de « dette réduite dès la remise ») ; aucune alerte à l'admin à la saisie (il voit le
   portefeuille).
 
-**Prochaine étape précise** : **21n partie 3** — historique des prix de vente : backend fait (`GET
-/products/:id/price-history`, lu de l'audit des tarifs ; e2e dans `catalog.e2e-spec`), reste l'écran (fiche produit
-→ « Historique des prix »), audits, commit.
+**21n (partie 3) — Historique des prix de vente (livré et audité)** : `GET /products/:id/price-history`
+(3 rôles + `product.read` + `price.read`, mêmes lecteurs que les prix) — lu de l'AUDIT des tarifs que
+`setPriceInTx` écrit à chaque changement (écran, import) : aucune table de plus. Le plus récent d'abord (200) ;
+l'auteur n'est renvoyé qu'à l'ADMIN (donnée d'audit).
+- App : fiche produit → « Historique des prix » (ancien → nouveau prix par tarif, date ; auteur pour l'admin).
+- Preuves : e2e `catalog` (ordre, premier prix, auteur admin seulement, 404) ; app `catalog_screen_test` +1 (écran
+  de test agrandi : le bouton ajouté poussait le champ du coût hors de la liste construite).
+- Audits : sécurité conforme, revue OK. Appliqué : rôle ADMIN relu en base pour l'auteur (`@RequireFreshAccess`),
+  entrée d'audit malformée ignorée (jamais 500), ordre stable (id uuid v7), commentaire photo remis à sa place,
+  titre vide neutre (« Rien à afficher »), section dédiée dans permissions.md. Contre-épreuve (auteur montré à
+  tous) → échec. Preuves complètes : lint 0 · `tsc` · **156 unit** · **637 e2e** ; app analyze propre ·
+  **+468 ~46**.
+
+**Prochaine étape précise** : **P1 bis est entièrement codée et auditée** → relecture humaine par MEDMEDBEN (décisions en attente listées dans les blocs 21l → 21n), puis
+**P2 n°22** (commande fournisseur préparée automatiquement + message par modèle).
 
 ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
 MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,

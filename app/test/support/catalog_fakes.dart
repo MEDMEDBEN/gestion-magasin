@@ -78,6 +78,24 @@ class RecordingCatalogApi extends CatalogApi {
   }
 
   @override
+  Future<List<Map<String, dynamic>>> priceHistory(String productId) async => [
+    {
+      'at': '2026-09-20T10:00:00.000Z',
+      'tier': 'DETAIL',
+      'oldPriceHt': 145000,
+      'newPriceHt': 150000,
+      'by': null,
+    },
+    {
+      'at': '2026-09-01T10:00:00.000Z',
+      'tier': 'DETAIL',
+      'oldPriceHt': null,
+      'newPriceHt': 145000,
+      'by': null,
+    },
+  ];
+
+  @override
   Future<CatalogChanges> changes({String? cursor, int limit = 500}) async =>
       const CatalogChanges(
         products: [],

@@ -757,6 +757,34 @@ describe('Catalogue (e2e)', () => {
         audit.map((a) => (a.newValue as { priceHt: number }).priceHt),
       ).toEqual([145000, 120000, 150000]);
       expect((audit[2].oldValue as { priceHt: number }).priceHt).toBe(145000);
+
+      // P1 bis n°21n : l'historique des prix se lit de cet audit, le plus
+      // récent d'abord ; l'auteur n'est montré qu'à l'admin.
+      const history = (
+        await as(tokens.admin)
+          .get(`/api/products/${product.id}/price-history`)
+          .expect(200)
+      ).body as {
+        tier: string;
+        oldPriceHt: number | null;
+        newPriceHt: number;
+        by: string | null;
+      }[];
+      expect(history.map((h) => [h.tier, h.oldPriceHt, h.newPriceHt])).toEqual([
+        ['DETAIL', 145000, 150000],
+        ['GROS', null, 120000],
+        ['DETAIL', null, 145000],
+      ]);
+      expect(history[0].by).toEqual(expect.any(String));
+      const seenBySeller = (
+        await as(tokens.vendeur)
+          .get(`/api/products/${product.id}/price-history`)
+          .expect(200)
+      ).body as { by: string | null }[];
+      expect(seenBySeller.every((h) => h.by === null)).toBe(true);
+      await as(tokens.admin)
+        .get(`/api/products/${randomUUID()}/price-history`)
+        .expect(404);
     });
 
     it('prix invalide : décimal, négatif, démesuré → 400 ; tarif inconnu → 422', async () => {

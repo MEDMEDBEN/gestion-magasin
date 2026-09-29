@@ -146,7 +146,8 @@ affichage n'est pas livrée. À terminer AVANT P2, dans cet ordre :
 21m. **Indicateurs** : fournisseur (total acheté, produits fournis, livraisons à temps, évolution des prix
      d'achat), graphiques du tableau de bord, modification d'un devis brouillon. _(2026-09-28 : modification d'un
      devis brouillon, indicateurs fournisseur et graphique de l'accueil livrés)_
-21n. **Relevé de compte** client et fournisseur (PDF) ; suivi des chèques ; historique des prix de vente.
+21n. **Relevé de compte** client et fournisseur (PDF) ; suivi des chèques ; historique des prix de vente. _(2026-09-29 :
+     livré, prouvé et audité)_
 
 ### P2 — Avancé
 22. Commande fournisseur préparée automatiquement + message par modèle (email/WhatsApp)
