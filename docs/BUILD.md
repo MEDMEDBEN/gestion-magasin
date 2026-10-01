@@ -275,7 +275,8 @@ normal, ce n'est pas une panne.**
 ### Build `--release` (seulement avec un serveur HTTPS)
 
 ```powershell
-flutter build windows --release --dart-define=API_BASE_URL=https://ton-domaine.com/api
+# Adresse du serveur de production : app/config/prod.json (https://elec.mohamedbennabi.tech/api)
+flutter build windows --release --dart-define-from-file=config/prod.json
 ```
 
 Avec `http://`, l'application se fermera au démarrage — volontairement.
@@ -337,7 +338,7 @@ commité) : une application signée avec la clé de debug ne doit jamais sortir.
 
 ```powershell
 cd C:\gestion-magasin\app
-flutter build apk --profile --dart-define=API_BASE_URL=https://xxxxx.trycloudflare.com/api
+flutter build apk --profile --dart-define-from-file=config/prod.json
 ```
 
 L'APK sort dans :
