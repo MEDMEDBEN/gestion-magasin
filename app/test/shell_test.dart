@@ -245,6 +245,44 @@ void main() {
       },
     );
 
+    testWidgets('le menu se réduit puis s’agrandit au bouton', (tester) async {
+      await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
+      expect(find.text('Gestion magasin'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Réduire le menu'));
+      await tester.pumpAndSettle();
+      // Rail : plus de titre, les libellés passent en infobulle.
+      expect(find.text('Gestion magasin'), findsNothing);
+      expect(find.byTooltip('Utilisateurs'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byTooltip('Agrandir le menu'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gestion magasin'), findsOneWidget);
+    });
+
+    testWidgets('écran étroit : rail par défaut, agrandissable', (
+      tester,
+    ) async {
+      await _pumpShell(tester, user: authUser(), size: const Size(1000, 800));
+      expect(find.text('Gestion magasin'), findsNothing);
+
+      await tester.tap(find.byTooltip('Agrandir le menu'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gestion magasin'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('le bloc utilisateur ouvre « Mon profil »', (tester) async {
+      await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
+
+      await tester.tap(find.text('Admin Principal').last);
+      await tester.pumpAndSettle();
+
+      // Le titre de la barre du haut suit la rubrique ouverte.
+      expect(find.text('Mon profil'), findsAtLeastNWidgets(2));
+    });
+
     testWidgets('≥ 1180 : sidebar complète', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 

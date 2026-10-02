@@ -14,6 +14,50 @@ import '../widgets/ampere_controls.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/sync_panel.dart';
 
+/// Menu latéral réduit (rail d'icônes) ou étendu, au choix de l'utilisateur
+/// et **gardé par compte** sur le poste, comme le thème. `null` = automatique :
+/// rail sous 1180 px de large, menu complet au-delà.
+class SidebarCollapsedController extends Notifier<bool?> {
+  /// Posé dès que l'utilisateur choisit : une lecture stockée arrivant APRÈS
+  /// ne doit pas écraser ce choix (même course que le thème).
+  bool _chosen = false;
+
+  static String _key(String userId) => 'sidebar_collapsed.$userId';
+
+  @override
+  bool? build() {
+    _chosen = false;
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId != null) _restore(userId);
+    return null;
+  }
+
+  Future<void> _restore(String userId) async {
+    final stored = await ref
+        .read(localSettingsStoreProvider)
+        .read(_key(userId));
+    if (_chosen || !ref.mounted || ref.read(currentUserIdProvider) != userId) {
+      return;
+    }
+    if (stored != null) state = stored == 'true';
+  }
+
+  Future<void> set({required bool collapsed}) async {
+    _chosen = true;
+    state = collapsed;
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    await ref
+        .read(localSettingsStoreProvider)
+        .write(_key(userId), collapsed ? 'true' : 'false');
+  }
+}
+
+final sidebarCollapsedProvider =
+    NotifierProvider<SidebarCollapsedController, bool?>(
+      SidebarCollapsedController.new,
+    );
+
 /// Coquille desktop : sidebar fixe 246 px (ou rail d'icônes 64 px sur
 /// tablette, §9), barre supérieure 56 px, densité assumée (AMPÈRE §6 et §9).
 class DesktopShell extends ConsumerStatefulWidget {
@@ -40,6 +84,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     ).where((d) => !d.mobileOnly).toList();
     final index = _index.clamp(0, entries.length - 1);
     _followRequest(entries);
+    final compact = ref.watch(sidebarCollapsedProvider) ?? widget.compact;
+    final profile = entries.indexWhere((d) => d.label == 'Mon profil');
 
     return Scaffold(
       body: Row(
@@ -48,9 +94,15 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             user: widget.user,
             entries: entries,
             selectedIndex: index,
-            compact: widget.compact,
+            compact: compact,
             unread: ref.watch(unreadNotificationsProvider).value ?? 0,
             onSelect: (i) => setState(() => _index = i),
+            onToggle: () => ref
+                .read(sidebarCollapsedProvider.notifier)
+                .set(collapsed: !compact),
+            onProfile: profile < 0
+                ? null
+                : () => setState(() => _index = profile),
           ),
           VerticalDivider(width: 1, color: colors.line),
           Expanded(
@@ -88,6 +140,8 @@ class _Sidebar extends StatelessWidget {
     required this.selectedIndex,
     required this.compact,
     required this.onSelect,
+    required this.onToggle,
+    this.onProfile,
     this.unread = 0,
   });
 
@@ -96,6 +150,12 @@ class _Sidebar extends StatelessWidget {
   final int selectedIndex;
   final bool compact;
   final ValueChanged<int> onSelect;
+
+  /// Réduit le menu en rail d'icônes, ou l'agrandit.
+  final VoidCallback onToggle;
+
+  /// Ouvre « Mon profil » depuis le bloc utilisateur du bas.
+  final VoidCallback? onProfile;
 
   /// Notifications non lues. Le nombre est porté par la SIDEBAR, pas par
   /// l'écran : on ne va pas ouvrir une boîte dont rien ne dit qu'elle a du neuf.
@@ -113,25 +173,46 @@ class _Sidebar extends StatelessWidget {
         children: [
           SizedBox(
             height: 56,
-            child: Row(
-              mainAxisAlignment: compact
-                  ? MainAxisAlignment.center
-                  : MainAxisAlignment.start,
-              children: [
-                if (!compact) const SizedBox(width: 18),
-                // `zap` est le SEUL éclair du système (§5).
-                Icon(LucideIcons.zap, size: 20, color: colors.accent),
-                if (!compact) ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Gestion magasin',
-                      style: AmpereType.h4.copyWith(color: colors.ink),
+            // Réduit, l'en-tête ne garde que le bouton pour agrandir : un rail
+            // de 64 px n'a la place que d'une icône.
+            child: compact
+                ? Center(
+                    child: IconButton(
+                      tooltip: 'Agrandir le menu',
+                      onPressed: onToggle,
+                      icon: Icon(
+                        LucideIcons.panelLeftOpen,
+                        size: 18,
+                        color: colors.ink2,
+                      ),
                     ),
+                  )
+                : Row(
+                    children: [
+                      const SizedBox(width: 18),
+                      // `zap` est le SEUL éclair du système (§5).
+                      Icon(LucideIcons.zap, size: 20, color: colors.accent),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Gestion magasin',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.h4.copyWith(color: colors.ink),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Réduire le menu',
+                        onPressed: onToggle,
+                        icon: Icon(
+                          LucideIcons.panelLeftClose,
+                          size: 18,
+                          color: colors.ink2,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
                   ),
-                ],
-              ],
-            ),
           ),
           Divider(height: 1, color: colors.line),
           // Plus de rubriques que de hauteur (admin, petit écran) : la liste
@@ -153,38 +234,56 @@ class _Sidebar extends StatelessWidget {
             ),
           ),
           Divider(height: 1, color: colors.line),
-          if (compact)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              child: Tooltip(
-                message: '${user.fullName} — ${formatRoles(user.roles)}',
-                child: const Center(
-                  child: AmpereIconChip(icon: LucideIcons.user, size: 34),
-                ),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user.fullName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    formatRoles(user.roles),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.metaDesktop.copyWith(color: colors.ink3),
-                  ),
-                ],
-              ),
-            ),
+          // Le bloc utilisateur ouvre « Mon profil » (mot de passe, sessions) :
+          // c'est là qu'on le cherche d'instinct.
+          AmpereTappable(
+            onTap: onProfile,
+            borderRadius: 0,
+            child: compact
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    child: Tooltip(
+                      message: '${user.fullName} — ${formatRoles(user.roles)}',
+                      child: const Center(
+                        child: AmpereIconChip(icon: LucideIcons.user, size: 34),
+                      ),
+                    ),
+                  )
+                : _ProfileBlock(user: user),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Nom et rôles du compte, en bas du menu étendu.
+class _ProfileBlock extends StatelessWidget {
+  const _ProfileBlock({required this.user});
+
+  final AuthUser user;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            user.fullName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            formatRoles(user.roles),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AmpereType.metaDesktop.copyWith(color: colors.ink3),
+          ),
         ],
       ),
     );
