@@ -4,6 +4,13 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Build Android profile — 2026-10-02
+
+- Après le pull UX `42a25f0`, le build APK échouait car `flutter_secure_storage 11.0.0` exige `compileSdk 37`.
+- Configuration alignée : `compileSdk 37`, AGP `9.4.0`, Gradle `9.6.0`.
+- Preuves sur le code intégré : tests ciblés desktop **22/22** ; APK profile générée (**137,8 Mo**) ; reviewer **GO**.
+- **Prochaine étape** : installer et essayer l’APK sur un téléphone (scanner et parcours mobile).
+
 ## 🏷️ Repère de compilation — `v0.4.0-rc2` (2026-09-25)
 
 > Tags précédents, à ne PLUS utiliser : `v0.2.0-rc1` (elle précède le retrait de MinIO — l'agent de build

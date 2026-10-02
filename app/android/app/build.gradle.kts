@@ -17,7 +17,7 @@ plugins {
 
 android {
     namespace = "dz.magasin.gestion_magasin"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
