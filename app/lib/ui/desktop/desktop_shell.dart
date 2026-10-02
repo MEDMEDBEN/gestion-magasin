@@ -134,16 +134,24 @@ class _Sidebar extends StatelessWidget {
             ),
           ),
           Divider(height: 1, color: colors.line),
-          const SizedBox(height: 10),
-          for (var i = 0; i < entries.length; i++)
-            _NavItem(
-              entry: entries[i],
-              selected: i == selectedIndex,
-              compact: compact,
-              unread: entries[i].label == 'Notifications' ? unread : 0,
-              onTap: () => onSelect(i),
+          // Plus de rubriques que de hauteur (admin, petit écran) : la liste
+          // défile, avec un ascenseur visible ; logo et profil restent fixes.
+          Expanded(
+            child: _NavList(
+              children: [
+                const SizedBox(height: 10),
+                for (var i = 0; i < entries.length; i++)
+                  _NavItem(
+                    entry: entries[i],
+                    selected: i == selectedIndex,
+                    compact: compact,
+                    unread: entries[i].label == 'Notifications' ? unread : 0,
+                    onTap: () => onSelect(i),
+                  ),
+                const SizedBox(height: 10),
+              ],
             ),
-          const Spacer(),
+          ),
           Divider(height: 1, color: colors.line),
           if (compact)
             Padding(
@@ -178,6 +186,42 @@ class _Sidebar extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Liste des rubriques défilante, ascenseur toujours visible : sans lui, rien
+/// ne dit qu'il y a d'autres rubriques plus bas.
+class _NavList extends StatefulWidget {
+  const _NavList({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  State<_NavList> createState() => _NavListState();
+}
+
+class _NavListState extends State<_NavList> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      controller: _controller,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: _controller,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: widget.children,
+        ),
       ),
     );
   }

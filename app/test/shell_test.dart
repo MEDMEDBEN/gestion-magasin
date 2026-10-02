@@ -205,6 +205,46 @@ void main() {
       expect(find.byTooltip('Utilisateurs'), findsOneWidget);
     });
 
+    testWidgets(
+      'écran bas : toutes les rubriques restent atteignables en défilant',
+      (tester) async {
+        await _pumpShell(
+          tester,
+          user: authUser(
+            permissions: const [
+              'audit.read',
+              'inventory.create',
+              'product.read',
+              'purchase.create',
+              'sale.create',
+              'supplier.read',
+              'transfer.prepare',
+              'transfer.receive',
+              'transfer.request',
+              'user.manage',
+            ],
+          ),
+          size: const Size(1300, 500),
+        );
+
+        // Aucun débordement (il lèverait une exception de rendu) ; la
+        // dernière rubrique est hors de vue, puis atteinte en défilant.
+        expect(tester.takeException(), isNull);
+        final last = find.text('Mon profil');
+        await tester.scrollUntilVisible(
+          last,
+          100,
+          scrollable: find
+              .descendant(
+                of: find.byType(DesktopShell),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        expect(last.hitTestable(), findsOneWidget);
+      },
+    );
+
     testWidgets('≥ 1180 : sidebar complète', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 
