@@ -29,6 +29,10 @@ import {
 import { LABEL_FORMATS, type LabelFormat } from '../labels';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
+/// Unités PROPOSÉES à la saisie (décision MEDMEDBEN du 2026-10-05). Les autres
+/// restent valides pour les produits déjà enregistrés (rien n'est converti).
+export const SELECTABLE_UNITS: readonly string[] = ['PIECE', 'METRE', 'BOITE'];
+
 export enum ProductUnitDto {
   PIECE = 'PIECE',
   METRE = 'METRE',

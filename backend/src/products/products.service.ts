@@ -25,6 +25,7 @@ import {
   ProductListDto,
   ProductListQueryDto,
   ProductUnitDto,
+  SELECTABLE_UNITS,
   UpdateProductDto,
 } from './dto/product.dto';
 
@@ -564,6 +565,7 @@ export class ProductsService {
     actor: ActorContext,
   ): Promise<ProductDto> {
     await ProductsService.lockWrites(tx);
+    ProductsService.assertSelectableUnit(dto.unit);
     await this.assertReferences(tx, dto);
     await ProductsService.assertSkuFree(tx, dto.sku);
 
@@ -679,6 +681,7 @@ export class ProductsService {
       if (dto.description !== undefined) data.description = dto.description;
       if (dto.brand !== undefined) data.brand = dto.brand;
       if (dto.unit !== undefined && dto.unit !== before.unit) {
+        ProductsService.assertSelectableUnit(dto.unit);
         // Le journal de stock est exprimé dans l'unité du produit : passer de la
         // pièce au mètre réinterpréterait tout l'historique.
         const moved = await tx.stockMovement.findFirst({
@@ -860,6 +863,18 @@ export class ProductsService {
         ErrorCode.BARCODE_ALREADY_USED,
         `Le code-barres ${barcode} est déjà attribué à un autre produit`,
         HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /// Nouvelle unité : pièce, mètre ou boîte seulement. Un produit déjà en
+  /// rouleau garde le sien tant qu'on ne le change pas.
+  private static assertSelectableUnit(unit: string) {
+    if (!SELECTABLE_UNITS.includes(unit)) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'unit : choisissez Pièce, Mètre ou Boîte',
+        HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
   }

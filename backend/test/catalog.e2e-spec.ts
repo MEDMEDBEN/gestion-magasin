@@ -393,6 +393,43 @@ describe('Catalogue (e2e)', () => {
       }
     });
 
+    /// Décision MEDMEDBEN 2026-10-05 : pièce, mètre ou boîte ; un produit déjà
+    /// en rouleau garde son unité (rien n'est converti).
+    it('unités : Pièce / Mètre / Boîte seulement ; une ancienne reste', async () => {
+      for (const unit of ['ROULEAU', 'PAQUET', 'KILOGRAMME']) {
+        const res = await as(tokens.admin)
+          .post('/api/products')
+          .send({ sku: uid('SKU'), name: 'Gaine', unit })
+          .expect(422);
+        expect(res.body.code).toBe('VALIDATION_FAILED');
+      }
+      await createProduct({ unit: 'BOITE' });
+
+      const legacy = await prisma.product.create({
+        data: {
+          sku: uid('SKU'),
+          barcode: uid('BC'),
+          name: 'Gaine en rouleau',
+          unit: 'ROULEAU',
+        },
+      });
+      productIds.push(legacy.id);
+      // Modifier autre chose (unité renvoyée telle quelle) : accepté.
+      await as(tokens.admin)
+        .patch(`/api/products/${legacy.id}`)
+        .send({ name: 'Gaine ICTA', unit: 'ROULEAU' })
+        .expect(200);
+      // Passer à une autre ancienne unité : refusé ; à une proposée : accepté.
+      await as(tokens.admin)
+        .patch(`/api/products/${legacy.id}`)
+        .send({ unit: 'PAQUET' })
+        .expect(422);
+      await as(tokens.admin)
+        .patch(`/api/products/${legacy.id}`)
+        .send({ unit: 'METRE' })
+        .expect(200);
+    });
+
     it('PATCH : corrige le code-barres, retire la marque, trace avant/après', async () => {
       const product = await createProduct({ brand: 'Legrand' });
       const barcode = manufacturerEan();
