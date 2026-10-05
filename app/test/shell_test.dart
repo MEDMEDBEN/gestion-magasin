@@ -360,6 +360,38 @@ void main() {
       },
     );
 
+    testWidgets('assistant : catalogue DÉJÀ ouvert, la recherche suit', (
+      tester,
+    ) async {
+      await _pumpShell(
+        tester,
+        user: authUser(permissions: const ['user.manage', 'product.read']),
+        size: const Size(1300, 900),
+      );
+      await tester.tap(find.text('Catalogue').first);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      await tester.tap(find.byTooltip('Assistant (Ctrl+K)'));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      await tester.enterText(find.byType(TextField).last, 'chof gaine');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      final fields = tester
+          .widgetList<TextField>(find.byType(TextField))
+          .map((f) => f.controller?.text)
+          .toList();
+      expect(fields, contains('gaine'));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(minutes: 2));
+    });
+
     testWidgets('≥ 1180 : sidebar complète', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 

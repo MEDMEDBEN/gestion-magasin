@@ -292,11 +292,15 @@ class _Blocks extends StatelessWidget {
                 width: width,
               ),
             // Infos ajoutées le 2026-10-05.
-            // À partir de 2 ventes : avec une seule, il répète le CA.
-            if (sales != null && sales.count > 1)
+            // À partir de 2 ventes (avec une seule, il répète le CA) et un CA
+            // positif (des retours d'anciennes ventes le fausseraient).
+            if (sales != null && sales.count > 1 && sales.revenueTtc > 0)
               _Metric(
                 label: 'Panier moyen',
-                value: formatDA((sales.revenueTtc / sales.count).round()),
+                // Division ENTIÈRE arrondie, en centimes (règle 4).
+                value: formatDA(
+                  (sales.revenueTtc * 2 + sales.count) ~/ (sales.count * 2),
+                ),
                 hint: 'par vente aujourd’hui',
                 desktop: desktop,
                 width: width,

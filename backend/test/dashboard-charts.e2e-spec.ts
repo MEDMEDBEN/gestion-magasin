@@ -162,6 +162,14 @@ describe('Tableau de bord — graphiques (e2e)', () => {
     const ouverte = (await dashboard(tokens.vendeur).expect(200)).body.cash;
     expect(ouverte).toMatchObject({ open: true, currentAmount: 250000 });
 
+    // Cloisonné : l'admin voit SA caisse (fermée), jamais celle du vendeur.
+    const adminCash = (await dashboard(tokens.admin).expect(200)).body.cash;
+    expect(adminCash).toEqual({
+      open: false,
+      currentAmount: 0,
+      openedAt: null,
+    });
+
     const magasinier = (await dashboard(tokens.magasinier).expect(200)).body;
     expect(magasinier.cash).toBeNull();
     expect(magasinier.margin).toBeNull();

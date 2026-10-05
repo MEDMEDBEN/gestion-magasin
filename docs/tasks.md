@@ -14,7 +14,13 @@
 - **Accueil** : panier moyen, marge du jour (admin, calcul du rapport d'activité), ma caisse (ouverte, montant).
 - **Assistant** (✦ / Ctrl+K) : actions préparées FR / darija / EN + guide d'utilisation.
 - Preuves : backend lint/tsc OK, 163 unitaires, **651 e2e** ; app analyze 0, **532 tests** ; captures vérifiées.
-- **Prochaine étape** : audits `reviewer` + `security-reviewer` de ce lot, puis rebuild/redéploiement.
+- **Audits du lot** (2026-10-06) : 0 bloquant. Corrigés : recherche de l'assistant quand Catalogue/Stock est DÉJÀ
+  ouvert (mixin `FollowsRequestedSearch`, contre-preuve) ; sélection qui traverse les recherches (elle garde les
+  produits) et « Tout sélectionner » qui AJOUTE ; « Sélectionner » réservé à qui peut exporter ; limite 2 000 dite ;
+  test « export sans cost.read = sans prix d'achat » (contre-preuve) ; caisse de l'accueil cloisonnée (test) ;
+  paire d'export dans `export-guards.spec` ; calcul du tiroir réutilisé ; panier moyen en division entière.
+  Preuves : 166 unitaires, 651 e2e ; app analyze 0, 535 tests.
+- **Prochaine étape** : rebuild des apps et redéploiement du backend.
 
 ### Retours terrain — 2026-10-05 (MEDMEDBEN, Claude)
 

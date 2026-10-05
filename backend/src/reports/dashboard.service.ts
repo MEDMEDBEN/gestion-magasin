@@ -99,10 +99,12 @@ export class DashboardService {
       where: { userId: user.id, status: 'OUVERTE' },
     });
     if (!session) return { open: false, currentAmount: 0, openedAt: null };
-    const totals = await CashSessionsService.totals(this.prisma, session.id);
     return {
       open: true,
-      currentAmount: session.openingFloat + totals.cashIn - totals.cashOut,
+      currentAmount: await CashSessionsService.drawerAmount(
+        this.prisma,
+        session,
+      ),
       openedAt: session.openedAt,
     };
   }

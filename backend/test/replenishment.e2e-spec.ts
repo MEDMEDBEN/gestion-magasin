@@ -236,8 +236,6 @@ describe('Réapprovisionnement (e2e)', () => {
       expect(lineOf(await lines(), id)).toBeDefined();
     });
 
-    /// Le catalogue crée tous les produits avec un seuil à 0. Si 0 déclenchait,
-    /// la liste serait inutilisable dès le premier jour.
     /// Un seul seuil depuis le 2026-10-05 : un ancien stock de sécurité resté
     /// en base ne change plus la quantité proposée.
     it('le stock de sécurité d’avant n’entre plus dans la proposition', async () => {
@@ -251,6 +249,8 @@ describe('Réapprovisionnement (e2e)', () => {
       });
     });
 
+    /// Le catalogue crée tous les produits avec un seuil à 0. Si 0 déclenchait,
+    /// la liste serait inutilisable dès le premier jour.
     it('un seuil à 0 ne fait pas remonter un produit qui a du stock', async () => {
       const id = await product({ quantity: '5.000', minThreshold: '0' });
       expect(lineOf(await lines(), id)).toBeUndefined();

@@ -26,6 +26,7 @@ import 'location_form.dart';
 import 'mobile/products_list.dart';
 import 'product_form.dart';
 import '../../../ui/widgets/export_button.dart';
+import 'requested_search.dart';
 
 /// Droits du catalogue, MIROIRS des guards serveur (`docs/permissions.md`).
 class CatalogRights {
@@ -85,22 +86,12 @@ class CatalogScreen extends ConsumerStatefulWidget {
   ConsumerState<CatalogScreen> createState() => _CatalogScreenState();
 }
 
-class _CatalogScreenState extends ConsumerState<CatalogScreen> {
-  // Pré-remplie par une recherche demandée (assistant), reprise une fois.
-  late final _search = TextEditingController(text: _requested());
+class _CatalogScreenState extends ConsumerState<CatalogScreen>
+    with FollowsRequestedSearch {
+  final _search = TextEditingController();
 
-  String _requested() {
-    final asked = ref.read(requestedSearchProvider);
-    if (asked != null) {
-      // Après la construction : un provider ne se modifie pas pendant build.
-      Future.microtask(() {
-        if (!mounted) return;
-        ref.read(requestedSearchProvider.notifier).take();
-        ref.read(productFilterProvider.notifier).setSearch(asked);
-      });
-    }
-    return asked ?? ref.read(productFilterProvider).search;
-  }
+  @override
+  TextEditingController get searchField => _search;
 
   _Section _section = _Section.products;
 
@@ -243,6 +234,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     ];
     final section = sections.contains(_section) ? _section : sections.first;
 
+    followRequestedSearch();
     // Lance la mise à jour du catalogue dès l'ouverture, et la garde vivante.
     final sync = ref.watch(catalogSyncProvider);
 
@@ -381,10 +373,10 @@ class _ProductsSection extends ConsumerWidget {
     final selection = ref.watch(productSelectionProvider);
     final selecting = ref.read(productSelectionProvider.notifier);
     final shown = products.value ?? const <Product>[];
-    final picked = [
-      for (final p in shown)
-        if (selection?.contains(p.id) ?? false) p,
-    ];
+    // La sélection TRAVERSE les recherches (audit 2026-10-06) : un produit
+    // coché puis masqué par une autre recherche reste exporté.
+    final picked = selection?.values.toList() ?? const <Product>[];
+    final canSelect = onLabels != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -453,8 +445,10 @@ class _ProductsSection extends ConsumerWidget {
               ],
               SizedBox(width: isDesktop ? 12 : 0),
               // Cocher des produits pour les exporter ou en imprimer les
-              // étiquettes (2026-10-05).
-              if (selection != null)
+              // étiquettes (2026-10-05). Mêmes droits que l'export serveur.
+              if (!canSelect)
+                const SizedBox.shrink()
+              else if (selection != null)
                 TextButton(
                   onPressed: selecting.stop,
                   child: const Text('Terminer'),
@@ -495,10 +489,16 @@ class _ProductsSection extends ConsumerWidget {
                   style: AmpereType.bodyStrong.copyWith(color: colors.ink),
                 ),
                 TextButton(
-                  onPressed: () => selecting.setAll(shown.map((p) => p.id)),
+                  // AJOUTE les produits affichés à la sélection.
+                  onPressed: () => selecting.addAll(shown),
                   child: const Text('Tout sélectionner'),
                 ),
-                if (picked.isNotEmpty) ...[
+                if (picked.length > 2000)
+                  Text(
+                    '2 000 produits au plus par export : affinez la sélection.',
+                    style: AmpereType.meta.copyWith(color: colors.error),
+                  ),
+                if (picked.isNotEmpty && picked.length <= 2000) ...[
                   ExportButton(
                     targets: [
                       ExportTarget(
@@ -584,8 +584,8 @@ class _ProductsSection extends ConsumerWidget {
                       onEdit: onEdit,
                       onDelete: onDelete,
                       onLabel: onLabel,
-                      selection: selection,
-                      onToggle: (p) => selecting.toggle(p.id),
+                      selection: selection?.keys.toSet(),
+                      onToggle: selecting.toggle,
                     )
                   : ProductsList(
                       defaultTierId: defaultTierId,
@@ -596,8 +596,8 @@ class _ProductsSection extends ConsumerWidget {
                       onEdit: onEdit,
                       onDelete: onDelete,
                       onLabel: onLabel,
-                      selection: selection,
-                      onToggle: (p) => selecting.toggle(p.id),
+                      selection: selection?.keys.toSet(),
+                      onToggle: selecting.toggle,
                       onRefresh: () =>
                           ref.read(catalogSyncProvider.notifier).refresh(),
                     );

@@ -43,7 +43,7 @@ void main() {
     expect(first('chof disjoncteur').argument, 'disjoncteur');
     expect(first('stock gaine').command.title, 'Voir le stock');
     // Accents et majuscules ignorés, début de mot reconnu.
-    expect(first('ÉTIQ gaine').command.title, 'Étiquettes d’un produit');
+    expect(first('ÉTIQ gaine').command.title, 'Étiquette : trouver le produit');
     expect(first('kifach').command.title, 'Guide d’utilisation');
   });
 

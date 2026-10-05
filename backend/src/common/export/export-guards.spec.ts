@@ -1,3 +1,4 @@
+import { ProductsController } from '../../products/products.controller';
 import {
   FRESH_READ_KEY,
   PERMISSIONS_KEY,
@@ -38,6 +39,8 @@ const PAIRS: [Controller, string, string][] = [
   [BusinessReportController, 'sales', 'salesExport'],
   [BusinessReportController, 'stock', 'stockExport'],
   [BusinessReportController, 'purchases', 'purchasesExport'],
+  // Export des produits sélectionnés : mêmes gardes que les étiquettes.
+  [ProductsController, 'labels', 'exportSelection'],
 ];
 
 const meta = (controller: Controller, method: string, key: string): unknown =>

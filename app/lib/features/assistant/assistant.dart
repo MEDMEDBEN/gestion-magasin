@@ -250,7 +250,6 @@ final assistantCommands = <AssistantCommand>[
       'prix',
       '9aleb',
       'qaleb',
-      'fin',
       'chof',
       'chouf',
       'find',
@@ -278,7 +277,7 @@ final assistantCommands = <AssistantCommand>[
     run: _goTo('Stock', search: true),
   ),
   AssistantCommand(
-    title: 'Étiquettes d’un produit',
+    title: 'Étiquette : trouver le produit',
     example: 'étiquette câble · tiquette · label',
     icon: LucideIcons.tag,
     keywords: const ['etiquette', 'etiquettes', 'tiquette', 'label', 'labels'],

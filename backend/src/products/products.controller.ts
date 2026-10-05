@@ -104,9 +104,6 @@ export class ProductsController {
     return this.productsService.findAll(query, user);
   }
 
-  /// Étiquettes (spec §8ter). Une lecture, en POST : la liste des produits
-  /// dépasserait la longueur d'une URL. Le prix est imprimé : `price.read` en
-  /// plus de `product.read` — les trois rôles les ont.
   /// Export des produits SÉLECTIONNÉS (2026-10-05) : mêmes droits que les
   /// étiquettes ; droits relus en base comme tout export.
   @Roles(...ALL_ROLES)
@@ -130,6 +127,9 @@ export class ProductsController {
     );
   }
 
+  /// Étiquettes (spec §8ter). Une lecture, en POST : la liste des produits
+  /// dépasserait la longueur d'une URL. Le prix est imprimé : `price.read` en
+  /// plus de `product.read` — les trois rôles les ont.
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.PRICE_READ)
   // Rendu synchrone (images + PDF) : bridé comme les autres documents.

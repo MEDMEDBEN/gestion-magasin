@@ -113,25 +113,30 @@ final locationsProvider = StreamProvider.autoDispose<List<StorageLocation>>(
 
 /// Produits cochés au catalogue (export, étiquettes) ; `null` = pas en mode
 /// sélection (2026-10-05).
-class ProductSelection extends Notifier<Set<String>?> {
+///
+/// Garde les PRODUITS cochés, pas seulement leurs ids : la sélection traverse
+/// les recherches (un produit coché puis masqué reste exporté, audit du
+/// 2026-10-06).
+class ProductSelection extends Notifier<Map<String, Product>?> {
   @override
-  Set<String>? build() => null;
+  Map<String, Product>? build() => null;
 
-  void start() => state = <String>{};
+  void start() => state = <String, Product>{};
   void stop() => state = null;
 
-  void toggle(String id) {
-    final current = state ?? <String>{};
-    state = current.contains(id)
-        ? ({...current}..remove(id))
-        : {...current, id};
+  void toggle(Product product) {
+    final current = {...?state};
+    if (current.remove(product.id) == null) current[product.id] = product;
+    state = current;
   }
 
-  void setAll(Iterable<String> ids) => state = ids.toSet();
+  /// AJOUTE ces produits à la sélection.
+  void addAll(Iterable<Product> products) =>
+      state = {...?state, for (final p in products) p.id: p};
 }
 
 final productSelectionProvider =
-    NotifierProvider.autoDispose<ProductSelection, Set<String>?>(
+    NotifierProvider.autoDispose<ProductSelection, Map<String, Product>?>(
       ProductSelection.new,
     );
 

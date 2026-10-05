@@ -73,8 +73,7 @@ export class StockLedgerService {
         allowBackorder: true,
         // Seuil : sert à l'alerte de fin de méthode, pas à autoriser le
         // mouvement. Lu ici pour ne pas relire le produit une seconde fois.
-        // (Pas `safetyStock` : il n'entre que dans la quantité PROPOSÉE, côté
-        // liste de réapprovisionnement, jamais dans le déclenchement.)
+        // (Pas `safetyStock` : retiré le 2026-10-05, un seul seuil.)
         minThreshold: true,
       },
     });

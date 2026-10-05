@@ -21,6 +21,7 @@ import '../data/stock_models.dart';
 import '../../scan/presentation/scan_screen.dart';
 import 'loss_form.dart';
 import 'stock_status.dart';
+import '../../catalog/presentation/requested_search.dart';
 
 /// Droits du stock, MIROIRS des guards serveur (`docs/permissions.md`).
 class StockRights {
@@ -124,22 +125,12 @@ class _LevelsSection extends ConsumerStatefulWidget {
   ConsumerState<_LevelsSection> createState() => _LevelsSectionState();
 }
 
-class _LevelsSectionState extends ConsumerState<_LevelsSection> {
-  // Pré-remplie par une recherche demandée (assistant), reprise une fois.
-  late final _search = TextEditingController(text: _requested());
+class _LevelsSectionState extends ConsumerState<_LevelsSection>
+    with FollowsRequestedSearch {
+  final _search = TextEditingController();
 
-  String _requested() {
-    final asked = ref.read(requestedSearchProvider);
-    if (asked != null) {
-      // Après la construction : un provider ne se modifie pas pendant build.
-      Future.microtask(() {
-        if (!mounted) return;
-        ref.read(requestedSearchProvider.notifier).take();
-        ref.read(productFilterProvider.notifier).setSearch(asked);
-      });
-    }
-    return asked ?? ref.read(productFilterProvider).search;
-  }
+  @override
+  TextEditingController get searchField => _search;
 
   @override
   void dispose() {
@@ -149,6 +140,7 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection> {
 
   @override
   Widget build(BuildContext context) {
+    followRequestedSearch();
     final colors = AmpereColors.of(context);
     final stock = ref.watch(stockByProductProvider);
     final products = ref.watch(productsProvider).value ?? const <Product>[];
