@@ -21,6 +21,14 @@ HistoryPeriod lastDays(int n) => (
 /// Un seul jour (« qu'ai-je vendu ce jour-là ? »).
 HistoryPeriod singleDay(DateTime day) => (from: isoDay(day), to: isoDay(day));
 
+/// L'instant `at` tombe-t-il dans la période (jours du poste, bornes
+/// incluses) ? Pour les petites listes filtrées sur l'appareil.
+bool inPeriod(HistoryPeriod period, DateTime at) {
+  final day = isoDay(at.toLocal());
+  return (period.from == null || day.compareTo(period.from!) >= 0) &&
+      (period.to == null || day.compareTo(period.to!) <= 0);
+}
+
 /// Libellé court d'une période : « Aujourd'hui », « 05/10/2026 », « du … au … ».
 String describePeriod(HistoryPeriod period) {
   final (:from, :to) = period;

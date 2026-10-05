@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
@@ -849,7 +850,9 @@ void main() {
     expect(api.historyAsked.last, 'c1');
     expect(find.text('TK-2026-000007'), findsOneWidget);
     expect(find.textContaining('reste ${formatDA(100000)}'), findsOneWidget);
-    expect(find.text('${formatDA(119000)} TTC'), findsOneWidget);
+    expect(find.text(formatDA(119000)), findsOneWidget);
+    // Les lignes sont datées : le filtre par période est proposé.
+    expect(find.byType(PeriodFilter), findsOneWidget);
   });
 
   /// Revue du 2026-09-27 : aucune vente passée n'était visible — ni

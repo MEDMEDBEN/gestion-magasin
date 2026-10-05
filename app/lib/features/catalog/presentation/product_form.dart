@@ -408,6 +408,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
               if (h['by'] != null) h['by'] as String,
             ].join(' · '),
             trailing: '',
+            at: DateTime.parse(h['at'] as String),
           ),
       ],
     );

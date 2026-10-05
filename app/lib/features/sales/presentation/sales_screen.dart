@@ -1487,7 +1487,8 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                 if (s.remainingAmount > 0)
                   'reste ${formatDA(s.remainingAmount)}',
               ].join(' · '),
-              trailing: '${formatDA(s.totalTtc)} TTC',
+              trailing: formatDA(s.totalTtc),
+              at: s.soldAt,
             ),
         ],
       );

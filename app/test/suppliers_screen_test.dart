@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
@@ -384,7 +385,9 @@ void main() {
 
     expect(_purchases.asked.last, 's1');
     expect(find.text('CMD-2026-00007 · Confirmée'), findsOneWidget);
-    expect(find.text('${formatDA(119000)} TTC'), findsOneWidget);
+    expect(find.text(formatDA(119000)), findsOneWidget);
+    // Les lignes sont datées : le filtre par période est proposé.
+    expect(find.byType(PeriodFilter), findsOneWidget);
   });
 
   testWidgets('sans le droit de lire les achats : pas d’historique proposé', (

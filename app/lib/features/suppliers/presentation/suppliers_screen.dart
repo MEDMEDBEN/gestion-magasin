@@ -293,12 +293,14 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
             (
               title: 'Total acheté',
               subtitle: 'Marchandise reçue, nette des retours',
-              trailing: '${formatDA(supplier.receivedAmount)} TTC',
+              trailing: formatDA(supplier.receivedAmount),
+              at: null,
             ),
             (
               title: 'Produits fournis',
               subtitle: 'Produits différents reçus',
               trailing: '${stats.productCount}',
+              at: null,
             ),
             (
               title: 'Livraisons à l’heure',
@@ -309,6 +311,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
               trailing: stats.deliveriesWithDate == 0
                   ? '—'
                   : '${(stats.deliveriesOnTime * 100 / stats.deliveriesWithDate).round()} %',
+              at: null,
             ),
             for (final p in stats.prices)
               (
@@ -320,6 +323,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                     '${p.previousPriceHt == null ? '' : ' · précédent ${formatDA(p.previousPriceHt!)}'}',
                 trailing:
                     '${formatDA(p.lastPriceHt)} HT${priceEvolution(p.previousPriceHt, p.lastPriceHt)}',
+                // Indicateurs, pas un historique : aucun filtre par dates.
+                at: null,
               ),
           ];
         },
@@ -338,7 +343,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
               title: r['number'] as String,
               subtitle:
                   '${formatDate(DateTime.parse(r['createdAt'] as String).toLocal())} · ${r['reason']}',
-              trailing: '${formatDA(r['totalTtc'] as int)} TTC',
+              trailing: formatDA(r['totalTtc'] as int),
+              at: DateTime.parse(r['createdAt'] as String),
             ),
         ],
       );
@@ -356,7 +362,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
               title: '${o.number} · ${o.status.label}',
               subtitle:
                   '${formatDate(o.orderDate)} · ${o.lines.length} ligne(s)',
-              trailing: '${formatDA(o.totalTtc)} TTC',
+              trailing: formatDA(o.totalTtc),
+              at: o.orderDate,
             ),
         ],
       );

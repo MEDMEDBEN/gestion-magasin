@@ -6,6 +6,7 @@ import '../../../core/money.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../data/payment_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Historique des paiements d'un client ou d'un fournisseur (un seul écran
 /// pour les deux). `onReverse` non nul (ADMIN) : chaque paiement encore actif
@@ -41,6 +42,7 @@ class _PaymentHistoryDialog extends StatefulWidget {
 class _PaymentHistoryDialogState extends State<_PaymentHistoryDialog> {
   late Future<List<PaymentHistoryItem>> _items = widget.load();
   String? _error;
+  HistoryPeriod _period = allTime;
 
   Future<void> _reverse(PaymentHistoryItem payment) async {
     final reason = await showDialog<String>(
@@ -82,10 +84,14 @@ class _PaymentHistoryDialogState extends State<_PaymentHistoryDialog> {
                 message: error is ApiException ? error.userMessage : '$error',
               );
             }
-            final items = snapshot.data!;
-            if (items.isEmpty) {
+            final all = snapshot.data!;
+            if (all.isEmpty) {
               return const Text('Aucun paiement enregistré.');
             }
+            final items = [
+              for (final p in all)
+                if (inPeriod(_period, p.paidAt)) p,
+            ];
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -94,6 +100,18 @@ class _PaymentHistoryDialogState extends State<_PaymentHistoryDialog> {
                   AmpereInlineAlert(message: _error!),
                   const SizedBox(height: 8),
                 ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: PeriodFilter(
+                    value: _period,
+                    onChanged: (p) => setState(() => _period = p),
+                  ),
+                ),
+                if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text('Aucun paiement sur cette période.'),
+                  ),
                 Flexible(
                   child: ListView(
                     shrinkWrap: true,
