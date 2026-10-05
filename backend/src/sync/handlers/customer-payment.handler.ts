@@ -41,15 +41,6 @@ export class CustomerPaymentHandler implements SyncMutationHandler<CreateCustome
 
   async validate(payload: unknown): Promise<CreateCustomerPaymentDto> {
     const dto = await validatePayload(CreateCustomerPaymentDto, payload);
-    // Un chèque doit être connu de l'admin qui le suivra : en ligne seulement
-    // (P1 bis n°21n).
-    if (dto.cheque) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'Chèque : enregistrement en ligne uniquement',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
     if (dto.cashSessionId === undefined) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,

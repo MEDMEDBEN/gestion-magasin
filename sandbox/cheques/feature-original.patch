@@ -1,0 +1,2476 @@
+From 9945bd99dfcd85b30b0ab45356f617a09afd6c05 Mon Sep 17 00:00:00 2001
+From: MEDMEDBEN <benamo.med31@gmail.com>
+Date: Mon, 28 Sep 2026 22:04:52 +0100
+Subject: [PATCH] =?UTF-8?q?feat(cheques):=20P1=20bis=2021n=20partie=202=20?=
+ =?UTF-8?q?=E2=80=94=20suivi=20des=20ch=C3=A8ques=20clients=20et=20fournis?=
+ =?UTF-8?q?seurs?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Décisions MEDMEDBEN (2026-09-28) : chèques reçus et émis ; dette réduite dès
+la remise ; le vendeur saisit, l'admin statue ; aucun chèque en caisse.
+
+- Migrations additives : statut, n°, banque, échéance sur les règlements et
+  paiements ; notification CHEQUE_REJETE.
+- POST /payments/customer et /payments/supplier acceptent `cheque` (hors
+  caisse) ; GET /cheques et POST /cheques/{customer,supplier}/:id/status
+  (ADMIN) : encaissé, ou rejeté → contre-passation, la dette revient, alerte.
+- Garde-fous des audits : chèque fantôme refusé, pas d'espèces rendues contre
+  un chèque non encaissé, chèque encaissé non contre-passable, synchro
+  hors-ligne refusée.
+- App : « Encaisser un chèque », « Payer par chèque », écran « Chèques ».
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../application/cheques_controller.dart       |  51 +++
+ .../features/cheques/data/cheques_api.dart    |  94 ++++++
+ .../cheques/presentation/cheque_dialog.dart   |  65 ++++
+ .../cheques/presentation/cheques_screen.dart  | 169 ++++++++++
+ .../sales/application/sales_controller.dart   |  26 ++
+ .../sales/presentation/sales_screen.dart      |  42 ++-
+ .../application/suppliers_controller.dart     |  26 ++
+ .../presentation/suppliers_screen.dart        | 131 +++++---
+ app/lib/ui/navigation.dart                    |  11 +
+ app/test/cheques_screen_test.dart             | 118 +++++++
+ app/test/suppliers_screen_test.dart           |  30 ++
+ .../migration.sql                             |  24 ++
+ .../migration.sql                             |   2 +
+ backend/prisma/schema.prisma                  |  40 +++
+ backend/src/app.module.ts                     |   2 +
+ backend/src/common/dto/payment.dto.ts         |  91 +++++-
+ backend/src/customers/customers.service.ts    | 104 ++++--
+ backend/src/customers/dto/customer.dto.ts     |  16 +
+ backend/src/payments/cheques.controller.ts    |  81 +++++
+ backend/src/payments/cheques.service.ts       | 280 ++++++++++++++++
+ backend/src/payments/payments.module.ts       |   6 +
+ backend/src/sales/sale-returns.service.ts     |  29 +-
+ backend/src/suppliers/dto/supplier.dto.ts     |  16 +
+ backend/src/suppliers/suppliers.service.ts    |  47 ++-
+ .../sync/handlers/customer-payment.handler.ts |   9 +
+ backend/test/cheques.e2e-spec.ts              | 301 ++++++++++++++++++
+ backend/test/money-contract.e2e-spec.ts       |   2 +
+ backend/test/money-routes.ts                  |   3 +
+ backend/test/sale-returns.e2e-spec.ts         |  22 ++
+ docs/context.md                               |   3 +
+ docs/permissions.md                           |   2 +
+ docs/tasks.md                                 |  34 +-
+ 32 files changed, 1789 insertions(+), 88 deletions(-)
+ create mode 100644 app/lib/features/cheques/application/cheques_controller.dart
+ create mode 100644 app/lib/features/cheques/data/cheques_api.dart
+ create mode 100644 app/lib/features/cheques/presentation/cheque_dialog.dart
+ create mode 100644 app/lib/features/cheques/presentation/cheques_screen.dart
+ create mode 100644 app/test/cheques_screen_test.dart
+ create mode 100644 backend/prisma/migrations/20260928192417_cheque_tracking/migration.sql
+ create mode 100644 backend/prisma/migrations/20260928192635_notification_cheque_rejete/migration.sql
+ create mode 100644 backend/src/payments/cheques.controller.ts
+ create mode 100644 backend/src/payments/cheques.service.ts
+ create mode 100644 backend/src/payments/payments.module.ts
+ create mode 100644 backend/test/cheques.e2e-spec.ts
+
+diff --git a/app/lib/features/cheques/application/cheques_controller.dart b/app/lib/features/cheques/application/cheques_controller.dart
+new file mode 100644
+index 0000000..a329008
+--- /dev/null
++++ b/app/lib/features/cheques/application/cheques_controller.dart
+@@ -0,0 +1,51 @@
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++
++import '../../../core/mutation_keys.dart';
++import '../../../core/providers.dart';
++import '../data/cheques_api.dart';
++
++/// Filtre du portefeuille ; « en portefeuille » par défaut (ce qu'il reste à
++/// remettre en banque).
++class ChequeFilter extends Notifier<ChequeStatus?> {
++  @override
++  ChequeStatus? build() => ChequeStatus.inWallet;
++
++  void set(ChequeStatus? status) => state = status;
++}
++
++final chequeFilterProvider = NotifierProvider<ChequeFilter, ChequeStatus?>(
++  ChequeFilter.new,
++);
++
++final chequesProvider = FutureProvider.autoDispose<List<Cheque>>((ref) async {
++  ref.watch(currentUserIdProvider);
++  return ref
++      .watch(chequesApiProvider)
++      .list(status: ref.watch(chequeFilterProvider));
++});
++
++/// Décision de l'ADMIN. Mutation d'argent (un rejet rend la dette) : clé
++/// d'intention stable, un nouvel essai ne contre-passe jamais deux fois.
++class ChequesActions {
++  ChequesActions(this._ref);
++
++  final Ref _ref;
++
++  Future<Cheque> decide(
++    Cheque cheque,
++    ChequeStatus status, {
++    String? reason,
++  }) async {
++    final done = await runMoneyMutation(
++      _ref,
++      'cheque:${cheque.id}:${status.wire}',
++      (key) => _ref
++          .read(chequesApiProvider)
++          .decide(cheque, status, clientMutationId: key, reason: reason),
++    );
++    _ref.invalidate(chequesProvider);
++    return done;
++  }
++}
++
++final chequesActionsProvider = Provider(ChequesActions.new);
+diff --git a/app/lib/features/cheques/data/cheques_api.dart b/app/lib/features/cheques/data/cheques_api.dart
+new file mode 100644
+index 0000000..d8be980
+--- /dev/null
++++ b/app/lib/features/cheques/data/cheques_api.dart
+@@ -0,0 +1,94 @@
++import 'package:dio/dio.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:freezed_annotation/freezed_annotation.dart';
++
++import '../../../core/error/api_exception.dart';
++import '../../../core/providers.dart';
++
++part 'cheques_api.freezed.dart';
++part 'cheques_api.g.dart';
++
++/// Statut d'un chèque (P1 bis n°21n) : remis / émis, passé en banque, ou
++/// refusé (le règlement est alors contre-passé, la dette revient).
++enum ChequeStatus {
++  @JsonValue('EN_PORTEFEUILLE')
++  inWallet('En portefeuille'),
++  @JsonValue('ENCAISSE')
++  cashed('Encaissé'),
++  @JsonValue('REJETE')
++  rejected('Rejeté');
++
++  const ChequeStatus(this.label);
++  final String label;
++
++  String get wire => switch (this) {
++    ChequeStatus.inWallet => 'EN_PORTEFEUILLE',
++    ChequeStatus.cashed => 'ENCAISSE',
++    ChequeStatus.rejected => 'REJETE',
++  };
++}
++
++/// Chèque reçu d'un client (`CLIENT`) ou émis à un fournisseur
++/// (`FOURNISSEUR`). Montant en centimes (règle 4).
++@freezed
++abstract class Cheque with _$Cheque {
++  const factory Cheque({
++    required String id,
++    required String kind,
++    required String partyId,
++    required String partyName,
++    required int amount,
++    required String number,
++    required String bank,
++    String? dueDate,
++    required ChequeStatus status,
++    required DateTime paidAt,
++    DateTime? statusAt,
++  }) = _Cheque;
++
++  const Cheque._();
++
++  bool get isCustomer => kind == 'CLIENT';
++
++  factory Cheque.fromJson(Map<String, dynamic> json) => _$ChequeFromJson(json);
++}
++
++/// Portefeuille (ADMIN) et décisions. EN LIGNE uniquement : une décision
++/// contre-passe un règlement, le serveur seul en juge.
++class ChequesApi {
++  ChequesApi(this._dio);
++
++  final Dio _dio;
++
++  Future<List<Cheque>> list({ChequeStatus? status}) => guardApi(() async {
++    final response = await _dio.get<List<dynamic>>(
++      '/cheques',
++      queryParameters: {'status': ?status?.wire},
++    );
++    return [
++      for (final c in response.data!)
++        Cheque.fromJson(c as Map<String, dynamic>),
++    ];
++  });
++
++  Future<Cheque> decide(
++    Cheque cheque,
++    ChequeStatus status, {
++    required String clientMutationId,
++    String? reason,
++  }) => guardApi(() async {
++    final response = await _dio.post<Map<String, dynamic>>(
++      '/cheques/${cheque.isCustomer ? 'customer' : 'supplier'}/${cheque.id}/status',
++      data: {
++        'clientMutationId': clientMutationId,
++        'status': status.wire,
++        'reason': ?reason,
++      },
++    );
++    return Cheque.fromJson(response.data!);
++  });
++}
++
++final chequesApiProvider = Provider<ChequesApi>(
++  (ref) => ChequesApi(ref.watch(dioClientProvider).dio),
++);
+diff --git a/app/lib/features/cheques/presentation/cheque_dialog.dart b/app/lib/features/cheques/presentation/cheque_dialog.dart
+new file mode 100644
+index 0000000..5cc4805
+--- /dev/null
++++ b/app/lib/features/cheques/presentation/cheque_dialog.dart
+@@ -0,0 +1,65 @@
++import 'package:flutter/material.dart';
++
++import '../../../core/dates.dart';
++import '../../../core/money.dart';
++import '../../../ui/widgets/fields_dialog.dart';
++
++/// Chèque saisi : montant (centimes), n°, banque, échéance `AAAA-MM-JJ`.
++typedef ChequeEntry = ({
++  int amount,
++  String number,
++  String bank,
++  String? dueDate,
++});
++
++/// Saisie d'un chèque (P1 bis n°21n), partagée par le règlement client et le
++/// paiement fournisseur : montant, n°, banque, puis l'échéance au sélecteur de
++/// date (« Annuler » : sans échéance). Rend `null` si abandonné ; un champ
++/// invalide est signalé par `onInvalid` (le serveur revérifie tout).
++Future<ChequeEntry?> askCheque(
++  BuildContext context, {
++  required String title,
++  required int initialAmount,
++  required String confirm,
++  required void Function(String message) onInvalid,
++}) async {
++  final fields = await askFields(
++    context,
++    title: title,
++    confirm: confirm,
++    fields: [
++      (
++        key: 'amount',
++        label: 'Montant (DA)',
++        initial: formatDA(initialAmount, withSymbol: false),
++      ),
++      (key: 'number', label: 'N° du chèque', initial: ''),
++      (key: 'bank', label: 'Banque', initial: ''),
++    ],
++  );
++  if (fields == null) return null;
++  final amount = parseDA(fields['amount']!);
++  if (amount == null || amount <= 0) {
++    onInvalid('Montant invalide');
++    return null;
++  }
++  if (fields['number']!.isEmpty || fields['bank']!.isEmpty) {
++    onInvalid('Le n° du chèque et la banque sont obligatoires');
++    return null;
++  }
++  if (!context.mounted) return null;
++  final today = DateUtils.dateOnly(DateTime.now());
++  final due = await showDatePicker(
++    context: context,
++    helpText: 'Échéance du chèque (Annuler : aucune)',
++    initialDate: today,
++    firstDate: today.subtract(const Duration(days: 365)),
++    lastDate: today.add(const Duration(days: 730)),
++  );
++  return (
++    amount: amount,
++    number: fields['number']!,
++    bank: fields['bank']!,
++    dueDate: due == null ? null : isoDay(due),
++  );
++}
+diff --git a/app/lib/features/cheques/presentation/cheques_screen.dart b/app/lib/features/cheques/presentation/cheques_screen.dart
+new file mode 100644
+index 0000000..11feaf6
+--- /dev/null
++++ b/app/lib/features/cheques/presentation/cheques_screen.dart
+@@ -0,0 +1,169 @@
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++
++import '../../../core/dates.dart';
++import '../../../core/error/api_exception.dart';
++import '../../../core/money.dart';
++import '../../../ui/breakpoints.dart';
++import '../../../ui/theme/ampere_colors.dart';
++import '../../../ui/widgets/fields_dialog.dart';
++import '../../../ui/widgets/screen_state.dart';
++import '../application/cheques_controller.dart';
++import '../data/cheques_api.dart';
++
++/// Portefeuille de chèques (ADMIN, P1 bis n°21n) : chèques reçus des clients
++/// et émis aux fournisseurs. Un chèque en portefeuille se déclare encaissé
++/// (rien ne bouge) ou rejeté (la dette revient, alerte). Aucune caisse n'est
++/// jamais touchée.
++class ChequesScreen extends ConsumerWidget {
++  const ChequesScreen({super.key});
++
++  @override
++  Widget build(BuildContext context, WidgetRef ref) {
++    final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
++        ? 24.0
++        : 16.0;
++    final filter = ref.watch(chequeFilterProvider);
++    final cheques = ref.watch(chequesProvider);
++    return Column(
++      crossAxisAlignment: CrossAxisAlignment.stretch,
++      children: [
++        SingleChildScrollView(
++          scrollDirection: Axis.horizontal,
++          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
++          child: Row(
++            children: [
++              for (final choice in const <ChequeStatus?>[
++                ChequeStatus.inWallet,
++                ChequeStatus.cashed,
++                ChequeStatus.rejected,
++                null,
++              ])
++                Padding(
++                  padding: const EdgeInsets.only(right: 8),
++                  child: ChoiceChip(
++                    label: Text(choice?.label ?? 'Tous'),
++                    selected: filter == choice,
++                    onSelected: (_) =>
++                        ref.read(chequeFilterProvider.notifier).set(choice),
++                  ),
++                ),
++            ],
++          ),
++        ),
++        Expanded(
++          child: cheques.when(
++            loading: () => const AmpereSkeletonList(rows: 5),
++            error: (error, _) => ScreenStateView(
++              status: error is ApiException && error.isOffline
++                  ? ScreenStatus.offline
++                  : ScreenStatus.error,
++              message: error is ApiException
++                  ? error.userMessage
++                  : 'Les chèques n’ont pas pu être chargés.',
++              onRetry: () => ref.invalidate(chequesProvider),
++            ),
++            data: (items) => items.isEmpty
++                ? const ScreenStateView(
++                    status: ScreenStatus.empty,
++                    title: 'Aucun chèque',
++                    message:
++                        'Les chèques s’enregistrent depuis la fiche du client '
++                        '(« Encaisser un chèque ») ou du fournisseur '
++                        '(« Payer par chèque »).',
++                  )
++                : ListView(
++                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
++                    children: [
++                      for (final c in items)
++                        Card(
++                          key: ValueKey(c.id),
++                          child: ListTile(
++                            title: Text(
++                              '${c.isCustomer ? 'Reçu de' : 'Émis à'} '
++                              '${c.partyName} · ${formatDA(c.amount)}',
++                            ),
++                            subtitle: Text(
++                              [
++                                'n° ${c.number}',
++                                c.bank,
++                                'remis le ${formatDate(c.paidAt.toLocal())}',
++                                if (c.dueDate != null)
++                                  'échéance ${formatIsoDay(c.dueDate!)}',
++                              ].join(' · '),
++                            ),
++                            trailing: AmpereBadge(
++                              label: c.status.label,
++                              tone: switch (c.status) {
++                                ChequeStatus.inWallet => StatusTone.info,
++                                ChequeStatus.cashed => StatusTone.ok,
++                                ChequeStatus.rejected => StatusTone.error,
++                              },
++                            ),
++                            onTap: c.status == ChequeStatus.inWallet
++                                ? () => _decide(context, ref, c)
++                                : null,
++                          ),
++                        ),
++                    ],
++                  ),
++          ),
++        ),
++      ],
++    );
++  }
++
++  Future<void> _decide(BuildContext context, WidgetRef ref, Cheque c) async {
++    final choice = await showDialog<ChequeStatus>(
++      context: context,
++      builder: (context) => SimpleDialog(
++        title: Text('Chèque n° ${c.number} — ${formatDA(c.amount)}'),
++        children: [
++          SimpleDialogOption(
++            onPressed: () => Navigator.of(context).pop(ChequeStatus.cashed),
++            child: Text(
++              c.isCustomer ? 'Encaissé par la banque' : 'Débité par la banque',
++            ),
++          ),
++          SimpleDialogOption(
++            onPressed: () => Navigator.of(context).pop(ChequeStatus.rejected),
++            child: const Text('Rejeté par la banque (la dette revient)'),
++          ),
++        ],
++      ),
++    );
++    if (choice == null || !context.mounted) return;
++    String? reason;
++    if (choice == ChequeStatus.rejected) {
++      final fields = await askFields(
++        context,
++        title: 'Rejet du chèque n° ${c.number}',
++        confirm: 'Déclarer rejeté',
++        fields: const [
++          (key: 'reason', label: 'Motif (facultatif)', initial: ''),
++        ],
++      );
++      if (fields == null || !context.mounted) return;
++      reason = fields['reason']!.isEmpty ? null : fields['reason'];
++    }
++    final messenger = ScaffoldMessenger.of(context);
++    try {
++      final done = await ref
++          .read(chequesActionsProvider)
++          .decide(c, choice, reason: reason);
++      messenger.showSnackBar(
++        SnackBar(
++          content: Text(
++            done.status == ChequeStatus.rejected
++                ? 'Chèque rejeté : ${formatDA(c.amount)} remis sur la dette '
++                      'de ${c.partyName}.'
++                : 'Chèque n° ${c.number} : ${done.status.label.toLowerCase()}.',
++          ),
++        ),
++      );
++    } on ApiException catch (error) {
++      if (error.statusCode == 409) ref.invalidate(chequesProvider);
++      messenger.showSnackBar(SnackBar(content: Text(error.userMessage)));
++    }
++  }
++}
+diff --git a/app/lib/features/sales/application/sales_controller.dart b/app/lib/features/sales/application/sales_controller.dart
+index 51f6315..f1766e7 100644
+--- a/app/lib/features/sales/application/sales_controller.dart
++++ b/app/lib/features/sales/application/sales_controller.dart
+@@ -701,6 +701,32 @@ class SalesActions {
+   }
+ }
+ 
++/// Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse, EN LIGNE seulement
++/// (le chèque doit être connu de l'admin qui le suivra). Clé d'intention
++/// stable : un nouvel essai ne règle jamais deux fois.
++extension CustomerChequeActions on SalesActions {
++  Future<void> payCustomerByCheque(
++    String customerId, {
++    required int amount,
++    required String number,
++    required String bank,
++    String? dueDate,
++  }) async {
++    await runMoneyMutation(
++      _ref,
++      'customer-cheque:$customerId',
++      (key) => _api.payCustomer({
++        'clientMutationId': key,
++        'id': key,
++        'customerId': customerId,
++        'amount': amount,
++        'cheque': {'number': number, 'bank': bank, 'dueDate': ?dueDate},
++      }),
++    );
++    _ref.invalidate(customerSearchProvider);
++  }
++}
++
+ extension CustomerPaymentsActions on SalesActions {
+   Future<List<PaymentHistoryItem>> customerPayments(String customerId) async =>
+       (await _api.customerPayments(customerId)).data;
+diff --git a/app/lib/features/sales/presentation/sales_screen.dart b/app/lib/features/sales/presentation/sales_screen.dart
+index ed7e0c7..850b6cd 100644
+--- a/app/lib/features/sales/presentation/sales_screen.dart
++++ b/app/lib/features/sales/presentation/sales_screen.dart
+@@ -30,6 +30,7 @@ import '../../quotes/application/quotes_controller.dart';
+ import '../application/sales_controller.dart';
+ import '../data/sales_api.dart';
+ import '../data/sales_models.dart';
++import '../../cheques/presentation/cheque_dialog.dart';
+ import 'customer_form.dart';
+ import 'sales_history.dart';
+ 
+@@ -1394,6 +1395,39 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
+     }
+   }
+ 
++  /// Chèque client (P1 bis n°21n) : la dette baisse dès la remise, aucune
++  /// caisse ; l'admin le déclarera encaissé ou rejeté.
++  Future<void> _payByCheque(Customer customer) async {
++    final entry = await askCheque(
++      context,
++      title: 'Chèque de ${customer.name}',
++      initialAmount: customer.balanceDue,
++      confirm: 'Enregistrer le chèque',
++      onInvalid: (message) => _snack(context, message),
++    );
++    if (entry == null || !mounted) return;
++    try {
++      await ref
++          .read(salesActionsProvider)
++          .payCustomerByCheque(
++            customer.id,
++            amount: entry.amount,
++            number: entry.number,
++            bank: entry.bank,
++            dueDate: entry.dueDate,
++          );
++      if (mounted) {
++        _snack(
++          context,
++          'Chèque n° ${entry.number} de ${formatDA(entry.amount)} enregistré — '
++          'en portefeuille.',
++        );
++      }
++    } on ApiException catch (error) {
++      if (mounted) _snack(context, error.userMessage);
++    }
++  }
++
+   Future<void> _openCustomer(Customer customer) async {
+     final rights = widget.rights;
+     final action = await showDialog<String>(
+@@ -1420,11 +1454,16 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
+               onPressed: () => Navigator.of(context).pop('edit'),
+               child: const Text('Modifier la fiche'),
+             ),
+-          if (rights.canTakePayments && customer.balanceDue > 0)
++          if (rights.canTakePayments && customer.balanceDue > 0) ...[
+             SimpleDialogOption(
+               onPressed: () => Navigator.of(context).pop('pay'),
+               child: const Text('Encaisser un règlement'),
+             ),
++            SimpleDialogOption(
++              onPressed: () => Navigator.of(context).pop('cheque'),
++              child: const Text('Encaisser un chèque'),
++            ),
++          ],
+           if (rights.canSell)
+             SimpleDialogOption(
+               onPressed: () => Navigator.of(context).pop('sales'),
+@@ -1444,6 +1483,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
+     );
+     if (!mounted || action == null) return;
+     if (action == 'pay') return _pay(customer);
++    if (action == 'cheque') return _payByCheque(customer);
+     if (action == 'statement') {
+       // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.
+       try {
+diff --git a/app/lib/features/suppliers/application/suppliers_controller.dart b/app/lib/features/suppliers/application/suppliers_controller.dart
+index 6a65742..edbf94d 100644
+--- a/app/lib/features/suppliers/application/suppliers_controller.dart
++++ b/app/lib/features/suppliers/application/suppliers_controller.dart
+@@ -78,6 +78,32 @@ class SuppliersActions {
+   }
+ }
+ 
++/// Paiement par CHÈQUE émis (P1 bis n°21n) : hors caisse ; il reste « en
++/// portefeuille » jusqu'à ce que l'admin le déclare débité ou rejeté.
++extension SupplierChequeActions on SuppliersActions {
++  Future<SupplierPayment> payByCheque(
++    String supplierId, {
++    required int amount,
++    required String number,
++    required String bank,
++    String? dueDate,
++  }) async {
++    final payment = await runMoneyMutation(
++      _ref,
++      'supplier-cheque:$supplierId',
++      (key) => _api.pay({
++        'clientMutationId': key,
++        'supplierId': supplierId,
++        'amount': amount,
++        'fromCash': false,
++        'cheque': {'number': number, 'bank': bank, 'dueDate': ?dueDate},
++      }),
++    );
++    _ref.invalidate(supplierSearchProvider);
++    return payment;
++  }
++}
++
+ extension SupplierPaymentsActions on SuppliersActions {
+   Future<List<PaymentHistoryItem>> payments(String supplierId) async =>
+       (await _api.payments(supplierId)).data;
+diff --git a/app/lib/features/suppliers/presentation/suppliers_screen.dart b/app/lib/features/suppliers/presentation/suppliers_screen.dart
+index 776307a..708527c 100644
+--- a/app/lib/features/suppliers/presentation/suppliers_screen.dart
++++ b/app/lib/features/suppliers/presentation/suppliers_screen.dart
+@@ -19,6 +19,7 @@ import '../../../ui/widgets/screen_state.dart';
+ import '../../auth/data/auth_models.dart';
+ import '../../payments/presentation/payment_history_dialog.dart';
+ import '../data/suppliers_api.dart';
++import '../../cheques/presentation/cheque_dialog.dart';
+ import '../application/suppliers_controller.dart';
+ import '../data/suppliers_models.dart';
+ import '../../sales/application/sales_controller.dart';
+@@ -201,65 +202,107 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
+   Future<void> _openActions(Supplier supplier, SupplierRights rights) async {
+     final action = await showModalBottomSheet<String>(
+       context: context,
++      // Beaucoup d'actions (paiement, chèque, retours, indicateurs, relevé…) :
++      // défilable, jamais tronqué sur un petit écran.
++      isScrollControlled: true,
+       builder: (context) => SafeArea(
+-        child: Column(
+-          mainAxisSize: MainAxisSize.min,
+-          children: [
+-            ListTile(
+-              title: Text(supplier.name),
+-              subtitle: Text('Reste dû : ${formatDA(supplier.balanceDue)}'),
+-            ),
+-            if (rights.canPay && supplier.balanceDue > 0)
+-              ListTile(
+-                leading: const Icon(LucideIcons.banknote, size: 18),
+-                title: const Text('Enregistrer un paiement'),
+-                onTap: () => Navigator.of(context).pop('pay'),
+-              ),
+-            if (rights.canSeePurchases)
++        child: SingleChildScrollView(
++          child: Column(
++            mainAxisSize: MainAxisSize.min,
++            children: [
+               ListTile(
+-                leading: const Icon(LucideIcons.package, size: 18),
+-                title: const Text('Historique des achats'),
+-                onTap: () => Navigator.of(context).pop('purchases'),
++                title: Text(supplier.name),
++                subtitle: Text('Reste dû : ${formatDA(supplier.balanceDue)}'),
+               ),
+-            ListTile(
+-              leading: const Icon(LucideIcons.chartLine, size: 18),
+-              title: const Text('Indicateurs'),
+-              onTap: () => Navigator.of(context).pop('stats'),
+-            ),
+-            ListTile(
+-              leading: const Icon(LucideIcons.fileText, size: 18),
+-              title: const Text('Relevé de compte (PDF)'),
+-              onTap: () => Navigator.of(context).pop('statement'),
+-            ),
+-            if (rights.canReturn) ...[
++              if (rights.canPay && supplier.balanceDue > 0) ...[
++                ListTile(
++                  leading: const Icon(LucideIcons.banknote, size: 18),
++                  title: const Text('Enregistrer un paiement'),
++                  onTap: () => Navigator.of(context).pop('pay'),
++                ),
++                ListTile(
++                  leading: const Icon(LucideIcons.receipt, size: 18),
++                  title: const Text('Payer par chèque'),
++                  onTap: () => Navigator.of(context).pop('cheque'),
++                ),
++              ],
++              if (rights.canSeePurchases)
++                ListTile(
++                  leading: const Icon(LucideIcons.package, size: 18),
++                  title: const Text('Historique des achats'),
++                  onTap: () => Navigator.of(context).pop('purchases'),
++                ),
+               ListTile(
+-                leading: const Icon(LucideIcons.undo2, size: 18),
+-                title: const Text('Retour de marchandise'),
+-                onTap: () => Navigator.of(context).pop('return'),
++                leading: const Icon(LucideIcons.chartLine, size: 18),
++                title: const Text('Indicateurs'),
++                onTap: () => Navigator.of(context).pop('stats'),
+               ),
+               ListTile(
+                 leading: const Icon(LucideIcons.fileText, size: 18),
+-                title: const Text('Retours de marchandise'),
+-                onTap: () => Navigator.of(context).pop('returns'),
++                title: const Text('Relevé de compte (PDF)'),
++                onTap: () => Navigator.of(context).pop('statement'),
+               ),
+-            ],
+-            ListTile(
+-              leading: const Icon(LucideIcons.history, size: 18),
+-              title: const Text('Historique des paiements'),
+-              onTap: () => Navigator.of(context).pop('history'),
+-            ),
+-            if (rights.canWrite)
++              if (rights.canReturn) ...[
++                ListTile(
++                  leading: const Icon(LucideIcons.undo2, size: 18),
++                  title: const Text('Retour de marchandise'),
++                  onTap: () => Navigator.of(context).pop('return'),
++                ),
++                ListTile(
++                  leading: const Icon(LucideIcons.fileText, size: 18),
++                  title: const Text('Retours de marchandise'),
++                  onTap: () => Navigator.of(context).pop('returns'),
++                ),
++              ],
+               ListTile(
+-                leading: const Icon(LucideIcons.pencil, size: 18),
+-                title: const Text('Modifier la fiche'),
+-                onTap: () => Navigator.of(context).pop('edit'),
++                leading: const Icon(LucideIcons.history, size: 18),
++                title: const Text('Historique des paiements'),
++                onTap: () => Navigator.of(context).pop('history'),
+               ),
+-          ],
++              if (rights.canWrite)
++                ListTile(
++                  leading: const Icon(LucideIcons.pencil, size: 18),
++                  title: const Text('Modifier la fiche'),
++                  onTap: () => Navigator.of(context).pop('edit'),
++                ),
++            ],
++          ),
+         ),
+       ),
+     );
+     if (!mounted) return;
+     if (action == 'pay') return _pay(supplier);
++    if (action == 'cheque') {
++      final entry = await askCheque(
++        context,
++        title: 'Chèque à ${supplier.name}',
++        initialAmount: supplier.balanceDue,
++        confirm: 'Enregistrer le chèque',
++        onInvalid: (message) => _snack(context, message),
++      );
++      if (entry == null || !mounted) return;
++      try {
++        final paid = await ref
++            .read(suppliersActionsProvider)
++            .payByCheque(
++              supplier.id,
++              amount: entry.amount,
++              number: entry.number,
++              bank: entry.bank,
++              dueDate: entry.dueDate,
++            );
++        if (mounted) {
++          _snack(
++            context,
++            'Chèque n° ${entry.number} enregistré — reste dû '
++            '${formatDA(paid.balanceDue)}.',
++          );
++        }
++      } on ApiException catch (error) {
++        if (mounted) _snack(context, error.userMessage);
++      }
++      return;
++    }
+     if (action == 'edit') return _openForm(supplier);
+     if (action == 'return') return _returnGoods(supplier);
+     if (action == 'statement') {
+diff --git a/app/lib/ui/navigation.dart b/app/lib/ui/navigation.dart
+index 2b8c30e..972b59e 100644
+--- a/app/lib/ui/navigation.dart
++++ b/app/lib/ui/navigation.dart
+@@ -24,6 +24,7 @@ import '../features/suppliers/presentation/suppliers_screen.dart';
+ import '../features/transfers/presentation/transfers_screen.dart';
+ import '../features/settings/presentation/settings_screen.dart';
+ import '../features/users/presentation/users_screen.dart';
++import '../features/cheques/presentation/cheques_screen.dart';
+ 
+ /// Une destination de navigation (entrée de sidebar desktop, onglet mobile).
+ class AppDestination {
+@@ -143,6 +144,16 @@ List<AppDestination> destinationsFor(AuthUser user) => [
+       label: 'Achats',
+       builder: (context, user) => PurchasesScreen(user: user),
+     ),
++  // `/cheques` : ADMIN + les DEUX droits de paiement (chèques reçus ET émis,
++  // P1 bis n°21n).
++  if (user.hasRole('ADMIN') &&
++      user.can('customer.payment.create') &&
++      user.can('supplier.payment.create'))
++    AppDestination(
++      icon: LucideIcons.receipt,
++      label: 'Chèques',
++      builder: (context, _) => const ChequesScreen(),
++    ),
+   // `/reports/business` : ADMIN SEUL — ces rapports portent le chiffre
+   // d'affaires, la MARGE et la valeur du stock au coût. Le tableau de bord ne
+   // montre déjà à un vendeur que SES ventes, et aucun CA au magasinier : cet
+diff --git a/app/test/cheques_screen_test.dart b/app/test/cheques_screen_test.dart
+new file mode 100644
+index 0000000..efdc73a
+--- /dev/null
++++ b/app/test/cheques_screen_test.dart
+@@ -0,0 +1,118 @@
++import 'package:dio/dio.dart';
++import 'package:flutter/material.dart';
++import 'package:flutter_riverpod/flutter_riverpod.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:gestion_magasin/core/money.dart';
++import 'package:gestion_magasin/core/providers.dart';
++import 'package:gestion_magasin/features/cheques/data/cheques_api.dart';
++import 'package:gestion_magasin/features/cheques/presentation/cheques_screen.dart';
++import 'package:gestion_magasin/ui/navigation.dart';
++import 'package:gestion_magasin/ui/theme/app_theme.dart';
++
++import 'support/fakes.dart';
++
++Cheque _cheque(String id, {String kind = 'CLIENT'}) => Cheque(
++  id: id,
++  kind: kind,
++  partyId: 'p',
++  partyName: kind == 'CLIENT' ? 'Électricité Benali' : 'Sonelec',
++  amount: 40000,
++  number: 'C-$id',
++  bank: 'BNA',
++  dueDate: '2026-10-15',
++  status: ChequeStatus.inWallet,
++  paidAt: DateTime.utc(2026, 9, 28, 10),
++);
++
++class _FakeChequesApi extends ChequesApi {
++  _FakeChequesApi() : super(Dio());
++
++  final asked = <ChequeStatus?>[];
++  final decided = <(String, ChequeStatus, String, String?)>[];
++
++  @override
++  Future<List<Cheque>> list({ChequeStatus? status}) async {
++    asked.add(status);
++    return [_cheque('1'), _cheque('2', kind: 'FOURNISSEUR')];
++  }
++
++  @override
++  Future<Cheque> decide(
++    Cheque cheque,
++    ChequeStatus status, {
++    required String clientMutationId,
++    String? reason,
++  }) async {
++    decided.add((cheque.id, status, clientMutationId, reason));
++    return cheque.copyWith(status: status);
++  }
++}
++
++Future<_FakeChequesApi> _pump(WidgetTester tester) async {
++  useScreenSize(tester, const Size(700, 1000));
++  final api = _FakeChequesApi();
++  await tester.pumpWidget(
++    ProviderScope(
++      overrides: [
++        chequesApiProvider.overrideWithValue(api),
++        currentUserIdProvider.overrideWithValue('a'),
++      ],
++      child: MaterialApp(
++        theme: AppTheme.mobile(dark: true),
++        home: const Scaffold(body: ChequesScreen()),
++      ),
++    ),
++  );
++  await tester.pumpAndSettle();
++  return api;
++}
++
++void main() {
++  testWidgets('portefeuille : reçus et émis, en portefeuille par défaut', (
++    tester,
++  ) async {
++    final api = await _pump(tester);
++    expect(api.asked, [ChequeStatus.inWallet]);
++    expect(
++      find.text('Reçu de Électricité Benali · ${formatDA(40000)}'),
++      findsOneWidget,
++    );
++    expect(find.text('Émis à Sonelec · ${formatDA(40000)}'), findsOneWidget);
++    expect(find.textContaining('échéance 15/10/2026'), findsNWidgets(2));
++  });
++
++  testWidgets('rejet : motif transmis, message « remis sur la dette »', (
++    tester,
++  ) async {
++    final api = await _pump(tester);
++    await tester.tap(find.textContaining('Électricité Benali'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Rejeté par la banque (la dette revient)'));
++    await tester.pumpAndSettle();
++    await tester.enterText(find.byType(TextField), 'Provision insuffisante');
++    await tester.tap(find.text('Déclarer rejeté'));
++    await tester.pumpAndSettle();
++
++    final (id, status, key, reason) = api.decided.single;
++    expect(
++      (id, status, reason),
++      ('1', ChequeStatus.rejected, 'Provision insuffisante'),
++    );
++    expect(key, isNotEmpty);
++    expect(find.textContaining('remis sur la dette'), findsOneWidget);
++  });
++
++  test('menu « Chèques » : ADMIN avec les deux droits de paiement', () {
++    bool offered(List<String> roles, List<String> permissions) =>
++        destinationsFor(
++          authUser(roles: roles, permissions: permissions),
++        ).any((d) => d.label == 'Chèques');
++    const both = ['customer.payment.create', 'supplier.payment.create'];
++    expect(offered(const ['ADMIN'], both), isTrue);
++    expect(
++      offered(const ['ADMIN'], const ['customer.payment.create']),
++      isFalse,
++    );
++    expect(offered(const ['VENDEUR'], both), isFalse);
++  });
++}
+diff --git a/app/test/suppliers_screen_test.dart b/app/test/suppliers_screen_test.dart
+index 9c6d8a5..63fbdbb 100644
+--- a/app/test/suppliers_screen_test.dart
++++ b/app/test/suppliers_screen_test.dart
+@@ -465,6 +465,36 @@ void main() {
+     );
+   });
+ 
++  /// P1 bis n°21n : chèque émis, hors caisse, avec n°, banque, échéance.
++  testWidgets('payer par chèque : n°, banque et échéance envoyés', (
++    tester,
++  ) async {
++    final api = await _pump(tester, _admin());
++    await tester.tap(find.text('Sonelec'));
++    await tester.pumpAndSettle();
++    await tester.tap(find.text('Payer par chèque'));
++    await tester.pumpAndSettle();
++    final fields = find.descendant(
++      of: find.byType(AlertDialog),
++      matching: find.byType(TextField),
++    );
++    await tester.enterText(fields.at(0), '1000');
++    await tester.enterText(fields.at(1), 'F-77');
++    await tester.enterText(fields.at(2), 'CPA');
++    await tester.tap(find.text('Enregistrer le chèque'));
++    await tester.pumpAndSettle();
++    // Échéance au sélecteur de date : « Annuler » = sans échéance.
++    await tester.tap(
++      find.text('Cancel').evaluate().isEmpty
++          ? find.text('Annuler')
++          : find.text('Cancel'),
++    );
++    await tester.pumpAndSettle();
++    expect(api.payment, containsPair('fromCash', false));
++    expect(api.payment, containsPair('amount', 100000));
++    expect(api.payment!['cheque'], {'number': 'F-77', 'bank': 'CPA'});
++  });
++
+   test('évolution du prix d’achat', () {
+     expect(priceEvolution(null, 100000), '');
+     expect(priceEvolution(0, 100000), '');
+diff --git a/backend/prisma/migrations/20260928192417_cheque_tracking/migration.sql b/backend/prisma/migrations/20260928192417_cheque_tracking/migration.sql
+new file mode 100644
+index 0000000..a492606
+--- /dev/null
++++ b/backend/prisma/migrations/20260928192417_cheque_tracking/migration.sql
+@@ -0,0 +1,24 @@
++-- CreateEnum
++CREATE TYPE "ChequeStatus" AS ENUM ('EN_PORTEFEUILLE', 'ENCAISSE', 'REJETE');
++
++-- AlterTable
++ALTER TABLE "CustomerPayment" ADD COLUMN     "chequeBank" TEXT,
++ADD COLUMN     "chequeDueDate" TIMESTAMP(3),
++ADD COLUMN     "chequeNumber" TEXT,
++ADD COLUMN     "chequeStatus" "ChequeStatus",
++ADD COLUMN     "chequeStatusAt" TIMESTAMP(3),
++ADD COLUMN     "chequeStatusById" UUID;
++
++-- AlterTable
++ALTER TABLE "SupplierPayment" ADD COLUMN     "chequeBank" TEXT,
++ADD COLUMN     "chequeDueDate" TIMESTAMP(3),
++ADD COLUMN     "chequeNumber" TEXT,
++ADD COLUMN     "chequeStatus" "ChequeStatus",
++ADD COLUMN     "chequeStatusAt" TIMESTAMP(3),
++ADD COLUMN     "chequeStatusById" UUID;
++
++-- CreateIndex
++CREATE INDEX "CustomerPayment_chequeStatus_idx" ON "CustomerPayment"("chequeStatus");
++
++-- CreateIndex
++CREATE INDEX "SupplierPayment_chequeStatus_idx" ON "SupplierPayment"("chequeStatus");
+diff --git a/backend/prisma/migrations/20260928192635_notification_cheque_rejete/migration.sql b/backend/prisma/migrations/20260928192635_notification_cheque_rejete/migration.sql
+new file mode 100644
+index 0000000..b606a35
+--- /dev/null
++++ b/backend/prisma/migrations/20260928192635_notification_cheque_rejete/migration.sql
+@@ -0,0 +1,2 @@
++-- AlterEnum
++ALTER TYPE "NotificationType" ADD VALUE 'CHEQUE_REJETE';
+diff --git a/backend/prisma/schema.prisma b/backend/prisma/schema.prisma
+index a26248c..e07b4af 100644
+--- a/backend/prisma/schema.prisma
++++ b/backend/prisma/schema.prisma
+@@ -96,6 +96,16 @@ enum PaymentMethod {
+   AUTRE
+ }
+ 
++/// Suivi d'un chèque (P1 bis n°21n, décisions MEDMEDBEN du 2026-09-28).
++/// EN_PORTEFEUILLE = remis / émis, pas encore passé en banque ;
++/// ENCAISSE = passé en banque ;
++/// REJETE = refusé par la banque, le règlement est contre-passé.
++enum ChequeStatus {
++  EN_PORTEFEUILLE
++  ENCAISSE
++  REJETE
++}
++
+ enum QuoteStatus {
+   BROUILLON
+   ENVOYE
+@@ -220,6 +230,8 @@ enum NotificationType {
+   MESSAGE
+   /// Signalement de problème : ouvert, pris en charge ou résolu (P1 n°18).
+   PROBLEME
++  /// Chèque rejeté par la banque : le règlement est contre-passé, la dette revient (P1 bis n°21n).
++  CHEQUE_REJETE
+ }
+ 
+ enum AuditAction {
+@@ -747,6 +759,19 @@ model CustomerPayment {
+   /// Avoir d'un retour client déduit de la dette (P1 bis n°21l) : ce
+   /// règlement n'est pas un encaissement et ne se contre-passe pas.
+   saleReturnId      String?       @unique @db.Uuid
++  /// Chèque (P1 bis n°21n) — tous NULL si le règlement n'est pas un chèque.
++  /// N° du chèque.
++  chequeNumber      String?
++  /// Banque tirée.
++  chequeBank        String?
++  /// Date d'encaissement possible (jour pur, enregistré à minuit UTC).
++  chequeDueDate     DateTime?
++  /// Statut du chèque ; NULL = pas un chèque.
++  chequeStatus      ChequeStatus?
++  /// Quand l'admin a statué (encaissé / rejeté).
++  chequeStatusAt    DateTime?
++  /// Admin ayant statué (id seul, sans relation Prisma vers User).
++  chequeStatusById  String?       @db.Uuid
+   createdAt         DateTime      @default(now())
+ 
+   customer   Customer         @relation(fields: [customerId], references: [id])
+@@ -759,6 +784,7 @@ model CustomerPayment {
+   @@index([customerId])
+   @@index([saleId])
+   @@index([paidAt])
++  @@index([chequeStatus])
+ }
+ 
+ // ───────────────────────────────────────────────────────────
+@@ -913,6 +939,19 @@ model SupplierPayment {
+   clientMutationId  String?       @unique @db.Uuid
+   /// Contre-passation du paiement référencé (montant opposé), jamais suppression.
+   reversesPaymentId String?       @unique @db.Uuid
++  /// Chèque (P1 bis n°21n) — tous NULL si le règlement n'est pas un chèque.
++  /// N° du chèque.
++  chequeNumber      String?
++  /// Banque tirée.
++  chequeBank        String?
++  /// Date d'encaissement possible (jour pur, enregistré à minuit UTC).
++  chequeDueDate     DateTime?
++  /// Statut du chèque ; NULL = pas un chèque.
++  chequeStatus      ChequeStatus?
++  /// Quand l'admin a statué (encaissé / rejeté).
++  chequeStatusAt    DateTime?
++  /// Admin ayant statué (id seul, sans relation Prisma vers User).
++  chequeStatusById  String?       @db.Uuid
+   createdAt         DateTime      @default(now())
+ 
+   reverses      SupplierPayment? @relation("SupplierPaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+@@ -925,6 +964,7 @@ model SupplierPayment {
+   @@index([supplierId])
+   @@index([purchaseOrderId])
+   @@index([paidAt])
++  @@index([chequeStatus])
+ }
+ 
+ /// BROUILLON → COMMANDEE → CONFIRMEE → PARTIELLEMENT_RECUE → RECUE (+ ANNULEE).
+diff --git a/backend/src/app.module.ts b/backend/src/app.module.ts
+index 1cee6ca..5094758 100644
+--- a/backend/src/app.module.ts
++++ b/backend/src/app.module.ts
+@@ -29,6 +29,7 @@ import { SuppliersModule } from './suppliers/suppliers.module';
+ import { SalesModule } from './sales/sales.module';
+ import { StorageModule } from './storage/storage.module';
+ import { SettingsModule } from './settings/settings.module';
++import { PaymentsModule } from './payments/payments.module';
+ import { SyncModule } from './sync/sync.module';
+ import { UsersModule } from './users/users.module';
+ 
+@@ -70,6 +71,7 @@ import { UsersModule } from './users/users.module';
+     ProblemsModule,
+     SyncModule,
+     SettingsModule,
++    PaymentsModule,
+   ],
+   controllers: [AppController],
+   providers: [
+diff --git a/backend/src/common/dto/payment.dto.ts b/backend/src/common/dto/payment.dto.ts
+index 2532745..2d90df7 100644
+--- a/backend/src/common/dto/payment.dto.ts
++++ b/backend/src/common/dto/payment.dto.ts
+@@ -1,6 +1,14 @@
+ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+ import { Transform } from 'class-transformer';
+-import { IsString, MaxLength, MinLength } from 'class-validator';
++import {
++  IsIn,
++  IsOptional,
++  IsString,
++  Matches,
++  MaxLength,
++  MinLength,
++} from 'class-validator';
++import { DAY_MESSAGE, DAY_PATTERN } from './day-period.dto';
+ import { ClientMutationId } from '../idempotency';
+ import { PaginationMetaDto } from './pagination.dto';
+ 
+@@ -61,3 +69,84 @@ export class PaymentHistoryDto {
+   data!: PaymentHistoryItemDto[];
+   @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
+ }
++
++const trim = ({ value }: { value: unknown }) =>
++  typeof value === 'string' ? value.trim() : value;
++
++/// Chèque joint à un règlement client ou à un paiement fournisseur (P1 bis
++/// n°21n, décisions MEDMEDBEN 2026-09-28) : il n'entre ni ne sort d'AUCUNE
++/// caisse ; il reste « en portefeuille » jusqu'à ce que l'ADMIN le déclare
++/// encaissé ou rejeté.
++export class ChequeInputDto {
++  @ApiProperty({ example: '0012345' })
++  @Transform(trim)
++  @IsString()
++  @MinLength(1)
++  @MaxLength(40)
++  number!: string;
++
++  @ApiProperty({ example: 'BNA Alger-Centre' })
++  @Transform(trim)
++  @IsString()
++  @MinLength(1)
++  @MaxLength(80)
++  bank!: string;
++
++  @ApiPropertyOptional({
++    example: '2026-10-15',
++    description:
++      'Date à partir de laquelle le chèque peut être remis en banque.',
++  })
++  @Matches(DAY_PATTERN, { message: `dueDate : ${DAY_MESSAGE}` })
++  @IsOptional()
++  dueDate?: string;
++}
++
++export const CHEQUE_STATUSES = [
++  'EN_PORTEFEUILLE',
++  'ENCAISSE',
++  'REJETE',
++] as const;
++
++/// Décision de l'ADMIN sur un chèque en portefeuille. REJETE contre-passe le
++/// règlement (la dette revient) : mutation d'argent, clé d'idempotence.
++export class ChequeStatusDto {
++  @ClientMutationId()
++  clientMutationId!: string;
++
++  @ApiProperty({ enum: ['ENCAISSE', 'REJETE'] })
++  @IsIn(['ENCAISSE', 'REJETE'])
++  status!: 'ENCAISSE' | 'REJETE';
++
++  @ApiPropertyOptional({ example: 'Provision insuffisante' })
++  @Transform(trim)
++  @IsString()
++  @MaxLength(300)
++  @IsOptional()
++  reason?: string;
++}
++
++export class ChequeListQueryDto {
++  @ApiPropertyOptional({ enum: CHEQUE_STATUSES })
++  @IsIn(CHEQUE_STATUSES)
++  @IsOptional()
++  status?: (typeof CHEQUE_STATUSES)[number];
++}
++
++/// Un chèque du portefeuille : reçu d'un client ou émis à un fournisseur.
++export class ChequeDto {
++  @ApiProperty({ description: 'Id du règlement / paiement.' }) id!: string;
++  @ApiProperty({ enum: ['CLIENT', 'FOURNISSEUR'] })
++  kind!: 'CLIENT' | 'FOURNISSEUR';
++  @ApiProperty() partyId!: string;
++  @ApiProperty() partyName!: string;
++  @ApiProperty({ description: 'Centimes.' }) amount!: number;
++  @ApiProperty() number!: string;
++  @ApiProperty() bank!: string;
++  @ApiProperty({ nullable: true, example: '2026-10-15' })
++  dueDate!: string | null;
++  @ApiProperty({ enum: CHEQUE_STATUSES })
++  status!: (typeof CHEQUE_STATUSES)[number];
++  @ApiProperty() paidAt!: Date;
++  @ApiProperty({ nullable: true }) statusAt!: Date | null;
++}
+diff --git a/backend/src/customers/customers.service.ts b/backend/src/customers/customers.service.ts
+index 29ef394..c4dd190 100644
+--- a/backend/src/customers/customers.service.ts
++++ b/backend/src/customers/customers.service.ts
+@@ -41,6 +41,7 @@ import {
+   statementFilename,
+ } from '../common/export/statement';
+ import { localDate } from '../common/document-number';
++import { parseApiDate } from '../common/api-date';
+ 
+ type Db = Prisma.TransactionClient;
+ 
+@@ -346,7 +347,11 @@ export class CustomersService {
+       user.id,
+       existing.customerId === dto.customerId &&
+         existing.amount === dto.amount &&
+-        existing.saleId === (dto.saleId ?? null),
++        existing.saleId === (dto.saleId ?? null) &&
++        // Chèque SUIVI (statut) et même numéro : un autre chèque ressaisi sous
++        // la même clé n'est pas rendu en silence.
++        (existing.chequeStatus !== null) === Boolean(dto.cheque) &&
++        existing.chequeNumber === (dto.cheque?.number ?? null),
+       {
+         code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+         message: `Règlement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
+@@ -426,10 +431,20 @@ export class CustomersService {
+       }
+     }
+ 
+-    const session = await CashSessionsService.lockOpenSession(tx, {
+-      userId: user.id,
+-    });
+-    if (!session) {
++    // Chèque (P1 bis n°21n) : il n'entre dans AUCUNE caisse ; la dette baisse
++    // dès la remise, il reste « en portefeuille » jusqu'à la décision admin.
++    const cheque = dto.cheque;
++    if (cheque && dto.cashSessionId !== undefined) {
++      throw new BusinessException(
++        ErrorCode.VALIDATION_FAILED,
++        'Un chèque n’entre pas dans la caisse : cashSessionId interdit',
++        HttpStatus.UNPROCESSABLE_ENTITY,
++      );
++    }
++    const session = cheque
++      ? null
++      : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
++    if (!cheque && !session) {
+       throw new BusinessException(
+         ErrorCode.CASH_SESSION_REQUIRED,
+         'Ouvrez votre caisse avant d’encaisser un règlement',
+@@ -438,7 +453,11 @@ export class CustomersService {
+     }
+     // Mêmes règles que la vente en espèces : les espèces restent dans la caisse
+     // où elles sont entrées, jamais imputées à une autre (audit tranche B).
+-    if (dto.cashSessionId !== undefined && dto.cashSessionId !== session.id) {
++    if (
++      session &&
++      dto.cashSessionId !== undefined &&
++      dto.cashSessionId !== session.id
++    ) {
+       throw new BusinessException(
+         ErrorCode.CASH_SESSION_CLOSED,
+         'La caisse de ce règlement a été clôturée avant sa synchronisation : ' +
+@@ -455,20 +474,30 @@ export class CustomersService {
+         saleId: dto.saleId ?? null,
+         userId: user.id,
+         amount: dto.amount,
+-        method: 'ESPECES',
++        method: cheque ? 'CHEQUE' : 'ESPECES',
+         note: dto.note ?? null,
+         // Jamais avant l'ouverture de la caisse où entrent ses espèces.
+-        paidAt: paidAt < session.openedAt ? session.openedAt : paidAt,
++        paidAt:
++          session && paidAt < session.openedAt ? session.openedAt : paidAt,
++        ...(cheque && {
++          chequeNumber: cheque.number,
++          chequeBank: cheque.bank,
++          chequeDueDate: cheque.dueDate
++            ? parseApiDate(cheque.dueDate, 'cheque.dueDate')
++            : null,
++          chequeStatus: 'EN_PORTEFEUILLE' as const,
++        }),
+       },
+     });
+     // Point d'entrée COMMUN des espèces (comme `withdraw` pour les sorties).
+-    await CashSessionsService.deposit(tx, session, {
+-      userId: user.id,
+-      amount: dto.amount,
+-      saleId: dto.saleId ?? undefined,
+-      // Rapprochement caisse ↔ règlement par l'id du règlement.
+-      note: `Règlement ${payment.id} — ${customer.name}`,
+-    });
++    if (session)
++      await CashSessionsService.deposit(tx, session, {
++        userId: user.id,
++        amount: dto.amount,
++        saleId: dto.saleId ?? undefined,
++        // Rapprochement caisse ↔ règlement par l'id du règlement.
++        note: `Règlement ${payment.id} — ${customer.name}`,
++      });
+     if (actor) {
+       await writeAudit(tx, actor, {
+         action: 'CREATE',
+@@ -478,6 +507,10 @@ export class CustomersService {
+           customerId: customer.id,
+           amount: dto.amount,
+           saleId: dto.saleId ?? null,
++          method: payment.method,
++          ...(cheque && {
++            cheque: { number: cheque.number, bank: cheque.bank },
++          }),
+         },
+       });
+     }
+@@ -516,9 +549,9 @@ export class CustomersService {
+         id: p.id,
+         amount: p.amount,
+         method: p.method,
+-        // Règlement client = espèces en caisse (décision 2026-09-15), sauf
+-        // l'avoir d'un retour : une écriture, aucune espèce.
+-        fromCash: !p.saleReturnId,
++        // Espèces en caisse (décision 2026-09-15) ; ni l'avoir d'un retour
++        // (méthode AUTRE) ni un chèque (21n) ne passent par la caisse.
++        fromCash: p.method === 'ESPECES',
+         paidAt: p.paidAt,
+         userId: p.userId,
+         saleId: p.saleId,
+@@ -578,6 +611,17 @@ export class CustomersService {
+             HttpStatus.CONFLICT,
+           );
+         }
++        // Un chèque ENCAISSÉ est de l'argent en banque : le contre-passer ferait
++        // revenir une dette déjà payée. Seul un chèque en portefeuille
++        // (erreur de saisie, chèque rendu) se contre-passe ; un rejet passe
++        // par le portefeuille (audit 21n).
++        if (original.chequeStatus === 'ENCAISSE') {
++          throw new BusinessException(
++            ErrorCode.INVALID_STATE_TRANSITION,
++            'Chèque encaissé : il ne se contre-passe plus',
++            HttpStatus.CONFLICT,
++          );
++        }
+         if (original.reversesPaymentId || original.reversedBy) {
+           throw new BusinessException(
+             ErrorCode.INVALID_STATE_TRANSITION,
+@@ -608,10 +652,12 @@ export class CustomersService {
+             );
+           }
+         }
+-        const session = await CashSessionsService.lockOpenSession(tx, {
+-          userId: user.id,
+-        });
+-        if (!session) {
++        // Un chèque n'est jamais passé par la caisse : rien à y reprendre.
++        const byCheque = original.method === 'CHEQUE';
++        const session = byCheque
++          ? null
++          : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
++        if (!byCheque && !session) {
+           throw new BusinessException(
+             ErrorCode.CASH_SESSION_REQUIRED,
+             'Ouvrez votre caisse : les espèces du règlement sont rendues au client',
+@@ -630,12 +676,14 @@ export class CustomersService {
+             reversesPaymentId: original.id,
+           },
+         });
+-        await CashSessionsService.withdraw(tx, session, {
+-          userId: user.id,
+-          amount: original.amount,
+-          saleId: original.saleId ?? undefined,
+-          note: `Contre-passation du règlement ${original.id}`,
+-        });
++        if (session) {
++          await CashSessionsService.withdraw(tx, session, {
++            userId: user.id,
++            amount: original.amount,
++            saleId: original.saleId ?? undefined,
++            note: `Contre-passation du règlement ${original.id}`,
++          });
++        }
+         await writeAudit(tx, actor, {
+           action: 'CANCEL',
+           entityType: 'CustomerPayment',
+diff --git a/backend/src/customers/dto/customer.dto.ts b/backend/src/customers/dto/customer.dto.ts
+index 5f6b57e..8d8d7dd 100644
+--- a/backend/src/customers/dto/customer.dto.ts
++++ b/backend/src/customers/dto/customer.dto.ts
+@@ -1,3 +1,6 @@
++import { Type } from 'class-transformer';
++import { IsObject, ValidateNested } from 'class-validator';
++import { ChequeInputDto } from '../../common/dto/payment.dto';
+ import { ClientMutationId } from '../../common/idempotency';
+ import {
+   ApiProperty,
+@@ -241,6 +244,19 @@ export class CreateCustomerPaymentDto {
+   @Max(MAX_MONEY)
+   amount!: number;
+ 
++  @ApiPropertyOptional({
++    type: ChequeInputDto,
++    description:
++      'Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse touchée ; ' +
++      'le chèque reste en portefeuille jusqu’à la décision de l’admin.',
++  })
++  // @IsObject : un TABLEAU passerait @ValidateNested (audit sécurité 21n).
++  @IsObject()
++  @ValidateNested()
++  @Type(() => ChequeInputDto)
++  @IsOptional()
++  cheque?: ChequeInputDto;
++
+   @ApiPropertyOptional()
+   @IsString()
+   @MaxLength(500)
+diff --git a/backend/src/payments/cheques.controller.ts b/backend/src/payments/cheques.controller.ts
+new file mode 100644
+index 0000000..061649b
+--- /dev/null
++++ b/backend/src/payments/cheques.controller.ts
+@@ -0,0 +1,81 @@
++import { Body, Controller, Get, Ip, Param, Post, Query } from '@nestjs/common';
++import {
++  ApiBearerAuth,
++  ApiOkResponse,
++  ApiOperation,
++  ApiTags,
++} from '@nestjs/swagger';
++import {
++  AuthenticatedUser,
++  CurrentUser,
++  RequireFreshAccess,
++  RequirePermissions,
++  RoleCode,
++  Roles,
++} from '../common/auth.decorators';
++import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
++import {
++  ChequeDto,
++  ChequeListQueryDto,
++  ChequeStatusDto,
++} from '../common/dto/payment.dto';
++import { PERMISSIONS } from '../common/permissions';
++import { ChequesService } from './cheques.service';
++
++/// Portefeuille de chèques (P1 bis n°21n) : ADMIN seul, avec les DEUX droits
++/// de paiement — il porte les chèques des clients ET des fournisseurs. Le
++/// vendeur SAISIT un chèque client par `POST /payments/customer` ; seul l'admin
++/// statue (décision MEDMEDBEN 2026-09-28).
++@ApiTags('Paiements')
++@ApiBearerAuth()
++@Controller('cheques')
++@Roles(RoleCode.ADMIN)
++@RequirePermissions(
++  PERMISSIONS.CUSTOMER_PAYMENT_CREATE,
++  PERMISSIONS.SUPPLIER_PAYMENT_CREATE,
++)
++export class ChequesController {
++  constructor(private readonly cheques: ChequesService) {}
++
++  @Get()
++  @RequireFreshAccess()
++  @ApiOperation({ summary: 'Chèques reçus et émis (filtre par statut)' })
++  @ApiOkResponse({ type: [ChequeDto] })
++  list(@Query() query: ChequeListQueryDto): Promise<ChequeDto[]> {
++    return this.cheques.list(query);
++  }
++
++  @Post('customer/:id/status')
++  @ApiOperation({
++    summary: 'Chèque client encaissé ou rejeté (rejet : la dette revient)',
++  })
++  @ApiOkResponse({ type: ChequeDto })
++  customer(
++    @Param('id', CanonicalUuidPipe) id: string,
++    @Body() dto: ChequeStatusDto,
++    @CurrentUser() user: AuthenticatedUser,
++    @Ip() ip: string,
++  ): Promise<ChequeDto> {
++    return this.cheques.setStatus('CLIENT', id, dto, user, {
++      userId: user.id,
++      ipAddress: ip,
++    });
++  }
++
++  @Post('supplier/:id/status')
++  @ApiOperation({
++    summary: 'Chèque fournisseur débité ou rejeté (rejet : la dette revient)',
++  })
++  @ApiOkResponse({ type: ChequeDto })
++  supplier(
++    @Param('id', CanonicalUuidPipe) id: string,
++    @Body() dto: ChequeStatusDto,
++    @CurrentUser() user: AuthenticatedUser,
++    @Ip() ip: string,
++  ): Promise<ChequeDto> {
++    return this.cheques.setStatus('FOURNISSEUR', id, dto, user, {
++      userId: user.id,
++      ipAddress: ip,
++    });
++  }
++}
+diff --git a/backend/src/payments/cheques.service.ts b/backend/src/payments/cheques.service.ts
+new file mode 100644
+index 0000000..d4dece7
+--- /dev/null
++++ b/backend/src/payments/cheques.service.ts
+@@ -0,0 +1,280 @@
++import { HttpStatus, Injectable } from '@nestjs/common';
++import { ActorContext, writeAudit } from '../audit/audit-writer';
++import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
++import { BusinessException } from '../common/business.exception';
++import {
++  ChequeDto,
++  ChequeListQueryDto,
++  ChequeStatusDto,
++} from '../common/dto/payment.dto';
++import { ErrorCode } from '../common/error-codes';
++import { formatDA } from '../common/pdf/pdf';
++import { Prisma } from '../generated/prisma/client';
++import { NotificationsService } from '../notifications/notifications.service';
++import { PrismaService } from '../prisma/prisma.service';
++
++type Db = Prisma.TransactionClient;
++export type ChequeKind = 'CLIENT' | 'FOURNISSEUR';
++
++/// Suivi des chèques (P1 bis n°21n, décisions MEDMEDBEN 2026-09-28).
++///
++/// Un chèque est un règlement client (reçu) ou un paiement fournisseur (émis)
++/// portant `chequeStatus`. Il ne passe JAMAIS par une caisse. La dette a bougé
++/// dès la remise ; l'ADMIN statue ensuite :
++/// - ENCAISSE : passé en banque, rien d'autre ne bouge ;
++/// - REJETE : refusé par la banque → contre-passation (écriture opposée, règle
++///   7), la dette revient ; alerte à l'admin et, pour un client, au vendeur
++///   qui l'a reçu.
++/// Une décision ne se prend qu'une fois : la même, renvoyée, rend l'état
++/// actuel (idempotent) ; une autre est refusée (409).
++@Injectable()
++export class ChequesService {
++  constructor(private readonly prisma: PrismaService) {}
++
++  /// Portefeuille : les deux sens, du plus ancien au plus récent (les chèques à
++  /// remettre en banque d'abord). Les contre-passations n'en font pas partie ;
++  /// un chèque annulé par contre-passation n'est plus « en portefeuille ».
++  async list(query: ChequeListQueryDto): Promise<ChequeDto[]> {
++    // Un chèque contre-passé à la main (erreur de saisie) n'est plus un
++    // chèque à suivre ; un chèque REJETÉ l'est par définition, il reste listé.
++    const where = {
++      chequeStatus: query.status ?? { not: null },
++      OR: [{ chequeStatus: 'REJETE' as const }, { reversedBy: null }],
++    };
++    // En portefeuille : les plus anciens d'abord (à remettre en banque) ;
++    // sinon les plus récents (l'historique ne fait que grossir).
++    const order =
++      query.status === 'EN_PORTEFEUILLE' ? ('asc' as const) : ('desc' as const);
++    // ponytail: 500 par sens ; paginer si le portefeuille
++    // d'un magasin dépasse ce volume.
++    const [received, issued] = await Promise.all([
++      this.prisma.customerPayment.findMany({
++        where,
++        include: { customer: { select: { name: true } } },
++        orderBy: { paidAt: order },
++        take: 500,
++      }),
++      this.prisma.supplierPayment.findMany({
++        where,
++        include: { supplier: { select: { name: true } } },
++        orderBy: { paidAt: order },
++        take: 500,
++      }),
++    ]);
++    return [
++      ...received.map((p) =>
++        ChequesService.toDto('CLIENT', p, p.customerId, p.customer.name),
++      ),
++      ...issued.map((p) =>
++        ChequesService.toDto('FOURNISSEUR', p, p.supplierId, p.supplier.name),
++      ),
++    ].sort((a, b) =>
++      order === 'asc'
++        ? a.paidAt.getTime() - b.paidAt.getTime()
++        : b.paidAt.getTime() - a.paidAt.getTime(),
++    );
++  }
++
++  async setStatus(
++    kind: ChequeKind,
++    id: string,
++    dto: ChequeStatusDto,
++    user: AuthenticatedUser,
++    actor: ActorContext,
++  ): Promise<ChequeDto> {
++    return this.prisma.$transaction(async (tx) => {
++      const table = kind === 'CLIENT' ? 'CustomerPayment' : 'SupplierPayment';
++      await tx.$queryRaw`SELECT "id" FROM ${Prisma.raw(`"${table}"`)} WHERE "id" = ${id}::uuid FOR UPDATE`;
++      const cheque = await ChequesService.load(tx, kind, id);
++      if (!cheque || cheque.chequeStatus === null) {
++        throw new BusinessException(
++          ErrorCode.NOT_FOUND,
++          'Chèque introuvable',
++          HttpStatus.NOT_FOUND,
++        );
++      }
++      // Renvoi de la même décision : l'état actuel, sans double effet.
++      if (cheque.chequeStatus === dto.status)
++        return ChequesService.dtoOf(kind, cheque);
++      if (cheque.chequeStatus !== 'EN_PORTEFEUILLE' || cheque.reversedBy) {
++        throw new BusinessException(
++          ErrorCode.INVALID_STATE_TRANSITION,
++          cheque.reversedBy
++            ? 'Ce règlement a été contre-passé : le chèque ne se traite plus'
++            : 'Ce chèque a déjà été traité',
++          HttpStatus.CONFLICT,
++        );
++      }
++      const now = new Date();
++      const status = {
++        chequeStatus: dto.status,
++        chequeStatusAt: now,
++        chequeStatusById: user.id,
++      };
++      if (dto.status === 'REJETE') {
++        await ChequesService.reject(tx, kind, cheque, dto, user);
++      }
++      const updated =
++        kind === 'CLIENT'
++          ? await tx.customerPayment.update({ where: { id }, data: status })
++          : await tx.supplierPayment.update({ where: { id }, data: status });
++      await writeAudit(tx, actor, {
++        action: 'UPDATE',
++        entityType: kind === 'CLIENT' ? 'CustomerPayment' : 'SupplierPayment',
++        entityId: id,
++        oldValue: { chequeStatus: 'EN_PORTEFEUILLE' },
++        newValue: {
++          chequeStatus: dto.status,
++          number: cheque.chequeNumber,
++          amount: cheque.amount,
++          reason: dto.reason ?? null,
++        },
++      });
++      return ChequesService.dtoOf(kind, { ...cheque, ...updated });
++    });
++  }
++
++  /// Rejet : écriture opposée (la dette revient), jamais de caisse touchée.
++  /// Verrous dans l'ordre des autres écritures : Vente → Client, ou Fournisseur.
++  private static async reject(
++    tx: Db,
++    kind: ChequeKind,
++    cheque: Loaded,
++    dto: ChequeStatusDto,
++    user: AuthenticatedUser,
++  ) {
++    const note = `Chèque n° ${cheque.chequeNumber} rejeté${dto.reason ? ` : ${dto.reason}` : ''}`;
++    const alert = {
++      type: 'CHEQUE_REJETE' as const,
++      title: `Chèque rejeté — ${cheque.partyName}`,
++      body: `${formatDA(cheque.amount)} (n° ${cheque.chequeNumber}, ${cheque.chequeBank}) : la dette revient.`,
++      priority: 'HAUTE' as const,
++      operationType:
++        kind === 'CLIENT'
++          ? ('CUSTOMER_PAYMENT' as const)
++          : ('SUPPLIER_PAYMENT' as const),
++      operationId: cheque.id,
++    };
++    if (kind === 'CLIENT') {
++      if (cheque.saleId) {
++        await tx.$queryRaw`SELECT "id" FROM "Sale" WHERE "id" = ${cheque.saleId}::uuid FOR UPDATE`;
++      }
++      await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${cheque.partyId}::uuid FOR UPDATE`;
++      await tx.customerPayment.create({
++        data: {
++          clientMutationId: dto.clientMutationId,
++          customerId: cheque.partyId,
++          saleId: cheque.saleId,
++          userId: user.id,
++          amount: -cheque.amount,
++          method: 'CHEQUE',
++          note,
++          reversesPaymentId: cheque.id,
++        },
++      });
++    } else {
++      await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${cheque.partyId}::uuid FOR UPDATE`;
++      await tx.supplierPayment.create({
++        data: {
++          clientMutationId: dto.clientMutationId,
++          supplierId: cheque.partyId,
++          userId: user.id,
++          amount: -cheque.amount,
++          method: 'CHEQUE',
++          note,
++          reversesPaymentId: cheque.id,
++        },
++      });
++    }
++    // Admins + (client) le vendeur qui l'a reçu — il doit rappeler son
++    // client. UNE alerte chacun, jamais à celui qui statue.
++    const admins = await tx.user.findMany({
++      where: { roles: { some: { code: RoleCode.ADMIN } } },
++      select: { id: true },
++    });
++    await NotificationsService.notifyUsers(
++      tx,
++      [
++        ...admins.map((a) => a.id),
++        ...(kind === 'CLIENT' ? [cheque.userId] : []),
++      ].filter((id) => id !== user.id),
++      alert,
++    );
++  }
++
++  private static async load(
++    tx: Db,
++    kind: ChequeKind,
++    id: string,
++  ): Promise<Loaded | null> {
++    if (kind === 'CLIENT') {
++      const p = await tx.customerPayment.findUnique({
++        where: { id },
++        include: {
++          customer: { select: { name: true } },
++          reversedBy: { select: { id: true } },
++        },
++      });
++      return p && { ...p, partyId: p.customerId, partyName: p.customer.name };
++    }
++    const p = await tx.supplierPayment.findUnique({
++      where: { id },
++      include: {
++        supplier: { select: { name: true } },
++        reversedBy: { select: { id: true } },
++      },
++    });
++    return (
++      p && {
++        ...p,
++        saleId: null,
++        partyId: p.supplierId,
++        partyName: p.supplier.name,
++      }
++    );
++  }
++
++  private static dtoOf(kind: ChequeKind, c: Loaded): ChequeDto {
++    return ChequesService.toDto(kind, c, c.partyId, c.partyName);
++  }
++
++  private static toDto(
++    kind: ChequeKind,
++    p: ChequeFields,
++    partyId: string,
++    partyName: string,
++  ): ChequeDto {
++    return {
++      id: p.id,
++      kind,
++      partyId,
++      partyName,
++      amount: p.amount,
++      number: p.chequeNumber ?? '',
++      bank: p.chequeBank ?? '',
++      dueDate: p.chequeDueDate?.toISOString().slice(0, 10) ?? null,
++      status: p.chequeStatus!,
++      paidAt: p.paidAt,
++      statusAt: p.chequeStatusAt,
++    };
++  }
++}
++
++interface ChequeFields {
++  id: string;
++  amount: number;
++  paidAt: Date;
++  chequeNumber: string | null;
++  chequeBank: string | null;
++  chequeDueDate: Date | null;
++  chequeStatus: 'EN_PORTEFEUILLE' | 'ENCAISSE' | 'REJETE' | null;
++  chequeStatusAt: Date | null;
++}
++
++type Loaded = ChequeFields & {
++  userId: string;
++  saleId: string | null;
++  partyId: string;
++  partyName: string;
++  reversedBy: { id: string } | null;
++};
+diff --git a/backend/src/payments/payments.module.ts b/backend/src/payments/payments.module.ts
+new file mode 100644
+index 0000000..c20a1a9
+--- /dev/null
++++ b/backend/src/payments/payments.module.ts
+@@ -0,0 +1,6 @@
++import { Module } from '@nestjs/common';
++import { ChequesController } from './cheques.controller';
++import { ChequesService } from './cheques.service';
++
++@Module({ controllers: [ChequesController], providers: [ChequesService] })
++export class PaymentsModule {}
+diff --git a/backend/src/sales/sale-returns.service.ts b/backend/src/sales/sale-returns.service.ts
+index 51ec22d..046a660 100644
+--- a/backend/src/sales/sale-returns.service.ts
++++ b/backend/src/sales/sale-returns.service.ts
+@@ -171,10 +171,8 @@ export class SaleReturnsService {
+     const totalTax = lines.reduce((s, l) => s + l.lineTaxAmount, 0);
+     const totalTtc = totalHt + totalTax;
+ 
+-    const { reallyPaid, stillDue } = await SaleReturnsService.cashKept(
+-      tx,
+-      sale,
+-    );
++    const { reallyPaid, stillDue, pendingCheques } =
++      await SaleReturnsService.cashKept(tx, sale);
+ 
+     // UN seul instant pour l'année des numéros ET la date du retour : à minuit
+     // le 31/12, jamais « AV-2026-… » daté de 2027 (comme la facture).
+@@ -183,11 +181,13 @@ export class SaleReturnsService {
+     const number = await nextDocumentNumber(tx, 'RETOUR_CLIENT', 'RC', 5, year);
+     let cashSessionId: string | null = null;
+     if (dto.refundMethod === 'ESPECES') {
+-      if (totalTtc > reallyPaid) {
++      // Jamais d'espèces rendues contre un chèque pas encore encaissé (21n).
++      const cashable = reallyPaid - pendingCheques;
++      if (totalTtc > cashable) {
+         throw new BusinessException(
+           ErrorCode.VALIDATION_FAILED,
+-          `Remboursement en espèces : au plus ${formatDA(Math.max(0, reallyPaid))} ` +
+-            '(ce que le client a payé sur cette vente) — sinon, déduisez de sa dette',
++          `Remboursement en espèces : au plus ${formatDA(Math.max(0, cashable))} ` +
++            '(ce que le client a payé sur cette vente, hors chèques non encaissés) — sinon, déduisez de sa dette',
+           HttpStatus.UNPROCESSABLE_ENTITY,
+         );
+       }
+@@ -317,8 +317,8 @@ export class SaleReturnsService {
+   static async cashKept(
+     tx: Db,
+     sale: { id: string; paidAmount: number; totalTtc: number },
+-  ): Promise<{ reallyPaid: number; stillDue: number }> {
+-    const [payments, refunds] = await Promise.all([
++  ): Promise<{ reallyPaid: number; stillDue: number; pendingCheques: number }> {
++    const [payments, refunds, pending] = await Promise.all([
+       tx.customerPayment.aggregate({
+         where: { saleId: sale.id },
+         _sum: { amount: true },
+@@ -327,11 +327,22 @@ export class SaleReturnsService {
+         where: { saleId: sale.id },
+         _sum: { totalTtc: true },
+       }),
++      // Chèques pas encore passés en banque (ni contre-passés) : de l'argent
++      // PROMIS, pas encaissé (21n).
++      tx.customerPayment.aggregate({
++        where: {
++          saleId: sale.id,
++          chequeStatus: 'EN_PORTEFEUILLE',
++          reversedBy: null,
++        },
++        _sum: { amount: true },
++      }),
+     ]);
+     const paidLater = payments._sum.amount ?? 0;
+     return {
+       reallyPaid: sale.paidAmount + paidLater - (refunds._sum.totalTtc ?? 0),
+       stillDue: sale.totalTtc - sale.paidAmount - paidLater,
++      pendingCheques: pending._sum.amount ?? 0,
+     };
+   }
+ 
+diff --git a/backend/src/suppliers/dto/supplier.dto.ts b/backend/src/suppliers/dto/supplier.dto.ts
+index fb9ba6a..db6e08a 100644
+--- a/backend/src/suppliers/dto/supplier.dto.ts
++++ b/backend/src/suppliers/dto/supplier.dto.ts
+@@ -1,3 +1,6 @@
++import { Type } from 'class-transformer';
++import { IsObject, ValidateNested } from 'class-validator';
++import { ChequeInputDto } from '../../common/dto/payment.dto';
+ import { ClientMutationId } from '../../common/idempotency';
+ import {
+   ApiProperty,
+@@ -244,6 +247,19 @@ export class CreateSupplierPaymentDto {
+   @Max(MAX_MONEY)
+   amount!: number;
+ 
++  @ApiPropertyOptional({
++    type: ChequeInputDto,
++    description:
++      'Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse touchée ; ' +
++      'le chèque reste en portefeuille jusqu’à la décision de l’admin.',
++  })
++  // @IsObject : un TABLEAU passerait @ValidateNested (audit sécurité 21n).
++  @IsObject()
++  @ValidateNested()
++  @Type(() => ChequeInputDto)
++  @IsOptional()
++  cheque?: ChequeInputDto;
++
+   @ApiProperty({
+     description:
+       'true : sortie de la caisse OUVERTE (rapport Z) ; false : payé hors caisse ' +
+diff --git a/backend/src/suppliers/suppliers.service.ts b/backend/src/suppliers/suppliers.service.ts
+index 6831864..81509ba 100644
+--- a/backend/src/suppliers/suppliers.service.ts
++++ b/backend/src/suppliers/suppliers.service.ts
+@@ -33,6 +33,7 @@ import {
+   section,
+ } from '../common/export/export';
+ import { localDate } from '../common/document-number';
++import { parseApiDate } from '../common/api-date';
+ import {
+   PAYMENT_METHOD_LABEL,
+   signedMinus,
+@@ -466,7 +467,9 @@ export class SuppliersService {
+         user.id,
+         existing.supplierId === dto.supplierId &&
+           existing.amount === dto.amount &&
+-          (existing.cashSessionId !== null) === dto.fromCash,
++          (existing.cashSessionId !== null) === dto.fromCash &&
++          (existing.chequeStatus !== null) === Boolean(dto.cheque) &&
++          existing.chequeNumber === (dto.cheque?.number ?? null),
+         {
+           code: ErrorCode.PAYMENT_ALREADY_RECORDED,
+           message: `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
+@@ -486,6 +489,27 @@ export class SuppliersService {
+         });
+         if (!supplier) throw SuppliersService.notFound();
+ 
++        // Chèque émis (P1 bis n°21n) : jamais sorti du tiroir.
++        const cheque = dto.cheque;
++        if (cheque && dto.fromCash) {
++          throw new BusinessException(
++            ErrorCode.VALIDATION_FAILED,
++            'Un chèque ne sort pas de la caisse : fromCash doit valoir false',
++            HttpStatus.UNPROCESSABLE_ENTITY,
++          );
++        }
++        // Un chèque est TOUJOURS suivi (n°, banque, statut) : `method: CHEQUE`
++        // sans chèque, ou un chèque sous une autre méthode, sont refusés.
++        if (
++          (dto.method === 'CHEQUE' && !cheque) ||
++          (cheque && dto.method !== undefined && dto.method !== 'CHEQUE')
++        ) {
++          throw new BusinessException(
++            ErrorCode.VALIDATION_FAILED,
++            'Paiement par chèque : renseignez le chèque (n°, banque), sans autre méthode',
++            HttpStatus.UNPROCESSABLE_ENTITY,
++          );
++        }
+         const { balanceDue } = await SuppliersService.debt(tx, supplier);
+         if (dto.amount > balanceDue) {
+           throw new BusinessException(
+@@ -514,8 +538,20 @@ export class SuppliersService {
+             userId: user.id,
+             cashSessionId: session?.id ?? null,
+             amount: dto.amount,
+-            method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
++            method: cheque
++              ? 'CHEQUE'
++              : dto.fromCash
++                ? 'ESPECES'
++                : (dto.method ?? 'VIREMENT'),
+             note: dto.note ?? null,
++            ...(cheque && {
++              chequeNumber: cheque.number,
++              chequeBank: cheque.bank,
++              chequeDueDate: cheque.dueDate
++                ? parseApiDate(cheque.dueDate, 'cheque.dueDate')
++                : null,
++              chequeStatus: 'EN_PORTEFEUILLE' as const,
++            }),
+           },
+         });
+         if (session) {
+@@ -616,6 +652,13 @@ export class SuppliersService {
+             HttpStatus.NOT_FOUND,
+           );
+         }
++        if (original.chequeStatus === 'ENCAISSE') {
++          throw new BusinessException(
++            ErrorCode.INVALID_STATE_TRANSITION,
++            'Chèque débité : il ne se contre-passe plus',
++            HttpStatus.CONFLICT,
++          );
++        }
+         if (original.reversesPaymentId || original.reversedBy) {
+           throw new BusinessException(
+             ErrorCode.INVALID_STATE_TRANSITION,
+diff --git a/backend/src/sync/handlers/customer-payment.handler.ts b/backend/src/sync/handlers/customer-payment.handler.ts
+index 1dd92d2..a3433d8 100644
+--- a/backend/src/sync/handlers/customer-payment.handler.ts
++++ b/backend/src/sync/handlers/customer-payment.handler.ts
+@@ -41,6 +41,15 @@ export class CustomerPaymentHandler implements SyncMutationHandler<CreateCustome
+ 
+   async validate(payload: unknown): Promise<CreateCustomerPaymentDto> {
+     const dto = await validatePayload(CreateCustomerPaymentDto, payload);
++    // Un chèque doit être connu de l'admin qui le suivra : en ligne seulement
++    // (P1 bis n°21n).
++    if (dto.cheque) {
++      throw new BusinessException(
++        ErrorCode.VALIDATION_FAILED,
++        'Chèque : enregistrement en ligne uniquement',
++        HttpStatus.UNPROCESSABLE_ENTITY,
++      );
++    }
+     if (dto.cashSessionId === undefined) {
+       throw new BusinessException(
+         ErrorCode.VALIDATION_FAILED,
+diff --git a/backend/test/cheques.e2e-spec.ts b/backend/test/cheques.e2e-spec.ts
+new file mode 100644
+index 0000000..0470894
+--- /dev/null
++++ b/backend/test/cheques.e2e-spec.ts
+@@ -0,0 +1,301 @@
++import { randomUUID } from 'crypto';
++import * as request from 'supertest';
++import { RoleCode } from '../src/common/auth.decorators';
++import { PrismaService } from '../src/prisma/prisma.service';
++import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
++
++/// Suivi des chèques (P1 bis n°21n, décisions MEDMEDBEN 2026-09-28).
++///
++/// Éprouvé : un chèque ne touche AUCUNE caisse ; la dette baisse dès la
++/// remise ; le vendeur saisit, l'ADMIN statue ; un rejet contre-passe (la
++/// dette revient) et alerte ; une décision ne se prend qu'une fois.
++describe('Chèques (e2e)', () => {
++  let e2e: E2eApp;
++  let prisma: PrismaService;
++  let server: E2eApp['server'];
++
++  const suffix = Date.now();
++  const PASSWORD = 'MotDePasseTemp1!';
++  const tokens: Record<string, string> = {};
++  const ids: Record<string, string> = {};
++  const customerIds: string[] = [];
++  const supplierIds: string[] = [];
++  let magasinId = '';
++  let counter = 0;
++
++  const as = (token: string) => ({
++    get: (url: string) =>
++      request(server).get(url).set('Authorization', `Bearer ${token}`),
++    post: (url: string) =>
++      request(server).post(url).set('Authorization', `Bearer ${token}`),
++  });
++  const cheque = (n: string) => ({ number: n, bank: 'BNA Alger' });
++
++  /// Client avec une vente à crédit de 1 000,00 (écrite en base : ici on
++  /// éprouve le règlement, pas la vente).
++  const indebted = async () => {
++    const customer = await prisma.customer.create({
++      data: { name: `Client chèque ${suffix}-${++counter}`, creditLimit: 0 },
++    });
++    customerIds.push(customer.id);
++    await prisma.sale.create({
++      data: {
++        number: `E2E-CHQ-${suffix}-${counter}`,
++        userId: ids.vendeur,
++        locationId: magasinId,
++        customerId: customer.id,
++        totalHt: 100000,
++        totalTax: 0,
++        totalTtc: 100000,
++        paidAmount: 0,
++      },
++    });
++    return customer.id;
++  };
++  const debtOf = async (customerId: string) =>
++    (await as(tokens.admin).get(`/api/customers/${customerId}`).expect(200))
++      .body.balanceDue as number;
++  const payByCheque = (
++    customerId: string,
++    n: string,
++    token = tokens.vendeur,
++    extra: object = {},
++  ) =>
++    as(token)
++      .post('/api/payments/customer')
++      .send({
++        clientMutationId: randomUUID(),
++        customerId,
++        amount: 40000,
++        cheque: cheque(n),
++        ...extra,
++      });
++  const decide = (
++    kind: 'customer' | 'supplier',
++    id: string,
++    status: 'ENCAISSE' | 'REJETE',
++    key = randomUUID(),
++    token = tokens.admin,
++  ) =>
++    as(token).post(`/api/cheques/${kind}/${id}/status`).send({
++      clientMutationId: key,
++      status,
++      reason: 'Provision insuffisante',
++    });
++
++  beforeAll(async () => {
++    e2e = await createE2eApp();
++    prisma = e2e.prisma;
++    server = e2e.server;
++    magasinId = (
++      await prisma.location.findFirstOrThrow({ where: { type: 'MAGASIN' } })
++    ).id;
++    for (const [key, role] of [
++      ['admin', RoleCode.ADMIN],
++      ['vendeur', RoleCode.VENDEUR],
++    ] as const) {
++      const email = `e2e-chq-${key}-${suffix}@test.local`;
++      const user = await createTestUser(prisma, {
++        email,
++        password: PASSWORD,
++        roles: [role],
++      });
++      ids[key] = user.id;
++      tokens[key] = (
++        await request(server)
++          .post('/api/auth/login')
++          .send({ identifier: email, password: PASSWORD })
++          .expect(200)
++      ).body.accessToken;
++    }
++  });
++
++  afterAll(async () => {
++    const userIds = Object.values(ids);
++    await prisma.notification.deleteMany({
++      where: { userId: { in: userIds } },
++    });
++    await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
++    for (const table of [prisma.customerPayment, prisma.supplierPayment]) {
++      // Les contre-passations d'abord (elles référencent l'original).
++      await (table as typeof prisma.customerPayment).deleteMany({
++        where: { userId: { in: userIds }, reversesPaymentId: { not: null } },
++      });
++      await (table as typeof prisma.customerPayment).deleteMany({
++        where: { userId: { in: userIds } },
++      });
++    }
++    await prisma.sale.deleteMany({ where: { userId: { in: userIds } } });
++    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
++    await prisma.supplier.deleteMany({ where: { id: { in: supplierIds } } });
++    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
++    await e2e.app.close();
++  });
++
++  it('chèque client : sans caisse, dette réduite dès la remise, en portefeuille', async () => {
++    const customerId = await indebted();
++    // Le vendeur n'a AUCUNE caisse ouverte : un chèque n'en a pas besoin.
++    const paid = await payByCheque(customerId, 'C-001').expect(201);
++    expect(await debtOf(customerId)).toBe(60000);
++    expect(
++      await prisma.cashMovement.count({ where: { userId: ids.vendeur } }),
++    ).toBe(0);
++    const row = await prisma.customerPayment.findUniqueOrThrow({
++      where: { id: paid.body.id },
++    });
++    expect(row).toMatchObject({
++      method: 'CHEQUE',
++      chequeNumber: 'C-001',
++      chequeStatus: 'EN_PORTEFEUILLE',
++    });
++    const list = (
++      await as(tokens.admin)
++        .get('/api/cheques?status=EN_PORTEFEUILLE')
++        .expect(200)
++    ).body as { id: string; kind: string }[];
++    expect(list).toContainEqual(
++      expect.objectContaining({ id: paid.body.id, kind: 'CLIENT' }),
++    );
++    // Un chèque n'entre pas dans une caisse.
++    await payByCheque(customerId, 'C-002', tokens.vendeur, {
++      cashSessionId: randomUUID(),
++    }).expect(422);
++  });
++
++  it('le vendeur saisit, seul l’admin statue', async () => {
++    const customerId = await indebted();
++    const paid = (await payByCheque(customerId, 'C-010').expect(201)).body;
++    await as(tokens.vendeur).get('/api/cheques').expect(403);
++    await decide(
++      'customer',
++      paid.id,
++      'ENCAISSE',
++      randomUUID(),
++      tokens.vendeur,
++    ).expect(403);
++  });
++
++  it('encaissé : rien ne bouge ; même décision renvoyée : même état ; autre : 409', async () => {
++    const customerId = await indebted();
++    const paid = (await payByCheque(customerId, 'C-020').expect(201)).body;
++    const ok = await decide('customer', paid.id, 'ENCAISSE').expect(201);
++    expect(ok.body).toMatchObject({ status: 'ENCAISSE', number: 'C-020' });
++    await decide('customer', paid.id, 'ENCAISSE').expect(201);
++    const late = await decide('customer', paid.id, 'REJETE').expect(409);
++    expect(late.body.code).toBe('INVALID_STATE_TRANSITION');
++    expect(await debtOf(customerId)).toBe(60000);
++  });
++
++  it('rejeté : la dette revient, une seule contre-passation, alerte au vendeur', async () => {
++    const customerId = await indebted();
++    const paid = (await payByCheque(customerId, 'C-030').expect(201)).body;
++    const key = randomUUID();
++    await decide('customer', paid.id, 'REJETE', key).expect(201);
++    await decide('customer', paid.id, 'REJETE', key).expect(201);
++    expect(await debtOf(customerId)).toBe(100000);
++    expect(
++      await prisma.customerPayment.count({
++        where: { reversesPaymentId: paid.id },
++      }),
++    ).toBe(1);
++    expect(
++      await prisma.notification.count({
++        where: { userId: ids.vendeur, type: 'CHEQUE_REJETE' },
++      }),
++    ).toBe(1);
++    // Contre-passé : il ne se traite plus.
++    await decide('customer', paid.id, 'ENCAISSE').expect(409);
++  });
++
++  it('contre-passation d’un chèque (erreur de saisie) : aucune caisse requise', async () => {
++    const customerId = await indebted();
++    const paid = (await payByCheque(customerId, 'C-040').expect(201)).body;
++    // L'admin n'a pas de caisse ouverte : un chèque n'y a jamais été.
++    await as(tokens.admin)
++      .post(`/api/payments/customer/${paid.id}/reverse`)
++      .send({ clientMutationId: randomUUID(), reason: 'Mauvais client' })
++      .expect(201);
++    expect(await debtOf(customerId)).toBe(100000);
++    await decide('customer', paid.id, 'REJETE').expect(409);
++  });
++
++  it('chèque fournisseur : hors caisse, rejet → la dette revient', async () => {
++    const supplier = await prisma.supplier.create({
++      data: { name: `Fournisseur chèque ${suffix}`, openingBalance: 500000 },
++    });
++    supplierIds.push(supplier.id);
++    const debt = async () =>
++      (await as(tokens.admin).get(`/api/suppliers/${supplier.id}`).expect(200))
++        .body.balanceDue as number;
++    const pay = (fromCash: boolean) =>
++      as(tokens.admin)
++        .post('/api/payments/supplier')
++        .send({
++          clientMutationId: randomUUID(),
++          supplierId: supplier.id,
++          amount: 200000,
++          fromCash,
++          cheque: cheque('F-001'),
++        });
++    // Refusé pour ce qu'il est (un chèque hors caisse), pas faute de caisse.
++    expect((await pay(true).expect(422)).body.code).toBe('VALIDATION_FAILED');
++    const paid = (await pay(false).expect(201)).body;
++    expect(await debt()).toBe(300000);
++    await decide('supplier', paid.id, 'REJETE').expect(201);
++    expect(await debt()).toBe(500000);
++    const list = (await as(tokens.admin).get('/api/cheques?status=REJETE'))
++      .body as { id: string; kind: string }[];
++    expect(list).toContainEqual(
++      expect.objectContaining({ id: paid.id, kind: 'FOURNISSEUR' }),
++    );
++  });
++
++  /// Audits 21n : chèque fantôme, chèque encaissé, méthode sans chèque, liste.
++  it('audits : tableau refusé, encaissé non contre-passable, « Tous » sans les annulés', async () => {
++    const customerId = await indebted();
++    await as(tokens.vendeur)
++      .post('/api/payments/customer')
++      .send({
++        clientMutationId: randomUUID(),
++        customerId,
++        amount: 100,
++        cheque: [],
++      })
++      .expect(400);
++    const cashed = (await payByCheque(customerId, 'C-050').expect(201)).body;
++    await decide('customer', cashed.id, 'ENCAISSE').expect(201);
++    await as(tokens.admin)
++      .post(`/api/payments/customer/${cashed.id}/reverse`)
++      .send({ clientMutationId: randomUUID(), reason: 'Erreur' })
++      .expect(409);
++    const cancelled = (await payByCheque(customerId, 'C-051').expect(201)).body;
++    await as(tokens.admin)
++      .post(`/api/payments/customer/${cancelled.id}/reverse`)
++      .send({ clientMutationId: randomUUID(), reason: 'Mauvais client' })
++      .expect(201);
++    const all = (await as(tokens.admin).get('/api/cheques').expect(200))
++      .body as { id: string }[];
++    expect(all.map((c) => c.id)).toContain(cashed.id);
++    expect(all.map((c) => c.id)).not.toContain(cancelled.id);
++
++    const supplier = await prisma.supplier.create({
++      data: { name: `Fournisseur méthode ${suffix}`, openingBalance: 100000 },
++    });
++    supplierIds.push(supplier.id);
++    const res = await as(tokens.admin)
++      .post('/api/payments/supplier')
++      .send({
++        clientMutationId: randomUUID(),
++        supplierId: supplier.id,
++        amount: 1000,
++        fromCash: false,
++        method: 'CHEQUE',
++      })
++      .expect(422);
++    expect(res.body.code).toBe('VALIDATION_FAILED');
++  });
++
++  it('un règlement en espèces n’est pas un chèque : 404', async () => {
++    await decide('customer', randomUUID(), 'ENCAISSE').expect(404);
++  });
++});
+diff --git a/backend/test/money-contract.e2e-spec.ts b/backend/test/money-contract.e2e-spec.ts
+index 5312fbf..3cdfe8c 100644
+--- a/backend/test/money-contract.e2e-spec.ts
++++ b/backend/test/money-contract.e2e-spec.ts
+@@ -146,6 +146,8 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
+         lines: [{ productId, receivedQuantity: '1', unitPriceHt: 1 }],
+       },
+       '/api/quotes/:id/convert': { paidAmount: 0 },
++      '/api/cheques/customer/:id/status': { status: 'REJETE' },
++      '/api/cheques/supplier/:id/status': { status: 'REJETE' },
+     };
+     for (const route of MONEY_ROUTES) {
+       const url = route.replace(/:[^/]+/g, zero);
+diff --git a/backend/test/money-routes.ts b/backend/test/money-routes.ts
+index b3ef66d..126affa 100644
+--- a/backend/test/money-routes.ts
++++ b/backend/test/money-routes.ts
+@@ -19,6 +19,9 @@ export const MONEY_ROUTES = [
+   '/api/payments/customer/:id/reverse',
+   '/api/payments/supplier',
+   '/api/payments/supplier/:id/reverse',
++  // Chèque rejeté : contre-passation, la dette revient (21n).
++  '/api/cheques/customer/:id/status',
++  '/api/cheques/supplier/:id/status',
+   // La réception fait entrer la marchandise ET augmente la dette fournisseur.
+   '/api/receptions',
+   // La conversion d'un devis CRÉE une vente : encaissement, crédit, stock.
+diff --git a/backend/test/sale-returns.e2e-spec.ts b/backend/test/sale-returns.e2e-spec.ts
+index 9a9d1e9..6086971 100644
+--- a/backend/test/sale-returns.e2e-spec.ts
++++ b/backend/test/sale-returns.e2e-spec.ts
+@@ -401,6 +401,28 @@ describe('Retours client (e2e)', () => {
+       .expect(403);
+   });
+ 
++  /// Audit 21n : jamais d'espèces rendues contre un chèque pas encore encaissé.
++  it('chèque en portefeuille : pas de remboursement en espèces avant encaissement', async () => {
++    const { sale, lineId, customerId } = await sell(true);
++    const paid = (
++      await as(tokens.admin)
++        .post('/api/payments/customer')
++        .send({
++          customerId,
++          saleId: sale.id,
++          amount: sale.totalTtc,
++          cheque: { number: 'R-1', bank: 'BNA' },
++        })
++        .expect(201)
++    ).body;
++    await giveBack(sale.id, lineId, '1', 'ESPECES').expect(422);
++    await as(tokens.admin)
++      .post(`/api/cheques/customer/${paid.id}/status`)
++      .send({ clientMutationId: randomUUID(), status: 'ENCAISSE' })
++      .expect(201);
++    await giveBack(sale.id, lineId, '1', 'ESPECES').expect(201);
++  });
++
+   /// CA NET des retours : le rapport d'activité et l'accueil déduisent ce qui
+   /// est rendu (sinon le CA serait gonflé de marchandise revenue).
+   it('rapport d’activité et accueil : CA net des retours du jour', async () => {
+diff --git a/docs/context.md b/docs/context.md
+index aa1f2e9..b6d7c27 100644
+--- a/docs/context.md
++++ b/docs/context.md
+@@ -249,3 +249,6 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
+      est ouverte (file vide = aucun appel réseau).
+ 
+ <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->
++
++**Chèques (P1 bis n°21n, 2026-09-28)** : un règlement client par chèque ne passe JAMAIS par la file hors-ligne —
++le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin doit connaître le chèque pour le suivre.
+diff --git a/docs/permissions.md b/docs/permissions.md
+index 00cd7b6..b18c2de 100644
+--- a/docs/permissions.md
++++ b/docs/permissions.md
+@@ -97,6 +97,8 @@ aucune migration destructive sans confirmation).
+ | Enregistrer paiement client | ✅ | ✅ | ❌ |
+ | Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |
+ | Contre-passer un règlement client | ✅ | ❌ | ❌ |
++| Enregistrer un chèque client (`POST /payments/customer` + `cheque`, P1 bis n°21n : aucune caisse, dette réduite dès la remise) | ✅ | ✅ (`customer.payment.create`) | ❌ |
++| Portefeuille de chèques (`GET /cheques`) et décision encaissé / rejeté (`POST /cheques/{customer,supplier}/:id/status`) | ✅ (`customer.payment.create` ET `supplier.payment.create`) | ❌ | ❌ |
+ | Relevé de compte client PDF/Excel/CSV (`GET /customers/:id/statement`, P1 bis n°21n) | ✅ (`customer.read`, droits relus) | ❌ (tout le CA du client) | ❌ |
+ | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
+ | Gérer fournisseurs | ✅ | ❌ | ❌ |
+diff --git a/docs/tasks.md b/docs/tasks.md
+index 32c1abb..3d77fb2 100644
+--- a/docs/tasks.md
++++ b/docs/tasks.md
+@@ -572,9 +572,37 @@ chèques) : chèques CLIENTS reçus ET chèques FOURNISSEURS émis ; un chèque
+ (rejeté par la banque → la dette revient par contre-passation + alerte) ; le vendeur saisit, l'ADMIN statue
+ (encaissé / rejeté).
+ 
+-**Prochaine étape précise** : **21n partie 2 — suivi des chèques** (migration additive par `db-migrator` : n°,
+-banque, échéance, statut EN_PORTEFEUILLE / ENCAISSE / REJETE sur `CustomerPayment` et `SupplierPayment` ; un
+-chèque n'entre pas dans la caisse) ; puis **partie 3** — historique des prix de vente d'un produit.
++**21n (partie 2) — Suivi des chèques (livré et audité)** — migrations ADDITIVES par `db-migrator` :
++`20260928192417_cheque_tracking` (enum `ChequeStatus`, n° / banque / échéance / statut / décision sur
++`CustomerPayment` et `SupplierPayment`) et `20260928192635_notification_cheque_rejete` (`CHEQUE_REJETE`).
++- Règlement client par chèque (`POST /payments/customer` + `cheque`) : aucune caisse, dette réduite dès la remise,
++  « en portefeuille » ; `cashSessionId` refusé. Paiement fournisseur par chèque (`fromCash: false`), idem.
++- `GET /cheques?status=` et `POST /cheques/{customer,supplier}/:id/status` (ADMIN + les deux droits de paiement) :
++  ENCAISSE (rien ne bouge) ou REJETE (contre-passation : la dette revient ; alerte `CHEQUE_REJETE` à l'admin et au
++  vendeur qui l'a reçu). Même décision renvoyée → état actuel ; autre → 409. Contre-passation manuelle d'un chèque :
++  sans caisse ; ensuite il ne se traite plus. Routes au contrat d'argent.
++- App : fiche client « Encaisser un chèque », fiche fournisseur « Payer par chèque » (dialogue commun : montant,
++  n°, banque, échéance JJ/MM/AAAA), écran « Chèques » (ADMIN) avec filtre et décision ; menu d'actions fournisseur
++  rendu défilable (il débordait).
++- Preuves : e2e `cheques` 7 ; contrat d'argent ; contre-épreuves (caisse exigée, décision renvoyée, contre-passation
++  sans caisse, chèque en caisse fournisseur, alerte au vendeur) → échecs ; app `cheques_screen_test` 4 +
++  `suppliers_screen_test` +1.
++
++- **Audits (2026-09-28) — appliqués** : sécurité (2 importants) + revue (3 importants). Corrigé : `cheque: []`
++  refusé (`@IsObject`, sinon chèque fantôme sans n°) ; jamais d'espèces rendues sur un retour contre un chèque PAS
++  encore encaissé (`cashKept.pendingCheques`) ; un chèque ENCAISSÉ ne se contre-passe plus (la dette reviendrait
++  sur de l'argent en banque) ; `method: CHEQUE` sans chèque (ou chèque sous une autre méthode) refusé ; rejeu
++  comparé sur le chèque SUIVI et son n° ; portefeuille : chèques contre-passés à la main exclus partout, historique
++  du plus récent ; une seule alerte par personne ; synchro hors-ligne : chèque refusé explicitement (en ligne
++  seulement) ; échéance au sélecteur de date. Tests : e2e `cheques` 8, `sale-returns` +1. Preuves complètes : lint 0 · `tsc` · **156 unit** · **637 e2e** ; app analyze propre · **+467 ~46**.
++- Noté (non bloquant) : la décision ENCAISSE ne conserve pas sa clé (renvoi = état actuel, admin seul).
++- ⚠️ **À confirmer (MEDMEDBEN)** : un chèque saisi par un vendeur libère AUSSI le plafond de crédit du client dès la
++  remise (conséquence de « dette réduite dès la remise ») ; aucune alerte à l'admin à la saisie (il voit le
++  portefeuille).
++
++**Prochaine étape précise** : **21n partie 3** — historique des prix de vente : backend fait (`GET
++/products/:id/price-history`, lu de l'audit des tarifs ; e2e dans `catalog.e2e-spec`), reste l'écran (fiche produit
++→ « Historique des prix »), audits, commit.
+ 
+ ### ✅ RETOUR DE TEST HUMAIN — HISTORIQUE DES ACHATS (2026-09-27 · **MEDMEDBEN**)
+ MEDMEDBEN a testé la version desktop (jusqu'à P1 n°21) : **tout fonctionne, sauf l'historique des achats,
+-- 
+2.49.0.windows.1
+

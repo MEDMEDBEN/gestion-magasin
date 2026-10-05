@@ -67,6 +67,8 @@ export function statementDocument(input: {
 /// Libellé lisible d'un mode de paiement (« (espèces) », jamais « (especes) »).
 export const PAYMENT_METHOD_LABEL: Record<string, string> = {
   ESPECES: 'espèces',
+  // Paiement par chèque RETIRÉ le 2026-10-05 (sandbox/cheques) : le libellé
+  // reste pour afficher l'historique éventuel d'avant.
   CHEQUE: 'chèque',
   VIREMENT: 'virement',
   CARTE: 'carte',

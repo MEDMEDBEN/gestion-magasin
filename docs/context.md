@@ -250,7 +250,7 @@ En plus de l'UX mobile de `docs/spec-fonctionnelle.md` (une action par écran, p
 
 <!-- Ajouter ici toute décision importante prise en cours de route, avec la date et la raison. -->
 
-**Chèques (P1 bis n°21n, 2026-09-28)** : un règlement client par chèque ne passe JAMAIS par la file hors-ligne —
+**Chèques — RETIRÉS le 2026-10-05** (décision MEDMEDBEN, code dans `sandbox/cheques/`, tag `avant-retrait-cheques` ; colonnes et migrations gardées en base, inutilisées). Ancienne note (P1 bis n°21n, 2026-09-28) : un règlement client par chèque ne passe JAMAIS par la file hors-ligne —
 le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin doit connaître le chèque pour le suivre.
 
 - **2026-09-29 (MEDMEDBEN) — Ouverture de l'app SANS réseau.** Avant, une app lancée hors ligne (ou serveur en

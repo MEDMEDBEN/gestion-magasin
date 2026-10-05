@@ -701,32 +701,6 @@ class SalesActions {
   }
 }
 
-/// Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse, EN LIGNE seulement
-/// (le chèque doit être connu de l'admin qui le suivra). Clé d'intention
-/// stable : un nouvel essai ne règle jamais deux fois.
-extension CustomerChequeActions on SalesActions {
-  Future<void> payCustomerByCheque(
-    String customerId, {
-    required int amount,
-    required String number,
-    required String bank,
-    String? dueDate,
-  }) async {
-    await runMoneyMutation(
-      _ref,
-      'customer-cheque:$customerId',
-      (key) => _api.payCustomer({
-        'clientMutationId': key,
-        'id': key,
-        'customerId': customerId,
-        'amount': amount,
-        'cheque': {'number': number, 'bank': bank, 'dueDate': ?dueDate},
-      }),
-    );
-    _ref.invalidate(customerSearchProvider);
-  }
-}
-
 extension CustomerPaymentsActions on SalesActions {
   Future<List<PaymentHistoryItem>> customerPayments(String customerId) async =>
       (await _api.customerPayments(customerId)).data;

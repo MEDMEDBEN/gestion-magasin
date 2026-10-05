@@ -171,8 +171,10 @@ export class SaleReturnsService {
     const totalTax = lines.reduce((s, l) => s + l.lineTaxAmount, 0);
     const totalTtc = totalHt + totalTax;
 
-    const { reallyPaid, stillDue, pendingCheques } =
-      await SaleReturnsService.cashKept(tx, sale);
+    const { reallyPaid, stillDue } = await SaleReturnsService.cashKept(
+      tx,
+      sale,
+    );
 
     // UN seul instant pour l'année des numéros ET la date du retour : à minuit
     // le 31/12, jamais « AV-2026-… » daté de 2027 (comme la facture).
@@ -181,13 +183,11 @@ export class SaleReturnsService {
     const number = await nextDocumentNumber(tx, 'RETOUR_CLIENT', 'RC', 5, year);
     let cashSessionId: string | null = null;
     if (dto.refundMethod === 'ESPECES') {
-      // Jamais d'espèces rendues contre un chèque pas encore encaissé (21n).
-      const cashable = reallyPaid - pendingCheques;
-      if (totalTtc > cashable) {
+      if (totalTtc > reallyPaid) {
         throw new BusinessException(
           ErrorCode.VALIDATION_FAILED,
-          `Remboursement en espèces : au plus ${formatDA(Math.max(0, cashable))} ` +
-            '(ce que le client a payé sur cette vente, hors chèques non encaissés) — sinon, déduisez de sa dette',
+          `Remboursement en espèces : au plus ${formatDA(Math.max(0, reallyPaid))} ` +
+            '(ce que le client a payé sur cette vente) — sinon, déduisez de sa dette',
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
@@ -317,8 +317,8 @@ export class SaleReturnsService {
   static async cashKept(
     tx: Db,
     sale: { id: string; paidAmount: number; totalTtc: number },
-  ): Promise<{ reallyPaid: number; stillDue: number; pendingCheques: number }> {
-    const [payments, refunds, pending] = await Promise.all([
+  ): Promise<{ reallyPaid: number; stillDue: number }> {
+    const [payments, refunds] = await Promise.all([
       tx.customerPayment.aggregate({
         where: { saleId: sale.id },
         _sum: { amount: true },
@@ -327,22 +327,11 @@ export class SaleReturnsService {
         where: { saleId: sale.id },
         _sum: { totalTtc: true },
       }),
-      // Chèques pas encore passés en banque (ni contre-passés) : de l'argent
-      // PROMIS, pas encaissé (21n).
-      tx.customerPayment.aggregate({
-        where: {
-          saleId: sale.id,
-          chequeStatus: 'EN_PORTEFEUILLE',
-          reversedBy: null,
-        },
-        _sum: { amount: true },
-      }),
     ]);
     const paidLater = payments._sum.amount ?? 0;
     return {
       reallyPaid: sale.paidAmount + paidLater - (refunds._sum.totalTtc ?? 0),
       stillDue: sale.totalTtc - sale.paidAmount - paidLater,
-      pendingCheques: pending._sum.amount ?? 0,
     };
   }
 

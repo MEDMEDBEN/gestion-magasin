@@ -465,36 +465,6 @@ void main() {
     );
   });
 
-  /// P1 bis n°21n : chèque émis, hors caisse, avec n°, banque, échéance.
-  testWidgets('payer par chèque : n°, banque et échéance envoyés', (
-    tester,
-  ) async {
-    final api = await _pump(tester, _admin());
-    await tester.tap(find.text('Sonelec'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Payer par chèque'));
-    await tester.pumpAndSettle();
-    final fields = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(fields.at(0), '1000');
-    await tester.enterText(fields.at(1), 'F-77');
-    await tester.enterText(fields.at(2), 'CPA');
-    await tester.tap(find.text('Enregistrer le chèque'));
-    await tester.pumpAndSettle();
-    // Échéance au sélecteur de date : « Annuler » = sans échéance.
-    await tester.tap(
-      find.text('Cancel').evaluate().isEmpty
-          ? find.text('Annuler')
-          : find.text('Cancel'),
-    );
-    await tester.pumpAndSettle();
-    expect(api.payment, containsPair('fromCash', false));
-    expect(api.payment, containsPair('amount', 100000));
-    expect(api.payment!['cheque'], {'number': 'F-77', 'bank': 'CPA'});
-  });
-
   test('évolution du prix d’achat', () {
     expect(priceEvolution(null, 100000), '');
     expect(priceEvolution(0, 100000), '');

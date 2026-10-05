@@ -1,6 +1,3 @@
-import { Type } from 'class-transformer';
-import { IsObject, ValidateNested } from 'class-validator';
-import { ChequeInputDto } from '../../common/dto/payment.dto';
 import { ClientMutationId } from '../../common/idempotency';
 import {
   ApiProperty,
@@ -247,19 +244,6 @@ export class CreateSupplierPaymentDto {
   @Max(MAX_MONEY)
   amount!: number;
 
-  @ApiPropertyOptional({
-    type: ChequeInputDto,
-    description:
-      'Règlement par CHÈQUE (P1 bis n°21n) : aucune caisse touchée ; ' +
-      'le chèque reste en portefeuille jusqu’à la décision de l’admin.',
-  })
-  // @IsObject : un TABLEAU passerait @ValidateNested (audit sécurité 21n).
-  @IsObject()
-  @ValidateNested()
-  @Type(() => ChequeInputDto)
-  @IsOptional()
-  cheque?: ChequeInputDto;
-
   @ApiProperty({
     description:
       'true : sortie de la caisse OUVERTE (rapport Z) ; false : payé hors caisse ' +
@@ -269,13 +253,13 @@ export class CreateSupplierPaymentDto {
   fromCash!: boolean;
 
   @ApiPropertyOptional({
-    enum: ['ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE', 'AUTRE'],
+    enum: ['ESPECES', 'VIREMENT', 'CARTE', 'AUTRE'],
     description:
       'Hors caisse seulement ; un paiement de caisse est en espèces.',
   })
-  @IsIn(['ESPECES', 'CHEQUE', 'VIREMENT', 'CARTE', 'AUTRE'])
+  @IsIn(['ESPECES', 'VIREMENT', 'CARTE', 'AUTRE'])
   @IsOptional()
-  method?: 'ESPECES' | 'CHEQUE' | 'VIREMENT' | 'CARTE' | 'AUTRE';
+  method?: 'ESPECES' | 'VIREMENT' | 'CARTE' | 'AUTRE';
 
   @ApiPropertyOptional()
   @IsString()

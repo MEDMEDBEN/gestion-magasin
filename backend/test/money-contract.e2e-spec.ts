@@ -146,8 +146,6 @@ describe('Contrats argent : idempotence et caisse (e2e)', () => {
         lines: [{ productId, receivedQuantity: '1', unitPriceHt: 1 }],
       },
       '/api/quotes/:id/convert': { paidAmount: 0 },
-      '/api/cheques/customer/:id/status': { status: 'REJETE' },
-      '/api/cheques/supplier/:id/status': { status: 'REJETE' },
     };
     for (const route of MONEY_ROUTES) {
       const url = route.replace(/:[^/]+/g, zero);

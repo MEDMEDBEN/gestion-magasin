@@ -78,32 +78,6 @@ class SuppliersActions {
   }
 }
 
-/// Paiement par CHÈQUE émis (P1 bis n°21n) : hors caisse ; il reste « en
-/// portefeuille » jusqu'à ce que l'admin le déclare débité ou rejeté.
-extension SupplierChequeActions on SuppliersActions {
-  Future<SupplierPayment> payByCheque(
-    String supplierId, {
-    required int amount,
-    required String number,
-    required String bank,
-    String? dueDate,
-  }) async {
-    final payment = await runMoneyMutation(
-      _ref,
-      'supplier-cheque:$supplierId',
-      (key) => _api.pay({
-        'clientMutationId': key,
-        'supplierId': supplierId,
-        'amount': amount,
-        'fromCash': false,
-        'cheque': {'number': number, 'bank': bank, 'dueDate': ?dueDate},
-      }),
-    );
-    _ref.invalidate(supplierSearchProvider);
-    return payment;
-  }
-}
-
 extension SupplierPaymentsActions on SuppliersActions {
   Future<List<PaymentHistoryItem>> payments(String supplierId) async =>
       (await _api.payments(supplierId)).data;

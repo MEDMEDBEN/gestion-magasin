@@ -33,7 +33,6 @@ import {
   section,
 } from '../common/export/export';
 import { localDate } from '../common/document-number';
-import { parseApiDate } from '../common/api-date';
 import {
   PAYMENT_METHOD_LABEL,
   signedMinus,
@@ -467,9 +466,7 @@ export class SuppliersService {
         user.id,
         existing.supplierId === dto.supplierId &&
           existing.amount === dto.amount &&
-          (existing.cashSessionId !== null) === dto.fromCash &&
-          (existing.chequeStatus !== null) === Boolean(dto.cheque) &&
-          existing.chequeNumber === (dto.cheque?.number ?? null),
+          (existing.cashSessionId !== null) === dto.fromCash,
         {
           code: ErrorCode.PAYMENT_ALREADY_RECORDED,
           message: `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
@@ -489,27 +486,6 @@ export class SuppliersService {
         });
         if (!supplier) throw SuppliersService.notFound();
 
-        // Chèque émis (P1 bis n°21n) : jamais sorti du tiroir.
-        const cheque = dto.cheque;
-        if (cheque && dto.fromCash) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'Un chèque ne sort pas de la caisse : fromCash doit valoir false',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-        // Un chèque est TOUJOURS suivi (n°, banque, statut) : `method: CHEQUE`
-        // sans chèque, ou un chèque sous une autre méthode, sont refusés.
-        if (
-          (dto.method === 'CHEQUE' && !cheque) ||
-          (cheque && dto.method !== undefined && dto.method !== 'CHEQUE')
-        ) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            'Paiement par chèque : renseignez le chèque (n°, banque), sans autre méthode',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
         const { balanceDue } = await SuppliersService.debt(tx, supplier);
         if (dto.amount > balanceDue) {
           throw new BusinessException(
@@ -538,20 +514,8 @@ export class SuppliersService {
             userId: user.id,
             cashSessionId: session?.id ?? null,
             amount: dto.amount,
-            method: cheque
-              ? 'CHEQUE'
-              : dto.fromCash
-                ? 'ESPECES'
-                : (dto.method ?? 'VIREMENT'),
+            method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
             note: dto.note ?? null,
-            ...(cheque && {
-              chequeNumber: cheque.number,
-              chequeBank: cheque.bank,
-              chequeDueDate: cheque.dueDate
-                ? parseApiDate(cheque.dueDate, 'cheque.dueDate')
-                : null,
-              chequeStatus: 'EN_PORTEFEUILLE' as const,
-            }),
           },
         });
         if (session) {
@@ -650,13 +614,6 @@ export class SuppliersService {
             ErrorCode.NOT_FOUND,
             'Paiement introuvable',
             HttpStatus.NOT_FOUND,
-          );
-        }
-        if (original.chequeStatus === 'ENCAISSE') {
-          throw new BusinessException(
-            ErrorCode.INVALID_STATE_TRANSITION,
-            'Chèque débité : il ne se contre-passe plus',
-            HttpStatus.CONFLICT,
           );
         }
         if (original.reversesPaymentId || original.reversedBy) {

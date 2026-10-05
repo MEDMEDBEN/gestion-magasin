@@ -97,8 +97,6 @@ aucune migration destructive sans confirmation).
 | Enregistrer paiement client | ✅ | ✅ | ❌ |
 | Consulter l'historique des règlements d'un client | ✅ | ✅ | 👁️ |
 | Contre-passer un règlement client | ✅ | ❌ | ❌ |
-| Enregistrer un chèque client (`POST /payments/customer` + `cheque`, P1 bis n°21n : aucune caisse, dette réduite dès la remise) | ✅ | ✅ (`customer.payment.create`) | ❌ |
-| Portefeuille de chèques (`GET /cheques`) et décision encaissé / rejeté (`POST /cheques/{customer,supplier}/:id/status`) | ✅ (`customer.payment.create` ET `supplier.payment.create`) | ❌ | ❌ |
 | Relevé de compte client PDF/Excel/CSV (`GET /customers/:id/statement`, P1 bis n°21n) | ✅ (`customer.read`, droits relus) | ❌ (tout le CA du client) | ❌ |
 | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Gérer fournisseurs | ✅ | ❌ | ❌ |

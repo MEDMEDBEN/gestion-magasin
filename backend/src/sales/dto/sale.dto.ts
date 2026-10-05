@@ -38,7 +38,6 @@ export enum SaleTypeDto {
 
 export enum PaymentMethodDto {
   ESPECES = 'ESPECES',
-  CHEQUE = 'CHEQUE',
   VIREMENT = 'VIREMENT',
   CARTE = 'CARTE',
   AUTRE = 'AUTRE',

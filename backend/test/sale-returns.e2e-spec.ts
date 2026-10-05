@@ -401,28 +401,6 @@ describe('Retours client (e2e)', () => {
       .expect(403);
   });
 
-  /// Audit 21n : jamais d'espèces rendues contre un chèque pas encore encaissé.
-  it('chèque en portefeuille : pas de remboursement en espèces avant encaissement', async () => {
-    const { sale, lineId, customerId } = await sell(true);
-    const paid = (
-      await as(tokens.admin)
-        .post('/api/payments/customer')
-        .send({
-          customerId,
-          saleId: sale.id,
-          amount: sale.totalTtc,
-          cheque: { number: 'R-1', bank: 'BNA' },
-        })
-        .expect(201)
-    ).body;
-    await giveBack(sale.id, lineId, '1', 'ESPECES').expect(422);
-    await as(tokens.admin)
-      .post(`/api/cheques/customer/${paid.id}/status`)
-      .send({ clientMutationId: randomUUID(), status: 'ENCAISSE' })
-      .expect(201);
-    await giveBack(sale.id, lineId, '1', 'ESPECES').expect(201);
-  });
-
   /// CA NET des retours : le rapport d'activité et l'accueil déduisent ce qui
   /// est rendu (sinon le CA serait gonflé de marchandise revenue).
   it('rapport d’activité et accueil : CA net des retours du jour', async () => {
