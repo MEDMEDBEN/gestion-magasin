@@ -48,10 +48,7 @@ class SettingsScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (rights.canManageStore) const _StoreCard(),
-        if (rights.canManagePrices) ...[
-          const _TiersCard(),
-          const _TaxRatesCard(),
-        ],
+        if (rights.canManagePrices) const _TiersCard(),
       ],
     );
   }
@@ -64,17 +61,11 @@ void _snack(BuildContext context, String message) {
 }
 
 class _Section extends StatelessWidget {
-  const _Section({
-    required this.title,
-    required this.child,
-    this.action,
-    this.note,
-  });
+  const _Section({required this.title, required this.child, this.action});
 
   final String title;
   final Widget child;
   final Widget? action;
-  final String? note;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -95,7 +86,6 @@ class _Section extends StatelessWidget {
               ?action,
             ],
           ),
-          if (note != null) Text(note!),
           const SizedBox(height: 8),
           child,
         ],
@@ -334,152 +324,6 @@ class _TiersCard extends ConsumerWidget {
           ],
         );
       }),
-    );
-  }
-}
-
-// ── Taux de TVA ─────────────────────────────────────────────────────────────
-
-class _TaxRatesCard extends ConsumerWidget {
-  const _TaxRatesCard();
-
-  Future<void> _run(
-    BuildContext context,
-    WidgetRef ref,
-    Future<void> Function() action,
-  ) async {
-    try {
-      await action();
-      ref.invalidate(settingsTaxRatesProvider);
-      // Les taux descendent par la synchro du catalogue ; le serveur ne livre
-      // une modification qu'après quelques secondes : elle arrivera à la
-      // synchro suivante si celle-ci est trop tôt.
-      await ref.read(catalogSyncProvider.notifier).refresh();
-    } on ApiException catch (error) {
-      if (context.mounted) _snack(context, error.userMessage);
-    }
-  }
-
-  /// « 9,5 » → « 9.5 » : le serveur attend un pourcentage au point.
-  static Map<String, String> _normalized(Map<String, String> values) => {
-    ...values,
-    if (values['rate'] != null) 'rate': values['rate']!.replaceAll(',', '.'),
-  };
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final api = ref.read(settingsApiProvider);
-    final rates = ref.watch(settingsTaxRatesProvider);
-    return _Section(
-      title: 'Taux de TVA',
-      note:
-          'Un nouveau taux vaut pour les ventes futures. Les ventes faites HORS '
-          'LIGNE avant le changement seront refusées à leur synchronisation : '
-          'synchronisez les postes avant de modifier un taux.',
-      action: TextButton.icon(
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Nouveau taux'),
-        onPressed: () async {
-          final values = await askFields(
-            context,
-            title: 'Nouveau taux de TVA',
-            fields: const [
-              (key: 'code', label: 'Code (ex. TVA9)', initial: ''),
-              (key: 'name', label: 'Nom (ex. TVA 9 %)', initial: ''),
-              (key: 'rate', label: 'Taux en %', initial: ''),
-            ],
-          );
-          if (values == null || !context.mounted) return;
-          await _run(
-            context,
-            ref,
-            () => api.saveTaxRate(null, _normalized(values)),
-          );
-        },
-      ),
-      child: _asyncBody(
-        rates,
-        () => ref.invalidate(settingsTaxRatesProvider),
-        (items) => Column(
-          children: [
-            for (final rate in items)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(rate.name),
-                subtitle: Text('${rate.code} · ${rate.rate} %'),
-                trailing: Wrap(
-                  spacing: 6,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (rate.isDefault)
-                      const AmpereBadge(
-                        label: 'Par défaut',
-                        tone: StatusTone.info,
-                      ),
-                    if (!rate.isActive)
-                      const AmpereBadge(
-                        label: 'Inactif',
-                        tone: StatusTone.neutral,
-                      ),
-                    PopupMenuButton<String>(
-                      tooltip: 'Actions',
-                      onSelected: (choice) async {
-                        if (choice == 'edit') {
-                          final values = await askFields(
-                            context,
-                            title: 'Modifier ${rate.code}',
-                            fields: [
-                              (key: 'name', label: 'Nom', initial: rate.name),
-                              (
-                                key: 'rate',
-                                label: 'Taux en % (ventes futures)',
-                                initial: rate.rate,
-                              ),
-                            ],
-                          );
-                          if (values == null || !context.mounted) return;
-                          await _run(
-                            context,
-                            ref,
-                            () => api.saveTaxRate(rate.id, _normalized(values)),
-                          );
-                        } else {
-                          await _run(
-                            context,
-                            ref,
-                            () => api.saveTaxRate(rate.id, {
-                              if (choice == 'default') 'isDefault': true,
-                              if (choice == 'toggle')
-                                'isActive': !rate.isActive,
-                            }),
-                          );
-                        }
-                      },
-                      itemBuilder: (context) => [
-                        const PopupMenuItem(
-                          value: 'edit',
-                          child: Text('Modifier'),
-                        ),
-                        if (!rate.isDefault && rate.isActive)
-                          const PopupMenuItem(
-                            value: 'default',
-                            child: Text('Taux par défaut'),
-                          ),
-                        if (!rate.isDefault)
-                          PopupMenuItem(
-                            value: 'toggle',
-                            child: Text(
-                              rate.isActive ? 'Désactiver' : 'Réactiver',
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

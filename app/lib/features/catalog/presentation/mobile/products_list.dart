@@ -8,6 +8,7 @@ import '../../../../ui/widgets/screen_state.dart';
 import '../../../stock/application/stock_controller.dart';
 import '../../../stock/presentation/stock_status.dart';
 import '../../data/catalog_models.dart';
+import '../desktop/products_table.dart';
 import '../product_photo.dart';
 
 /// Liste mobile (AMPÈRE §7, §9 : aucun tableau sur mobile) — lignes tactiles
@@ -22,7 +23,13 @@ class ProductsList extends StatelessWidget {
     required this.onRefresh,
     this.defaultTierId,
     this.stock,
+    this.onEdit,
+    this.onDelete,
   });
+
+  /// `null` sans le droit : le bouton n'apparaît pas.
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
 
   /// Stock par produit — `null` si non chargé ou non autorisé.
   final Map<String, ProductStock>? stock;
@@ -53,6 +60,8 @@ class ProductsList extends StatelessWidget {
           stock: stock,
           defaultTierId: defaultTierId,
           onTap: () => onTap(products[i]),
+          onEdit: onEdit,
+          onDelete: onDelete,
         ),
       ),
     );
@@ -66,6 +75,8 @@ class _ProductRow extends StatelessWidget {
     required this.category,
     required this.onTap,
     required this.stock,
+    this.onEdit,
+    this.onDelete,
   });
 
   final String? defaultTierId;
@@ -73,6 +84,8 @@ class _ProductRow extends StatelessWidget {
   final String? category;
   final VoidCallback onTap;
   final Map<String, ProductStock>? stock;
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +129,7 @@ class _ProductRow extends StatelessWidget {
                   Text(
                     [
                       'Vente ${_amount(product.salePriceHt(defaultTierId))}',
-                      'achat ${_amount(product.lastPurchasePriceHt)}',
+                      'Achat ${_amount(product.lastPurchasePriceHt)}',
                     ].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -151,6 +164,12 @@ class _ProductRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (onEdit != null || onDelete != null)
+              ProductRowActions(
+                product: product,
+                onEdit: onEdit,
+                onDelete: onDelete,
+              ),
           ],
         ),
       ),

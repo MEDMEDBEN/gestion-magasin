@@ -16,7 +16,9 @@ import '../../catalog/data/catalog_models.dart';
 import '../../receptions/presentation/invoice_scan.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../application/purchases_controller.dart';
+import '../../suppliers/data/suppliers_models.dart';
 import '../data/purchases_models.dart';
+import '../../../ui/widgets/search_picker.dart';
 
 /// Ligne en cours de saisie : champs texte + produit choisi.
 class _LineFields {
@@ -247,17 +249,12 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
       onSubmit: _locked ? null : _submit,
       children: [
         const AmpereFieldLabel('Fournisseur'),
-        DropdownButtonFormField<String>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: suppliers.any((s) => s.id == _supplierId)
-              ? _supplierId
-              : null,
-          isExpanded: true,
-          hint: const Text('Choisir un fournisseur'),
-          items: [
-            for (final s in suppliers)
-              DropdownMenuItem(value: s.id, child: Text(s.name)),
-          ],
+        SearchPickerField<Supplier>(
+          options: suppliers,
+          idOf: (s) => s.id,
+          labelOf: (s) => s.name,
+          value: _supplierId,
+          hint: 'Choisir un fournisseur',
           // Le fournisseur d'une commande existante ne change pas.
           onChanged: _locked || existing != null
               ? null
@@ -290,13 +287,12 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
           ),
         const Divider(height: 24),
         Text(
-          'Total HT estimé : ${formatDA(_estimateHt)}'
-          '${existing == null ? '' : ' · enregistré ${formatDA(existing.totalTtc)} TTC'}',
+          'Total estimé : ${formatDA(_estimateHt)}'
+          '${existing == null ? '' : ' · enregistré ${formatDA(existing.totalTtc)}'}',
           style: AmpereType.bodyStrong.copyWith(color: colors.ink),
         ),
         Text(
-          'La TVA du produit est figée à l’enregistrement. La dette fournisseur '
-          'ne bouge qu’à la réception.',
+          'La dette fournisseur ne bouge qu’à la réception.',
           style: AmpereType.meta.copyWith(color: colors.ink3),
         ),
       ],
@@ -327,20 +323,13 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
                 ),
             ],
           ),
-          DropdownButtonFormField<String>(
-            icon: const Icon(LucideIcons.chevronDown, size: 17),
-            initialValue: products.any((p) => p.id == line.productId)
-                ? line.productId
-                : null,
-            isExpanded: true,
-            hint: const Text('Produit'),
-            items: [
-              for (final p in products)
-                DropdownMenuItem(
-                  value: p.id,
-                  child: Text('${p.name} · ${p.sku}'),
-                ),
-            ],
+          SearchPickerField<Product>(
+            options: products,
+            idOf: (p) => p.id,
+            labelOf: (p) => '${p.name} · ${p.sku}',
+            searchTextOf: (p) => '${p.name} ${p.sku} ${p.barcode}',
+            value: line.productId,
+            hint: 'Produit',
             onChanged: _locked
                 ? null
                 : (v) => setState(() => line.productId = v),

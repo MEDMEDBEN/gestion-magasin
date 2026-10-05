@@ -206,12 +206,12 @@ void main() {
       await tester.tap(find.text('Nouvelle commande'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.tap(find.text('Choisir un fournisseur'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Sonelec').last);
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
+      await tester.tap(find.text('Produit'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Câble 3G2,5 · CAB-3G25').last);
       await tester.pumpAndSettle();
@@ -243,7 +243,7 @@ void main() {
     final api = await _pump(tester, _magasinier());
     await tester.tap(find.text('Nouvelle commande'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.tap(find.text('Choisir un fournisseur'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sonelec').last);
     await tester.pumpAndSettle();

@@ -18,6 +18,7 @@ class AuditApi {
     String? entityType,
     AuditAction? action,
     String? from,
+    String? to,
   }) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
@@ -28,6 +29,7 @@ class AuditApi {
           'entityType': ?entityType,
           'action': ?action?.wire,
           'from': ?from,
+          'to': ?to,
         },
       );
       return AuditPage.fromJson(response.data!);

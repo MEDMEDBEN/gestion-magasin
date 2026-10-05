@@ -182,14 +182,18 @@ class CameraScanButton extends StatelessWidget {
       tooltip: 'Scanner avec la caméra',
       icon: const Icon(Icons.qr_code_scanner, size: 20),
       onPressed: () async {
-        final code = await Navigator.of(context).push<String>(
-          MaterialPageRoute(builder: (_) => const _CameraScanPage()),
-        );
+        final code = await scanWithCamera(context);
         if (code != null) onCode(code);
       },
     );
   }
 }
+
+/// Ouvre la caméra et rend le premier code-barres lu (`null` si abandon).
+/// Téléphone seulement : vérifier `scannerSupported` avant.
+Future<String?> scanWithCamera(BuildContext context) => Navigator.of(
+  context,
+).push<String>(MaterialPageRoute(builder: (_) => const _CameraScanPage()));
 
 class _CameraScanPage extends StatefulWidget {
   const _CameraScanPage();

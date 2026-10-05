@@ -10,6 +10,7 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../application/audit_controller.dart';
 import '../data/audit_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 StatusTone _tone(AuditAction action) => switch (action) {
   AuditAction.create => StatusTone.ok,
@@ -96,17 +97,12 @@ class AuditScreen extends ConsumerWidget {
                   )),
                 ),
               ),
-              SegmentedButton<AuditPeriod>(
-                segments: [
-                  for (final p in AuditPeriod.values)
-                    ButtonSegment(value: p, label: Text(p.label)),
-                ],
-                selected: {filter.period},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => setFilter((
+              PeriodFilter(
+                value: filter.period,
+                onChanged: (p) => setFilter((
                   entityType: filter.entityType,
                   action: filter.action,
-                  period: s.first,
+                  period: p,
                 )),
               ),
             ],

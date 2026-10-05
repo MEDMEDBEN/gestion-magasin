@@ -11,6 +11,7 @@ import '../../catalog/application/catalog_controller.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 import 'sale_return_dialog.dart';
 import 'sales_screen.dart';
 
@@ -33,18 +34,10 @@ class SalesHistorySection extends ConsumerStatefulWidget {
       _SalesHistorySectionState();
 }
 
-/// Périodes proposées : aujourd'hui, 7 jours, 30 jours, tout.
-const _periods = <(String, int?)>[
-  ('Aujourd’hui', 1),
-  ('7 jours', 7),
-  ('30 jours', 30),
-  ('Tout', null),
-];
-
 class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
   final _search = TextEditingController();
   String _query = '';
-  int? _days = 7;
+  HistoryPeriod _period = lastDays(7);
 
   @override
   void dispose() {
@@ -52,7 +45,7 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
     super.dispose();
   }
 
-  SalesHistoryFilter get _filter => (q: _query, days: _days);
+  SalesHistoryFilter get _filter => (q: _query, period: _period);
 
   @override
   Widget build(BuildContext context) {
@@ -79,14 +72,9 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
                   onSubmitted: (value) => setState(() => _query = value),
                 ),
               ),
-              SegmentedButton<int?>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final (label, days) in _periods)
-                    ButtonSegment(value: days, label: Text(label)),
-                ],
-                selected: {_days},
-                onSelectionChanged: (s) => setState(() => _days = s.first),
+              PeriodFilter(
+                value: _period,
+                onChanged: (p) => setState(() => _period = p),
               ),
             ],
           ),
@@ -342,10 +330,14 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
                   ),
                 ),
               const Divider(height: 20),
-              Text('Total HT : ${formatDA(sale.totalHt)}'),
-              Text('TVA : ${formatDA(sale.totalTax)}'),
+              // Vente d'avant le retrait de la TVA (2026-10-05) : ventilée.
+              if (sale.totalTax > 0) ...[
+                Text('Total HT : ${formatDA(sale.totalHt)}'),
+                Text('TVA : ${formatDA(sale.totalTax)}'),
+              ],
               Text(
-                'Total TTC : ${formatDA(sale.totalTtc)}',
+                '${sale.totalTax > 0 ? 'Total TTC' : 'Total'} : '
+                '${formatDA(sale.totalTtc)}',
                 style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               Text('Encaissé à la vente : ${formatDA(sale.paidAmount)}'),

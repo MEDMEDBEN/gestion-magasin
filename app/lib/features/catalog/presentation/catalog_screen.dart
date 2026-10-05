@@ -6,6 +6,7 @@ import '../../../core/error/api_exception.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -120,6 +121,30 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
           ? '${saved.name} créé — code-barres ${saved.barcode}.'
           : '${saved.name} mis à jour.',
     );
+  }
+
+  /// « Supprimer » = RETIRER du catalogue (désactivation, décision MEDMEDBEN
+  /// du 2026-10-05) : rien n'est effacé, l'historique garde ses ventes et ses
+  /// achats ; l'admin le réactive depuis la fiche (filtre « inactifs »).
+  Future<void> _deleteProduct(Product product) async {
+    final confirmed = await showAmpereConfirmDialog(
+      context,
+      title: 'Supprimer « ${product.name} » ?',
+      body:
+          'Le produit disparaît du catalogue, de la vente et des recherches. '
+          'Ses ventes, achats et mouvements passés restent dans l’historique. '
+          'Vous pourrez le réactiver depuis sa fiche (afficher les inactifs).',
+      confirmLabel: 'Supprimer',
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await ref.read(catalogActionsProvider).saveProduct(product.id, {
+        'isActive': false,
+      });
+      _showSnack('${product.name} retiré du catalogue.');
+    } on ApiException catch (error) {
+      _showSnack(error.userMessage);
+    }
   }
 
   /// Étiquettes de la liste AFFICHÉE (recherche et catégorie comprises) : une
@@ -251,6 +276,10 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               canReadStock: rights.canReadStock,
               syncing: sync.isLoading,
               onOpen: (p) => _openProduct(rights, p),
+              onEdit: rights.canWriteProducts
+                  ? (p) => _openProduct(rights, p)
+                  : null,
+              onDelete: rights.canDisableProducts ? _deleteProduct : null,
               onLabels: rights.canPrintLabels ? _printLabels : null,
               canImport: rights.canImportProducts,
             ),
@@ -289,6 +318,8 @@ class _ProductsSection extends ConsumerWidget {
     required this.canReadStock,
     required this.syncing,
     required this.onOpen,
+    this.onEdit,
+    this.onDelete,
     this.onLabels,
     this.canImport = false,
   });
@@ -302,6 +333,10 @@ class _ProductsSection extends ConsumerWidget {
   final bool canReadStock;
   final bool syncing;
   final void Function(Product? product) onOpen;
+
+  /// Boutons de ligne ; `null` sans le droit.
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
 
   /// Étiquettes de la liste affichée ; `null` sans le droit.
   final void Function(List<Product> products)? onLabels;
@@ -448,6 +483,8 @@ class _ProductsSection extends ConsumerWidget {
                       categoryNames: categoryNames,
                       stock: stock,
                       onTap: onOpen,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
                     )
                   : ProductsList(
                       defaultTierId: defaultTierId,
@@ -455,6 +492,8 @@ class _ProductsSection extends ConsumerWidget {
                       categoryNames: categoryNames,
                       stock: stock,
                       onTap: onOpen,
+                      onEdit: onEdit,
+                      onDelete: onDelete,
                       onRefresh: () =>
                           ref.read(catalogSyncProvider.notifier).refresh(),
                     );

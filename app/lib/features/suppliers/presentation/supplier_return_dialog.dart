@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
 import '../../catalog/application/catalog_controller.dart';
+import '../../catalog/data/catalog_models.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
+import '../../../ui/widgets/search_picker.dart';
 
 /// Retour de marchandise à un fournisseur (P1 bis n°21l) : produit, quantité,
 /// lieu d'où elle part, motif. Le serveur borne la quantité au reçu non encore
@@ -98,17 +100,13 @@ class _SupplierReturnDialogState extends ConsumerState<_SupplierReturnDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _productId,
-              isExpanded: true,
-              hint: const Text('Produit'),
-              items: [
-                for (final p in products)
-                  DropdownMenuItem(
-                    value: p.id,
-                    child: Text('${p.sku} — ${p.name}'),
-                  ),
-              ],
+            SearchPickerField<Product>(
+              options: products,
+              idOf: (p) => p.id,
+              labelOf: (p) => '${p.sku} — ${p.name}',
+              searchTextOf: (p) => '${p.name} ${p.sku} ${p.barcode}',
+              value: _productId,
+              hint: 'Produit',
               onChanged: _saving ? null : (v) => setState(() => _productId = v),
             ),
             TextField(

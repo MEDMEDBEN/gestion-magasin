@@ -57,21 +57,6 @@ class SettingsApi {
   Future<void> saveTier(String? id, Map<String, Object?> fields) =>
       _save('/pricing/tiers', id, fields);
 
-  /// Taux de TVA, inactifs compris.
-  Future<List<TaxRate>> taxRates() => guardApi(() async {
-    final response = await _dio.get<List<dynamic>>(
-      '/pricing/tax-rates',
-      queryParameters: {'includeInactive': true},
-    );
-    return [
-      for (final row in response.data!)
-        TaxRate.fromJson(row as Map<String, dynamic>),
-    ];
-  });
-
-  Future<void> saveTaxRate(String? id, Map<String, Object?> fields) =>
-      _save('/pricing/tax-rates', id, fields);
-
   Future<void> _save(String path, String? id, Map<String, Object?> fields) =>
       guardApi(() async {
         if (id == null) {
@@ -92,8 +77,4 @@ final storeSettingsProvider = FutureProvider.autoDispose<StoreSettings>(
 
 final settingsTiersProvider = FutureProvider.autoDispose<List<PriceTier>>(
   (ref) => ref.watch(settingsApiProvider).tiers(),
-);
-
-final settingsTaxRatesProvider = FutureProvider.autoDispose<List<TaxRate>>(
-  (ref) => ref.watch(settingsApiProvider).taxRates(),
 );

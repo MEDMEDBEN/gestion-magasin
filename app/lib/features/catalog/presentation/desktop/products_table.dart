@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../core/money.dart';
 import '../../../../core/quantity.dart';
@@ -21,7 +22,13 @@ class ProductsTable extends StatelessWidget {
     required this.onTap,
     this.stock,
     this.defaultTierId,
+    this.onEdit,
+    this.onDelete,
   });
+
+  /// `null` sans le droit : le bouton n'apparaît pas.
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
 
   /// Tarif par défaut : son prix est le « prix de vente » affiché.
   final String? defaultTierId;
@@ -57,7 +64,7 @@ class ProductsTable extends StatelessWidget {
                 width: width,
                 child: Column(
                   children: [
-                    const _HeaderRow(),
+                    _HeaderRow(actions: onEdit != null || onDelete != null),
                     Divider(height: 1, color: colors.line),
                     Expanded(
                       child: ListView.separated(
@@ -70,6 +77,8 @@ class ProductsTable extends StatelessWidget {
                           stock: stock,
                           defaultTierId: defaultTierId,
                           onTap: () => onTap(products[i]),
+                          onEdit: onEdit,
+                          onDelete: onDelete,
                         ),
                       ),
                     ),
@@ -84,6 +93,9 @@ class ProductsTable extends StatelessWidget {
   }
 }
 
+/// Colonne des boutons Modifier / Supprimer.
+const double _actionsWidth = 96;
+
 class _Columns {
   static const sku = 3;
   static const name = 6;
@@ -96,7 +108,9 @@ class _Columns {
 }
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow();
+  const _HeaderRow({required this.actions});
+
+  final bool actions;
 
   @override
   Widget build(BuildContext context) {
@@ -121,10 +135,11 @@ class _HeaderRow extends StatelessWidget {
           cell('Catégorie', _Columns.category),
           cell('Code-barres', _Columns.barcode),
           cell('Seuil min.', _Columns.threshold, end: true),
-          cell('Vente HT', _Columns.sale, end: true),
-          cell('Achat HT', _Columns.cost, end: true),
+          cell('Prix vente', _Columns.sale, end: true),
+          cell('Prix achat', _Columns.cost, end: true),
           const SizedBox(width: 16),
           cell('Stock', _Columns.status),
+          if (actions) const SizedBox(width: _actionsWidth),
         ],
       ),
     );
@@ -138,6 +153,8 @@ class _ProductRow extends StatelessWidget {
     required this.onTap,
     required this.stock,
     this.defaultTierId,
+    this.onEdit,
+    this.onDelete,
   });
 
   final Product product;
@@ -145,6 +162,8 @@ class _ProductRow extends StatelessWidget {
   final VoidCallback onTap;
   final String? defaultTierId;
   final Map<String, ProductStock>? stock;
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -245,9 +264,59 @@ class _ProductRow extends StatelessWidget {
                       ),
               ),
             ),
+            if (onEdit != null || onDelete != null)
+              SizedBox(
+                width: _actionsWidth,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: ProductRowActions(
+                    product: product,
+                    onEdit: onEdit,
+                    onDelete: onDelete,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Boutons « Modifier » et « Supprimer » d'une ligne du catalogue (demande
+/// MEDMEDBEN du 2026-10-05). Supprimer RETIRE le produit du catalogue (il est
+/// désactivé) : ses ventes, achats et mouvements restent dans l'historique.
+class ProductRowActions extends StatelessWidget {
+  const ProductRowActions({
+    super.key,
+    required this.product,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  final Product product;
+  final void Function(Product product)? onEdit;
+  final void Function(Product product)? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (onEdit != null)
+          IconButton(
+            tooltip: 'Modifier',
+            icon: Icon(LucideIcons.pencil, size: 17, color: colors.ink2),
+            onPressed: () => onEdit!(product),
+          ),
+        if (onDelete != null && product.isActive)
+          IconButton(
+            tooltip: 'Supprimer',
+            icon: Icon(LucideIcons.trash2, size: 17, color: colors.error),
+            onPressed: () => onDelete!(product),
+          ),
+      ],
     );
   }
 }

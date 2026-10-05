@@ -44,9 +44,6 @@ class _FakeSettingsApi extends SettingsApi {
   @override
   Future<void> saveTier(String? id, Map<String, Object?> fields) async =>
       tierSaves.add((id, fields));
-
-  @override
-  Future<List<TaxRate>> taxRates() async => const [];
 }
 
 Future<_FakeSettingsApi> _pump(WidgetTester tester) async {

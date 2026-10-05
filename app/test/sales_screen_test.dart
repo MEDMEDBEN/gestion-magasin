@@ -397,7 +397,7 @@ Future<void> _scanTwiceAndPay(WidgetTester tester) async {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
   }
-  await tester.tap(find.textContaining('Encaisser 3'));
+  await tester.tap(find.textContaining('Encaisser 2'));
   await tester.pumpAndSettle();
   await tester.enterText(find.byType(TextField).last, '4000');
   await tester.tap(find.text('Valider la vente'));
@@ -405,110 +405,100 @@ Future<void> _scanTwiceAndPay(WidgetTester tester) async {
 }
 
 void main() {
-  test('estimation du panier : mêmes règles et même arrondi que le serveur', () {
-    // Référence e2e serveur : 2,5 × 1 450,00 HT, TVA 19 % → 3 625,00 / 688,75.
-    final cart = CartState(
-      saleId: 's',
-      lines: [CartLine(_cable(), Decimal.parse('2.5'))],
-    );
-    final estimate = estimateCart(
-      cart,
-      defaultTierId: 'detail',
-      taxRates: {'tva19': Decimal.fromInt(19)},
-    );
-    expect(
-      (estimate.totalHt, estimate.totalTax, estimate.totalTtc),
-      (362500, 68875, 431375),
-    );
-    expect(estimate.lineTotalsHt, {'p1': 362500});
-
-    // Client au tarif GROS désactivé : le tarif par défaut s'applique, comme
-    // au serveur (sinon 409 « le tarif a changé » à chaque essai).
-    final pro = CartState(
-      saleId: 's',
-      lines: [CartLine(_cable(), Decimal.one)],
-      customer: const Customer(
-        id: 'c',
-        name: 'Pro',
-        priceTierId: 'gros',
-        creditLimit: 0,
-        balanceDue: 0,
-        isActive: true,
-      ),
-    );
-    final grosPrice = _cable().copyWith(
-      prices: const [
-        ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
-        ProductPriceLine(priceTierId: 'gros', priceHt: 120000),
-      ],
-    );
-    final proCart = CartState(
-      saleId: 's',
-      lines: [CartLine(grosPrice, Decimal.one)],
-      customer: pro.customer,
-    );
-    expect(
-      estimateCart(
-        proCart,
-        defaultTierId: 'detail',
-        taxRates: const {},
-        activeTierIds: const {'detail', 'gros'},
-      ).totalHt,
-      120000,
-    );
-    expect(
-      estimateCart(
-        proCart,
-        defaultTierId: 'detail',
-        taxRates: const {},
-        activeTierIds: const {'detail'},
-      ).totalHt,
-      145000,
-    );
-
-    // Borne de la remise = celle du serveur : net ≥ plancher × quantité.
-    final costed = _cable().copyWith(lastPurchasePriceHt: 100000);
-    final q = Decimal.parse('2.5');
-    // 2,5 × 1 450,01 = 3 625,025 → 362 503 (demi vers le haut) ; plancher
-    // 2,5 × 1 000 = 250 000 → remise ≤ 112 503.
-    expect(maxLineDiscountHt(costed, 145001, q), 112503);
-    // Sans coût : plancher = plus bas tarif (1 450,00) ; prix modifié 1 500.
-    expect(maxLineDiscountHt(_cable(), 150000, Decimal.one), 5000);
-    // Prix sous le plancher : aucune remise, jamais négative.
-    expect(maxLineDiscountHt(costed, 90000, Decimal.one), 0);
-
-    // Remise valide à 3, devenue trop forte après baisse à 1 : BLOQUÉE.
-    CartEstimate estimateAt(Decimal quantity) => estimateCart(
-      CartState(
+  test(
+    'estimation du panier : mêmes règles et même arrondi que le serveur',
+    () {
+      // Référence e2e serveur : 2,5 × 1 450,00 = 3 625,00, sans TVA
+      // (retirée le 2026-10-05) : le total payé est celui des lignes.
+      final cart = CartState(
         saleId: 's',
-        lines: [CartLine(costed, quantity, discountHt: 100000)],
-      ),
-      defaultTierId: 'detail',
-      taxRates: const {},
-    );
-    expect(estimateAt(Decimal.fromInt(3)).blocked, isFalse);
-    expect(estimateAt(Decimal.one).invalidDiscounts, [costed]);
-    expect(estimateAt(Decimal.one).blocked, isTrue);
+        lines: [CartLine(_cable(), Decimal.parse('2.5'))],
+      );
+      final estimate = estimateCart(cart, defaultTierId: 'detail');
+      expect((estimate.totalHt, estimate.totalTtc), (362500, 362500));
+      expect(estimate.lineTotalsHt, {'p1': 362500});
 
-    // Remise HT sur la ligne (P1 bis n°21g) : la TVA porte sur le NET.
-    final discounted = estimateCart(
-      CartState(
+      // Client au tarif GROS désactivé : le tarif par défaut s'applique, comme
+      // au serveur (sinon 409 « le tarif a changé » à chaque essai).
+      final pro = CartState(
         saleId: 's',
-        lines: [CartLine(_cable(), Decimal.parse('2.5'), discountHt: 50000)],
-      ),
-      defaultTierId: 'detail',
-      taxRates: {'tva19': Decimal.fromInt(19)},
-    );
-    expect(
-      (discounted.totalHt, discounted.totalTax, discounted.totalTtc),
-      (312500, 59375, 371875),
-    );
+        lines: [CartLine(_cable(), Decimal.one)],
+        customer: const Customer(
+          id: 'c',
+          name: 'Pro',
+          priceTierId: 'gros',
+          creditLimit: 0,
+          balanceDue: 0,
+          isActive: true,
+        ),
+      );
+      final grosPrice = _cable().copyWith(
+        prices: const [
+          ProductPriceLine(priceTierId: 'detail', priceHt: 145000),
+          ProductPriceLine(priceTierId: 'gros', priceHt: 120000),
+        ],
+      );
+      final proCart = CartState(
+        saleId: 's',
+        lines: [CartLine(grosPrice, Decimal.one)],
+        customer: pro.customer,
+      );
+      expect(
+        estimateCart(
+          proCart,
+          defaultTierId: 'detail',
+          activeTierIds: const {'detail', 'gros'},
+        ).totalHt,
+        120000,
+      );
+      expect(
+        estimateCart(
+          proCart,
+          defaultTierId: 'detail',
+          activeTierIds: const {'detail'},
+        ).totalHt,
+        145000,
+      );
 
-    // Tarif sans prix pour ce produit : signalé, jamais inventé.
-    final gros = estimateCart(cart, defaultTierId: 'gros', taxRates: const {});
-    expect(gros.missingPrices, hasLength(1));
-    expect(gros.totalTtc, 0);
-  });
+      // Borne de la remise = celle du serveur : net ≥ plancher × quantité.
+      final costed = _cable().copyWith(lastPurchasePriceHt: 100000);
+      final q = Decimal.parse('2.5');
+      // 2,5 × 1 450,01 = 3 625,025 → 362 503 (demi vers le haut) ; plancher
+      // 2,5 × 1 000 = 250 000 → remise ≤ 112 503.
+      expect(maxLineDiscountHt(costed, 145001, q), 112503);
+      // Sans coût : plancher = plus bas tarif (1 450,00) ; prix modifié 1 500.
+      expect(maxLineDiscountHt(_cable(), 150000, Decimal.one), 5000);
+      // Prix sous le plancher : aucune remise, jamais négative.
+      expect(maxLineDiscountHt(costed, 90000, Decimal.one), 0);
+
+      // Remise valide à 3, devenue trop forte après baisse à 1 : BLOQUÉE.
+      CartEstimate estimateAt(Decimal quantity) => estimateCart(
+        CartState(
+          saleId: 's',
+          lines: [CartLine(costed, quantity, discountHt: 100000)],
+        ),
+        defaultTierId: 'detail',
+      );
+      expect(estimateAt(Decimal.fromInt(3)).blocked, isFalse);
+      expect(estimateAt(Decimal.one).invalidDiscounts, [costed]);
+      expect(estimateAt(Decimal.one).blocked, isTrue);
+
+      // Remise sur la ligne (P1 bis n°21g) : le total est le NET.
+      final discounted = estimateCart(
+        CartState(
+          saleId: 's',
+          lines: [CartLine(_cable(), Decimal.parse('2.5'), discountHt: 50000)],
+        ),
+        defaultTierId: 'detail',
+      );
+      expect((discounted.totalHt, discounted.totalTtc), (312500, 312500));
+
+      // Tarif sans prix pour ce produit : signalé, jamais inventé.
+      final gros = estimateCart(cart, defaultTierId: 'gros');
+      expect(gros.missingPrices, hasLength(1));
+      expect(gros.totalTtc, 0);
+    },
+  );
 
   testWidgets(
     'douchette → panier → encaissement : produit + quantité, monnaie rendue',
@@ -527,17 +517,17 @@ void main() {
       expect(find.text('Câble 3G2,5'), findsOneWidget);
       expect(find.text('2 pce'), findsOneWidget);
 
-      // 2 × 1 450,00 × 1,19 = 3 451,00 DA TTC
-      expect(find.textContaining('Encaisser 3'), findsOneWidget);
-      await tester.tap(find.textContaining('Encaisser 3'));
+      // 2 × 1 450,00 = 2 900,00 DA (sans TVA depuis le 2026-10-05)
+      expect(find.textContaining('Encaisser 2'), findsOneWidget);
+      await tester.tap(find.textContaining('Encaisser 2'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '4000');
       await tester.tap(find.text('Valider la vente'));
       await tester.pumpAndSettle();
 
-      expect(api.sent!['paidAmount'], 345100);
+      expect(api.sent!['paidAmount'], 290000);
       // Le serveur refusera si le total a changé depuis l'affichage.
-      expect(api.sent!['expectedTotalTtc'], 345100);
+      expect(api.sent!['expectedTotalTtc'], 290000);
       // Le prix APPLIQUÉ part explicitement (prix vu par le client).
       expect(api.sent!['lines'], [
         {'productId': 'p1', 'quantity': '2.000', 'unitPriceHt': 145000},
@@ -594,7 +584,7 @@ void main() {
       expect(queued.type, 'SALE');
       expect(queued.payload, api.sent, reason: 'même corps qu’en ligne');
       expect(queued.key, queued.payload['clientMutationId']);
-      expect(queued.payload['expectedTotalTtc'], 345100);
+      expect(queued.payload['expectedTotalTtc'], 290000);
       expect(
         queued.payload['cashSessionId'],
         _openCash.id,
@@ -624,7 +614,7 @@ void main() {
 
       expect(queue.queued, isEmpty);
       expect(find.textContaining('Trop longtemps hors ligne'), findsOneWidget);
-      expect(find.textContaining('Encaisser 3'), findsOneWidget);
+      expect(find.textContaining('Encaisser 2'), findsOneWidget);
     },
   );
 
@@ -639,7 +629,7 @@ void main() {
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
       }
-      await tester.tap(find.textContaining('Encaisser 3'));
+      await tester.tap(find.textContaining('Encaisser 2'));
       await tester.pumpAndSettle();
 
       expect(api.sent, isNull);
@@ -778,10 +768,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Prix modifié'), findsOneWidget);
-      // 1 600,00 HT × 1,19 = 1 904,00 TTC
+      // 1 600,00 sans TVA
       await tester.tap(find.textContaining('Encaisser 1'));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField).last, '1904');
+      await tester.enterText(find.byType(TextField).last, '1600');
       await tester.tap(find.text('Valider la vente'));
       await tester.pumpAndSettle();
 
@@ -793,7 +783,7 @@ void main() {
           'priceEdited': true,
         },
       ]);
-      expect(api.sent!['expectedTotalTtc'], 190400);
+      expect(api.sent!['expectedTotalTtc'], 160000);
     },
   );
 

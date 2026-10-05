@@ -22,6 +22,7 @@ import '../data/catalog_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 import '../../suppliers/data/suppliers_models.dart';
 import '../../scan/presentation/scan_screen.dart';
+import '../../../ui/widgets/search_picker.dart';
 import 'product_photo.dart';
 import 'prospects_dialog.dart';
 
@@ -39,9 +40,13 @@ class ProductForm extends ConsumerStatefulWidget {
     this.canReadSuppliers = false,
     this.canSetPrices = false,
     this.canContactCustomers = false,
+    this.initialBarcode,
   });
 
   final Product? existing;
+
+  /// Nouveau produit : code-barres déjà lu (ajout rapide depuis l'accueil).
+  final String? initialBarcode;
   final bool canEdit;
   final bool canDisable;
   final bool canReadStock;
@@ -91,11 +96,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   final _depotStock = TextEditingController();
   late ProductUnit _unit;
   String? _categoryId;
-  String? _taxRateId;
-
-  /// Nouveau produit : le taux de TVA PAR DÉFAUT (Paramètres) est proposé une
-  /// fois, dès que les taux sont connus.
-  bool _defaultTaxApplied = false;
   String? _storageLocationId;
   String? _mainSupplierId;
   late bool _allowBackorder;
@@ -116,7 +116,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final p = widget.existing;
     _sku = TextEditingController(text: p?.sku ?? '');
     _name = TextEditingController(text: p?.name ?? '');
-    _barcode = TextEditingController(text: p?.barcode ?? '');
+    _barcode = TextEditingController(
+      text: p?.barcode ?? widget.initialBarcode ?? '',
+    );
     _brand = TextEditingController(text: p?.brand ?? '');
     _description = TextEditingController(text: p?.description ?? '');
     _minThreshold = TextEditingController(
@@ -127,7 +129,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     );
     _unit = p?.unit ?? ProductUnit.piece;
     _categoryId = p?.categoryId;
-    _taxRateId = p?.taxRateId;
     _storageLocationId = p?.storageLocationId;
     _mainSupplierId = p?.mainSupplierId;
     _allowBackorder = p?.allowBackorder ?? false;
@@ -164,18 +165,14 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   Widget _supplierField(InputDecoration Function(IconData) deco) {
     final suppliers = ref.watch(supplierSearchProvider(''));
     final items = suppliers.value ?? const <Supplier>[];
-    return DropdownButtonFormField<String?>(
-      icon: const Icon(LucideIcons.chevronDown, size: 17),
-      initialValue: items.any((s) => s.id == _mainSupplierId)
-          ? _mainSupplierId
-          : null,
-      isExpanded: true,
+    return SearchPickerField<Supplier>(
+      options: items,
+      idOf: (s) => s.id,
+      labelOf: (s) => s.name,
+      value: _mainSupplierId,
+      hint: 'Fournisseur principal',
+      noneLabel: 'Non précisé',
       decoration: deco(LucideIcons.truck),
-      items: [
-        const DropdownMenuItem(value: null, child: Text('Non précisé')),
-        for (final s in items)
-          DropdownMenuItem(value: s.id, child: Text(s.name)),
-      ],
       onChanged: _locked || suppliers.isLoading
           ? null
           : (v) => setState(() => _mainSupplierId = v),
@@ -194,7 +191,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'description': _text(_description),
     'unit': _unit.code,
     'categoryId': _categoryId,
-    'taxRateId': _taxRateId,
     'storageLocationId': _storageLocationId,
     if (widget.canReadSuppliers) 'mainSupplierId': _mainSupplierId,
     'minThreshold': _quantity(_minThreshold),
@@ -212,7 +208,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'description': p.description,
     'unit': p.unit.code,
     'categoryId': p.categoryId,
-    'taxRateId': p.taxRateId,
     'storageLocationId': p.storageLocationId,
     'mainSupplierId': p.mainSupplierId,
     'minThreshold': quantityToJson(p.minThreshold),
@@ -570,14 +565,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final categories = ref.watch(categoriesProvider).value ?? const [];
-    final taxRates = ref.watch(taxRatesProvider).value ?? const [];
-    if (widget.existing == null && !_defaultTaxApplied && taxRates.isNotEmpty) {
-      _defaultTaxApplied = true;
-      _taxRateId ??= taxRates
-          .where((t) => t.isDefault && t.isActive)
-          .firstOrNull
-          ?.id;
-    }
     final priceTiers =
         ref.watch(priceTiersProvider).value ?? const <PriceTier>[];
     // Stock en ligne, si le compte peut le lire : état affiché sur la fiche.
@@ -682,8 +669,12 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           initialValue: _unit,
           decoration: deco(LucideIcons.ruler),
           items: [
-            for (final unit in ProductUnit.values)
+            for (final unit in selectableUnits)
               DropdownMenuItem(value: unit, child: Text(unit.label)),
+            // Produit enregistré avec une ancienne unité : elle reste
+            // affichée telle quelle (rien n'est converti).
+            if (!selectableUnits.contains(_unit))
+              DropdownMenuItem(value: _unit, child: Text(_unit.label)),
           ],
           onChanged: _locked ? null : (v) => setState(() => _unit = v!),
         ),
@@ -709,20 +700,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             ],
           ],
           onChanged: _locked ? null : (v) => setState(() => _categoryId = v),
-        ),
-        formFieldGap,
-        const AmpereFieldLabel('TVA'),
-        DropdownButtonFormField<String?>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: _taxRateId,
-          decoration: deco(LucideIcons.percent),
-          items: [
-            const DropdownMenuItem(value: null, child: Text('Non précisée')),
-            for (final t in taxRates)
-              if (t.isActive || t.id == _taxRateId)
-                DropdownMenuItem(value: t.id, child: Text(t.name)),
-          ],
-          onChanged: _locked ? null : (v) => setState(() => _taxRateId = v),
         ),
         formFieldGap,
         if (widget.canReadSuppliers) ...[

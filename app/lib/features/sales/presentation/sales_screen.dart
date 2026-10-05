@@ -862,9 +862,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             ),
         if (!cart.isEmpty) ...[
           const Divider(height: 28),
-          _TotalRow('Total HT', estimate.totalHt),
-          _TotalRow('TVA', estimate.totalTax),
-          _TotalRow('Total TTC', estimate.totalTtc, strong: true),
+          _TotalRow('Total', estimate.totalTtc, strong: true),
           Text(
             'Estimation — le montant exact est calculé par le serveur.',
             style: AmpereType.meta.copyWith(color: colors.ink3),

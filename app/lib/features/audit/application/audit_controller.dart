@@ -1,38 +1,21 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/dates.dart';
 import '../../../core/providers.dart';
 import '../data/audit_api.dart';
 import '../data/audit_models.dart';
-
-/// Période affichée : le journal grossit vite, « tout » n'est qu'un choix.
-enum AuditPeriod {
-  week('7 jours', 7),
-  month('30 jours', 30),
-  all('Tout', null);
-
-  const AuditPeriod(this.label, this.days);
-  final String label;
-  final int? days;
-
-  /// Premier jour inclus, `AAAA-MM-JJ` (jour civil, heure du poste).
-  String? get from => days == null
-      ? null
-      : isoDay(DateTime.now().subtract(Duration(days: days! - 1)));
-}
+import '../../../ui/widgets/period_filter.dart';
 
 /// Filtres de l'écran. `null` = pas de filtre.
 typedef AuditFilter = ({
   String? entityType,
   AuditAction? action,
-  AuditPeriod period,
+  HistoryPeriod period,
 });
 
 class AuditFilterController extends Notifier<AuditFilter> {
   @override
-  AuditFilter build() =>
-      (entityType: null, action: null, period: AuditPeriod.week);
+  AuditFilter build() => (entityType: null, action: null, period: lastDays(7));
 
   void set(AuditFilter filter) => state = filter;
 }
@@ -82,6 +65,7 @@ class AuditController extends AsyncNotifier<AuditListState> {
         entityType: filter.entityType,
         action: filter.action,
         from: filter.period.from,
+        to: filter.period.to,
       );
 
   Future<void> loadMore() async {

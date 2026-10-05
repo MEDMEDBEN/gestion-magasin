@@ -21,6 +21,14 @@ enum ProductUnit {
   kilogramme,
 }
 
+/// Unités proposées à la saisie (décision MEDMEDBEN du 2026-10-05) : pièce,
+/// mètre, boîte. Les autres restent LISIBLES (produits déjà enregistrés).
+const selectableUnits = [
+  ProductUnit.piece,
+  ProductUnit.metre,
+  ProductUnit.boite,
+];
+
 extension ProductUnitLabel on ProductUnit {
   String get code => switch (this) {
     ProductUnit.piece => 'PIECE',

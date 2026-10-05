@@ -19,6 +19,7 @@ import '../../stock/application/stock_controller.dart';
 import '../../payments/data/payment_models.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Statut local d'une caisse ouverte sur cet appareil et pas encore connue du
 /// serveur : jamais présentée comme définitive (règle 8).
@@ -89,25 +90,20 @@ final mySalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
 });
 
 /// Filtre de l'historique : recherche et nombre de jours (null : tout).
-typedef SalesHistoryFilter = ({String q, int? days});
+typedef SalesHistoryFilter = ({String q, HistoryPeriod period});
 
 /// Historique des ventes (spec §8) : les 200 plus récentes du filtre. Lu EN
 /// LIGNE — une vente en file n'est pas encore définitive (règle 8).
 final salesHistoryProvider = FutureProvider.autoDispose
     .family<SalePage, SalesHistoryFilter>((ref, filter) async {
       ref.watch(currentUserIdProvider);
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final days = filter.days;
       return ref
           .watch(salesApiProvider)
           .sales(
             limit: 200,
             q: filter.q.trim().isEmpty ? null : filter.q.trim(),
-            from: days == null
-                ? null
-                : isoDay(today.subtract(Duration(days: days - 1))),
-            to: days == null ? null : isoDay(today),
+            from: filter.period.from,
+            to: filter.period.to,
           );
     });
 
@@ -281,13 +277,13 @@ final cartProvider = NotifierProvider<CartController, CartState>(
 );
 
 /// Estimation affichée pendant la saisie, avec les MÊMES règles que le serveur
-/// (prix du tarif du client ou par défaut, TVA, arrondi au centime demi-haut).
+/// (prix du tarif du client ou par défaut, arrondi au centime demi-haut ; sans
+/// TVA depuis le 2026-10-05 : le total est la somme des lignes).
 /// Le serveur recalcule et fait foi : cette valeur n'est jamais envoyée.
 @immutable
 class CartEstimate {
   const CartEstimate({
     required this.totalHt,
-    required this.totalTax,
     required this.missingPrices,
     this.invalidDiscounts = const [],
     this.lineTotalsHt = const {},
@@ -296,8 +292,9 @@ class CartEstimate {
   });
 
   final int totalHt;
-  final int totalTax;
-  int get totalTtc => totalHt + totalTax;
+
+  /// Sans TVA, le total payé est le total des lignes.
+  int get totalTtc => totalHt;
 
   /// Produits sans prix pour le tarif applicable : la vente serait refusée.
   final List<Product> missingPrices;
@@ -326,7 +323,6 @@ int _roundMoney(Decimal value) =>
 CartEstimate estimateCart(
   CartState cart, {
   required String? defaultTierId,
-  required Map<String, Decimal> taxRates,
   Set<String>? activeTierIds,
 }) {
   // MÊME règle que le serveur (`priceCart`) : le tarif du client s'il est
@@ -339,7 +335,6 @@ CartEstimate estimateCart(
       ? customerTier
       : defaultTierId;
   var ht = 0;
-  var tax = 0;
   final missing = <Product>[];
   final invalid = <Product>[];
   final lineTotals = <String, int>{};
@@ -362,18 +357,11 @@ CartEstimate estimateCart(
       invalid.add(line.product);
     }
     final lineHt = lineGrossHt(price, line.quantity) - line.discountHt;
-    final rate = taxRates[line.product.taxRateId] ?? Decimal.zero;
     lineTotals[line.product.id] = lineHt;
     ht += lineHt;
-    tax += _roundMoney(
-      (Decimal.fromInt(lineHt) * rate / Decimal.fromInt(100)).toDecimal(
-        scaleOnInfinitePrecision: 6,
-      ),
-    );
   }
   return CartEstimate(
     totalHt: ht,
-    totalTax: tax,
     missingPrices: missing,
     invalidDiscounts: invalid,
     lineTotalsHt: lineTotals,
@@ -384,11 +372,9 @@ CartEstimate estimateCart(
 
 final cartEstimateProvider = Provider.autoDispose<CartEstimate>((ref) {
   final tiers = ref.watch(priceTiersProvider).value ?? const <PriceTier>[];
-  final rates = ref.watch(taxRatesProvider).value ?? const <TaxRate>[];
   return estimateCart(
     ref.watch(cartProvider),
     defaultTierId: tiers.where((t) => t.isDefault).firstOrNull?.id,
-    taxRates: {for (final r in rates) r.id: Decimal.parse(r.rate)},
     activeTierIds: tiers.isEmpty ? null : {for (final t in tiers) t.id},
   );
 });

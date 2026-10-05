@@ -227,10 +227,13 @@ class _SalesCard extends ConsumerWidget {
                     ? 'coût d’achat inconnu'
                     : 'coût ${formatDA(data.totals.costHt!)}',
               ),
-              _Figure(
-                label: 'TVA collectée',
-                value: formatDA(data.totals.taxAmount),
-              ),
+              // Plus de TVA depuis le 2026-10-05 : n'apparaît que sur une
+              // période qui contient des ventes d'avant.
+              if (data.totals.taxAmount > 0)
+                _Figure(
+                  label: 'TVA collectée',
+                  value: formatDA(data.totals.taxAmount),
+                ),
               if (data.totals.discountAmount > 0)
                 _Figure(
                   label: 'Remises',

@@ -29,6 +29,9 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
   late final String _intent = 'inventory:${ref.read(uuidProvider).v7()}';
   final _zone = TextEditingController();
   final Set<String> _productIds = {};
+
+  /// Filtre de la liste à cocher : sur 1 000 produits, on cherche le sien.
+  String _filter = '';
   InventoryType _type = InventoryType.full;
   String? _locationId;
   bool _saving = false;
@@ -153,7 +156,23 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
             ),
           ),
           const AmpereFieldLabel('Produits à compter'),
-          for (final p in products)
+          TextField(
+            enabled: !_saving,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search, size: 17),
+              hintText: 'Nom, référence, code-barres',
+            ),
+            onChanged: (v) => setState(() => _filter = v.trim().toLowerCase()),
+          ),
+          for (final p in products.where(
+            (p) =>
+                _filter.isEmpty ||
+                _productIds.contains(p.id) ||
+                '${p.name} ${p.sku} ${p.barcode}'.toLowerCase().contains(
+                  _filter,
+                ),
+          ))
             CheckboxListTile(
               dense: true,
               value: _productIds.contains(p.id),

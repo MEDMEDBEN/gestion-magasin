@@ -176,6 +176,28 @@ void main() {
     },
   );
 
+  testWidgets('ajout rapide d’un produit : pour qui peut créer au catalogue', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      user: authUser(
+        roles: const ['ADMIN'],
+        permissions: const ['sale.create', 'product.read', 'product.write'],
+      ),
+    );
+    expect(find.text('Ajout rapide produit'), findsOneWidget);
+    expect(find.text('Nouvelle vente'), findsOneWidget);
+  });
+
+  testWidgets('le VENDEUR n’a pas l’ajout rapide (il ne crée pas de produit)', (
+    tester,
+  ) async {
+    await _pump(tester, user: _vendeur());
+    expect(find.text('Ajout rapide produit'), findsNothing);
+    expect(find.text('Nouvelle vente'), findsOneWidget);
+  });
+
   testWidgets('un raccourci DEMANDE la destination à la coquille', (
     tester,
   ) async {

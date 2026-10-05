@@ -10,7 +10,13 @@ import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/screen_state.dart';
+import '../../../ui/widgets/form_panel.dart';
 import '../../auth/data/auth_models.dart';
+import '../../catalog/application/catalog_controller.dart';
+import '../../catalog/data/catalog_models.dart';
+import '../../catalog/presentation/catalog_screen.dart';
+import '../../catalog/presentation/product_form.dart';
+import '../../scan/presentation/scan_screen.dart';
 import '../application/dashboard_controller.dart';
 import '../data/dashboard_models.dart';
 
@@ -113,7 +119,11 @@ class _Shortcuts extends ConsumerWidget {
       for (final label in wanted)
         if (available.contains(label)) label,
     ];
-    if (shortcuts.isEmpty) return const SizedBox.shrink();
+    // Ajout rapide d'un produit (demande MEDMEDBEN du 2026-10-05) : mêmes
+    // droits que la création au catalogue (ADMIN + product.write).
+    final rights = CatalogRights(user);
+    final canAdd = rights.canWriteProducts;
+    if (shortcuts.isEmpty && !canAdd) return const SizedBox.shrink();
 
     return Wrap(
       spacing: 10,
@@ -133,9 +143,84 @@ class _Shortcuts extends ConsumerWidget {
               icon: const Icon(LucideIcons.scanBarcode, size: 17),
               label: Text(label),
             ),
+        if (canAdd)
+          OutlinedButton.icon(
+            onPressed: () => quickAddProduct(context, ref, rights),
+            icon: const Icon(LucideIcons.packagePlus, size: 17),
+            label: const Text('Ajout rapide produit'),
+          ),
       ],
     );
   }
+}
+
+/// Ajout rapide : sur téléphone, on scanne d'abord le code-barres (un produit
+/// déjà connu s'ouvre au lieu d'être recréé) ; sinon, ou si l'on préfère, la
+/// fiche s'ouvre directement pour saisir le nom.
+Future<void> quickAddProduct(
+  BuildContext context,
+  WidgetRef ref,
+  CatalogRights rights,
+) async {
+  String? barcode;
+  if (scannerSupported) {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(LucideIcons.scanBarcode),
+              title: const Text('Scanner le code-barres'),
+              onTap: () => Navigator.of(context).pop('scan'),
+            ),
+            ListTile(
+              leading: const Icon(LucideIcons.pencil),
+              title: const Text('Saisir le nom'),
+              onTap: () => Navigator.of(context).pop('name'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+    if (choice == 'scan') {
+      barcode = await scanWithCamera(context);
+      if (barcode == null || !context.mounted) return;
+    }
+  }
+  final products = ref.read(activeProductsProvider).value ?? const [];
+  final known = barcode == null
+      ? null
+      : products.where((p) => p.barcode == barcode).firstOrNull;
+  if (known != null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Déjà au catalogue : ${known.name}')),
+    );
+  }
+  final saved = await openFormPanel<Product>(
+    context,
+    ProductForm(
+      existing: known,
+      initialBarcode: barcode,
+      canEdit: rights.canWriteProducts,
+      canDisable: rights.canDisableProducts,
+      canReadStock: rights.canReadStock,
+      canReadSuppliers: rights.canReadSuppliers,
+      canSetPrices: rights.canSetPrices,
+    ),
+  );
+  if (saved == null || saved == known || !context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(
+        known == null
+            ? '${saved.name} créé — code-barres ${saved.barcode}.'
+            : '${saved.name} mis à jour.',
+      ),
+    ),
+  );
 }
 
 class _Blocks extends StatelessWidget {

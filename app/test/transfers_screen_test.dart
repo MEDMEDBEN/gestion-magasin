@@ -212,7 +212,10 @@ void main() {
     await tester.tap(find.text('Urgente').last);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    // Recherche par article (plus de liste à faire défiler).
+    await tester.tap(find.text('Produit'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'cab-3g');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Câble 3G2,5 · CAB-3G25').last);
     await tester.pumpAndSettle();

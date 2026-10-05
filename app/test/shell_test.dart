@@ -187,6 +187,44 @@ void main() {
   );
 
   group('points de rupture AMPÈRE §9', () {
+    List<String> tabsOf(WidgetTester tester) => [
+      for (final d in tester.widgetList<NavigationDestination>(
+        find.byType(NavigationDestination),
+      ))
+        d.label,
+    ];
+
+    // Bug terrain du 2026-10-05 : admin et vendeur voyaient les mêmes onglets.
+    testWidgets('mobile : onglets du VENDEUR = vendre', (tester) async {
+      await _pumpShell(
+        tester,
+        user: authUser(
+          roles: const ['VENDEUR'],
+          permissions: const ['sale.create', 'product.read'],
+        ),
+        size: const Size(400, 800),
+      );
+      expect(tabsOf(tester).take(2), ['Accueil', 'Vente']);
+    });
+
+    testWidgets('mobile : onglets du MAGASINIER = stock et transferts', (
+      tester,
+    ) async {
+      await _pumpShell(
+        tester,
+        user: authUser(
+          roles: const ['MAGASINIER'],
+          permissions: const [
+            'product.read',
+            'stock.read.store',
+            'transfer.prepare',
+          ],
+        ),
+        size: const Size(400, 800),
+      );
+      expect(tabsOf(tester).take(3), ['Accueil', 'Stock', 'Transferts']);
+    });
+
     testWidgets('< 768 : coquille mobile à onglets', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(700, 900));
 

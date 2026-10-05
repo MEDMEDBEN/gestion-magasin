@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
+import 'package:gestion_magasin/core/dates.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/features/audit/application/audit_controller.dart';
 import 'package:gestion_magasin/features/audit/data/audit_api.dart';
 import 'package:gestion_magasin/features/audit/data/audit_models.dart';
@@ -49,6 +51,7 @@ class _SlowAuditApi extends AuditApi {
     String? entityType,
     AuditAction? action,
     String? from,
+    String? to,
   }) async {
     if (page == 2) return page2.future;
     final tag = entityType ?? 'tout';
@@ -69,7 +72,13 @@ class _FakeAuditApi extends AuditApi {
   final List<List<AuditEntry>> pages;
   final ApiException? failure;
   final List<
-    ({int page, String? entityType, AuditAction? action, String? from})
+    ({
+      int page,
+      String? entityType,
+      AuditAction? action,
+      String? from,
+      String? to,
+    })
   >
   calls = [];
 
@@ -80,11 +89,18 @@ class _FakeAuditApi extends AuditApi {
     String? entityType,
     AuditAction? action,
     String? from,
+    String? to,
   }) async {
     if (failure != null && (failPage == null || failPage == page)) {
       throw failure!;
     }
-    calls.add((page: page, entityType: entityType, action: action, from: from));
+    calls.add((
+      page: page,
+      entityType: entityType,
+      action: action,
+      from: from,
+      to: to,
+    ));
     return AuditPage(
       data: page <= pages.length ? pages[page - 1] : const [],
       meta: PageMeta(
@@ -283,9 +299,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls.last.action, AuditAction.cancel);
 
+    // Période : le sélecteur commun (raccourcis ou dates précises).
+    await tester.tap(find.byType(PeriodFilter));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Tout'));
     await tester.pumpAndSettle();
     expect(api.calls.last.from, isNull);
+    expect(api.calls.last.to, isNull);
+
+    await tester.tap(find.byType(PeriodFilter));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hier'));
+    await tester.pumpAndSettle();
+    // Un seul jour : du … au … même jour, envoyé tel quel au serveur.
+    final yesterday = isoDay(
+      DateUtils.dateOnly(DateTime.now()).subtract(const Duration(days: 1)),
+    );
+    expect(api.calls.last.from, yesterday);
+    expect(api.calls.last.to, yesterday);
   });
 
   testWidgets('au-delà d’une page, « Afficher plus » charge la suite', (
@@ -346,7 +377,7 @@ void main() {
       container.read(auditFilterProvider.notifier).set((
         entityType: 'Transfer',
         action: null,
-        period: AuditPeriod.week,
+        period: lastDays(7),
       ));
       final filtered = await container.read(auditProvider.future);
       expect(filtered.items.first.id, 'Transfer0');

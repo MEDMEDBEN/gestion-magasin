@@ -38,7 +38,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final reachable = ref.watch(serverReachableProvider);
     final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
 
-    final tabs = destinationsFor(widget.user);
+    final tabs = mobileTabOrder(destinationsFor(widget.user), widget.user);
     final index = _index.clamp(0, tabs.length - 1);
     final current = tabs[index];
     _followRequest(tabs);
@@ -148,4 +148,27 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     );
     if (chosen != null) setState(() => _index = chosen);
   }
+}
+
+/// Onglets du bas SELON LE RÔLE (bug terrain du 2026-10-05 : admin et vendeur
+/// voyaient les trois mêmes onglets « Accueil, Vente, Devis », la différence
+/// était cachée dans « Plus »). Les destinations préférées du rôle passent en
+/// tête ; toutes les autres restent dans « Plus », dans l'ordre du menu.
+/// Cumul de rôles : celui de l'admin, puis du vendeur, puis du magasinier.
+List<AppDestination> mobileTabOrder(
+  List<AppDestination> destinations,
+  AuthUser user,
+) {
+  final preferred = user.hasRole('ADMIN')
+      ? const ['Accueil', 'Vente', 'Catalogue']
+      : user.hasRole('VENDEUR')
+      ? const ['Accueil', 'Vente', 'Scanner']
+      : user.hasRole('MAGASINIER')
+      ? const ['Accueil', 'Stock', 'Transferts']
+      : const <String>[];
+  final first = [
+    for (final label in preferred)
+      ...destinations.where((d) => d.label == label),
+  ];
+  return [...first, ...destinations.where((d) => !first.contains(d))];
 }

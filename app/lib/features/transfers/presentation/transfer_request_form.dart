@@ -12,6 +12,7 @@ import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../application/transfers_controller.dart';
 import '../data/transfers_models.dart';
+import '../../../ui/widgets/search_picker.dart';
 
 /// Une ligne en cours de saisie : produit choisi + quantité demandée.
 class _LineFields {
@@ -179,20 +180,13 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
                 ),
             ],
           ),
-          DropdownButtonFormField<String>(
-            icon: const Icon(LucideIcons.chevronDown, size: 17),
-            initialValue: products.any((p) => p.id == line.productId)
-                ? line.productId
-                : null,
-            isExpanded: true,
-            hint: const Text('Produit'),
-            items: [
-              for (final p in products)
-                DropdownMenuItem(
-                  value: p.id,
-                  child: Text('${p.name} · ${p.sku}'),
-                ),
-            ],
+          SearchPickerField<Product>(
+            options: products,
+            idOf: (p) => p.id,
+            labelOf: (p) => '${p.name} · ${p.sku}',
+            searchTextOf: (p) => '${p.name} ${p.sku} ${p.barcode}',
+            value: line.productId,
+            hint: 'Produit',
             onChanged: _saving
                 ? null
                 : (v) => setState(() => line.productId = v),

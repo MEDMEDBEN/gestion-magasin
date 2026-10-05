@@ -15,6 +15,7 @@ import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 import 'package:gestion_magasin/features/catalog/presentation/catalog_screen.dart';
 import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
+import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/widgets/form_panel.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
@@ -222,6 +223,90 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Étiquettes'), findsNothing);
+  });
+
+  for (final desktop in [false, true]) {
+    testWidgets('ADMIN : Supprimer retire le produit après confirmation '
+        '(${desktop ? 'PC' : 'mobile'})', (tester) async {
+      useScreenSize(
+        tester,
+        desktop ? const Size(1400, 900) : const Size(400, 900),
+      );
+      await tester.pumpWidget(
+        wrap(
+          _admin(),
+          desktop: desktop,
+          products: [product(id: 'p1', name: 'Câble')],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Modifier'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Supprimer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Supprimer « Câble » ?'), findsOneWidget);
+      // Annuler : rien ne part.
+      await tester.tap(find.text('Annuler'));
+      await tester.pumpAndSettle();
+      expect(api.productCalls, isEmpty);
+
+      await tester.tap(find.byTooltip('Supprimer'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+      await tester.pumpAndSettle();
+      // Désactivation, jamais un effacement : l'historique reste.
+      expect(api.productCalls, hasLength(1));
+      expect(api.productCalls.single.$1, 'p1');
+      expect(api.productCalls.single.$2, {'isActive': false});
+    });
+  }
+
+  testWidgets('unités : Pièce, Mètre, Boîte ; une ancienne unité reste', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(
+      wrap(
+        _admin(),
+        products: [product(id: 'p1', name: 'Gaine', unit: ProductUnit.rouleau)],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Nouveau produit : trois unités seulement.
+    await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<ProductUnit>));
+    await tester.pumpAndSettle();
+    for (final unit in ['Pièce', 'Mètre', 'Boîte']) {
+      expect(find.text(unit), findsWidgets);
+    }
+    expect(find.text('Rouleau'), findsNothing);
+    expect(find.text('Kilogramme'), findsNothing);
+    await tester.tap(find.text('Pièce').last);
+    await tester.pumpAndSettle();
+    Navigator.of(tester.element(find.text('Nouveau produit'))).pop();
+    await tester.pumpAndSettle();
+
+    // Produit déjà en rouleau : son unité s'affiche, rien n'est converti.
+    await tester.tap(find.text('Gaine'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rouleau'), findsOneWidget);
+  });
+
+  testWidgets('VENDEUR : ni Modifier ni Supprimer sur les lignes', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 900));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [product(id: 'p1', name: 'Câble')],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Modifier'), findsNothing);
+    expect(find.byTooltip('Supprimer'), findsNothing);
   });
 
   testWidgets(
@@ -612,7 +697,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('ACHAT HT'), findsOneWidget);
+    expect(find.text('PRIX ACHAT'), findsOneWidget);
     expect(find.text(formatDA(145000)), findsOneWidget);
     expect(find.text(formatDA(100000)), findsOneWidget);
 
