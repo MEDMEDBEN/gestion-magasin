@@ -4,6 +4,32 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Retours terrain — 2026-10-05 (MEDMEDBEN, Claude)
+
+Liste de MEDMEDBEN traitée, chaque point testé et poussé sur `develop` :
+- **Bug photo** (`2945c51`) : une photo HEIC/illisible était ignorée sans un mot → réencodage JPEG par le
+  téléphone + message « Photo illisible ».
+- **« Vendeur = vue admin » sur téléphone** : PAS une faille (le filtrage par rôle marche, 13 rubriques
+  contre 21) ; la barre du bas montrait les 3 mêmes onglets. → onglets selon le rôle (`mobileTabOrder`).
+- **Chèques retirés** (`d7194e6`) : code dans `sandbox/cheques/`, tag `avant-retrait-cheques`, base intacte.
+- **TVA retirée** (`2ff8669`, `8ea4174`) : `NO_TAX` (0 %) pour toute nouvelle opération, gestion des taux et
+  champ TVA supprimés ; code d'avant dans `sandbox/tva/`, tag `avant-retrait-tva`. ⚠️ Mettre à jour TOUTES
+  les apps en même temps que le serveur (une ancienne app estime le panier avec TVA → vente hors ligne
+  rejetée `SALE_TOTAL_CHANGED`).
+- **Unités** (`9b83658`) : nouvelle unité = Pièce / Mètre / Boîte ; les anciennes restent lisibles.
+- **Catalogue** : boutons Modifier / Supprimer (= retirer du catalogue, historique gardé) ; prix d'achat affiché.
+- **Recherche par article / fournisseur** : `SearchPickerField` (transfert, commande, retour fournisseur,
+  fournisseur principal) + filtre dans l'inventaire.
+- **Accueil** : « Ajout rapide produit » (scan ou nom) ; graphiques `fl_chart` selon le rôle (`1217ecc`) :
+  ventes 30 jours, meilleurs produits, état du stock.
+- **Filtre par dates précises** (`8907bd5`, `11d2ae3`) : Ventes, Historique, Transferts, Devis, Achats,
+  Rapports, et les fenêtres d'historique (achats client, commandes/retours fournisseur, prix, paiements).
+- Preuves finales : backend lint/tsc OK, 164 unitaires, e2e 640 + ciblés (catalogue 59, transferts/devis 53,
+  tableau de bord 15) ; app `flutter analyze` 0, **523 tests** ; captures de l'accueil vérifiées.
+- **Prochaine étape** : audits `reviewer` + `security-reviewer` du lot (en cours), puis rebuild des apps PC et
+  téléphone (`git pull`, `dart run build_runner build`, build avec `--dart-define-from-file=config/prod.json`)
+  et redéploiement du backend sur le VPS (`git pull`, `docker compose up -d --build`).
+
 ### Build Android profile — 2026-10-02
 
 - Après le pull UX `42a25f0`, le build APK échouait car `flutter_secure_storage 11.0.0` exige `compileSdk 37`.
