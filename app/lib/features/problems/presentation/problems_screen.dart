@@ -1,8 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
-
-import 'dart:typed_data';
 
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
@@ -271,14 +271,28 @@ class _ProblemTile extends ConsumerWidget {
     if (action == null || !context.mounted) return;
 
     if (action == 'photo') {
-      final bytes = await ref.read(pickPhotoProvider)();
-      // `null` = annulé, ou fichier illisible : rien à envoyer, le serveur le
-      // refuserait de toute façon.
-      if (bytes == null || !context.mounted) return;
+      final Uint8List? bytes;
+      try {
+        bytes = await ref.read(pickPhotoProvider)();
+      } on Exception {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Photo illisible : choisissez une photo JPEG ou PNG.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      // `null` = annulé : rien à envoyer.
+      final photo = bytes;
+      if (photo == null || !context.mounted) return;
       await _run(context, ref, () async {
         final updated = await ref
             .read(problemsApiProvider)
-            .attachPhoto(problem.id, bytes);
+            .attachPhoto(problem.id, photo);
         ref.invalidate(problemPhotoProvider(problem.id));
         return updated;
       });

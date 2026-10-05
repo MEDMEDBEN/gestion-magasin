@@ -4,16 +4,27 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
 /// Choix d'une photo par l'utilisateur (galerie, ou fichier sur desktop),
-/// compressée avant envoi. Remplaçable en test.
+/// compressée avant envoi. Remplaçable en test. Rend `null` si l'utilisateur
+/// annule ; une image illisible LÈVE `FormatException` (message à afficher) —
+/// avant, elle était ignorée sans un mot (bug terrain du 2026-10-05).
 ///
 /// Vit dans `core/` et non dans une feature : la photo de produit et celle d'un
 /// signalement passent par le même chemin — même limite serveur (2 Mo), même
 /// compression.
 final pickPhotoProvider = Provider<Future<Uint8List?> Function()>(
   (ref) => () async {
-    final file = await ImagePicker().pickImage(source: ImageSource.gallery);
+    // Taille et qualité demandées : sur téléphone, le système RÉENCODE la
+    // photo en JPEG — une photo HEIC/HEIF (Samsung, iPhone) devient lisible.
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
     if (file == null) return null;
-    return compute(compressPhoto, await file.readAsBytes());
+    final jpeg = await compute(compressPhoto, await file.readAsBytes());
+    if (jpeg == null) throw const FormatException('Image illisible');
+    return jpeg;
   },
 );
 

@@ -94,6 +94,7 @@ void main() {
     List<ProductCategory> categories = const [],
     bool desktop = false,
     Uint8List? pickedPhoto,
+    Future<Uint8List?> Function()? pickPhoto,
   }) {
     final repo = CatalogRepository(db, LocalSettingsStore(db), api);
     actions = _ApiOnlyActions(api, repo);
@@ -128,7 +129,9 @@ void main() {
           ],
         ),
         catalogActionsProvider.overrideWithValue(actions),
-        pickPhotoProvider.overrideWithValue(() async => pickedPhoto),
+        pickPhotoProvider.overrideWithValue(
+          pickPhoto ?? () async => pickedPhoto,
+        ),
         catalogApiProvider.overrideWithValue(api),
         printPdfProvider.overrideWithValue((bytes, name) async {
           printed.add(name);
@@ -451,6 +454,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(actions.lastPhoto, photo);
+  });
+
+  testWidgets('photo illisible (HEIC…) : un message, pas un silence', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(
+      wrap(
+        _admin(),
+        pickPhoto: () async => throw const FormatException('Image illisible'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajouter une photo'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Photo illisible'), findsOneWidget);
+    expect(find.text('Ajouter une photo'), findsOneWidget);
   });
 
   testWidgets('prix : l’ADMIN n’envoie que le prix modifié, en centimes', (

@@ -479,7 +479,22 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   }
 
   Future<void> _pickPhoto() async {
-    final photo = await ref.read(pickPhotoProvider)();
+    final Uint8List? photo;
+    try {
+      photo = await ref.read(pickPhotoProvider)();
+    } on Exception {
+      // Format illisible, accès aux photos refusé : on le DIT.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Photo illisible : choisissez une photo JPEG ou PNG.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     if (!mounted) return;
     if (photo == null) return;
     setState(() {
