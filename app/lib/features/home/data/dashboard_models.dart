@@ -35,6 +35,20 @@ abstract class DashboardDay with _$DashboardDay {
       _$DashboardDayFromJson(json);
 }
 
+/// Produit le plus vendu sur 30 jours (graphique de l'accueil, 2026-10-05).
+@freezed
+abstract class DashboardTopProduct with _$DashboardTopProduct {
+  const factory DashboardTopProduct({
+    required String productId,
+    required String name,
+    required Money revenueTtc,
+    required String quantity,
+  }) = _DashboardTopProduct;
+
+  factory DashboardTopProduct.fromJson(Map<String, dynamic> json) =>
+      _$DashboardTopProductFromJson(json);
+}
+
 @freezed
 abstract class DashboardSales with _$DashboardSales {
   const factory DashboardSales({
@@ -43,6 +57,12 @@ abstract class DashboardSales with _$DashboardSales {
 
     /// 7 derniers jours, aujourd'hui en dernier (P1 bis n°21m).
     @Default(<DashboardDay>[]) List<DashboardDay> last7Days,
+
+    /// 30 derniers jours, même ordre (courbe de l'accueil, 2026-10-05).
+    @Default(<DashboardDay>[]) List<DashboardDay> last30Days,
+
+    /// 5 meilleurs produits sur 30 jours, même cloisonnement.
+    @Default(<DashboardTopProduct>[]) List<DashboardTopProduct> topProducts,
   }) = _DashboardSales;
 
   factory DashboardSales.fromJson(Map<String, dynamic> json) =>
@@ -67,6 +87,9 @@ abstract class DashboardStock with _$DashboardStock {
   const factory DashboardStock({
     required int lowCount,
     required int outOfStockCount,
+
+    /// Produits au-dessus de leur seuil (anneau de l'état du stock).
+    @Default(0) int okCount,
     @Default(<DashboardLowStock>[]) List<DashboardLowStock> low,
   }) = _DashboardStock;
 

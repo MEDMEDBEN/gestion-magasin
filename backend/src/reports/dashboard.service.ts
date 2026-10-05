@@ -71,17 +71,18 @@ export class DashboardService {
   private async salesOfDay(user: AuthenticatedUser, startOfDay: Date) {
     const admin = user.roles.includes(RoleCode.ADMIN);
     const mine = admin ? {} : { userId: user.id };
-    // 7 jours d'Alger, aujourd'hui compris (P1 bis n°21m, graphique de
-    // l'accueil). Horodatages sans fuseau : déclarés UTC PUIS passés à
-    // l'heure d'Alger (même conversion que le rapport d'activité).
+    // 30 jours d'Alger, aujourd'hui compris (courbe de l'accueil, 2026-10-05 ;
+    // les 7 derniers en sont la fin). Horodatages sans fuseau : déclarés UTC
+    // PUIS passés à l'heure d'Alger (même conversion que le rapport d'activité).
     const DAY = 24 * 60 * 60 * 1000;
+    const DAYS = 30;
     const since = startOfLocalDay(
-      new Date(startOfDay.getTime() + 12 * 3600_000 - 6 * DAY),
+      new Date(startOfDay.getTime() + 12 * 3600_000 - (DAYS - 1) * DAY),
     );
     const mineSql = admin
       ? Prisma.empty
       : Prisma.sql`AND s."userId" = ${user.id}::uuid`;
-    const [totals, returns, soldByDay, returnedByDay] = await Promise.all([
+    const [totals, returns, soldByDay, returnedByDay, top] = await Promise.all([
       this.prisma.sale.aggregate({
         where: { status: 'VALIDEE', soldAt: { gte: startOfDay }, ...mine },
         _count: true,
@@ -103,13 +104,28 @@ export class DashboardService {
         FROM "SaleReturn" r JOIN "Sale" s ON s."id" = r."saleId"
         WHERE r."createdAt" >= ${since} ${mineSql}
         GROUP BY 1`,
+      // Produits les plus vendus (CA des ventes validées ; les retours ne sont
+      // pas déduits — c'est un classement, pas un chiffre comptable).
+      this.prisma.$queryRaw<
+        { productId: string; name: string; revenue: bigint; quantity: string }[]
+      >`
+        SELECT l."productId" AS "productId", p."name" AS "name",
+               SUM(l."lineTotalTtc") AS "revenue",
+               SUM(l."quantity")::text AS "quantity"
+        FROM "SaleLine" l
+        JOIN "Sale" s ON s."id" = l."saleId"
+        JOIN "Product" p ON p."id" = l."productId"
+        WHERE s."status"::text = 'VALIDEE' AND s."soldAt" >= ${since} ${mineSql}
+        GROUP BY l."productId", p."name"
+        ORDER BY 3 DESC
+        LIMIT 5`,
     ]);
     const net = new Map<string, number>();
     for (const r of soldByDay) net.set(r.day, Number(r.revenue));
     for (const r of returnedByDay) {
       net.set(r.day, (net.get(r.day) ?? 0) - Number(r.revenue));
     }
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const last30Days = Array.from({ length: DAYS }, (_, i) => {
       // Midi de chaque jour : toujours dans la bonne journée d'Alger.
       const day = localDate(
         new Date(since.getTime() + 12 * 3600_000 + i * DAY),
@@ -119,7 +135,14 @@ export class DashboardService {
     return {
       count: totals._count,
       revenueTtc: (totals._sum.totalTtc ?? 0) - (returns._sum.totalTtc ?? 0),
-      last7Days,
+      last7Days: last30Days.slice(-7),
+      last30Days,
+      topProducts: top.map((row) => ({
+        productId: row.productId,
+        name: row.name,
+        revenueTtc: Number(row.revenue),
+        quantity: formatQuantity(new Prisma.Decimal(row.quantity)),
+      })),
     };
   }
 
@@ -145,13 +168,16 @@ export class DashboardService {
     });
     const low: (DashboardLowStockDto & { sort: number })[] = [];
     let outOfStockCount = 0;
+    let okCount = 0;
     for (const product of products) {
       const quantity = product.stocks.reduce(
         (sum, row) => sum.add(row.quantity),
         new Prisma.Decimal(0),
       );
       if (isOutOfStock(quantity)) outOfStockCount++;
-      if (isLowStock(quantity, product.minThreshold)) {
+      const isLow = isLowStock(quantity, product.minThreshold);
+      if (!isLow && !isOutOfStock(quantity)) okCount++;
+      if (isLow) {
         low.push({
           productId: product.id,
           name: product.name,
@@ -166,6 +192,7 @@ export class DashboardService {
     return {
       lowCount: low.length,
       outOfStockCount,
+      okCount,
       low: low.slice(0, 5).map(({ sort: _sort, ...row }) => row),
     };
   }

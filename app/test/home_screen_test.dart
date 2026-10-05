@@ -75,43 +75,86 @@ void main() {
 
   /// P1 bis n°21m : barres des 7 derniers jours, chaque montant lisible
   /// (lecteur d'écran) ; un jour négatif (retours) n'empêche pas l'affichage.
-  testWidgets('ventes des 7 derniers jours : une barre par jour', (
+  testWidgets(
+    'vendeur : courbe des ventes et meilleurs produits, pas le stock',
+    (tester) async {
+      await _pump(
+        tester,
+        user: _vendeur(),
+        summary: DashboardSummary(
+          day: '2026-09-23',
+          sales: DashboardSales(
+            count: 1,
+            revenueTtc: 145000,
+            last30Days: [
+              for (var i = 0; i < 30; i++)
+                DashboardDay(
+                  day: '2026-09-${(i + 1).toString().padLeft(2, '0')}',
+                  revenueTtc: i == 18 ? -20000 : 10000,
+                ),
+            ],
+            topProducts: const [
+              DashboardTopProduct(
+                productId: 'p1',
+                name: 'Câble 3G2,5',
+                revenueTtc: 900000,
+                quantity: '60.000',
+              ),
+              DashboardTopProduct(
+                productId: 'p2',
+                name: 'Disjoncteur 16A',
+                revenueTtc: 300000,
+                quantity: '20.000',
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.text('Ventes des 30 derniers jours'), findsOneWidget);
+      // 29 jours à 100,00 et un jour de retours à −200,00.
+      expect(
+        find.text('${formatDA(29 * 10000 - 20000)} au total'),
+        findsOneWidget,
+      );
+      expect(find.text('Meilleurs produits'), findsOneWidget);
+      expect(find.text('1. Câble 3G2,5'), findsOneWidget);
+      expect(find.text(formatDA(900000)), findsOneWidget);
+      // Le vendeur n'a pas le bloc stock : pas d'anneau.
+      expect(find.text('État du stock'), findsNothing);
+
+      final handle = tester.ensureSemantics();
+      await tester.pumpAndSettle();
+      expect(
+        find.bySemanticsLabel(
+          RegExp('Chiffre d’affaires des 30 derniers jours'),
+        ),
+        findsOneWidget,
+      );
+      handle.dispose();
+    },
+  );
+
+  testWidgets('magasinier : anneau du stock, sans graphique de ventes', (
     tester,
   ) async {
     await _pump(
       tester,
-      user: _vendeur(),
+      user: authUser(
+        roles: const ['MAGASINIER'],
+        permissions: const ['stock.read.store', 'stock.read.warehouse'],
+      ),
       summary: const DashboardSummary(
         day: '2026-09-23',
-        sales: DashboardSales(
-          count: 1,
-          revenueTtc: 145000,
-          last7Days: [
-            DashboardDay(day: '2026-09-17', revenueTtc: 0),
-            DashboardDay(day: '2026-09-18', revenueTtc: 300000),
-            DashboardDay(day: '2026-09-19', revenueTtc: -20000),
-            DashboardDay(day: '2026-09-20', revenueTtc: 50000),
-            DashboardDay(day: '2026-09-21', revenueTtc: 0),
-            DashboardDay(day: '2026-09-22', revenueTtc: 90000),
-            DashboardDay(day: '2026-09-23', revenueTtc: 145000),
-          ],
-        ),
+        stock: DashboardStock(lowCount: 5, outOfStockCount: 2, okCount: 40),
       ),
     );
 
-    expect(find.text('Ventes des 7 derniers jours'), findsOneWidget);
-    expect(find.text('18/09'), findsOneWidget);
-    expect(find.text('23/09'), findsOneWidget);
-    // Chaque barre porte son montant, un jour négatif (retours) compris.
-    expect(find.byTooltip(formatDA(-20000)), findsOneWidget);
-    final handle = tester.ensureSemantics();
-    await tester.pumpAndSettle();
-    expect(
-      find.bySemanticsLabel('19/09/2026 : ${formatDA(-20000)}'),
-      findsOneWidget,
-    );
-    handle.dispose();
-    expect(find.byTooltip(formatDA(300000)), findsOneWidget);
+    expect(find.text('État du stock'), findsOneWidget);
+    // « Sous le seuil » (5) compte les épuisés (2) : 40 + 3 + 2.
+    expect(find.text('45'), findsOneWidget);
+    expect(find.text('Meilleurs produits'), findsNothing);
+    expect(find.textContaining('derniers jours'), findsNothing);
   });
 
   testWidgets('les montants sont formatés en dinars, jamais en centimes', (

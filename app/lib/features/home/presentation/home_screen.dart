@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
@@ -19,6 +18,7 @@ import '../../catalog/presentation/product_form.dart';
 import '../../scan/presentation/scan_screen.dart';
 import '../application/dashboard_controller.dart';
 import '../data/dashboard_models.dart';
+import 'dashboard_charts.dart';
 
 /// Accueil (spec §21) : un RÉSUMÉ, et « ne pas surcharger ».
 ///
@@ -358,16 +358,11 @@ class _Blocks extends StatelessWidget {
               ),
           ],
         ),
-        if (sales != null && sales.last7Days.isNotEmpty) ...[
+        // Graphiques (2026-10-05) : chacun n'apparaît que si son bloc est
+        // envoyé par le serveur — le tableau de bord suit donc le RÔLE.
+        if (charts(sales, stock).isNotEmpty) ...[
           const SizedBox(height: 18),
-          Text('Ventes des 7 derniers jours', style: AmpereType.sectionTitle),
-          const SizedBox(height: 8),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: SalesWeekChart(days: sales.last7Days),
-            ),
-          ),
+          _ChartGrid(desktop: desktop, children: charts(sales, stock)),
         ],
         if (stock != null && stock.low.isNotEmpty) ...[
           const SizedBox(height: 18),
@@ -393,68 +388,70 @@ class _Blocks extends StatelessWidget {
   }
 }
 
-/// Barres du CA TTC par jour (P1 bis n°21m) : de simples boîtes, aucune
-/// bibliothèque de graphiques. Un jour négatif (retours > ventes) : barre
-/// minimale en couleur d'erreur. Chaque barre porte son montant (infobulle et
-/// lecteur d'écran).
-class SalesWeekChart extends StatelessWidget {
-  const SalesWeekChart({super.key, required this.days});
+/// Graphiques autorisés à ce compte, dans l'ordre d'affichage.
+List<Widget> charts(DashboardSales? sales, DashboardStock? stock) {
+  final days = sales == null
+      ? const <DashboardDay>[]
+      : (sales.last30Days.isNotEmpty ? sales.last30Days : sales.last7Days);
+  return [
+    if (days.isNotEmpty)
+      ChartCard(
+        title: 'Ventes des ${days.length} derniers jours',
+        subtitle:
+            '${formatDA(days.fold<int>(0, (s, d) => s + d.revenueTtc))} au total',
+        child: RevenueTrendChart(days: days),
+      ),
+    if (sales != null)
+      ChartCard(
+        title: 'Meilleurs produits',
+        subtitle: '30 derniers jours, par chiffre d’affaires',
+        child: TopProductsChart(products: sales.topProducts),
+      ),
+    if (stock != null)
+      ChartCard(
+        title: 'État du stock',
+        subtitle: 'Produits actifs',
+        child: StockHealthDonut(stock: stock),
+      ),
+  ];
+}
 
-  final List<DashboardDay> days;
+/// Deux colonnes au poste, une seule sur téléphone.
+class _ChartGrid extends StatelessWidget {
+  const _ChartGrid({required this.desktop, required this.children});
 
-  static const _height = 110.0;
+  final bool desktop;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    final top = days.fold<int>(
-      0,
-      (m, d) => d.revenueTtc > m ? d.revenueTtc : m,
-    );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (final (i, d) in days.indexed)
-          Expanded(
-            child: Semantics(
-              container: true,
-              label: '${formatIsoDay(d.day)} : ${formatDA(d.revenueTtc)}',
-              excludeSemantics: true,
-              child: Tooltip(
-                message: formatDA(d.revenueTtc),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        height: top <= 0 || d.revenueTtc <= 0
-                            ? 2
-                            : 2 + (_height - 2) * d.revenueTtc / top,
-                        decoration: BoxDecoration(
-                          color: d.revenueTtc < 0
-                              ? colors.error
-                              : i == days.length - 1
-                              ? colors.accent
-                              : colors.info,
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(3),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        // « JJ/MM » ; un jour mal formé s'affiche tel quel.
-                        formatIsoDay(d.day).split('/').take(2).join('/'),
-                        style: AmpereType.meta.copyWith(color: colors.ink3),
-                      ),
-                    ],
-                  ),
-                ),
+    if (!desktop) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final c in children)
+            Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
+        ],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = (constraints.maxWidth - 12) / 2;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final (i, c) in children.indexed)
+              SizedBox(
+                // La courbe prend toute la largeur, les autres une moitié.
+                width: i == 0 && children.length.isOdd
+                    ? constraints.maxWidth
+                    : width,
+                child: c,
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 }

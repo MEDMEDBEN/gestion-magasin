@@ -11,6 +11,16 @@ export class DashboardDayDto {
   revenueTtc!: number;
 }
 
+/// Produit le plus vendu sur 30 jours (graphique de l'accueil, 2026-10-05).
+export class DashboardTopProductDto {
+  @ApiProperty() productId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: 'CA TTC des ventes validées, en centimes.' })
+  revenueTtc!: number;
+  @ApiProperty({ example: '12.500', description: 'Quantité vendue.' })
+  quantity!: string;
+}
+
 export class DashboardSalesDto {
   @ApiProperty({
     description: 'Ventes validées du jour (les miennes ; toutes pour l’admin).',
@@ -24,6 +34,18 @@ export class DashboardSalesDto {
       'Les 7 derniers jours (aujourd’hui compris, du plus ancien au plus récent), même cloisonnement.',
   })
   last7Days!: DashboardDayDto[];
+  @ApiProperty({
+    type: [DashboardDayDto],
+    description:
+      'Les 30 derniers jours (même ordre, même cloisonnement) — courbe de l’accueil.',
+  })
+  last30Days!: DashboardDayDto[];
+  @ApiProperty({
+    type: [DashboardTopProductDto],
+    description:
+      'Les 5 produits au plus gros CA sur 30 jours (ventes validées, même cloisonnement).',
+  })
+  topProducts!: DashboardTopProductDto[];
 }
 
 export class DashboardLowStockDto {
@@ -38,6 +60,11 @@ export class DashboardStockDto {
   lowCount!: number;
   @ApiProperty({ description: 'Produits actifs à zéro (ou négatif) partout.' })
   outOfStockCount!: number;
+  @ApiProperty({
+    description:
+      'Produits actifs au-dessus de leur seuil (ni bas, ni épuisés).',
+  })
+  okCount!: number;
   @ApiProperty({
     type: [DashboardLowStockDto],
     description:

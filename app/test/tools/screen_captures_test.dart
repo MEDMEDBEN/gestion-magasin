@@ -913,12 +913,57 @@ Future<void> _loadFonts() async {
 }
 
 /// Résumé d'accueil fictif (P1 n°15) : un admin voit tous les blocs.
-const _summary = DashboardSummary(
+final _summary = DashboardSummary(
   day: '2026-09-23',
-  sales: DashboardSales(count: 14, revenueTtc: 18745000),
-  stock: DashboardStock(
+  sales: DashboardSales(
+    count: 14,
+    revenueTtc: 18745000,
+    last30Days: [
+      for (var i = 0; i < 30; i++)
+        DashboardDay(
+          day:
+              '2026-${i < 7 ? '08' : '09'}-'
+              '${(i < 7 ? 25 + i : i - 6).toString().padLeft(2, '0')}',
+          revenueTtc: 9000000 + (i * 7919 % 13) * 1100000 + i * 120000,
+        ),
+    ],
+    topProducts: const [
+      DashboardTopProduct(
+        productId: 'p1',
+        name: 'Câble H07V-U 2,5 mm² — couronne 100 m',
+        revenueTtc: 48600000,
+        quantity: '36.000',
+      ),
+      DashboardTopProduct(
+        productId: 'p2',
+        name: 'Disjoncteur 16 A courbe C',
+        revenueTtc: 31200000,
+        quantity: '52.000',
+      ),
+      DashboardTopProduct(
+        productId: 'p3',
+        name: 'Interrupteur va-et-vient blanc',
+        revenueTtc: 18900000,
+        quantity: '120.000',
+      ),
+      DashboardTopProduct(
+        productId: 'p4',
+        name: 'Gaine ICTA Ø 20',
+        revenueTtc: 12400000,
+        quantity: '400.000',
+      ),
+      DashboardTopProduct(
+        productId: 'p5',
+        name: 'Boîte d’encastrement Ø 67',
+        revenueTtc: 6100000,
+        quantity: '210.000',
+      ),
+    ],
+  ),
+  stock: const DashboardStock(
     lowCount: 3,
     outOfStockCount: 1,
+    okCount: 412,
     low: [
       DashboardLowStock(
         productId: 'p1',
@@ -940,11 +985,11 @@ const _summary = DashboardSummary(
       ),
     ],
   ),
-  transfers: DashboardTransfers(toPrepare: 2, inTransit: 1),
-  purchases: DashboardPurchases(toReceive: 3),
-  customers: DashboardCustomers(debt: 42350000, overdue: 7800000),
-  suppliers: DashboardSuppliers(debt: 96500000),
-  tasks: DashboardTasks(open: 4, late: 1),
+  transfers: const DashboardTransfers(toPrepare: 2, inTransit: 1),
+  purchases: const DashboardPurchases(toReceive: 3),
+  customers: const DashboardCustomers(debt: 42350000, overdue: 7800000),
+  suppliers: const DashboardSuppliers(debt: 96500000),
+  tasks: const DashboardTasks(open: 4, late: 1),
 );
 
 Future<void> _capture(
