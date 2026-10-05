@@ -518,7 +518,7 @@ export class CustomersService {
         method: p.method,
         // Règlement client = espèces en caisse (décision 2026-09-15), sauf
         // l'avoir d'un retour : une écriture, aucune espèce.
-        fromCash: !p.saleReturnId,
+        fromCash: p.method === 'ESPECES' && !p.saleReturnId,
         paidAt: p.paidAt,
         userId: p.userId,
         saleId: p.saleId,
@@ -584,6 +584,17 @@ export class CustomersService {
             original.reversesPaymentId
               ? 'Une contre-passation ne se contre-passe pas'
               : 'Ce règlement a déjà été contre-passé',
+            HttpStatus.CONFLICT,
+          );
+        }
+        // Ancien règlement par chèque (fonctionnalité retirée le 2026-10-05,
+        // données gardées) : il n'est jamais entré dans une caisse, et s'il est
+        // encaissé l'argent est en banque. Le contre-passer ici fausserait la
+        // caisse ou ferait revenir une dette payée : refusé (audits 2026-10-05).
+        if (original.chequeStatus !== null) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Règlement par chèque : contre-passation impossible depuis le retrait des chèques',
             HttpStatus.CONFLICT,
           );
         }

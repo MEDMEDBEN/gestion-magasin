@@ -64,8 +64,8 @@ La vente hors-ligne est autorisée (décision produit), mais :
 - **Prix (décision MEDMEDBEN 2026-09-22)** : l'appareil envoie le prix APPLIQUÉ de chaque ligne (tarif, ou prix
   modifié par le vendeur) ; le serveur l'accepte s'il n'est pas sous le plancher (dernier prix d'achat, sinon tarif)
   — un tarif changé pendant la coupure ne fait donc plus rejeter la vente. Le total encaissé (`expectedTotalTtc`,
-  obligatoire hors-ligne) reste comparé : seul un changement de TVA pendant la coupure peut encore le faire
-  diverger (`SALE_TOTAL_CHANGED`). Cas limite accepté : produit SANS coût connu dont le tarif a été relevé pendant
+  obligatoire hors-ligne) reste comparé (`SALE_TOTAL_CHANGED`) ; sans TVA depuis le 2026-10-05, il ne diverge plus
+  qu'avec une app pas encore mise à jour (qui compte encore la TVA). Cas limite accepté : produit SANS coût connu dont le tarif a été relevé pendant
   la coupure → l'ancien prix peut passer sous le plancher (le plus bas tarif), vente refusée et tracée. En
   ligne, un prix NON modifié par le vendeur doit être le tarif courant (sinon 409 : catalogue local en retard) ;
   une ligne modifiée porte `priceEdited` et c'est elle seule qui est tracée pour l'admin.
@@ -275,8 +275,10 @@ le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin do
   Les opérations d'avant gardent leur taux figé (une réception sur une commande d'avant aussi) et leurs documents
   l'affichent. Gestion des taux (`/pricing/tax-rates`) et champ TVA du produit supprimés ; base intacte. Code
   d'avant : `sandbox/tva/`, tag `avant-retrait-tva`. ⚠️ Mettre à jour TOUTES les apps (PC et téléphones) en même
-  temps que le serveur : une ancienne app estime le panier AVEC TVA, et une vente hors ligne serait rejetée
-  (`SALE_TOTAL_CHANGED`) au sync.
+  temps que le serveur, et VIDER les files hors ligne (tout synchronisé) AVANT la mise à jour du serveur :
+  une ancienne app estime le panier AVEC TVA (vente hors ligne rejetée `SALE_TOTAL_CHANGED`) et envoie
+  `taxRateId` en créant ou modifiant un produit (refusé 400). Anciens règlements par chèque : ni contre-passés
+  (409), ni rendus en espèces s'ils ne sont pas encaissés (`test/legacy-cheques.e2e-spec.ts`).
 - **2026-10-05 (MEDMEDBEN) — Unités proposées : Pièce, Mètre, Boîte.** Les produits déjà enregistrés en Rouleau,
   Paquet ou Kilogramme gardent leur unité (rien n'est converti). « Supprimer » un produit = le retirer du catalogue
   (désactivation) ; l'historique garde ses ventes et ses achats.

@@ -318,7 +318,7 @@ export class SaleReturnsService {
     tx: Db,
     sale: { id: string; paidAmount: number; totalTtc: number },
   ): Promise<{ reallyPaid: number; stillDue: number }> {
-    const [payments, refunds] = await Promise.all([
+    const [payments, refunds, pendingCheques] = await Promise.all([
       tx.customerPayment.aggregate({
         where: { saleId: sale.id },
         _sum: { amount: true },
@@ -327,10 +327,24 @@ export class SaleReturnsService {
         where: { saleId: sale.id },
         _sum: { totalTtc: true },
       }),
+      // Anciens chèques pas encore encaissés (fonctionnalité retirée le
+      // 2026-10-05, données gardées) : pas d'espèces rendues contre eux.
+      tx.customerPayment.aggregate({
+        where: {
+          saleId: sale.id,
+          chequeStatus: 'EN_PORTEFEUILLE',
+          reversedBy: null,
+        },
+        _sum: { amount: true },
+      }),
     ]);
     const paidLater = payments._sum.amount ?? 0;
     return {
-      reallyPaid: sale.paidAmount + paidLater - (refunds._sum.totalTtc ?? 0),
+      reallyPaid:
+        sale.paidAmount +
+        paidLater -
+        (refunds._sum.totalTtc ?? 0) -
+        (pendingCheques._sum.amount ?? 0),
       stillDue: sale.totalTtc - sale.paidAmount - paidLater,
     };
   }

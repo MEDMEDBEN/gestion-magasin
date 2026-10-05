@@ -607,7 +607,6 @@ export class PurchaseOrdersService {
   private static async buildLines(tx: Db, input: PurchaseLineInputDto[]) {
     const products = await tx.product.findMany({
       where: { id: { in: input.map((l) => l.productId) }, isActive: true },
-      include: { taxRate: true },
     });
     return input.map((line) => {
       const product = products.find((p) => p.id === line.productId);

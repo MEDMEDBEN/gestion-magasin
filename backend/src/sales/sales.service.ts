@@ -861,7 +861,7 @@ export class SalesService {
     const product = await tx.product.findUnique({
       where: { id: line.productId },
       // TOUS les tarifs : le plancher sans coût connu est le plus bas d'entre eux.
-      include: { taxRate: true, prices: true },
+      include: { prices: true },
     });
     if (!product?.isActive) {
       throw new BusinessException(

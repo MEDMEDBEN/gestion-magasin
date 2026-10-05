@@ -372,7 +372,6 @@ export class ReceptionsService {
   ) {
     const products = await tx.product.findMany({
       where: { id: { in: dto.lines.map((l) => l.productId) } },
-      include: { taxRate: true },
     });
     // Cumul par ligne de commande : deux lignes du même bon visant la même
     // ligne de commande ne doivent pas dépasser le reste à elles deux.

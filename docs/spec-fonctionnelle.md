@@ -131,7 +131,7 @@ Une vente **validée** (dans une seule transaction) : enregistre la vente + ses 
 Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`, `GROS`). `ProductPrice` porte le prix par (produit × tarif). Chaque client a un **tarif par défaut** (particulier → détail, électricien pro → gros). À la vente, la ligne prend le prix du tarif du client ; **le vendeur peut modifier le prix unitaire d'une ligne** (décision MEDMEDBEN 2026-09-22), jamais sous le dernier prix d'achat (sans coût connu : jamais sous le plus bas de ses tarifs — provisoire, à revoir plus tard ; ni coût ni tarif : pas de vente tant que l'admin n'a pas fixé un prix — validé par MEDMEDBEN le 2026-09-22) ; une remise ponctuelle reste possible selon permission (admin). **Le prix appliqué est figé sur la `SaleLine`**, à côté du prix du tarif (vente à prix modifié tracée pour l'admin).
 
 ### TVA, ticket et facture
-- Chaque produit a un **taux de TVA** (peut être 0).
+- ~~Chaque produit a un taux de TVA~~ — **TVA retirée le 2026-10-05** : toute nouvelle vente est à 0 %.
 - Une vente est de type **`TICKET`** (par défaut) ou **`FACTURE`**.
 - La vente stocke **HT / TVA / TTC** (calcul déterministe à partir des lignes).
 - Une **facture** reçoit un **numéro légal séquentiel et continu**, attribué **côté serveur en ligne** (jamais côté client, jamais hors-ligne). Une vente faite hors-ligne est un **ticket** ; sa transformation en facture (attribution du numéro) se fait à la reconnexion. Voir règle 11 de `CLAUDE.md`.
@@ -161,7 +161,7 @@ Le prix de vente d'un produit dépend d'un **tarif** (`PriceTier` : ex. `DETAIL`
 
 ## 8quater. Devis
 
-- Le vendeur crée un **devis** : client, lignes (produit, quantité, prix selon tarif, remise éventuelle), TVA, date de validité.
+- Le vendeur crée un **devis** : client, lignes (produit, quantité, prix selon tarif, remise éventuelle), date de validité (sans TVA depuis le 2026-10-05).
 - Statuts : `BROUILLON → ENVOYE → ACCEPTE → CONVERTI` (+ `REFUSE`, `EXPIRE`).
 - Un devis **accepté** se **convertit en vente** en un clic (reprend les lignes).
 - Un devis **ne touche jamais le stock** (aucun mouvement) — seule la vente crée les mouvements.

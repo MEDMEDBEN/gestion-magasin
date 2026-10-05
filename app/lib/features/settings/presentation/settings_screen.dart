@@ -15,7 +15,7 @@ class SettingsRights {
     : canManagePrices = user.hasRole('ADMIN') && user.can('price.manage'),
       canManageStore = user.hasRole('ADMIN') && user.can('settings.manage');
 
-  /// `POST/PATCH /pricing/{tiers,tax-rates}` : ADMIN + price.manage.
+  /// `POST/PATCH /pricing/tiers` : ADMIN + price.manage.
   final bool canManagePrices;
 
   /// `GET/PATCH /settings/store` : ADMIN + settings.manage.

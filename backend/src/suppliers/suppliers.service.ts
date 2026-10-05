@@ -625,6 +625,17 @@ export class SuppliersService {
             HttpStatus.CONFLICT,
           );
         }
+        // Ancien règlement par chèque (fonctionnalité retirée le 2026-10-05,
+        // données gardées) : il n'est jamais entré dans une caisse, et s'il est
+        // encaissé l'argent est en banque. Le contre-passer ici fausserait la
+        // caisse ou ferait revenir une dette payée : refusé (audits 2026-10-05).
+        if (original.chequeStatus !== null) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            'Paiement par chèque : contre-passation impossible depuis le retrait des chèques',
+            HttpStatus.CONFLICT,
+          );
+        }
         await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${original.supplierId}::uuid FOR UPDATE`;
         const session = original.cashSessionId
           ? await CashSessionsService.lockOpenSession(tx, { userId: user.id })

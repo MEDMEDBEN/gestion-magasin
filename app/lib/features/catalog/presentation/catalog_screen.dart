@@ -30,7 +30,11 @@ import 'product_form.dart';
 class CatalogRights {
   CatalogRights(AuthUser user)
     : canWriteProducts = user.hasRole('ADMIN') && user.can('product.write'),
-      canDisableProducts = user.hasRole('ADMIN') && user.can('product.disable'),
+      // `PATCH /products/:id` avec isActive : product.write ET product.disable.
+      canDisableProducts =
+          user.hasRole('ADMIN') &&
+          user.can('product.write') &&
+          user.can('product.disable'),
       canReadStock = user.can('stock.read.store'),
       canReadSuppliers =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&

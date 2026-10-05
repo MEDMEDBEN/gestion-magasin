@@ -15,7 +15,10 @@ export class DashboardDayDto {
 export class DashboardTopProductDto {
   @ApiProperty() productId!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ description: 'CA TTC des ventes validées, en centimes.' })
+  @ApiProperty({
+    description:
+      'CA des lignes des ventes validées, en centimes (hors remise globale de la vente : un classement).',
+  })
   revenueTtc!: number;
   @ApiProperty({ example: '12.500', description: 'Quantité vendue.' })
   quantity!: string;

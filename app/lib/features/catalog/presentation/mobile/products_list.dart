@@ -8,7 +8,7 @@ import '../../../../ui/widgets/screen_state.dart';
 import '../../../stock/application/stock_controller.dart';
 import '../../../stock/presentation/stock_status.dart';
 import '../../data/catalog_models.dart';
-import '../desktop/products_table.dart';
+import '../product_row_actions.dart';
 import '../product_photo.dart';
 
 /// Liste mobile (AMPÈRE §7, §9 : aucun tableau sur mobile) — lignes tactiles

@@ -49,6 +49,8 @@ export class CatalogService {
     };
   }
 
+  /// Taux de TVA : plus utilisés depuis le 2026-10-05 (NO_TAX), encore
+  /// synchronisés pour ne pas casser le curseur des apps déjà installées.
   static taxRateToDto(taxRate: TaxRate): TaxRateDto {
     return {
       id: taxRate.id,

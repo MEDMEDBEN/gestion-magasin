@@ -515,8 +515,8 @@ class SalesActions {
   /// le serveur jugera à la synchronisation : jamais présenté comme définitif).
   /// `expectedTotalTtc` : le total annoncé au client. En ligne, le serveur
   /// refuse (409) si un tarif a changé sur une ligne non modifiée (catalogue en
-  /// retard) ; hors ligne, le prix affiché fait foi et seule la TVA peut encore
-  /// faire diverger le total — jamais d'encaissement sur un faux total.
+  /// retard) ; hors ligne, le prix affiché fait foi (sans TVA depuis le
+  /// 2026-10-05) — jamais d'encaissement sur un faux total.
   /// `dueDate` : échéance OBLIGATOIRE dès qu'une partie reste à crédit.
   Future<WriteOutcome<Sale>> checkout(
     int paidAmount, {

@@ -26,7 +26,12 @@ Liste de MEDMEDBEN traitée, chaque point testé et poussé sur `develop` :
   Rapports, et les fenêtres d'historique (achats client, commandes/retours fournisseur, prix, paiements).
 - Preuves finales : backend lint/tsc OK, 164 unitaires, e2e 640 + ciblés (catalogue 59, transferts/devis 53,
   tableau de bord 15) ; app `flutter analyze` 0, **523 tests** ; captures de l'accueil vérifiées.
-- **Prochaine étape** : audits `reviewer` + `security-reviewer` du lot (en cours), puis rebuild des apps PC et
+- **Audits du lot** (`reviewer` + `security-reviewer`) : 0 bloquant ; le point commun (un ANCIEN chèque en base
+  ferait bouger la caisse à sa contre-passation, ou se rendrait en espèces) est corrigé par des gardes et prouvé
+  (`test/legacy-cheques.e2e-spec.ts`, contre-preuve : 3/3 échouent sans les gardes). Points mineurs traités : docs
+  TVA à jour, compatibilité des anciennes apps documentée, droits du bouton Supprimer alignés, `fl_chart` dans
+  CONVENTIONS, code mort retiré. Preuves finales : 164 unitaires, **648 e2e (49 suites)**, app **523 tests**.
+- **Prochaine étape** : VIDER les files hors ligne des appareils (tout synchronisé), puis rebuild des apps PC et
   téléphone (`git pull`, `dart run build_runner build`, build avec `--dart-define-from-file=config/prod.json`)
   et redéploiement du backend sur le VPS (`git pull`, `docker compose up -d --build`).
 

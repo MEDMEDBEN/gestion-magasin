@@ -249,12 +249,12 @@ de son import (prouvé par `export-guards.spec.ts`).
 ## Paramètres (P1 bis n°21h, ajouté le 2026-09-28)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
-| Lire les tarifs / taux actifs (`GET /pricing/{tiers,tax-rates}`) | ✅ | ✅ (`price.read`) | ✅ (`price.read`) |
-| Créer, renommer, désigner par défaut, (dés)activer un tarif ou un taux de TVA | ✅ (`price.manage`) | ❌ | ❌ |
+| Lire les tarifs actifs (`GET /pricing/tiers`) | ✅ | ✅ (`price.read`) | ✅ (`price.read`) |
+| Créer, renommer, désigner par défaut, (dés)activer un tarif | ✅ (`price.manage`) | ❌ | ❌ |
 | Lire / modifier l'identité du magasin imprimée (`/settings/store`) | ✅ (`settings.manage`) | ❌ | ❌ |
 
-Un seul tarif (et un seul taux) par défaut ; le défaut ne se désactive pas. Un nouveau taux de TVA vaut pour les
-ventes FUTURES (chaque ligne vendue garde le sien). Identité : un champ vide retombe sur la variable
+Un seul tarif par défaut ; le défaut ne se désactive pas. **TVA retirée le 2026-10-05** : `/pricing/tax-rates`
+n'existe plus (404). Identité : un champ vide retombe sur la variable
 d'environnement `STORE_*` du serveur.
 
 ## Étiquettes code-barres (P1 n°21b, ajouté le 2026-09-27)
