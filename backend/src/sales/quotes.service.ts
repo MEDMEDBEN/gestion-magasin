@@ -26,6 +26,7 @@ import { renderA4Document } from './sale-document';
 import { storeIdentity } from '../settings/store-settings';
 import { ConfigService } from '@nestjs/config';
 import { SalesService } from './sales.service';
+import { localDayRange } from '../common/document-number';
 
 type Db = Prisma.TransactionClient;
 
@@ -276,6 +277,8 @@ export class QuotesService {
   async findAll(query: QuoteListQueryDto): Promise<QuoteListDto> {
     const where = QuotesService.statusFilter(query.status);
     if (query.customerId) where.customerId = query.customerId;
+    const createdAt = localDayRange(query.from, query.to);
+    if (createdAt) where.createdAt = createdAt;
     if (query.q) {
       where.OR = [
         { number: { contains: query.q, mode: 'insensitive' } },

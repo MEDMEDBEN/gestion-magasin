@@ -13,6 +13,7 @@ import '../../auth/data/auth_models.dart';
 import '../../sales/application/sales_controller.dart';
 import '../application/quotes_controller.dart';
 import '../data/quote_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Devis (spec §8quater). On les FAIT depuis le panier de l'écran Vente — même
 /// recherche, même douchette, mêmes prix. Ici : les retrouver, les imprimer,
@@ -38,8 +39,16 @@ class QuotesScreen extends ConsumerWidget {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Row(
+          child: Wrap(
+            spacing: 0,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
+              PeriodFilter(
+                value: ref.watch(quotePeriodProvider),
+                onChanged: ref.read(quotePeriodProvider.notifier).set,
+              ),
+              const SizedBox(width: 12),
               for (final choice in const <QuoteStatus?>[
                 null,
                 QuoteStatus.draft,

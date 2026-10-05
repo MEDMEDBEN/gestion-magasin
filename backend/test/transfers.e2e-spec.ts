@@ -527,6 +527,38 @@ describe('Transferts magasin ↔ dépôt (e2e)', () => {
     }
   });
 
+  /// Filtre par dates (demande MEDMEDBEN du 2026-10-05) : jour de la demande,
+  /// jours d'Alger inclus.
+  it('liste filtrée par dates : aujourd’hui la montre, une autre période non', async () => {
+    const productId = await productWithStock('10');
+    const created = await as(tokens.vendeur)
+      .post('/api/transfers')
+      .send({
+        clientMutationId: randomUUID(),
+        lines: [{ productId, quantity: '1' }],
+      })
+      .expect(201);
+    transferIds.push(created.body.id);
+    const today = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Africa/Algiers',
+    }).format(new Date());
+    const ids = async (query: string) =>
+      (
+        await as(tokens.admin)
+          .get(`/api/transfers?limit=200&${query}`)
+          .expect(200)
+      ).body.data.map((t: { id: string }) => t.id);
+
+    expect(await ids(`from=${today}&to=${today}`)).toContain(created.body.id);
+    expect(await ids('from=2001-01-01&to=2001-01-31')).not.toContain(
+      created.body.id,
+    );
+    const bad = await as(tokens.admin)
+      .get('/api/transfers?from=05/10/2026')
+      .expect(400);
+    expect(bad.body.code).toBe('VALIDATION_FAILED');
+  });
+
   it('emplacements : omis, le serveur les résout ; d’une autre espèce, refusés', async () => {
     const productId = await productWithStock('10');
     // Le sens du flux ne s'inverse pas : le magasin ne peut pas être l'origine.

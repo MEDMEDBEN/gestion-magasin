@@ -388,24 +388,28 @@ class _CapturePurchasesApi extends PurchasesApi {
   _CapturePurchasesApi() : super(Dio());
 
   @override
-  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async =>
-      PurchaseOrderPage(
-        data: [
-          _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
-          _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
-          _po(
-            '5',
-            'f1',
-            PurchaseStatus.partiallyReceived,
-            11900000,
-            2,
-            received: 4,
-          ),
-          _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
-          _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
-        ],
-        meta: const PageMeta(page: 1, limit: 200, total: 5),
-      );
+  Future<PurchaseOrderPage> list({
+    int limit = 200,
+    String? supplierId,
+    String? from,
+    String? to,
+  }) async => PurchaseOrderPage(
+    data: [
+      _po('4', 'f1', PurchaseStatus.draft, 4284000, 3),
+      _po('3', 'f3', PurchaseStatus.ordered, 1428000, 2),
+      _po(
+        '5',
+        'f1',
+        PurchaseStatus.partiallyReceived,
+        11900000,
+        2,
+        received: 4,
+      ),
+      _po('2', 'f1', PurchaseStatus.confirmed, 21420000, 5),
+      _po('1', 'f2', PurchaseStatus.cancelled, 595000, 1),
+    ],
+    meta: const PageMeta(page: 1, limit: 200, total: 5),
+  );
 }
 
 class _CaptureReceptionsApi extends ReceptionsApi {
@@ -476,40 +480,44 @@ class _CaptureTransfersApi extends TransfersApi {
   );
 
   @override
-  Future<TransferPage> list({String? status, int limit = 200}) async =>
-      TransferPage(
-        data: [
-          _trf('4', TransferStatus.requested, TransferPriority.urgent),
-          _trf(
-            '3',
-            TransferStatus.prepared,
-            TransferPriority.normal,
-            asked: '40',
-            prepared: '36',
-            productId: 'p2',
-          ),
-          _trf(
-            '2',
-            TransferStatus.inTransit,
-            TransferPriority.high,
-            asked: '12',
-            prepared: '12',
-            shipped: '12',
-            productId: 'p3',
-          ),
-          _trf(
-            '1',
-            TransferStatus.received,
-            TransferPriority.normal,
-            asked: '25',
-            prepared: '25',
-            shipped: '25',
-            received: '23',
-            productId: 'p4',
-          ),
-        ],
-        meta: const PageMeta(page: 1, limit: 200, total: 4),
-      );
+  Future<TransferPage> list({
+    String? status,
+    int limit = 200,
+    String? from,
+    String? to,
+  }) async => TransferPage(
+    data: [
+      _trf('4', TransferStatus.requested, TransferPriority.urgent),
+      _trf(
+        '3',
+        TransferStatus.prepared,
+        TransferPriority.normal,
+        asked: '40',
+        prepared: '36',
+        productId: 'p2',
+      ),
+      _trf(
+        '2',
+        TransferStatus.inTransit,
+        TransferPriority.high,
+        asked: '12',
+        prepared: '12',
+        shipped: '12',
+        productId: 'p3',
+      ),
+      _trf(
+        '1',
+        TransferStatus.received,
+        TransferPriority.normal,
+        asked: '25',
+        prepared: '25',
+        shipped: '25',
+        received: '23',
+        productId: 'p4',
+      ),
+    ],
+    meta: const PageMeta(page: 1, limit: 200, total: 4),
+  );
 }
 
 /// Inventaires à toutes les étapes : comptage en cours, écarts à valider, clos.

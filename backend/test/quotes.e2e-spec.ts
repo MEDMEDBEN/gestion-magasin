@@ -206,6 +206,26 @@ describe('Devis (e2e)', () => {
       ).toBe(movementsBefore);
     });
 
+    it('liste filtrée par dates de création (jours d’Alger)', async () => {
+      const p = await product('5.000');
+      const created = await createQuote(tokens.vendeur, {
+        lines: [{ productId: p, quantity: '1' }],
+      }).expect(201);
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Algiers',
+      }).format(new Date());
+      const ids = async (query: string) =>
+        (
+          await as(tokens.admin)
+            .get(`/api/quotes?limit=200&${query}`)
+            .expect(200)
+        ).body.data.map((q: { id: string }) => q.id);
+      expect(await ids(`from=${today}&to=${today}`)).toContain(created.body.id);
+      expect(await ids('from=2001-01-01&to=2001-01-31')).not.toContain(
+        created.body.id,
+      );
+    });
+
     it('un devis peut dépasser le stock : il ne réserve rien', async () => {
       const p = await product('1.000');
       await createQuote(tokens.vendeur, {

@@ -29,6 +29,7 @@ import {
   TransferListQueryDto,
 } from './dto/transfer.dto';
 import { transferDocument } from './transfer-document';
+import { localDayRange } from '../common/document-number';
 
 type Db = Prisma.TransactionClient;
 type TransferWithLines = Transfer & { lines: TransferLine[] };
@@ -479,9 +480,11 @@ export class TransfersService {
     query: TransferListQueryDto,
     user: AuthenticatedUser,
   ): Promise<TransferListDto> {
+    const requestedAt = localDayRange(query.from, query.to);
     const where: Prisma.TransferWhereInput = {
       ...TransfersService.statusFilter(query.status),
       ...(query.mine && { requestedById: user.id }),
+      ...(requestedAt && { requestedAt }),
     };
     const [rows, total] = await Promise.all([
       this.prisma.transfer.findMany({

@@ -51,14 +51,18 @@ class _FakeQuotesApi extends QuotesApi {
   ApiException? failNext;
 
   @override
-  Future<QuotePage> list({QuoteStatus? status, int limit = 100}) async =>
-      QuotePage(
-        data: [
-          for (final q in quotes)
-            if (status == null || q.status == status) q,
-        ],
-        meta: PageMeta(page: 1, limit: limit, total: quotes.length),
-      );
+  Future<QuotePage> list({
+    QuoteStatus? status,
+    int limit = 100,
+    String? from,
+    String? to,
+  }) async => QuotePage(
+    data: [
+      for (final q in quotes)
+        if (status == null || q.status == status) q,
+    ],
+    meta: PageMeta(page: 1, limit: limit, total: quotes.length),
+  );
 
   @override
   Future<Quote> create({

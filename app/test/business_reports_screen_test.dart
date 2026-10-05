@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/file_export.dart';
 import 'package:gestion_magasin/core/money.dart';
@@ -312,7 +313,9 @@ void main() {
     expect(api.salesRanges, hasLength(1));
     expect(api.stockCalls, hasLength(1));
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '90 j'));
+    await tester.tap(find.byType(PeriodFilter));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('7 derniers jours'));
     await tester.pumpAndSettle();
 
     expect(api.salesRanges, hasLength(2));

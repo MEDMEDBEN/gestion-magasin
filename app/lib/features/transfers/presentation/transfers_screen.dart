@@ -16,6 +16,7 @@ import '../../sales/application/sales_controller.dart' show printPdfProvider;
 import '../application/transfers_controller.dart';
 import '../data/transfers_api.dart';
 import '../data/transfers_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 import 'transfer_quantities_form.dart';
 import 'transfer_request_form.dart';
 
@@ -116,19 +117,27 @@ class TransfersScreen extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (rights.canRequest)
-          Padding(
-            padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: () =>
-                    openFormPanel<void>(context, const TransferRequestForm()),
-                icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('Nouvelle demande'),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              PeriodFilter(
+                value: ref.watch(transferPeriodProvider),
+                onChanged: ref.read(transferPeriodProvider.notifier).set,
               ),
-            ),
+              if (rights.canRequest)
+                FilledButton.icon(
+                  onPressed: () =>
+                      openFormPanel<void>(context, const TransferRequestForm()),
+                  icon: const Icon(LucideIcons.plus, size: 17),
+                  label: const Text('Nouvelle demande'),
+                ),
+            ],
           ),
+        ),
         Expanded(
           child: transfers.when(
             loading: () => const AmpereSkeletonList(rows: 5),

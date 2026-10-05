@@ -8,18 +8,44 @@ import '../../../core/quantity.dart';
 import '../../stock/application/stock_controller.dart';
 import '../data/transfers_api.dart';
 import '../data/transfers_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Transferts lus EN LIGNE, gardés sur l'appareil : au dépôt sans réseau,
 /// l'écran s'ouvre sur la DERNIÈRE liste connue (datée à l'écran), et toute
 /// étape part dans la file — le serveur rejuge l'état au sync.
-final transfersProvider = FutureProvider.autoDispose<CachedList<Transfer>>(
-  (ref) => onlineOrCached(
+///
+/// Une PÉRIODE choisie (historique) se lit en ligne seulement : la copie de
+/// l'appareil reste la liste de travail complète, jamais un extrait filtré.
+final transfersProvider = FutureProvider.autoDispose<CachedList<Transfer>>((
+  ref,
+) async {
+  final period = ref.watch(transferPeriodProvider);
+  if (period != allTime) {
+    ref.watch(currentUserIdProvider);
+    final page = await ref
+        .watch(transfersApiProvider)
+        .list(from: period.from, to: period.to);
+    return CachedList(page.data);
+  }
+  return onlineOrCached(
     ref,
     DocumentKind.transfer,
     fetch: () async => (await ref.watch(transfersApiProvider).list()).data,
     toJson: (t) => t.toJson(),
     fromJson: Transfer.fromJson,
-  ),
+  );
+});
+
+/// Période affichée par la liste (filtre par dates, 2026-10-05).
+class TransferPeriod extends Notifier<HistoryPeriod> {
+  @override
+  HistoryPeriod build() => allTime;
+
+  void set(HistoryPeriod period) => state = period;
+}
+
+final transferPeriodProvider = NotifierProvider<TransferPeriod, HistoryPeriod>(
+  TransferPeriod.new,
 );
 
 /// Ligne saisie dans le formulaire de demande (avant envoi au serveur).

@@ -15,11 +15,21 @@ class PurchasesApi {
 
   final Dio _dio;
 
-  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) {
+  Future<PurchaseOrderPage> list({
+    int limit = 200,
+    String? supplierId,
+    String? from,
+    String? to,
+  }) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/purchase-orders',
-        queryParameters: {'limit': limit, 'supplierId': ?supplierId},
+        queryParameters: {
+          'limit': limit,
+          'supplierId': ?supplierId,
+          'from': ?from,
+          'to': ?to,
+        },
       );
       return PurchaseOrderPage.fromJson(response.data!);
     });

@@ -13,6 +13,7 @@ import '../../../ui/widgets/screen_state.dart';
 import '../application/business_reports_controller.dart';
 import '../data/business_report_models.dart';
 import '../data/business_reports_api.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Rapports ventes / stock / achats (spec §21).
 ///
@@ -27,29 +28,17 @@ class BusinessReportsScreen extends ConsumerWidget {
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
-    final days = ref.watch(reportRangeProvider);
+    final period = ref.watch(reportRangeProvider);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(margin, 12, margin, 24),
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              for (final choice in const [7, 30, 90, 365])
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text('$choice j'),
-                    selected: days == choice,
-                    onSelected: (on) {
-                      if (on) {
-                        ref.read(reportRangeProvider.notifier).set(choice);
-                      }
-                    },
-                  ),
-                ),
-            ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: PeriodFilter(
+            value: period,
+            allowAll: false,
+            onChanged: ref.read(reportRangeProvider.notifier).set,
           ),
         ),
         const SizedBox(height: 12),
@@ -180,7 +169,7 @@ Future<ExportedFile> _exportForRange(
   String report,
   ExportFormat format,
 ) {
-  final range = rangeFor(ref.read(reportRangeProvider));
+  final range = boundsOf(ref.read(reportRangeProvider));
   return ref
       .read(businessReportsApiProvider)
       .export(report, format, from: range.from, to: range.to);

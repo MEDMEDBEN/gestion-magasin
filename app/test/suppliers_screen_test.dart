@@ -148,7 +148,12 @@ class _FakePurchasesApi extends PurchasesApi {
   final asked = <String?>[];
 
   @override
-  Future<PurchaseOrderPage> list({int limit = 200, String? supplierId}) async {
+  Future<PurchaseOrderPage> list({
+    int limit = 200,
+    String? supplierId,
+    String? from,
+    String? to,
+  }) async {
     asked.add(supplierId);
     final order = PurchaseOrder(
       id: 'po1',

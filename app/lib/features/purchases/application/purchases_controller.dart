@@ -5,6 +5,7 @@ import '../../../core/quantity.dart';
 import '../../../core/providers.dart';
 import '../data/purchases_api.dart';
 import '../data/purchases_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Commandes lues EN LIGNE, liées au compte connecté (poste partagé).
 /// Commandes lues EN LIGNE, et gardées NULLE PART : elles portent les prix
@@ -14,8 +15,24 @@ final purchaseOrdersProvider = FutureProvider.autoDispose<List<PurchaseOrder>>((
   ref,
 ) async {
   ref.watch(currentUserIdProvider);
-  return (await ref.watch(purchasesApiProvider).list()).data;
+  final period = ref.watch(purchasePeriodProvider);
+  return (await ref
+          .watch(purchasesApiProvider)
+          .list(from: period.from, to: period.to))
+      .data;
 });
+
+/// Période affichée par la liste (filtre par dates, 2026-10-05).
+class PurchasePeriod extends Notifier<HistoryPeriod> {
+  @override
+  HistoryPeriod build() => allTime;
+
+  void set(HistoryPeriod period) => state = period;
+}
+
+final purchasePeriodProvider = NotifierProvider<PurchasePeriod, HistoryPeriod>(
+  PurchasePeriod.new,
+);
 
 /// Ligne saisie dans le formulaire (avant envoi au serveur).
 typedef PurchaseLineDraft = ({

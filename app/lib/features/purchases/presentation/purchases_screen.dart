@@ -20,6 +20,7 @@ import '../../sales/application/sales_controller.dart' show printPdfProvider;
 import '../application/purchases_controller.dart';
 import '../data/purchases_api.dart';
 import '../data/purchases_models.dart';
+import '../../../ui/widgets/period_filter.dart';
 import 'purchase_order_form.dart';
 
 /// Droits achats, MIROIRS des guards serveur (`docs/permissions.md`) :
@@ -83,9 +84,15 @@ class PurchasesScreen extends ConsumerWidget {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 10,
+            runSpacing: 10,
             children: [
+              PeriodFilter(
+                value: ref.watch(purchasePeriodProvider),
+                onChanged: ref.read(purchasePeriodProvider.notifier).set,
+              ),
               // Miroirs des gardes serveur de `GET /purchase-orders/export` et
               // `GET /receptions/export`.
               if (rights.canWrite || rights.canReceive)

@@ -1,4 +1,9 @@
-import { ApiProperty, ApiPropertyOptional, PickType } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+  PickType,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -18,6 +23,7 @@ import {
 } from '../../common/dto/pagination.dto';
 import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
 import { CreateSaleDto, CreateSaleLineDto } from './sale.dto';
+import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
 
 /// Statuts d'un devis (spec §8quater). `EXPIRE` n'est jamais ÉCRIT en base :
 /// un devis non abouti dont la date de validité est passée est LU expiré —
@@ -144,7 +150,11 @@ export class QuoteDto {
   @ApiProperty({ type: [QuoteLineDto] }) lines!: QuoteLineDto[];
 }
 
-export class QuoteListQueryDto extends PaginationQueryDto {
+/// Période : jour de CRÉATION du devis, jours d'Alger inclus.
+export class QuoteListQueryDto extends IntersectionType(
+  PaginationQueryDto,
+  DayPeriodQueryDto,
+) {
   @ApiPropertyOptional({ enum: QUOTE_STATUSES })
   @IsIn(QUOTE_STATUSES)
   @IsOptional()

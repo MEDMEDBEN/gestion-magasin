@@ -15,11 +15,21 @@ class TransfersApi {
 
   final Dio _dio;
 
-  Future<TransferPage> list({String? status, int limit = 200}) {
+  Future<TransferPage> list({
+    String? status,
+    int limit = 200,
+    String? from,
+    String? to,
+  }) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/transfers',
-        queryParameters: {'limit': limit, 'status': ?status},
+        queryParameters: {
+          'limit': limit,
+          'status': ?status,
+          'from': ?from,
+          'to': ?to,
+        },
       );
       return TransferPage.fromJson(response.data!);
     });

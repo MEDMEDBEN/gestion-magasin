@@ -13,6 +13,7 @@ import '../../sales/data/sales_api.dart';
 import '../../sales/data/sales_models.dart';
 import '../data/quote_models.dart';
 import '../data/quotes_api.dart';
+import '../../../ui/widgets/period_filter.dart';
 
 /// Filtre de statut de la liste (`null` = tous).
 class QuoteFilter extends Notifier<QuoteStatus?> {
@@ -32,8 +33,24 @@ final quotesProvider = FutureProvider.autoDispose<List<Quote>>((ref) async {
   ref.watch(currentUserIdProvider);
   ref.watch(serverReachableProvider);
   final status = ref.watch(quoteFilterProvider);
-  return (await ref.watch(quotesApiProvider).list(status: status)).data;
+  final period = ref.watch(quotePeriodProvider);
+  return (await ref
+          .watch(quotesApiProvider)
+          .list(status: status, from: period.from, to: period.to))
+      .data;
 });
+
+/// Période affichée par la liste (filtre par dates, 2026-10-05).
+class QuotePeriod extends Notifier<HistoryPeriod> {
+  @override
+  HistoryPeriod build() => allTime;
+
+  void set(HistoryPeriod period) => state = period;
+}
+
+final quotePeriodProvider = NotifierProvider<QuotePeriod, HistoryPeriod>(
+  QuotePeriod.new,
+);
 
 class QuoteActions {
   QuoteActions(this._ref);

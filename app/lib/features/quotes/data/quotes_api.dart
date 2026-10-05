@@ -24,12 +24,19 @@ class QuotesApi {
 
   final Dio _dio;
 
-  Future<QuotePage> list({QuoteStatus? status, int limit = 100}) {
+  Future<QuotePage> list({
+    QuoteStatus? status,
+    int limit = 100,
+    String? from,
+    String? to,
+  }) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/quotes',
         queryParameters: {
           'limit': limit,
+          'from': ?from,
+          'to': ?to,
           if (status != null && status != QuoteStatus.unknown)
             'status': _wire(status),
         },

@@ -7,6 +7,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/dates.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/document_cache.dart';
@@ -64,9 +66,16 @@ class _FakeTransfersApi extends TransfersApi {
   String? shippedId;
   String? acceptedId;
   String? closedStatus;
+  final periods = <({String? from, String? to})>[];
 
   @override
-  Future<TransferPage> list({String? status, int limit = 200}) async {
+  Future<TransferPage> list({
+    String? status,
+    int limit = 200,
+    String? from,
+    String? to,
+  }) async {
+    periods.add((from: from, to: to));
     if (offline) {
       throw const ApiException(statusCode: 0, message: 'hors ligne');
     }
@@ -184,6 +193,32 @@ final printedPdfs = <String>[];
 
 void main() {
   setUp(printedPdfs.clear);
+
+  testWidgets(
+    'période choisie : envoyée au serveur, la copie hors ligne intacte',
+    (tester) async {
+      final cache = MemoryDocumentCache();
+      final api = await _pump(
+        tester,
+        _magasinier(),
+        transfers: [_transfer(TransferStatus.inTransit)],
+        cache: cache,
+      );
+      // Par défaut : toute la liste de travail (gardée pour le hors-ligne).
+      expect(api.periods.last, (from: null, to: null));
+      final saved = cache.byKind.length;
+
+      await tester.tap(find.byType(PeriodFilter));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Aujourd’hui'));
+      await tester.pumpAndSettle();
+
+      final today = isoDay(DateTime.now());
+      expect(api.periods.last, (from: today, to: today));
+      // L'extrait filtré n'écrase pas la liste gardée pour le hors-ligne.
+      expect(cache.byKind.length, saved);
+    },
+  );
 
   testWidgets('bon de transfert : imprimé depuis le transfert', (tester) async {
     final api = await _pump(

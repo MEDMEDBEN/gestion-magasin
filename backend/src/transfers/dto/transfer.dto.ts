@@ -1,4 +1,8 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiProperty,
+  ApiPropertyOptional,
+  IntersectionType,
+} from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -22,6 +26,7 @@ import {
   ClientGeneratedId,
   IsCanonicalUuid,
 } from '../../common/validation';
+import { DayPeriodQueryDto } from '../../common/dto/day-period.dto';
 
 /// Quantités : décimales à 3 décimales au plus (règle 10), transportées en
 /// CHAÎNE pour ne jamais passer par un flottant.
@@ -216,7 +221,11 @@ export class TransferDto {
   @ApiProperty({ type: [TransferLineDto] }) lines!: TransferLineDto[];
 }
 
-export class TransferListQueryDto extends PaginationQueryDto {
+/// Période : jour de la DEMANDE (`requestedAt`), jours d'Alger inclus.
+export class TransferListQueryDto extends IntersectionType(
+  PaginationQueryDto,
+  DayPeriodQueryDto,
+) {
   @ApiPropertyOptional({
     description:
       'Statut exact, ou `EN_COURS` pour tout ce qui n’est pas soldé.',
