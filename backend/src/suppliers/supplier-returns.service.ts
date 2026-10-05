@@ -216,7 +216,6 @@ export class SupplierReturnsService {
           unitPriceHt: true,
           lineTotalTtc: true,
           purchaseLine: { select: { taxRate: true } },
-          product: { select: { taxRate: { select: { rate: true } } } },
         },
       }),
       tx.supplierReturnLine.groupBy({
@@ -236,10 +235,7 @@ export class SupplierReturnsService {
           receivedQuantity: r.receivedQuantity,
           unitPriceHt: r.unitPriceHt,
           lineTotalTtc: r.lineTotalTtc,
-          taxRate:
-            r.purchaseLine?.taxRate ??
-            r.product.taxRate?.rate ??
-            new Decimal(0),
+          taxRate: r.purchaseLine?.taxRate ?? new Decimal(0),
         }));
       const gone =
         sentBack.find((r) => r.productId === input.productId)?._sum.quantity ??

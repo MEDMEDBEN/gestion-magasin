@@ -5,7 +5,7 @@ import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
-import { roundMoney, taxAmount } from '../common/money';
+import { NO_TAX, roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
@@ -397,7 +397,7 @@ export class ReceptionsService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      let taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+      let taxRate = NO_TAX;
       let unitPriceHt = line.unitPriceHt;
       if (line.purchaseLineId) {
         const ordered = order?.lines.find((l) => l.id === line.purchaseLineId);

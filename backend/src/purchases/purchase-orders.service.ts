@@ -9,7 +9,7 @@ import { formatDateTime, UNIT_LABEL } from '../common/pdf/pdf';
 import { renderA4Document } from '../sales/sale-document';
 import { storeIdentity } from '../settings/store-settings';
 import { ConfigService } from '@nestjs/config';
-import { roundMoney, taxAmount } from '../common/money';
+import { NO_TAX, roundMoney, taxAmount } from '../common/money';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import {
   Prisma,
@@ -633,7 +633,7 @@ export class PurchaseOrdersService {
         productId: product.id,
         orderedQuantity: quantity,
         unitPriceHt: line.unitPriceHt,
-        taxRate: product.taxRate?.rate ?? new Prisma.Decimal(0),
+        taxRate: NO_TAX,
       };
     });
   }

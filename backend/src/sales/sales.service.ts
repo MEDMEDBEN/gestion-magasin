@@ -12,7 +12,7 @@ import {
 } from '../common/document-number';
 import { collectAll, ExportDocument } from '../common/export/export';
 import { ErrorCode } from '../common/error-codes';
-import { roundMoney, taxAmount } from '../common/money';
+import { NO_TAX, roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { PERMISSIONS } from '../common/permissions';
 import { formatDA } from '../common/pdf/pdf';
@@ -205,7 +205,7 @@ export class SalesService {
     ) {
       throw new BusinessException(
         ErrorCode.SALE_TOTAL_CHANGED,
-        `Le total a changé : ${formatDA(totalTtc)} (tarif ou TVA mis à jour) — vérifiez avant d’encaisser`,
+        `Le total a changé : ${formatDA(totalTtc)} (tarif mis à jour) — vérifiez avant d’encaisser`,
         HttpStatus.CONFLICT,
       );
     }
@@ -940,7 +940,7 @@ export class SalesService {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
-    const taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+    const taxRate = NO_TAX;
     const lineTotalHt = grossHt - discount;
     // Le plancher vaut aussi pour le NET : une remise admin ne fait pas passer
     // la ligne sous le coût.

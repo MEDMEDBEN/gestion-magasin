@@ -115,8 +115,6 @@ export class CreateProductDto {
 
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() categoryId?:
     string | null;
-  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() taxRateId?:
-    string | null;
   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() mainSupplierId?:
     string | null;
   @ApiPropertyOptional({
@@ -238,10 +236,6 @@ export class UpdateProductDto {
   @IsCanonicalUuid()
   @IsOptional()
   categoryId?: string | null;
-  @ApiPropertyOptional({ nullable: true })
-  @IsCanonicalUuid()
-  @IsOptional()
-  taxRateId?: string | null;
   @ApiPropertyOptional({ nullable: true })
   @IsCanonicalUuid()
   @IsOptional()

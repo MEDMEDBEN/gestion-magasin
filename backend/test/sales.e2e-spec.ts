@@ -35,7 +35,9 @@ describe('Ventes (e2e)', () => {
       request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
-  /// Produit au magasin : prix DETAIL / GROS en centimes, TVA 19 %.
+  /// Produit au magasin : prix DETAIL / GROS en centimes. Il garde TVA 19 %
+  /// en base : la TVA est RETIRÉE (décision MEDMEDBEN 2026-10-05), toute vente
+  /// est à 0 % — TTC = HT. Les montants ci-dessous sont donc sans TVA.
   const product = async (stock: string, detail = 145000, gros = 120000) => {
     const n = ++counter;
     const created = await prisma.product.create({
@@ -160,7 +162,7 @@ describe('Ventes (e2e)', () => {
   describe('validation d’une vente', () => {
     it('prix modifié par le VENDEUR : appliqué, tarif conservé, tracé pour l’admin', async () => {
       const p = await product('10.000');
-      // Tarif 1 450,00 HT → vendu 1 600,00 HT : TTC 1 904,00.
+      // Tarif 1 450,00 → vendu 1 600,00 (sans TVA : TTC = HT).
       const res = await as(tokens.vendeur)
         .post('/api/sales')
         .send({
@@ -172,11 +174,11 @@ describe('Ventes (e2e)', () => {
               priceEdited: true,
             },
           ],
-          paidAmount: 190400,
+          paidAmount: 160000,
         })
         .expect(201);
 
-      expect(res.body).toMatchObject({ totalHt: 160000, totalTtc: 190400 });
+      expect(res.body).toMatchObject({ totalHt: 160000, totalTtc: 160000 });
       expect(res.body.lines[0]).toMatchObject({
         unitPriceHt: 160000,
         tariffPriceHt: 145000,
@@ -221,7 +223,7 @@ describe('Ventes (e2e)', () => {
         .post('/api/sales')
         .send({
           lines: [{ productId: p, quantity: '1', unitPriceHt: 145000 }],
-          paidAmount: 172550,
+          paidAmount: 145000,
         })
         .expect(201);
       expect(
@@ -246,7 +248,7 @@ describe('Ventes (e2e)', () => {
               priceEdited: true,
             },
           ],
-          paidAmount: 142799,
+          paidAmount: 119999,
         })
         .expect(422);
       expect(res.body.code).toBe('PRICE_BELOW_COST');
@@ -264,19 +266,20 @@ describe('Ventes (e2e)', () => {
               priceEdited: true,
             },
           ],
-          paidAmount: 142800,
+          paidAmount: 120000,
         })
         .expect(201);
     });
 
     it('comptoir payé en espèces : prix du tarif par défaut figé, TVA, stock, caisse', async () => {
       const p = await product('10.000');
-      // 2,5 × 1 450,00 = 3 625,00 HT ; TVA 19 % = 688,75 ; TTC 4 313,75
+      // 2,5 × 1 450,00 = 3 625,00 ; TVA 0 % malgré les 19 % du produit en
+      // base : TTC 3 625,00
       const res = await as(tokens.vendeur)
         .post('/api/sales')
         .send({
           lines: [{ productId: p, quantity: '2.5' }],
-          paidAmount: 431375,
+          paidAmount: 362500,
         })
         .expect(201);
 
@@ -284,16 +287,17 @@ describe('Ventes (e2e)', () => {
         type: 'TICKET',
         status: 'VALIDEE',
         totalHt: 362500,
-        totalTax: 68875,
-        totalTtc: 431375,
-        paidAmount: 431375,
+        totalTax: 0,
+        totalTtc: 362500,
+        paidAmount: 362500,
         remainingAmount: 0,
       });
       expect(res.body.number).toMatch(/^TK-\d{4}-\d{6}$/);
       expect(res.body.lines[0]).toMatchObject({
         unitPriceHt: 145000,
         priceTierId: detailId,
-        taxRate: '19.00',
+        taxRate: '0.00',
+        lineTaxAmount: 0,
         quantity: '2.500',
       });
       expect(await stockOf(p)).toBe('7.500');
@@ -305,7 +309,7 @@ describe('Ventes (e2e)', () => {
       const cash = await as(tokens.vendeur)
         .get('/api/cash-sessions/current')
         .expect(200);
-      expect(cash.body.cashSalesAmount).toBeGreaterThanOrEqual(431375);
+      expect(cash.body.cashSalesAmount).toBeGreaterThanOrEqual(362500);
 
       // Le prix est FIGÉ : changer le tarif ensuite ne touche pas la vente passée.
       await prisma.productPrice.updateMany({
@@ -318,6 +322,50 @@ describe('Ventes (e2e)', () => {
       expect(again.body.lines[0].unitPriceHt).toBe(145000);
     });
 
+    /// TVA RETIRÉE (décision MEDMEDBEN 2026-10-05) : le produit a TOUJOURS
+    /// TVA 19 % en base (données non touchées), la vente n'en compte aucune.
+    it('produit à TVA 19 % en base : vendu SANS TVA (totalTax 0, TTC = HT)', async () => {
+      const p = await product('10.000');
+      const stored = await prisma.product.findUniqueOrThrow({
+        where: { id: p },
+        include: { taxRate: true },
+      });
+      expect(stored.taxRate?.rate.toFixed(2)).toBe('19.00');
+
+      // 3 × 1 450,00 = 4 350,00 ; avec la TVA d'avant ce serait 5 176,50.
+      const res = await as(tokens.vendeur)
+        .post('/api/sales')
+        .send({
+          lines: [{ productId: p, quantity: '3' }],
+          paidAmount: 435000,
+          expectedTotalTtc: 435000,
+        })
+        .expect(201);
+      expect(res.body).toMatchObject({
+        totalHt: 435000,
+        totalTax: 0,
+        totalTtc: 435000,
+        paidAmount: 435000,
+        remainingAmount: 0,
+      });
+      const lines = await prisma.saleLine.findMany({
+        where: { saleId: res.body.id },
+      });
+      expect(lines).toHaveLength(1);
+      expect(lines[0].taxRate.toFixed(2)).toBe('0.00');
+      expect(lines[0]).toMatchObject({
+        lineTotalHt: 435000,
+        lineTaxAmount: 0,
+        lineTotalTtc: 435000,
+      });
+      // Caisse : encaissé exactement le total sans TVA.
+      const cash = await prisma.cashMovement.findFirstOrThrow({
+        where: { saleId: res.body.id },
+      });
+      expect(cash.amount).toBe(435000);
+      expect(await stockOf(p)).toBe('7.000');
+    });
+
     it('client GROS : son tarif s’applique', async () => {
       const p = await product('10.000');
       const c = await customer(0, grosId);
@@ -326,14 +374,14 @@ describe('Ventes (e2e)', () => {
         .send({
           customerId: c,
           lines: [{ productId: p, quantity: '1' }],
-          paidAmount: 142800,
+          paidAmount: 120000,
         })
         .expect(201);
       expect(res.body.lines[0]).toMatchObject({
         unitPriceHt: 120000,
         priceTierId: grosId,
       });
-      expect(res.body.totalTtc).toBe(142800);
+      expect(res.body.totalTtc).toBe(120000);
     });
 
     it('stock insuffisant → STOCK_NEGATIVE, et RIEN n’est écrit (atomicité)', async () => {
@@ -349,7 +397,7 @@ describe('Ventes (e2e)', () => {
             { productId: short, quantity: '5' },
           ],
           // Payée en entier : la vente est ÉCRITE puis défaite par le refus de stock.
-          paidAmount: 7 * 172550,
+          paidAmount: 7 * 145000,
         })
         .expect(422);
 
@@ -366,7 +414,7 @@ describe('Ventes (e2e)', () => {
             .post('/api/sales')
             .send({
               lines: [{ productId: p, quantity: '1' }],
-              paidAmount: 172550,
+              paidAmount: 145000,
             }),
         ),
       );
@@ -402,15 +450,15 @@ describe('Ventes (e2e)', () => {
         .expect(403);
       expect(denied.body.code).toBe('DISCOUNT_NOT_ALLOWED');
 
-      // 1 450 − 100 = 1 350 HT ; TVA 256,50 ; TTC 1 606,50
+      // 1 450 − 100 = 1 350 ; sans TVA : TTC 1 350,00
       const ok = await as(tokens.admin)
         .post('/api/sales')
-        .send({ lines: [line], paidAmount: 160650 })
+        .send({ lines: [line], paidAmount: 135000 })
         .expect(201);
       expect(ok.body).toMatchObject({
         totalHt: 135000,
-        totalTax: 25650,
-        totalTtc: 160650,
+        totalTax: 0,
+        totalTtc: 135000,
       });
     });
 
@@ -439,7 +487,7 @@ describe('Ventes (e2e)', () => {
           .send({
             customerId: c,
             lines: [{ productId: p, quantity: '1' }],
-            paidAmount: 172550,
+            paidAmount: 145000,
           })
           .expect(201);
         expect(res.body.lines[0]).toMatchObject({
@@ -546,7 +594,7 @@ describe('Ventes (e2e)', () => {
               discountAmount: 1,
             },
           ],
-          paidAmount: 142799,
+          paidAmount: 119999,
         })
         .expect(422);
       expect(res.body.code).toBe('PRICE_BELOW_COST');
@@ -558,7 +606,7 @@ describe('Ventes (e2e)', () => {
         .post('/api/sales')
         .send({
           lines: [{ productId: p, quantity: '1', unitPriceHt: 140000 }],
-          paidAmount: 166600,
+          paidAmount: 140000,
         })
         .expect(409);
       expect(res.body.code).toBe('SALE_TOTAL_CHANGED');
@@ -582,7 +630,7 @@ describe('Ventes (e2e)', () => {
       const body = {
         clientMutationId: id,
         lines: [{ productId: p, quantity: '1' }],
-        paidAmount: 172550,
+        paidAmount: 145000,
       };
       const first = await as(tokens.vendeur)
         .post('/api/sales')
@@ -604,7 +652,7 @@ describe('Ventes (e2e)', () => {
         .send({
           clientMutationId: id,
           lines: [{ productId: p, quantity: '1' }],
-          paidAmount: 172550,
+          paidAmount: 145000,
         })
         .expect(201);
       const res = await as(tokens.vendeur)
@@ -612,7 +660,7 @@ describe('Ventes (e2e)', () => {
         .send({
           clientMutationId: id,
           lines: [{ productId: p, quantity: '2' }],
-          paidAmount: 345100,
+          paidAmount: 290000,
         })
         .expect(409);
       expect(res.body.code).toBe('SALE_ALREADY_RECORDED');
@@ -627,7 +675,7 @@ describe('Ventes (e2e)', () => {
             { productId: p, quantity: '1' },
             { productId: b, quantity: '1' },
           ],
-          paidAmount: 345100,
+          paidAmount: 290000,
         })
         .expect(201);
       await as(tokens.vendeur)
@@ -638,7 +686,7 @@ describe('Ventes (e2e)', () => {
             { productId: p, quantity: '1' },
             { productId: p, quantity: '1' },
           ],
-          paidAmount: 345100,
+          paidAmount: 290000,
         })
         .expect(409);
       expect(await stockOf(p)).toBe('8.000');
@@ -655,14 +703,14 @@ describe('Ventes (e2e)', () => {
         })
         .expect(409);
       expect(res.body.code).toBe('SALE_TOTAL_CHANGED');
-      expect(res.body.message).toContain('1 725,50 DA');
+      expect(res.body.message).toContain('1 450,00 DA');
       expect(await stockOf(p)).toBe('10.000');
       await as(tokens.vendeur)
         .post('/api/sales')
         .send({
           lines: [{ productId: p, quantity: '1' }],
-          paidAmount: 172550,
-          expectedTotalTtc: 172550,
+          paidAmount: 145000,
+          expectedTotalTtc: 145000,
         })
         .expect(201);
     });
@@ -700,7 +748,7 @@ describe('Ventes (e2e)', () => {
           dueDate: DUE_DATE,
         })
         .expect(201);
-      expect(credit.body.remainingAmount).toBe(172550);
+      expect(credit.body.remainingAmount).toBe(145000);
 
       const over = await as(tokens.vendeur)
         .post('/api/sales')
@@ -760,7 +808,7 @@ describe('Ventes (e2e)', () => {
             .post('/api/sales')
             .send({
               lines: [{ productId: p, quantity: '1' }],
-              paidAmount: 172550,
+              paidAmount: 145000,
             })
             .expect(201)
         ).body;
@@ -801,7 +849,7 @@ describe('Ventes (e2e)', () => {
               .post('/api/sales')
               .send({
                 lines: [{ productId: p, quantity: '1' }],
-                paidAmount: 172550,
+                paidAmount: 145000,
               })
               .expect(201)
           ).body,
@@ -824,7 +872,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '2.5' }],
-            paidAmount: 431375,
+            paidAmount: 362500,
           })
           .expect(201)
       ).body;
@@ -868,7 +916,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '1' }],
-            paidAmount: 172550,
+            paidAmount: 145000,
           })
           .expect(201)
       ).body;
@@ -890,7 +938,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '1' }],
-            paidAmount: 172550,
+            paidAmount: 145000,
           })
           .expect(201)
       ).body as { id: string };
@@ -965,7 +1013,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '3' }],
-            paidAmount: 517650,
+            paidAmount: 435000,
           })
           .expect(201)
       ).body;
@@ -983,7 +1031,7 @@ describe('Ventes (e2e)', () => {
       const out = await prisma.cashMovement.findFirst({
         where: { saleId: sale.id, type: 'SORTIE' },
       });
-      expect(out?.amount).toBe(517650);
+      expect(out?.amount).toBe(435000);
       await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
       expect(
         await prisma.auditLog.count({
@@ -999,7 +1047,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '2' }],
-            paidAmount: 345100,
+            paidAmount: 290000,
           })
           .expect(201)
       ).body;
@@ -1024,7 +1072,7 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '1' }],
-            paidAmount: 172550,
+            paidAmount: 145000,
           })
           .expect(201)
       ).body;
@@ -1042,13 +1090,13 @@ describe('Ventes (e2e)', () => {
           .post('/api/sales')
           .send({
             lines: [{ productId: p, quantity: '1' }],
-            paidAmount: 172550,
+            paidAmount: 145000,
           })
           .expect(201)
       ).body;
       await as(tokens.vendeurSansCaisse)
         .post(`/api/cash-sessions/${sale.cashSessionId}/close`)
-        .send({ countedAmount: 172550 })
+        .send({ countedAmount: 145000 })
         .expect(200);
       await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
       expect(await stockOf(p)).toBe('9.000');
@@ -1091,7 +1139,7 @@ describe('Ventes (e2e)', () => {
       ).body;
       await as(tokens.vendeur)
         .post('/api/payments/customer')
-        .send({ customerId: c, amount: 172550 })
+        .send({ customerId: c, amount: 145000 })
         .expect(201);
       await as(tokens.admin).post(`/api/sales/${sale.id}/cancel`).expect(409);
       expect(await stockOf(p)).toBe('9.000');

@@ -27,8 +27,9 @@ describe('Vente hors-ligne par /sync (e2e)', () => {
   let cashSessionId = '';
   let closedSessionId = '';
 
-  /// 1 450,00 HT, TVA 19 % : une unité = 1 725,50 TTC.
-  const UNIT_TTC = 172550;
+  /// 1 450,00 l'unité. Le produit garde TVA 19 % en base, mais la TVA est
+  /// RETIRÉE (décision MEDMEDBEN 2026-10-05) : TTC = HT.
+  const UNIT_TTC = 145000;
 
   const product = async (stock: string) => {
     const n = ++counter;
@@ -310,8 +311,8 @@ describe('Vente hors-ligne par /sync (e2e)', () => {
     });
     const body = saleBody(p, {
       lines: [{ productId: p, quantity: '1.000', unitPriceHt: 99999 }],
-      paidAmount: 118999,
-      expectedTotalTtc: 118999,
+      paidAmount: 99999,
+      expectedTotalTtc: 99999,
     });
     const res = await sync(tokens.vendeur, [mutation(body)]);
 

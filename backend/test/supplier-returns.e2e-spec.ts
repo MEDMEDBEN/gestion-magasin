@@ -39,7 +39,9 @@ describe('Retours fournisseur (e2e)', () => {
     (await as(tokens.admin).get(`/api/suppliers/${supplierId}`).expect(200))
       .body.balanceDue as number;
 
-  /// 10 unités reçues à 1 200,00 HT (TVA 19 %) : 14 280,00 TTC de dette.
+  /// 10 unités reçues à 1 200,00 : 12 000,00 de dette. Le produit porte
+  /// encore TVA 19 % en base, mais la commande (après le retrait de la TVA,
+  /// 2026-10-05) est à 0 % : TTC = HT.
   const received = async (backorder = false) => {
     const n = ++counter;
     const tva = await prisma.taxRate.findFirstOrThrow({ where: { rate: 19 } });
@@ -56,11 +58,13 @@ describe('Retours fournisseur (e2e)', () => {
     const orderId = await receive(product.id, '10', 120000);
     return { productId: product.id, orderId };
   };
-  /// Commande confirmée puis réceptionnée en entier au dépôt.
+  /// Commande confirmée puis réceptionnée en entier au dépôt. `legacyTaxRate` :
+  /// commande passée AVANT le retrait de la TVA (taux figé sur sa ligne).
   const receive = async (
     productId: string,
     quantity: string,
     unitPriceHt: number,
+    legacyTaxRate?: number,
   ) => {
     const order = (
       await as(tokens.magasinier)
@@ -77,6 +81,12 @@ describe('Retours fournisseur (e2e)', () => {
         .send({ expectedUpdatedAt: order.updatedAt })
         .expect(200)
     ).body;
+    if (legacyTaxRate !== undefined) {
+      await prisma.purchaseLine.update({
+        where: { id: confirmed.lines[0].id },
+        data: { taxRate: legacyTaxRate },
+      });
+    }
     await as(tokens.magasinier)
       .post('/api/receptions')
       .send({
@@ -178,10 +188,10 @@ describe('Retours fournisseur (e2e)', () => {
 
     const res = await sendBack(productId, '3').expect(201);
     expect(res.body.number).toMatch(/^RF-\d{4}-\d{5}$/);
-    // 3 × 1 200,00 = 3 600,00 HT ; 3/10 de 14 280,00 TTC = 4 284,00.
-    expect(res.body).toMatchObject({ totalHt: 360000, totalTtc: 428400 });
+    // 3 × 1 200,00 = 3 600,00 ; 3/10 de 12 000,00 TTC = 3 600,00 (0 %).
+    expect(res.body).toMatchObject({ totalHt: 360000, totalTtc: 360000 });
     expect(await stockOf(productId)).toBe('7.000');
-    expect(await debt()).toBe(before - 428400);
+    expect(await debt()).toBe(before - 360000);
 
     const pdf = await as(tokens.admin)
       .get(`/api/supplier-returns/${res.body.id}/pdf`)
@@ -305,9 +315,24 @@ describe('Retours fournisseur (e2e)', () => {
     await receive(productId, '1', 1200000); // 1 u. à 12 000,00 HT
     const before = await debt();
     const res = await sendBack(productId, '11').expect(201);
-    // 1 × 12 000,00 + 10 × 1 200,00 = 24 000,00 HT ; TTC 19 %.
-    expect(res.body).toMatchObject({ totalHt: 2400000, totalTtc: 2856000 });
-    expect(await debt()).toBe(before - 2856000);
+    // 1 × 12 000,00 + 10 × 1 200,00 = 24 000,00 ; 0 % : TTC = HT.
+    expect(res.body).toMatchObject({ totalHt: 2400000, totalTtc: 2400000 });
+    expect(await debt()).toBe(before - 2400000);
+  });
+
+  /// Lot reçu sur une commande d'AVANT le retrait de la TVA (19 % figé) : le
+  /// retour garde le taux du lot — la dette baisse de ce qu'elle avait monté.
+  it('lot reçu à 19 % (commande d’avant) : le retour garde son taux', async () => {
+    const { productId } = await received(); // 10 u. à 1 200,00, 0 %
+    await receive(productId, '2', 150000, 19); // 2 u. à 1 500,00 HT, 19 %
+    const before = await debt();
+    const res = await sendBack(productId, '3').expect(201);
+    // Les plus récentes d'abord : 2 × 1 500,00 = 3 000,00 HT → 3 570,00 TTC
+    // (19 %) ; puis 1 × 1 200,00 à 0 % → 1 200,00. Total 4 200,00 HT,
+    // 4 770,00 TTC.
+    expect(res.body).toMatchObject({ totalHt: 420000, totalTtc: 477000 });
+    expect(await debt()).toBe(before - 477000);
+    expect(await stockOf(productId)).toBe('9.000');
   });
 
   it('lieu : ni transit ni inconnu ; commande qui n’a pas livré ce produit : refusé', async () => {

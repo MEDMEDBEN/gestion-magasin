@@ -36,7 +36,8 @@ describe('Devis (e2e)', () => {
       request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
-  /// Produit au magasin : DETAIL / GROS en centimes, TVA 19 %, coût 1 000,00.
+  /// Produit au magasin : DETAIL / GROS en centimes, coût 1 000,00. Il garde
+  /// TVA 19 % en base : preuve que la TVA (retirée le 2026-10-05) est ignorée.
   const product = async (stock: string, detail = 145000, gros = 120000) => {
     const n = ++counter;
     const created = await prisma.product.create({
@@ -181,19 +182,22 @@ describe('Devis (e2e)', () => {
         lines: [{ productId: p, quantity: '2.500' }],
       }).expect(201);
 
-      // Tarif GROS 1 200,00 × 2,5 = 3 000,00 HT ; TVA 19 % = 570,00.
+      // Tarif GROS 1 200,00 × 2,5 = 3 000,00. TVA retirée (2026-10-05) :
+      // le produit porte encore 19 % en base, le devis n'en compte aucune.
       expect(res.body).toMatchObject({
         status: 'BROUILLON',
         customerId: c,
         totalHt: 300000,
-        totalTax: 57000,
-        totalTtc: 357000,
+        totalTax: 0,
+        totalTtc: 300000,
         saleId: null,
       });
       expect(res.body.number).toMatch(/^DV-\d{4}-\d{5}$/);
       expect(res.body.lines[0]).toMatchObject({
         quantity: '2.500',
         unitPriceHt: 120000,
+        taxRate: '0.00',
+        lineTaxAmount: 0,
       });
       // Règle §8quater : un devis ne touche JAMAIS le stock.
       expect(await stockOf(p)).toBe('5.000');

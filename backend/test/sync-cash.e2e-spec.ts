@@ -21,8 +21,9 @@ describe('Caisse hors-ligne par /sync (e2e)', () => {
   let detailId = '';
   let tva19Id = '';
   let counter = 0;
-  /// 1 450,00 HT, TVA 19 % : une unité = 1 725,50 TTC.
-  const UNIT_TTC = 172550;
+  /// 1 450,00 l'unité. Le produit garde TVA 19 % en base, mais la TVA est
+  /// RETIRÉE (décision MEDMEDBEN 2026-10-05) : TTC = HT.
+  const UNIT_TTC = 145000;
 
   /// Un compte neuf par test : une seule caisse ouverte par compte.
   const account = async (role: RoleCode): Promise<string> => {

@@ -133,10 +133,15 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
         }
       }
       rule();
-      row('Total HT', formatDA(sale.totalHt));
-      row('TVA', formatDA(sale.totalTax));
+      // Sans TVA (retirée le 2026-10-05) : un seul total. Un ticket d'avant
+      // garde sa ventilation HT / TVA / TTC.
+      const taxed = sale.totalTax > 0;
+      if (taxed) {
+        row('Total HT', formatDA(sale.totalHt));
+        row('TVA', formatDA(sale.totalTax));
+      }
       doc.fontSize(10);
-      row('TOTAL TTC', formatDA(sale.totalTtc), true);
+      row(taxed ? 'TOTAL TTC' : 'TOTAL', formatDA(sale.totalTtc), true);
       doc.fontSize(8);
       row('Payé (espèces)', formatDA(sale.paidAmount));
       if (sale.remainingAmount > 0) {
@@ -258,14 +263,27 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
       }
       doc.moveDown(1.5);
 
-      // Lignes
-      const cols = [
-        { title: 'Désignation', width: w * 0.4, align: 'left' as const },
-        { title: 'Qté', width: w * 0.1, align: 'right' as const },
-        { title: 'PU HT', width: w * 0.16, align: 'right' as const },
-        { title: 'TVA', width: w * 0.1, align: 'right' as const },
-        { title: 'Total HT', width: w * 0.24, align: 'right' as const },
-      ];
+      // Lignes. Sans TVA sur aucune ligne (retirée le 2026-10-05) : ni colonne
+      // TVA, ni « HT » ; un document d'avant garde la sienne.
+      const taxed = input.lines.some((l) => Number(l.taxRate) !== 0);
+      const cols = taxed
+        ? [
+            { title: 'Désignation', width: w * 0.4, align: 'left' as const },
+            { title: 'Qté', width: w * 0.1, align: 'right' as const },
+            { title: 'PU HT', width: w * 0.16, align: 'right' as const },
+            { title: 'TVA', width: w * 0.1, align: 'right' as const },
+            { title: 'Total HT', width: w * 0.24, align: 'right' as const },
+          ]
+        : [
+            { title: 'Désignation', width: w * 0.5, align: 'left' as const },
+            { title: 'Qté', width: w * 0.1, align: 'right' as const },
+            {
+              title: 'Prix unitaire',
+              width: w * 0.16,
+              align: 'right' as const,
+            },
+            { title: 'Total', width: w * 0.24, align: 'right' as const },
+          ];
       const tableRow = (cells: string[], bold = false) => {
         if (doc.y > doc.page.height - A4_MARGIN - 120) doc.addPage();
         const y = doc.y;
@@ -298,7 +316,7 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
           d.sku ? `${d.name}\n${d.sku}` : d.name,
           `${qty(line.quantity)} ${d.unit}`,
           formatDA(line.unitPriceHt),
-          `${qty(line.taxRate)} %`,
+          ...(taxed ? [`${qty(line.taxRate)} %`] : []),
           formatDA(line.lineTotalHt),
         ]);
       }
@@ -322,11 +340,13 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
         doc.text(amount, totalsX, y, { width: w * 0.5, align: 'right' });
         doc.moveDown(0.2);
       };
-      total('Total HT', formatDA(input.totalHt));
-      for (const [rate, amount] of byRate) {
-        total(`TVA ${qty(rate)} %`, formatDA(amount));
+      if (taxed) {
+        total('Total HT', formatDA(input.totalHt));
+        for (const [rate, amount] of byRate) {
+          total(`TVA ${qty(rate)} %`, formatDA(amount));
+        }
       }
-      total('Total TTC', formatDA(input.totalTtc), true);
+      total(taxed ? 'Total TTC' : 'Total', formatDA(input.totalTtc), true);
       if (input.after.length > 0) doc.moveDown(0.5);
       for (const [label, amount] of input.after) total(label, amount);
       if (input.stamp) stamp(doc, input.stamp, left, w);

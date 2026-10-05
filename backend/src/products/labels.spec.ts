@@ -22,13 +22,11 @@ const pages = (pdf: Buffer) =>
   (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
 
 describe('étiquettes', () => {
-  /// Le prix unitaire TTC : HT + TVA arrondie au centime, demi vers le haut.
-  it('TTC unitaire arrondi au centime', () => {
-    // 145 centimes HT × 19 % = 27,55 → 28 : 1,73 DA TTC.
-    expect(labelFor(cable, 145).priceTtc).toBe(173);
-    // 1 450,00 HT × 19 % = 275,50 : 1 725,50 TTC.
-    expect(labelFor(cable, 145000).priceTtc).toBe(172550);
-    expect(labelFor({ ...cable, taxRate: null }, 145).priceTtc).toBe(145);
+  /// Sans TVA (retirée le 2026-10-05) : le prix en rayon est le prix du
+  /// tarif, exactement celui payé en caisse.
+  it('prix affiché = prix du tarif, sans TVA', () => {
+    expect(labelFor(cable, 145).priceTtc).toBe(145);
+    expect(labelFor(cable, 145000).priceTtc).toBe(145000);
   });
 
   it('symbologie : EAN-13 si 13 chiffres à clé juste, Code128 sinon', async () => {

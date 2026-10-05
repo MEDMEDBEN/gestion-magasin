@@ -165,9 +165,10 @@ describe('Étiquettes (e2e)', () => {
     expect(json(res).message).toContain(`Produit étiquette ${counter}`);
   });
 
-  /// Chemin d'argent : le prix IMPRIMÉ est celui du tarif demandé, TTC calculé
-  /// comme en caisse. Le PDF est compressé : on lit ce qui part au rendu.
-  it('prix imprimé : celui du tarif demandé, TTC', async () => {
+  /// Chemin d'argent : le prix IMPRIMÉ est celui du tarif demandé, SANS TVA
+  /// (retirée le 2026-10-05) — exactement le prix payé en caisse, même si le
+  /// produit garde TVA 19 % en base. Le PDF est compressé : on lit ce qui part au rendu.
+  it('prix imprimé : celui du tarif demandé, sans TVA', async () => {
     const p = await product({ detail: 145000, gros: 120000 });
     const spy = jest.spyOn(labelsModule, 'renderLabels');
     try {
@@ -175,15 +176,15 @@ describe('Étiquettes (e2e)', () => {
         format: 'A4',
         items: [{ productId: p, copies: 1 }],
       }).expect(200);
-      // Tarif par défaut (DÉTAIL) : 1 450,00 HT + 19 % = 1 725,50 TTC.
-      expect(spy.mock.calls[0][0][0].priceTtc).toBe(172550);
+      // Tarif par défaut (DÉTAIL) : 1 450,00, sans TVA.
+      expect(spy.mock.calls[0][0][0].priceTtc).toBe(145000);
       await labels(tokens.vendeur, {
         format: 'A4',
         priceTierId: grosId,
         items: [{ productId: p, copies: 1 }],
       }).expect(200);
-      // GROS : 1 200,00 HT + 19 % = 1 428,00 TTC.
-      expect(spy.mock.calls[1][0][0].priceTtc).toBe(142800);
+      // GROS : 1 200,00, sans TVA.
+      expect(spy.mock.calls[1][0][0].priceTtc).toBe(120000);
     } finally {
       spy.mockRestore();
     }

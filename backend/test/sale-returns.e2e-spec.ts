@@ -62,7 +62,8 @@ describe('Retours client (e2e)', () => {
       })
     ).quantity.toFixed(3);
 
-  /// Vente de 3 × 1 450 HT (TVA 19 %) : payée comptant, ou à crédit.
+  /// Vente de 3 × 1 450 = 4 350,00 : payée comptant, ou à crédit. Le produit
+  /// garde TVA 19 % en base, mais la TVA est retirée (2026-10-05) : TTC = HT.
   /// `unitPriceHt` : prix modifié (au-dessus du coût), pour des montants qui
   /// ne se divisent pas juste.
   const sell = async (credit = false, unitPriceHt?: number) => {
@@ -91,7 +92,7 @@ describe('Retours client (e2e)', () => {
               ...(unitPriceHt && { unitPriceHt, priceEdited: true }),
             },
           ],
-          paidAmount: credit ? 0 : 517650,
+          paidAmount: credit ? 0 : 435000,
           ...(credit && { dueDate: DUE_DATE }),
         })
         .expect(201)
@@ -199,10 +200,10 @@ describe('Retours client (e2e)', () => {
     const res = await giveBack(sale.id, lineId, '1', 'ESPECES').expect(201);
     expect(res.body.number).toMatch(/^RC-\d{4}-\d{5}$/);
     expect(res.body.creditNoteNumber).toBeNull();
-    // 1/3 de 4 350 HT = 1 450 HT, TVA 275,50 → 1 725,50 TTC.
-    expect(res.body).toMatchObject({ totalHt: 145000, totalTtc: 172550 });
+    // 1/3 de 4 350 = 1 450, sans TVA → 1 450,00 TTC.
+    expect(res.body).toMatchObject({ totalHt: 145000, totalTtc: 145000 });
     expect(await stockOf(productId)).toBe('8.000');
-    expect(await drawer()).toBe(before - 172550);
+    expect(await drawer()).toBe(before - 145000);
 
     // Plus que ce qui reste (2) : refusé, rien ne bouge.
     await giveBack(sale.id, lineId, '2.5', 'ESPECES').expect(422);

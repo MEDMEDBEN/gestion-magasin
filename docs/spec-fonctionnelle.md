@@ -83,7 +83,7 @@ Les **catégories** servent à organiser, rechercher, filtrer et analyser les pr
 
 **Unité & quantités** : chaque produit a une `unit` (pièce, mètre, rouleau…). Les **quantités sont décimales** (ex : 12,5 m de câble) — voir règle 10 de `CLAUDE.md`.
 
-**TVA** : taux de TVA par produit (peut être 0). **Tarifs** : le prix de vente vient d'un **tarif** (détail / gros…), pas d'un champ unique — voir §8bis.
+**TVA** : ~~taux de TVA par produit~~ — **retirée le 2026-10-05** (décision MEDMEDBEN) : toute nouvelle opération est à 0 %, le prix saisi est le prix payé (voir `docs/context.md`, journal). **Tarifs** : le prix de vente vient d'un **tarif** (détail / gros…), pas d'un champ unique — voir §8bis.
 
 ---
 

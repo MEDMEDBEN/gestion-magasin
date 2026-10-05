@@ -4,22 +4,16 @@ import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
 import { Prisma, PriceTier } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CatalogService } from './catalog.service';
-import {
-  CreatePriceTierDto,
-  CreateTaxRateDto,
-  UpdatePriceTierDto,
-  UpdateTaxRateDto,
-} from './dto/pricing.dto';
-import { PriceTierDto, TaxRateDto } from './dto/product.dto';
+import { CreatePriceTierDto, UpdatePriceTierDto } from './dto/pricing.dto';
+import { PriceTierDto } from './dto/product.dto';
 
 type Db = Prisma.TransactionClient;
 
-/// Écritures des tarifs et des taux de TVA : une à la fois (défaut unique).
+/// Écritures des tarifs : une à la fois (défaut unique).
 const PRICING_LOCK = 7305;
 
-/// Paramètres de prix (P1 bis n°21h) : tarifs et taux de TVA. Règles communes
-/// aux deux : code unique ; UN seul élément par défaut (en désigner un autre
+/// Paramètres de prix (P1 bis n°21h) : les tarifs (la TVA est retirée depuis
+/// le 2026-10-05, `sandbox/tva/`). Règles : code unique ; UN seul élément par défaut (en désigner un autre
 /// retire l'ancien) ; le défaut ne se désactive pas ; un inactif n'est pas
 /// le défaut. Chaque écriture est auditée. Un tarif désactivé n'efface rien :
 /// ses clients retombent sur le tarif par défaut (règle de `priceCart`).
@@ -33,14 +27,6 @@ export class PricingService {
       orderBy: [{ isDefault: 'desc' }, { code: 'asc' }],
     });
     return rows.map(PricingService.tierToDto);
-  }
-
-  async taxRates(includeInactive = false): Promise<TaxRateDto[]> {
-    const rows = await this.prisma.taxRate.findMany({
-      where: includeInactive ? {} : { isActive: true },
-      orderBy: [{ isDefault: 'desc' }, { rate: 'asc' }],
-    });
-    return rows.map(CatalogService.taxRateToDto);
   }
 
   async createTier(
@@ -100,73 +86,10 @@ export class PricingService {
     });
   }
 
-  async createTaxRate(
-    dto: CreateTaxRateDto,
-    actor: ActorContext,
-  ): Promise<TaxRateDto> {
-    return this.prisma.$transaction(async (tx) => {
-      await PricingService.lock(tx);
-      await PricingService.assertCodeFree(
-        await tx.taxRate.findUnique({ where: { code: dto.code } }),
-        dto.code,
-      );
-      const created = CatalogService.taxRateToDto(
-        await tx.taxRate.create({
-          data: { code: dto.code, name: dto.name, rate: dto.rate },
-        }),
-      );
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'TaxRate',
-        entityId: created.id,
-        newValue: PricingService.taxAudit(created),
-      });
-      return created;
-    });
-  }
-
-  async updateTaxRate(
-    id: string,
-    dto: UpdateTaxRateDto,
-    actor: ActorContext,
-  ): Promise<TaxRateDto> {
-    return this.prisma.$transaction(async (tx) => {
-      await PricingService.lock(tx);
-      const before = await tx.taxRate.findUnique({ where: { id } });
-      if (!before) throw PricingService.notFound('Taux de TVA');
-      PricingService.assertDefaultRules(before, dto, 'taux');
-      if (dto.isDefault) {
-        await tx.taxRate.updateMany({
-          where: { isDefault: true, id: { not: id } },
-          data: { isDefault: false },
-        });
-      }
-      // Le nouveau taux vaut pour les ventes futures : chaque ligne vendue a
-      // gardé le sien (`SaleLine.taxRate`). Le catalogue le redescend (delta).
-      const after = CatalogService.taxRateToDto(
-        await tx.taxRate.update({ where: { id }, data: dto }),
-      );
-      const oldValue = PricingService.taxAudit(
-        CatalogService.taxRateToDto(before),
-      );
-      const newValue = PricingService.taxAudit(after);
-      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-        await writeAudit(tx, actor, {
-          action: 'UPDATE',
-          entityType: 'TaxRate',
-          entityId: id,
-          oldValue,
-          newValue,
-        });
-      }
-      return after;
-    });
-  }
-
   private static assertDefaultRules(
     before: { isDefault: boolean; isActive: boolean },
     dto: { isDefault?: true; isActive?: boolean },
-    what: 'tarif' | 'taux',
+    what: 'tarif',
   ): void {
     const active = dto.isActive ?? before.isActive;
     const isDefault = dto.isDefault ?? before.isDefault;
@@ -208,16 +131,6 @@ export class PricingService {
       name: tier.name,
       isDefault: tier.isDefault,
       isActive: tier.isActive,
-    };
-  }
-
-  private static taxAudit(rate: TaxRateDto): Prisma.InputJsonObject {
-    return {
-      code: rate.code,
-      name: rate.name,
-      rate: rate.rate,
-      isDefault: rate.isDefault,
-      isActive: rate.isActive,
     };
   }
 }

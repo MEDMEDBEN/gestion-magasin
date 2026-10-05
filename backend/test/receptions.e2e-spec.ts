@@ -32,8 +32,9 @@ describe('Réceptions (e2e)', () => {
       request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
-  /// Produit taxé à 19 % — le taux figé sur la ligne de COMMANDE est celui qui
-  /// doit servir au TTC de la réception.
+  /// Produit qui porte encore TVA 19 % en base. TVA retirée (2026-10-05) :
+  /// une NOUVELLE commande est à 0 % ; la réception sur commande garde le taux
+  /// figé sur la ligne de COMMANDE, la réception hors commande est à 0 %.
   const product = async () => {
     const n = ++counter;
     const tva = await prisma.taxRate.findFirstOrThrow({ where: { rate: 19 } });
@@ -168,12 +169,12 @@ describe('Réceptions (e2e)', () => {
     ).body;
 
     expect(reception.number).toMatch(/^BR-\d{4}-\d{5}$/);
-    // 70 × 1 200,00 = 84 000,00 HT ; TVA 19 % = 15 960,00 ; TTC = 99 960,00
+    // 70 × 1 200,00 = 84 000,00 ; commande à 0 % de TVA : TTC = HT.
     expect(reception.lines[0].lineTotalHt).toBe(8400000);
-    expect(reception.totalTtc).toBe(9996000);
+    expect(reception.totalTtc).toBe(8400000);
 
     expect(await stockOf(order.productId)).toBe('70.000');
-    expect(await debt()).toBe(before + 9996000);
+    expect(await debt()).toBe(before + 8400000);
 
     const detail = (
       await as(tokens.magasinier)
@@ -485,11 +486,12 @@ describe('Réceptions (e2e)', () => {
         .expect(201)
     ).body;
 
-    // 3 × 1 000,00 = 3 000,00 HT ; TVA 19 % = 570,00 ; TTC = 3 570,00
-    expect(reception.totalTtc).toBe(357000);
+    // 3 × 1 000,00 = 3 000,00 ; hors commande, TVA retirée : 0 % malgré
+    // les 19 % du produit en base, TTC = HT.
+    expect(reception.totalTtc).toBe(300000);
     expect(reception.purchaseOrderId).toBeNull();
     expect(await stockOf(productId)).toBe('3.000');
-    expect(await debt()).toBe(before + 357000);
+    expect(await debt()).toBe(before + 300000);
   });
 
   it('ligne rattachée à une AUTRE commande : refusée', async () => {
@@ -566,15 +568,48 @@ describe('Réceptions (e2e)', () => {
         .expect(201)
     ).body;
 
-    // 10 × 1 200,00 = 12 000,00 HT ; TVA 19 % = 2 280,00 ; TTC = 14 280,00
+    // 10 × 1 200,00 = 12 000,00 ; commande à 0 % : TTC = HT.
     expect(reception.lines[0].unitPriceHt).toBe(120000);
-    expect(reception.totalTtc).toBe(1428000);
-    expect(await debt()).toBe(before + 1428000);
+    expect(reception.totalTtc).toBe(1200000);
+    expect(await debt()).toBe(before + 1200000);
 
     const updated = await prisma.product.findUniqueOrThrow({
       where: { id: order.productId },
     });
     expect(updated.lastPurchasePriceHt).toBe(120000);
+  });
+
+  /// Commande passée AVANT le retrait de la TVA (taux 19 % figé sur sa ligne) :
+  /// sa réception garde ce taux — la dette fournisseur suit le bon commandé.
+  it('commande d’avant le retrait de la TVA : la réception garde le taux figé', async () => {
+    const order = await confirmedOrder('10');
+    await prisma.purchaseLine.update({
+      where: { id: order.lineId },
+      data: { taxRate: 19 },
+    });
+    const before = await debt();
+    const reception = (
+      await as(tokens.magasinier)
+        .post('/api/receptions')
+        .send({
+          purchaseOrderId: order.id,
+          supplierId,
+          locationId: depotId,
+          lines: [
+            {
+              productId: order.productId,
+              purchaseLineId: order.lineId,
+              receivedQuantity: '10',
+              unitPriceHt: 120000,
+            },
+          ],
+        })
+        .expect(201)
+    ).body;
+    // 10 × 1 200,00 = 12 000,00 HT ; TVA 19 % = 2 280,00 ; TTC = 14 280,00
+    expect(reception.totalTtc).toBe(1428000);
+    expect(await debt()).toBe(before + 1428000);
+    expect(await stockOf(order.productId)).toBe('10.000');
   });
 
   it('reliquat clôturé : la commande sort des en-cours, plus rien n’entre', async () => {

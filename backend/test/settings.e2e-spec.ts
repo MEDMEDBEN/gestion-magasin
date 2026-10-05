@@ -7,12 +7,14 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { storeIdentity } from '../src/settings/store-settings';
 import { createE2eApp, createTestUser, E2eApp } from './helpers/e2e-app';
 
-/// Paramètres (P1 bis n°21h) : tarifs, taux de TVA, identité du magasin.
+/// Paramètres (P1 bis n°21h) : tarifs, identité du magasin. La gestion des
+/// taux de TVA est RETIRÉE (décision MEDMEDBEN 2026-10-05) : ses routes
+/// n'existent plus (404).
 ///
 /// Éprouvé : ADMIN seul (`price.manage` / `settings.manage`) ; un seul défaut,
-/// le défaut ne se désactive pas ; codes uniques ; bornes du taux ; chaque
-/// écriture auditée ; l'identité saisie est celle IMPRIMÉE, un champ vidé
-/// retombe sur l'environnement.
+/// le défaut ne se désactive pas ; codes uniques ; chaque écriture auditée ;
+/// l'identité saisie est celle IMPRIMÉE, un champ vidé retombe sur
+/// l'environnement.
 describe('Paramètres (e2e)', () => {
   let e2e: E2eApp;
   let prisma: PrismaService;
@@ -155,37 +157,23 @@ describe('Paramètres (e2e)', () => {
     });
   });
 
-  describe('taux de TVA', () => {
-    it('créer, bornes du taux, modifier le taux (ventes futures)', async () => {
-      for (const rate of ['101', '-1', '9.555', 'neuf']) {
-        await as(tokens.admin)
-          .post('/api/pricing/tax-rates')
-          .send({ code: `BAD_${suffix}`, name: 'Faux', rate })
-          .expect(400);
-      }
-      const created = (
-        await as(tokens.admin)
-          .post('/api/pricing/tax-rates')
-          .send({ code: `TVA9_${suffix}`, name: 'TVA 9 %', rate: '9' })
-          .expect(201)
-      ).body;
-      expect(created.rate).toBe('9.00');
-      const updated = (
-        await as(tokens.admin)
-          .patch(`/api/pricing/tax-rates/${created.id}`)
-          .send({ rate: '9.5' })
-          .expect(200)
-      ).body;
-      expect(updated.rate).toBe('9.50');
-      const audit = await prisma.auditLog.findFirstOrThrow({
-        where: {
-          entityType: 'TaxRate',
-          entityId: created.id,
-          action: 'UPDATE',
-        },
+  describe('taux de TVA (retirés)', () => {
+    it('POST / PATCH / GET /api/pricing/tax-rates → 404, aucun taux touché', async () => {
+      const before = await prisma.taxRate.findMany({
+        orderBy: { code: 'asc' },
       });
-      expect(audit.oldValue).toMatchObject({ rate: '9.00' });
-      expect(audit.newValue).toMatchObject({ rate: '9.50' });
+      await as(tokens.admin)
+        .post('/api/pricing/tax-rates')
+        .send({ code: `TVA9_${suffix}`, name: 'TVA 9 %', rate: '9' })
+        .expect(404);
+      await as(tokens.admin)
+        .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
+        .send({ rate: '9.5' })
+        .expect(404);
+      await as(tokens.admin).get('/api/pricing/tax-rates').expect(404);
+      expect(
+        await prisma.taxRate.findMany({ orderBy: { code: 'asc' } }),
+      ).toEqual(before);
     });
   });
 
@@ -247,10 +235,6 @@ describe('Paramètres (e2e)', () => {
           .send(body)
           .expect(400);
       }
-      await as(tokens.admin)
-        .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
-        .send({ rate: null })
-        .expect(400);
     });
 
     it('identité : arabe, emoji, retour à la ligne refusés (illisibles au PDF)', async () => {
@@ -275,32 +259,6 @@ describe('Paramètres (e2e)', () => {
       expect(await count()).toBe(before);
     });
 
-    it('TVA : un seul défaut, le défaut ne se désactive pas', async () => {
-      const other = (
-        await as(tokens.admin)
-          .post('/api/pricing/tax-rates')
-          .send({ code: `TVA7_${suffix}`, name: 'TVA 7 %', rate: '7' })
-          .expect(201)
-      ).body;
-      await as(tokens.admin)
-        .patch(`/api/pricing/tax-rates/${other.id}`)
-        .send({ isDefault: true })
-        .expect(200);
-      expect(
-        (await prisma.taxRate.findMany({ where: { isDefault: true } })).map(
-          (t) => t.id,
-        ),
-      ).toEqual([other.id]);
-      await as(tokens.admin)
-        .patch(`/api/pricing/tax-rates/${other.id}`)
-        .send({ isActive: false })
-        .expect(409);
-      await as(tokens.admin)
-        .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
-        .send({ isDefault: true })
-        .expect(200);
-    });
-
     /// Le seed tourne à CHAQUE démarrage du conteneur : il ne doit jamais
     /// défaire un réglage de l'admin (il réécrivait noms, taux et défauts).
     it('seed relancé : les réglages de l’admin tiennent, un seul défaut', async () => {
@@ -317,10 +275,12 @@ describe('Paramètres (e2e)', () => {
       const tva19 = await prisma.taxRate.findUniqueOrThrow({
         where: { code: 'TVA19' },
       });
-      await as(tokens.admin)
-        .patch(`/api/pricing/tax-rates/${tva19.id}`)
-        .send({ name: `TVA dix-neuf ${suffix}` })
-        .expect(200);
+      // Plus de route pour les taux (TVA retirée) : renommé en base, le seed
+      // ne doit pas l'écraser pour autant.
+      await prisma.taxRate.update({
+        where: { id: tva19.id },
+        data: { name: `TVA dix-neuf ${suffix}` },
+      });
       try {
         execSync('node -r ts-node/register/transpile-only src/seed.ts', {
           cwd: join(__dirname, '..'),
@@ -352,7 +312,7 @@ describe('Paramètres (e2e)', () => {
           .send({ code: `X_${suffix}`, name: 'Refusé' })
           .expect(403);
         await as(token)
-          .patch(`/api/pricing/tax-rates/${defaultTaxId}`)
+          .patch(`/api/pricing/tiers/${defaultTierId}`)
           .send({ name: 'Refusé' })
           .expect(403);
         await as(token).get('/api/settings/store').expect(403);

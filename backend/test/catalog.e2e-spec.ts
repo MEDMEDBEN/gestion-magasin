@@ -296,6 +296,29 @@ describe('Catalogue (e2e)', () => {
         .expect(422);
     });
 
+    /// TVA retirée (décision MEDMEDBEN 2026-10-05) : `taxRateId` n'est plus
+    /// un champ de la fiche — refusé à la création comme à la modification.
+    it('taxRateId refusé à la création et à la modification → 400', async () => {
+      const taxRateId = (
+        await prisma.taxRate.findFirstOrThrow({ where: { rate: 19 } })
+      ).id;
+      const sku = uid('SKU');
+      await as(tokens.admin)
+        .post('/api/products')
+        .send({ sku, name: 'Avec TVA', unit: 'PIECE', taxRateId })
+        .expect(400);
+      expect(await prisma.product.count({ where: { sku } })).toBe(0);
+      const product = await createProduct();
+      await as(tokens.admin)
+        .patch(`/api/products/${product.id}`)
+        .send({ taxRateId })
+        .expect(400);
+      expect(
+        (await prisma.product.findUniqueOrThrow({ where: { id: product.id } }))
+          .taxRateId,
+      ).toBeNull();
+    });
+
     /// P1 bis n°21f : sans réception, un produit n'avait AUCUN coût (ni marge,
     /// ni plancher de prix). Prix d'achat initial à la création, ou tant qu'il
     /// est inconnu ; ensuite seules les réceptions le changent (règle 5).
@@ -600,7 +623,7 @@ describe('Catalogue (e2e)', () => {
         await as(token).get(`/api/products/${product.id}`).expect(200);
         await as(token).get('/api/categories').expect(200);
         await as(token).get('/api/locations').expect(200);
-        await as(token).get('/api/pricing/tax-rates').expect(200);
+        await as(token).get('/api/pricing/tiers').expect(200);
         await as(token).get('/api/catalog/changes?limit=1').expect(200);
         await as(token)
           .post('/api/products')

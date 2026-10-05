@@ -32,7 +32,8 @@ describe('Commandes fournisseurs (e2e)', () => {
       request(server).patch(url).set('Authorization', `Bearer ${token}`),
   });
 
-  /// Produit taxé à 19 % (le taux est figé sur la ligne de commande).
+  /// Produit qui garde TVA 19 % en base : une NOUVELLE commande l'ignore (TVA
+  /// retirée le 2026-10-05) et fige 0 % sur sa ligne.
   const product = async () => {
     const n = ++counter;
     const tva = await prisma.taxRate.findFirstOrThrow({ where: { rate: 19 } });
@@ -105,7 +106,7 @@ describe('Commandes fournisseurs (e2e)', () => {
   });
 
   describe('création', () => {
-    it('numéro BC-AAAA-NNNNN, TVA figée, totaux justes, dette inchangée', async () => {
+    it('numéro BC-AAAA-NNNNN, sans TVA, totaux justes, dette inchangée', async () => {
       const before = (
         await as(tokens.admin).get(`/api/suppliers/${supplierId}`).expect(200)
       ).body.balanceDue;
@@ -114,15 +115,16 @@ describe('Commandes fournisseurs (e2e)', () => {
 
       expect(created.number).toMatch(/^BC-\d{4}-\d{5}$/);
       expect(created.status).toBe('BROUILLON');
-      // 100 × 1 200,00 HT = 120 000,00 ; TVA 19 % = 22 800,00 ; TTC = 142 800,00
+      // 100 × 1 200,00 = 120 000,00. Le produit garde TVA 19 % en base, mais la
+      // TVA est retirée (2026-10-05) : taux figé 0 %, TTC = HT.
       expect(created.totalHt).toBe(12000000);
-      expect(created.totalTax).toBe(2280000);
-      expect(created.totalTtc).toBe(14280000);
+      expect(created.totalTax).toBe(0);
+      expect(created.totalTtc).toBe(12000000);
       expect(created.lines[0]).toMatchObject({
         orderedQuantity: '100.000',
         receivedQuantity: '0.000',
         remainingQuantity: '100.000',
-        taxRate: '19.00',
+        taxRate: '0.00',
       });
 
       // La commande n'est PAS une dette : rien n'est reçu.
@@ -490,14 +492,14 @@ describe('Commandes fournisseurs (e2e)', () => {
       }
     });
 
-    it('arrondi : quantité décimale × prix, demi vers le haut, TVA par ligne', async () => {
+    it('arrondi : quantité décimale × prix, demi vers le haut', async () => {
       const created = await order(tokens.magasinier, {
         lines: [{ productId, orderedQuantity: '12.345', unitPriceHt: 999 }],
       });
-      // 12,345 × 999 = 12 332,655 → 12 333 ; TVA 19 % = 2 343,27 → 2 343
+      // 12,345 × 999 = 12 332,655 → 12 333 ; sans TVA : TTC = HT.
       expect(created.totalHt).toBe(12333);
-      expect(created.totalTax).toBe(2343);
-      expect(created.totalTtc).toBe(14676);
+      expect(created.totalTax).toBe(0);
+      expect(created.totalTtc).toBe(12333);
     });
   });
 

@@ -57,7 +57,6 @@ import {
   PriceChangeDto,
   ProspectDto,
   SetProductPriceDto,
-  TaxRateDto,
   UpdateCategoryDto,
   UpdateProductDto,
 } from './dto/product.dto';
@@ -65,10 +64,8 @@ import { ProductsService } from './products.service';
 import { PricingService } from './pricing.service';
 import {
   CreatePriceTierDto,
-  CreateTaxRateDto,
   ListPricingQueryDto,
   UpdatePriceTierDto,
-  UpdateTaxRateDto,
 } from './dto/pricing.dto';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
@@ -394,15 +391,6 @@ export class PricingController {
     return this.pricing.priceTiers(query.includeInactive);
   }
 
-  @Roles(...ALL_ROLES)
-  @RequirePermissions(PERMISSIONS.PRICE_READ)
-  @Get('tax-rates')
-  @ApiOperation({ summary: 'Taux de TVA (actifs ; tous avec includeInactive)' })
-  @ApiOkResponse({ type: [TaxRateDto] })
-  taxRates(@Query() query: ListPricingQueryDto): Promise<TaxRateDto[]> {
-    return this.pricing.taxRates(query.includeInactive);
-  }
-
   // ── Paramètres (P1 bis n°21h) : ADMIN + price.manage ─────────────────────
 
   @Roles(RoleCode.ADMIN)
@@ -432,36 +420,6 @@ export class PricingController {
     @Ip() ip: string,
   ): Promise<PriceTierDto> {
     return this.pricing.updateTier(id, dto, actorOf(user, ip));
-  }
-
-  @Roles(RoleCode.ADMIN)
-  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
-  @Post('tax-rates')
-  @ApiOperation({ summary: 'Crée un taux de TVA' })
-  @ApiCreatedResponse({ type: TaxRateDto })
-  createTaxRate(
-    @Body() dto: CreateTaxRateDto,
-    @CurrentUser() user: AuthenticatedUser,
-    @Ip() ip: string,
-  ): Promise<TaxRateDto> {
-    return this.pricing.createTaxRate(dto, actorOf(user, ip));
-  }
-
-  @Roles(RoleCode.ADMIN)
-  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
-  @Patch('tax-rates/:id')
-  @ApiOperation({
-    summary:
-      'Modifie un taux de TVA (le nouveau taux vaut pour les ventes futures)',
-  })
-  @ApiOkResponse({ type: TaxRateDto })
-  updateTaxRate(
-    @Param('id', CanonicalUuidPipe) id: string,
-    @Body() dto: UpdateTaxRateDto,
-    @CurrentUser() user: AuthenticatedUser,
-    @Ip() ip: string,
-  ): Promise<TaxRateDto> {
-    return this.pricing.updateTaxRate(id, dto, actorOf(user, ip));
   }
 }
 

@@ -1,0 +1,1623 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
+import '../../../core/dates.dart';
+import '../../../core/error/api_exception.dart';
+import '../../../core/error/error_codes.dart';
+import '../../../core/money.dart';
+import '../../../core/offline_write.dart';
+import '../../../core/quantity.dart';
+import '../../../ui/breakpoints.dart';
+import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../core/file_export.dart';
+import '../../../core/file_import.dart';
+import '../../../ui/widgets/amount_dialog.dart';
+import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/fields_dialog.dart';
+import '../../../ui/widgets/history_dialog.dart';
+import '../../../ui/widgets/import_button.dart';
+import '../../../ui/widgets/export_button.dart';
+import '../../../ui/widgets/screen_state.dart';
+import '../../auth/data/auth_models.dart';
+import '../../catalog/application/catalog_controller.dart';
+import '../../catalog/data/catalog_models.dart';
+import '../../scan/presentation/scanned_product_sheet.dart';
+import '../../catalog/data/catalog_repository.dart';
+import '../../payments/presentation/payment_history_dialog.dart';
+import '../../quotes/application/quotes_controller.dart';
+import '../application/sales_controller.dart';
+import '../data/sales_api.dart';
+import '../data/sales_models.dart';
+import '../../scan/presentation/scan_screen.dart';
+import 'customer_form.dart';
+import 'sales_history.dart';
+
+/// Droits de la vente, MIROIRS des guards serveur (`docs/permissions.md`).
+class SalesRights {
+  SalesRights(AuthUser user)
+    : canSell =
+          (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+          user.can('sale.create'),
+      // Miroir exact de `POST /sales/:id/invoice` : ADMIN|VENDEUR + invoice.issue.
+      canInvoice =
+          (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+          user.can('invoice.issue'),
+      canManageCash = user.can('cash.session.manage'),
+      canWriteCustomers = user.can('customer.write'),
+      // `POST /imports/customers` : ADMIN + customer.write (saisie en masse).
+      canImportCustomers = user.hasRole('ADMIN') && user.can('customer.write'),
+      canTakePayments = user.can('customer.payment.create'),
+      canReversePayments =
+          user.hasRole('ADMIN') && user.can('customer.payment.create'),
+      canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read'),
+      canCancelSales = user.hasRole('ADMIN') && user.can('sale.cancel'),
+      // Remise sur une ligne : ADMIN + sale.discount (miroir du serveur).
+      canDiscount = user.hasRole('ADMIN') && user.can('sale.discount'),
+      // Tarif et plafond de crédit d'un client : conditions commerciales.
+      canManageCustomerTerms =
+          user.hasRole('ADMIN') && user.can('price.manage'),
+      // Relevé de compte : ADMIN + customer.read (tout le CA d'un client).
+      canReadStatements = user.hasRole('ADMIN') && user.can('customer.read');
+
+  final bool canSell;
+  final bool canInvoice;
+  final bool canManageCash;
+  final bool canWriteCustomers;
+  final bool canImportCustomers;
+  final bool canTakePayments;
+
+  /// Contre-passation d'un règlement : ADMIN (miroir du guard serveur).
+  final bool canReversePayments;
+
+  /// Liste de toutes les caisses : ADMIN + cash.report.read.
+  final bool canSeeAllCash;
+
+  /// Annulation d'une vente : ADMIN + sale.cancel (miroir du guard serveur).
+  final bool canCancelSales;
+  final bool canDiscount;
+  final bool canManageCustomerTerms;
+  final bool canReadStatements;
+}
+
+enum _Section { sale, history, customers, cashSessions }
+
+void _snack(BuildContext context, String message) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(label: 'Fermer', onPressed: () {}),
+      ),
+    );
+}
+
+String _errorText(Object error) =>
+    error is ApiException ? error.userMessage : 'Action impossible';
+
+/// Vente au comptoir : caisse, panier (recherche ou douchette), client,
+/// encaissement espèces / crédit, ticket et facture. Le serveur valide tout
+/// (prix, stock, caisse, plafond) ; sans réseau, vente, caisse et règlements
+/// partent dans la file et sont jugés à la synchronisation (P0 n°12).
+class SalesScreen extends ConsumerStatefulWidget {
+  const SalesScreen({super.key, required this.user});
+
+  final AuthUser user;
+
+  @override
+  ConsumerState<SalesScreen> createState() => _SalesScreenState();
+}
+
+class _SalesScreenState extends ConsumerState<SalesScreen> {
+  _Section _section = _Section.sale;
+
+  @override
+  void initState() {
+    super.initState();
+    // Entrée en Vente : prix et produits à jour avant d'encaisser.
+    Future.microtask(() {
+      if (mounted) ref.read(catalogSyncProvider.notifier).refresh();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rights = SalesRights(widget.user);
+    final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
+    final margin = isDesktop
+        ? AmpereGeometry.screenMarginDesktop
+        : AmpereGeometry.screenMarginMobile;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SegmentedButton<_Section>(
+                showSelectedIcon: false,
+                segments: [
+                  const ButtonSegment(
+                    value: _Section.sale,
+                    label: Text('Vente'),
+                  ),
+                  // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
+                  if (rights.canSell)
+                    const ButtonSegment(
+                      value: _Section.history,
+                      label: Text('Historique'),
+                    ),
+                  const ButtonSegment(
+                    value: _Section.customers,
+                    label: Text('Clients'),
+                  ),
+                  if (rights.canSeeAllCash)
+                    const ButtonSegment(
+                      value: _Section.cashSessions,
+                      label: Text('Caisses'),
+                    ),
+                ],
+                selected: {_section},
+                onSelectionChanged: (s) => setState(() => _section = s.first),
+              ),
+              if (rights.canManageCash) const _CashBar(),
+              // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
+              // Le vendeur n'y trouve que SES ventes (le serveur filtre).
+              if (rights.canSell)
+                ExportButton(
+                  targets: [
+                    ExportTarget(
+                      'Ventes (90 jours)',
+                      ref.read(salesApiProvider).exportSales,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: switch (_section) {
+            _Section.sale => _SaleSection(margin: margin, rights: rights),
+            _Section.history => SalesHistorySection(
+              margin: margin,
+              rights: rights,
+            ),
+            _Section.customers => _CustomersSection(
+              margin: margin,
+              rights: rights,
+            ),
+            _Section.cashSessions => _CashSessionsSection(margin: margin),
+          },
+        ),
+      ],
+    );
+  }
+}
+
+/// État de la caisse, toujours visible : ouvrir / clôturer (rapport Z).
+class _CashBar extends ConsumerWidget {
+  const _CashBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final session = ref.watch(currentCashSessionProvider);
+    // Gardé en vie : « Ouvrir la caisse » y cherche le magasin. Lu seulement au
+    // clic, ce provider auto-libéré était encore vide (« Magasin introuvable »).
+    ref.watch(locationsProvider);
+    return session.when(
+      loading: () => const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+      // Caisse INCONNUE (hors ligne, jamais lue sur cet appareil) : on ne
+      // propose pas d'en ouvrir une — elle l'est peut-être déjà au serveur.
+      error: (error, _) => AmpereBadge(
+        label: 'Caisse indisponible',
+        tone: StatusTone.warn,
+        icon: LucideIcons.cloudOff,
+      ),
+      data: (cash) => cash == null
+          ? OutlinedButton.icon(
+              onPressed: () => _openCash(context, ref),
+              icon: const Icon(LucideIcons.lockOpen, size: 17),
+              label: const Text('Ouvrir la caisse'),
+            )
+          : Wrap(
+              spacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                cash.status == cashPendingSync
+                    ? const AmpereBadge(
+                        label: 'Caisse ouverte · en attente de synchronisation',
+                        tone: StatusTone.warn,
+                        icon: LucideIcons.refreshCw,
+                      )
+                    : AmpereBadge(
+                        label:
+                            'Caisse ouverte · ${formatDA(cash.currentAmount)}',
+                        tone: StatusTone.ok,
+                      ),
+                // Pas de mouvement sur une caisse encore en file : le serveur
+                // ne la connaît pas.
+                if (cash.status != cashPendingSync)
+                  PopupMenuButton<String>(
+                    tooltip: 'Mouvement de caisse',
+                    icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
+                    onSelected: (type) =>
+                        _cashMovement(context, ref, cash, type),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'ENTREE',
+                        child: Text('Entrée d’espèces'),
+                      ),
+                      PopupMenuItem(
+                        value: 'SORTIE',
+                        child: Text('Sortie (dépense)'),
+                      ),
+                      PopupMenuItem(
+                        value: 'PRELEVEMENT',
+                        child: Text('Prélèvement (coffre, banque)'),
+                      ),
+                    ],
+                  ),
+                TextButton(
+                  onPressed: () => _closeCash(context, ref, cash),
+                  child: const Text('Clôturer'),
+                ),
+              ],
+            ),
+    );
+  }
+
+  /// Entrée, sortie ou prélèvement : montant, puis motif (obligatoire).
+  Future<void> _cashMovement(
+    BuildContext context,
+    WidgetRef ref,
+    CashSession cash,
+    String type,
+  ) async {
+    const titles = {
+      'ENTREE': 'Entrée d’espèces',
+      'SORTIE': 'Sortie d’espèces',
+      'PRELEVEMENT': 'Prélèvement',
+    };
+    final amount = await askAmount(
+      context,
+      title: titles[type]!,
+      label: 'Montant',
+      confirm: 'Continuer',
+      help: 'Dans le tiroir : ${formatDA(cash.currentAmount)}',
+    );
+    if (amount == null || amount <= 0 || !context.mounted) return;
+    final note = (await askFields(
+      context,
+      title: '${titles[type]!} de ${formatDA(amount)}',
+      fields: const [(key: 'note', label: 'Motif', initial: '')],
+    ))?['note'];
+    if (note == null || !context.mounted) return;
+    if (note.length < 2) {
+      _snack(context, 'Motif obligatoire');
+      return;
+    }
+    try {
+      final after = await ref
+          .read(salesActionsProvider)
+          .cashMovement(cash.id, type: type, amount: amount, note: note);
+      if (context.mounted) {
+        _snack(
+          context,
+          '${titles[type]!} enregistrée — tiroir : ${formatDA(after.currentAmount)}',
+        );
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+    }
+  }
+
+  Future<void> _openCash(BuildContext context, WidgetRef ref) async {
+    final store = (ref.read(locationsProvider).value ?? const [])
+        .where((l) => l.type == 'MAGASIN' && l.isActive)
+        .firstOrNull;
+    if (store == null) {
+      _snack(context, 'Magasin introuvable dans le catalogue local');
+      return;
+    }
+    final amount = await askAmount(
+      context,
+      title: 'Ouvrir la caisse',
+      label: 'Fond de caisse',
+      confirm: 'Ouvrir',
+    );
+    if (amount == null || !context.mounted) return;
+    try {
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .openCash(store.id, amount);
+      if (context.mounted) {
+        _snack(
+          context,
+          outcome is Queued
+              ? 'Caisse ouverte sur cet appareil — en attente de synchronisation.'
+              : 'Caisse ouverte.',
+        );
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+    }
+  }
+
+  Future<void> _closeCash(
+    BuildContext context,
+    WidgetRef ref,
+    CashSession cash,
+  ) async {
+    final counted = await askAmount(
+      context,
+      title: 'Clôturer la caisse',
+      label: 'Espèces comptées dans le tiroir',
+      confirm: 'Clôturer',
+      help: 'Attendu : ${formatDA(cash.currentAmount)}',
+    );
+    if (counted == null || !context.mounted) return;
+    try {
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .closeCash(cash.id, counted);
+      if (!context.mounted) return;
+      switch (outcome) {
+        case Applied(value: final report):
+          await _showZReport(context, report);
+        case Queued():
+          // Le serveur n'a encore rien calculé : pas de rapport Z, jamais un
+          // écart inventé côté appareil.
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Clôture en attente de synchronisation'),
+              content: Text(
+                'Compté : ${formatDA(counted)}. La clôture partira après les '
+                'opérations encore en attente ; le rapport Z (attendu, écart) '
+                'sera disponible une fois synchronisée.',
+              ),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Compris'),
+                ),
+              ],
+            ),
+          );
+      }
+    } on ApiException catch (error) {
+      if (context.mounted) _snack(context, error.userMessage);
+    }
+  }
+}
+
+const _movementLabel = {
+  'ENTREE': 'Entrée',
+  'SORTIE': 'Sortie',
+  'PRELEVEMENT': 'Prélèvement',
+};
+
+/// Rapport Z d'une session (clôture ou consultation admin).
+Future<void> _showZReport(BuildContext context, CashSession report) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(
+        report.userFullName == null
+            ? 'Rapport Z'
+            : 'Rapport Z — ${report.userFullName}',
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Fond : ${formatDA(report.openingFloat)}'),
+          Text(
+            'Ventes espèces : ${formatDA(report.cashSalesAmount)} '
+            '(${report.cashSalesCount})',
+          ),
+          Text('Entrées totales : ${formatDA(report.cashInAmount)}'),
+          Text('Sorties : ${formatDA(report.cashOutAmount)}'),
+          Text('Attendu : ${formatDA(report.expectedAmount ?? 0)}'),
+          Text('Compté : ${formatDA(report.countedAmount ?? 0)}'),
+          const SizedBox(height: 6),
+          Text(
+            'Écart : ${formatDA(report.difference ?? 0)}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (report.movements.isNotEmpty) ...[
+            const Divider(height: 20),
+            const Text('Mouvements hors vente'),
+            for (final m in report.movements)
+              Text(
+                '${formatDateTime(m.createdAt)} · ${_movementLabel[m.type] ?? m.type} '
+                '${formatDA(m.amount)} · ${m.userFullName}'
+                '${m.note == null ? '' : ' · ${m.note}'}',
+              ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fermer'),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Toutes les caisses (ADMIN) : qui, quand, attendu / compté / écart.
+class _CashSessionsSection extends ConsumerWidget {
+  const _CashSessionsSection({required this.margin});
+
+  final double margin;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessions = ref.watch(cashSessionsProvider);
+    return sessions.when(
+      loading: () => const AmpereSkeletonList(rows: 5),
+      error: (error, _) => ScreenStateView(
+        status: error is ApiException && error.isOffline
+            ? ScreenStatus.offline
+            : ScreenStatus.error,
+        message: error is ApiException ? error.userMessage : '$error',
+        onRetry: () => ref.invalidate(cashSessionsProvider),
+      ),
+      data: (items) => items.isEmpty
+          ? const ScreenStateView(
+              status: ScreenStatus.empty,
+              title: 'Aucune caisse ouverte pour l’instant',
+            )
+          : ListView(
+              padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+              children: [
+                for (final s in items)
+                  Card(
+                    child: ListTile(
+                      title: Text(
+                        '${s.userFullName ?? 'Caissier'} · '
+                        '${formatDateTime(s.openedAt)}',
+                      ),
+                      subtitle: Text(
+                        s.status == 'OUVERTE'
+                            ? 'En cours · ${formatDA(s.currentAmount)} dans le tiroir'
+                            : 'Attendu ${formatDA(s.expectedAmount ?? 0)} · '
+                                  'compté ${formatDA(s.countedAmount ?? 0)}',
+                      ),
+                      trailing: AmpereBadge(
+                        label: s.status == 'OUVERTE'
+                            ? 'Ouverte'
+                            : (s.difference ?? 0) == 0
+                            ? 'Juste'
+                            : 'Écart ${formatDA(s.difference!)}',
+                        tone: s.status == 'OUVERTE'
+                            ? StatusTone.info
+                            : (s.difference ?? 0) == 0
+                            ? StatusTone.ok
+                            : StatusTone.warn,
+                      ),
+                      // Rapport complet relu au serveur (détail des mouvements).
+                      onTap: () async {
+                        try {
+                          final report = await ref
+                              .read(salesApiProvider)
+                              .cashReport(s.id);
+                          if (context.mounted) {
+                            await _showZReport(context, report);
+                          }
+                        } on ApiException catch (error) {
+                          if (context.mounted) {
+                            _snack(context, error.userMessage);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _SaleSection extends ConsumerStatefulWidget {
+  const _SaleSection({required this.margin, required this.rights});
+
+  final double margin;
+  final SalesRights rights;
+
+  @override
+  ConsumerState<_SaleSection> createState() => _SaleSectionState();
+}
+
+class _SaleSectionState extends ConsumerState<_SaleSection> {
+  final _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _search.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  /// Douchette USB : le code arrive comme une saisie clavier suivie d'« Entrée ».
+  void _scan(String raw, List<Product> products) {
+    final code = raw.trim();
+    if (code.isEmpty) return;
+    // MÊME recherche que le scanner mobile : une seule règle de comparaison.
+    final match = productForBarcode(products, code);
+    if (match == null) {
+      _snack(context, 'Aucun produit pour le code $code');
+    } else {
+      ref.read(cartProvider.notifier).add(match);
+    }
+    _search.clear();
+    _searchFocus.requestFocus();
+  }
+
+  /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
+  /// panier est vidé, rien ne sort du stock. En ligne uniquement.
+  Future<void> _makeQuote() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final validUntil = await showDatePicker(
+      context: context,
+      helpText: 'Devis valable jusqu’au',
+      initialDate: today.add(const Duration(days: 30)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+    );
+    if (validUntil == null || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final quote = await ref
+          .read(quoteActionsProvider)
+          .createFromCart(validUntil: validUntil);
+      if (mounted) {
+        _snack(
+          context,
+          'Devis ${quote.number} enregistré (${formatDA(quote.totalTtc)}) — '
+          'retrouvez-le dans « Devis ».',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Devis BROUILLON corrigé (P1 bis n°21m) : le serveur re-tarife et peut
+  /// refuser (devis envoyé entre-temps, prix sous le coût…).
+  Future<void> _updateQuote() async {
+    setState(() => _busy = true);
+    try {
+      final quote = await ref.read(quoteActionsProvider).updateFromCart();
+      if (mounted) {
+        _snack(
+          context,
+          'Devis ${quote.number} mis à jour (${formatDA(quote.totalTtc)}).',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _checkout(CartEstimate estimate) async {
+    final cart = ref.read(cartProvider);
+    // Caisse CONNUE fermée (dernier état lu, même hors ligne) : une vente
+    // comptoir encaisserait des espèces sans caisse — refusée à coup sûr.
+    final cashState = ref.read(currentCashSessionProvider);
+    if (cart.customer == null &&
+        cashState.hasValue &&
+        cashState.value == null) {
+      _snack(context, 'Ouvrez la caisse avant d’encaisser des espèces');
+      return;
+    }
+    final received = await askAmount(
+      context,
+      title: 'Encaisser ${formatDA(estimate.totalTtc)}',
+      label: 'Espèces reçues',
+      confirm: 'Valider la vente',
+      initial: estimate.totalTtc,
+      help: cart.customer == null
+          ? 'Vente comptoir : doit être soldée'
+          : 'Moins que le total : le reste part en crédit de ${cart.customer!.name}',
+    );
+    if (received == null || !mounted) return;
+    final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
+    // Crédit : l'échéance est obligatoire (le serveur la refuse sinon).
+    DateTime? dueDate;
+    if (kept < estimate.totalTtc && cart.customer != null) {
+      final today = DateUtils.dateOnly(DateTime.now());
+      dueDate = await showDatePicker(
+        context: context,
+        helpText: 'Échéance du crédit de ${formatDA(estimate.totalTtc - kept)}',
+        initialDate: today.add(const Duration(days: 30)),
+        firstDate: today,
+        lastDate: today.add(const Duration(days: 730)),
+      );
+      if (dueDate == null || !mounted) return;
+    }
+    setState(() => _busy = true);
+    try {
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .checkout(
+            kept,
+            expectedTotalTtc: estimate.totalTtc,
+            dueDate: dueDate,
+          );
+      if (!mounted) return;
+      final change = received - kept;
+      switch (outcome) {
+        case Applied(value: final sale):
+          await _showTicket(sale, change: change);
+        case Queued():
+          await _showQueued(
+            total: estimate.totalTtc,
+            kept: kept,
+            change: change,
+          );
+      }
+    } on ApiException catch (error) {
+      if (error.code == ErrorCodes.saleTotalChanged) {
+        // Prix changé entre-temps : le catalogue local est remis à jour.
+        ref.read(catalogSyncProvider.notifier).refresh();
+      } else if (error.code == ErrorCodes.saleAlreadyRecorded) {
+        // La vente précédente EXISTE : ce panier ne doit pas la réécrire en
+        // boucle ; il repart avec un nouvel id, le vendeur vérifie d'abord.
+        ref.read(cartProvider.notifier).clear();
+        ref.invalidate(mySalesProvider);
+        ref.invalidate(currentCashSessionProvider);
+      }
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Vente mise en file hors-ligne : PAS un ticket — le serveur n'a encore rien
+  /// jugé (stock, prix, caisse). Affichée « en attente », jamais comme faite
+  /// (docs/context.md §6) ; un refus apparaîtra dans le panneau de synchro.
+  Future<void> _showQueued({
+    required int total,
+    required int kept,
+    required int change,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Vente en attente de synchronisation'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Pas de connexion : la vente est enregistrée sur cet appareil, '
+                'pas encore confirmée par le serveur. Le ticket officiel sera '
+                'disponible après la synchronisation.',
+              ),
+              const Divider(),
+              Text('Total TTC : ${formatDA(total)}'),
+              Text('Encaissé : ${formatDA(kept)}'),
+              if (change > 0)
+                Text(
+                  'Monnaie à rendre : ${formatDA(change)}',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Compris'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showTicket(Sale sale, {required int change}) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => _TicketDialog(
+        sale: sale,
+        change: change,
+        canInvoice: widget.rights.canInvoice,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final cart = ref.watch(cartProvider);
+    final estimate = ref.watch(cartEstimateProvider);
+    final products = ref.watch(activeProductsProvider).value ?? const [];
+    final cashState = ref.watch(currentCashSessionProvider);
+    // Hors ligne, la caisse est INCONNUE (pas « fermée ») : pas d'alerte, le
+    // serveur vérifiera à la synchronisation.
+    final noCash = cashState.hasValue && cashState.value == null;
+
+    if (!widget.rights.canSell) {
+      return const ScreenStateView(
+        status: ScreenStatus.empty,
+        title: 'Vente réservée aux vendeurs',
+      );
+    }
+
+    final sync = ref.watch(catalogSyncProvider);
+    return ListView(
+      padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
+      children: [
+        // Catalogue local encore vide (poste neuf) : on dit pourquoi, au lieu
+        // de laisser croire qu'aucun produit n'existe.
+        if (products.isEmpty) ...[
+          AmpereInlineAlert(
+            tone: sync.hasError ? StatusTone.error : StatusTone.info,
+            message: sync.isLoading
+                ? 'Chargement du catalogue…'
+                : sync.hasError
+                ? 'Catalogue non chargé : vérifiez la connexion.'
+                : 'Le catalogue ne contient aucun produit actif.',
+            action: sync.hasError
+                ? TextButton(
+                    onPressed: () =>
+                        ref.read(catalogSyncProvider.notifier).refresh(),
+                    child: const Text('Réessayer'),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 12),
+        ],
+        Autocomplete<Product>(
+          displayStringForOption: (p) => p.name,
+          optionsBuilder: (value) {
+            final term = foldForSearch(value.text);
+            if (term.length < 2) return const Iterable<Product>.empty();
+            return products
+                .where(
+                  (p) => foldForSearch(
+                    '${p.name} ${p.sku} ${p.barcode}',
+                  ).contains(term),
+                )
+                .take(20);
+          },
+          onSelected: (p) {
+            ref.read(cartProvider.notifier).add(p);
+            _search.clear();
+          },
+          fieldViewBuilder: (context, controller, focus, _) {
+            // Le champ de l'Autocomplete sert aussi à la douchette.
+            return TextField(
+              controller: controller,
+              focusNode: focus,
+              autofocus: true,
+              autocorrect: false,
+              style: AmpereType.input.copyWith(color: colors.ink),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(LucideIcons.scanBarcode, size: 17),
+                hintText: 'Scanner un code-barres ou chercher un produit',
+                suffixIcon: CameraScanButton(
+                  onCode: (code) => _scan(code, products),
+                ),
+              ),
+              onSubmitted: (value) {
+                _scan(value, products);
+                controller.clear();
+              },
+            );
+          },
+        ),
+        if (cart.quote case final quote?) ...[
+          const SizedBox(height: 12),
+          AmpereInlineAlert(
+            tone: StatusTone.info,
+            message:
+                'Modification du devis ${quote.number} : le panier remplacera '
+                'ses lignes. « Vider le panier » abandonne la modification.',
+          ),
+        ],
+        const SizedBox(height: 12),
+        _CustomerPicker(customer: cart.customer),
+        const SizedBox(height: 12),
+        if (cart.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: ScreenStateView(
+              status: ScreenStatus.empty,
+              title: 'Panier vide',
+              message: 'Scannez ou cherchez un produit pour commencer.',
+            ),
+          )
+        else
+          for (final line in cart.lines)
+            _CartLineRow(
+              line: line,
+              missingPrice: estimate.missingPrices.contains(line.product),
+              invalidDiscount: estimate.invalidDiscounts.contains(line.product),
+              totalHt: estimate.lineTotalsHt[line.product.id],
+              unitPriceHt: estimate.unitPricesHt[line.product.id],
+              tariffPriceHt: estimate.tariffPricesHt[line.product.id],
+              canDiscount: widget.rights.canDiscount,
+            ),
+        if (!cart.isEmpty) ...[
+          const Divider(height: 28),
+          _TotalRow('Total HT', estimate.totalHt),
+          _TotalRow('TVA', estimate.totalTax),
+          _TotalRow('Total TTC', estimate.totalTtc, strong: true),
+          Text(
+            'Estimation — le montant exact est calculé par le serveur.',
+            style: AmpereType.meta.copyWith(color: colors.ink3),
+          ),
+          if (estimate.missingPrices.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const AmpereInlineAlert(
+              message:
+                  'Certains produits n’ont pas de prix pour ce tarif : '
+                  'la vente sera refusée.',
+            ),
+          ],
+          if (estimate.invalidDiscounts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const AmpereInlineAlert(
+              message:
+                  'Une remise dépasse désormais ce que sa ligne permet (elle '
+                  'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
+            ),
+          ],
+          if (noCash && cart.customer == null) ...[
+            const SizedBox(height: 10),
+            const AmpereInlineAlert(
+              tone: StatusTone.warn,
+              message: 'Ouvrez la caisse pour encaisser des espèces.',
+            ),
+          ],
+          const SizedBox(height: 16),
+          if (cart.quote case final quote?)
+            // Un devis en cours de modification ne s'encaisse pas ici : il se
+            // met à jour, puis suit son cycle (envoi, acceptation, conversion).
+            SizedBox(
+              height: AmpereGeometry.touchPrimary,
+              child: FilledButton.icon(
+                onPressed: _busy || estimate.blocked ? null : _updateQuote,
+                icon: const Icon(LucideIcons.fileText, size: 18),
+                label: Text('Mettre à jour le devis ${quote.number}'),
+              ),
+            )
+          else ...[
+            SizedBox(
+              height: AmpereGeometry.touchPrimary,
+              child: FilledButton.icon(
+                onPressed: _busy || estimate.blocked
+                    ? null
+                    : () => _checkout(estimate),
+                icon: const Icon(LucideIcons.banknote, size: 18),
+                label: Text('Encaisser ${formatDA(estimate.totalTtc)}'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // Même panier, aucun encaissement, aucun mouvement de stock.
+            OutlinedButton.icon(
+              onPressed: _busy || estimate.blocked ? null : _makeQuote,
+              icon: const Icon(LucideIcons.fileText, size: 18),
+              label: const Text('Faire un devis'),
+            ),
+          ],
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => ref.read(cartProvider.notifier).clear(),
+            child: const Text('Vider le panier'),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _TotalRow extends StatelessWidget {
+  const _TotalRow(this.label, this.amount, {this.strong = false});
+
+  final String label;
+  final int amount;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final style = (strong ? AmpereType.sectionTitle : AmpereType.body).copyWith(
+      color: colors.ink,
+      fontFeatures: AmpereType.tabular,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(formatDA(amount), style: style),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartLineRow extends ConsumerWidget {
+  const _CartLineRow({
+    required this.line,
+    required this.missingPrice,
+    this.totalHt,
+    this.unitPriceHt,
+    this.tariffPriceHt,
+    this.canDiscount = false,
+    this.invalidDiscount = false,
+  });
+
+  final bool canDiscount;
+  final bool invalidDiscount;
+  final CartLine line;
+  final bool missingPrice;
+  final int? totalHt;
+  final int? unitPriceHt;
+  final int? tariffPriceHt;
+
+  /// Prix modifiable en vente (décision MEDMEDBEN 2026-09-22), jamais sous le
+  /// plancher : dernier prix d'achat, sinon tarif. Le serveur revérifie.
+  Future<void> _editPrice(BuildContext context, WidgetRef ref) async {
+    final floor = priceFloor(line.product);
+    if (floor == null) {
+      _snack(
+        context,
+        'Aucun prix de vente pour « ${line.product.name} » : '
+        'l’administrateur doit le définir',
+      );
+      return;
+    }
+    final value = await askAmount(
+      context,
+      title: 'Prix de « ${line.product.name} »',
+      label: 'Prix unitaire HT',
+      confirm: 'Appliquer',
+      initial: unitPriceHt,
+      help: [
+        if (tariffPriceHt != null) 'Tarif : ${formatDA(tariffPriceHt!)} HT',
+        'minimum : ${formatDA(floor)} HT',
+      ].join(' · '),
+    );
+    if (value == null || !context.mounted) return;
+    if (value < floor) {
+      _snack(
+        context,
+        'Prix trop bas : minimum ${formatDA(floor)} HT '
+        '(${(line.product.lastPurchasePriceHt ?? 0) > 0 ? 'prix d’achat' : 'tarif'})',
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).setPrice(line.product.id, value);
+  }
+
+  /// Remise HT sur la ligne (ADMIN). Mêmes bornes que le serveur : jamais plus
+  /// que la ligne, jamais un net sous le plancher (coût) × quantité.
+  Future<void> _editDiscount(BuildContext context, WidgetRef ref) async {
+    final price = unitPriceHt;
+    if (price == null) return;
+    final gross = lineGrossHt(price, line.quantity);
+    final maxDiscount = maxLineDiscountHt(line.product, price, line.quantity);
+    final value = await askAmount(
+      context,
+      title: 'Remise sur « ${line.product.name} »',
+      label: 'Remise HT sur la ligne',
+      confirm: 'Appliquer',
+      initial: line.discountHt,
+      help:
+          'Ligne ${formatDA(gross)} HT · remise maximale '
+          '${formatDA(maxDiscount)} (pas sous le coût)',
+    );
+    if (value == null || !context.mounted) return;
+    // 0 retire la remise : toujours permis.
+    if (value > maxDiscount) {
+      _snack(
+        context,
+        'Remise trop forte : au plus ${formatDA(maxDiscount)} '
+        '— la ligne ne descend pas sous le coût',
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).setDiscount(line.product.id, value);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final cart = ref.read(cartProvider.notifier);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  line.product.name,
+                  style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                ),
+                Text(
+                  totalHt == null
+                      ? line.product.sku
+                      : '${line.product.sku} · ${formatDA(totalHt!)} HT',
+                  style: AmpereType.mono.copyWith(color: colors.ink3),
+                ),
+                if (unitPriceHt != null)
+                  Text(
+                    '${formatDA(unitPriceHt!)} HT / ${line.product.unit.short}',
+                    style: AmpereType.meta.copyWith(color: colors.ink2),
+                  ),
+                if (missingPrice)
+                  const AmpereBadge(
+                    label: 'Prix non fixé',
+                    tone: StatusTone.error,
+                  )
+                else if (unitPriceHt != tariffPriceHt)
+                  const AmpereBadge(
+                    label: 'Prix modifié',
+                    tone: StatusTone.warn,
+                  ),
+                if (invalidDiscount)
+                  AmpereBadge(
+                    label:
+                        'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
+                    tone: StatusTone.error,
+                  )
+                else if (line.discountHt > 0)
+                  Text(
+                    'Remise ${formatDA(line.discountHt)} HT',
+                    style: AmpereType.meta.copyWith(color: colors.warn),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Modifier le prix',
+            icon: const Icon(LucideIcons.pencil, size: 17),
+            onPressed: () => _editPrice(context, ref),
+          ),
+          if (canDiscount && !missingPrice)
+            IconButton(
+              tooltip: 'Remise',
+              icon: const Icon(LucideIcons.percent, size: 17),
+              onPressed: () => _editDiscount(context, ref),
+            ),
+          IconButton(
+            tooltip: 'Moins',
+            icon: const Icon(LucideIcons.minus, size: 17),
+            onPressed: () =>
+                cart.setQuantity(line.product.id, line.quantity - Quantity.one),
+          ),
+          SizedBox(
+            width: 72,
+            child: Text(
+              '${formatQuantity(line.quantity)} ${line.product.unit.short}',
+              textAlign: TextAlign.center,
+              style: AmpereType.bodyStrong.copyWith(
+                color: colors.ink,
+                fontFeatures: AmpereType.tabular,
+              ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Plus',
+            icon: const Icon(LucideIcons.plus, size: 17),
+            onPressed: () => cart.add(line.product),
+          ),
+          IconButton(
+            tooltip: 'Retirer',
+            icon: Icon(LucideIcons.trash2, size: 17, color: colors.error),
+            onPressed: () => cart.setQuantity(line.product.id, Quantity.zero),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomerPicker extends ConsumerWidget {
+  const _CustomerPicker({required this.customer});
+
+  final Customer? customer;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final chosen = customer;
+    if (chosen != null) {
+      return AmpereInlineAlert(
+        tone: StatusTone.info,
+        icon: LucideIcons.user,
+        message:
+            '${chosen.name} · dette ${formatDA(chosen.balanceDue)} · '
+            'plafond ${formatDA(chosen.creditLimit)}',
+        action: TextButton(
+          onPressed: () => ref.read(cartProvider.notifier).setCustomer(null),
+          child: const Text('Retirer'),
+        ),
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final picked = await showDialog<Customer>(
+            context: context,
+            builder: (_) => const _CustomerSearchDialog(),
+          );
+          if (picked != null) {
+            ref.read(cartProvider.notifier).setCustomer(picked);
+          }
+        },
+        icon: const Icon(LucideIcons.userSearch, size: 17),
+        label: const Text('Client (facultatif)'),
+      ),
+    );
+  }
+}
+
+class _CustomerSearchDialog extends ConsumerStatefulWidget {
+  const _CustomerSearchDialog();
+
+  @override
+  ConsumerState<_CustomerSearchDialog> createState() =>
+      _CustomerSearchDialogState();
+}
+
+class _CustomerSearchDialogState extends ConsumerState<_CustomerSearchDialog> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final results = ref.watch(customerSearchProvider(_query));
+    return AlertDialog(
+      title: const Text('Choisir un client'),
+      content: SizedBox(
+        width: 420,
+        height: 360,
+        child: Column(
+          children: [
+            TextField(
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(LucideIcons.search, size: 17),
+                hintText: 'Nom ou téléphone',
+              ),
+              onChanged: (v) => setState(() => _query = v.trim()),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: results.when(
+                loading: () => const AmpereSkeletonList(rows: 4),
+                error: (error, _) =>
+                    AmpereInlineAlert(message: _errorText(error)),
+                data: (customers) => ListView(
+                  children: [
+                    for (final c in customers)
+                      ListTile(
+                        title: Text(c.name),
+                        subtitle: Text(
+                          '${c.phone ?? ''} · dette ${formatDA(c.balanceDue)}',
+                        ),
+                        onTap: () => Navigator.of(context).pop(c),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Annuler'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TicketDialog extends ConsumerStatefulWidget {
+  const _TicketDialog({
+    required this.sale,
+    required this.change,
+    required this.canInvoice,
+  });
+
+  final Sale sale;
+  final int change;
+  final bool canInvoice;
+
+  @override
+  ConsumerState<_TicketDialog> createState() => _TicketDialogState();
+}
+
+class _TicketDialogState extends ConsumerState<_TicketDialog> {
+  late Sale _sale = widget.sale;
+  bool _busy = false;
+
+  Future<void> _print() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(salesActionsProvider).printDocument(_sale);
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } catch (_) {
+      // Boîte d'impression indisponible (plateforme, aucune imprimante…).
+      if (mounted) _snack(context, 'Impression impossible sur cet appareil');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final names = {
+      for (final p in ref.watch(activeProductsProvider).value ?? const [])
+        p.id: p.name,
+    };
+    return AlertDialog(
+      title: Text(_sale.invoiceNumber ?? _sale.number),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final line in _sale.lines)
+              Text(
+                '${formatQuantity(line.quantity)} × ${names[line.productId] ?? 'Produit'} '
+                '— ${formatDA(line.lineTotalTtc)}',
+              ),
+            const Divider(),
+            Text('Total TTC : ${formatDA(_sale.totalTtc)}'),
+            Text('Encaissé : ${formatDA(_sale.paidAmount)}'),
+            if (widget.change > 0)
+              Text(
+                'Monnaie à rendre : ${formatDA(widget.change)}',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            if (_sale.remainingAmount > 0)
+              Text('Reste dû (crédit) : ${formatDA(_sale.remainingAmount)}'),
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.canInvoice && _sale.invoiceNumber == null)
+          OutlinedButton(
+            onPressed: _busy
+                ? null
+                : () async {
+                    setState(() => _busy = true);
+                    try {
+                      final invoiced = await ref
+                          .read(salesActionsProvider)
+                          .invoice(_sale.id);
+                      if (mounted) setState(() => _sale = invoiced);
+                    } on ApiException catch (error) {
+                      if (context.mounted) _snack(context, error.userMessage);
+                    } finally {
+                      if (mounted) setState(() => _busy = false);
+                    }
+                  },
+            child: const Text('Émettre la facture'),
+          ),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _print,
+          icon: const Icon(LucideIcons.printer, size: 16),
+          label: Text(
+            _sale.invoiceNumber == null
+                ? 'Imprimer le ticket'
+                : 'Imprimer la facture',
+          ),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Nouvelle vente'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CustomersSection extends ConsumerStatefulWidget {
+  const _CustomersSection({required this.margin, required this.rights});
+
+  final double margin;
+  final SalesRights rights;
+
+  @override
+  ConsumerState<_CustomersSection> createState() => _CustomersSectionState();
+}
+
+class _CustomersSectionState extends ConsumerState<_CustomersSection> {
+  String _query = '';
+
+  /// Fiche complète (P1 bis n°21e) : même formulaire en création et en
+  /// modification ; tarif et plafond seulement pour l'administrateur.
+  Future<void> _create([Customer? existing]) => openFormPanel<void>(
+    context,
+    CustomerForm(
+      existing: existing,
+      canManageTerms: widget.rights.canManageCustomerTerms,
+    ),
+  );
+
+  Future<void> _pay(Customer customer) async {
+    final amount = await askAmount(
+      context,
+      title: 'Règlement de ${customer.name}',
+      label: 'Espèces reçues',
+      confirm: 'Encaisser',
+      initial: customer.balanceDue,
+      help: 'Dette : ${formatDA(customer.balanceDue)}',
+    );
+    if (amount == null || amount == 0 || !mounted) return;
+    try {
+      // Même clé à chaque essai de ce règlement, dialogue rouvert compris ;
+      // sans réseau, il part dans la file (même clé).
+      final outcome = await ref
+          .read(salesActionsProvider)
+          .payCustomer(customer.id, amount);
+      if (mounted) {
+        _snack(
+          context,
+          outcome is Queued
+              ? 'Règlement de ${formatDA(amount)} enregistré sur cet appareil — '
+                    'en attente de synchronisation.'
+              : 'Règlement de ${formatDA(amount)} encaissé.',
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    }
+  }
+
+  Future<void> _openCustomer(Customer customer) async {
+    final rights = widget.rights;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(customer.name),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Text(
+              [
+                if (customer.totalPurchased case final bought?)
+                  'Total acheté ${formatDA(bought)}',
+                if (customer.totalPaid case final paid?)
+                  'payé ${formatDA(paid)}',
+                'reste ${formatDA(customer.balanceDue)}',
+                if (customer.overdueAmount > 0)
+                  'en retard ${formatDA(customer.overdueAmount)}',
+              ].join(' · '),
+            ),
+          ),
+          if (rights.canWriteCustomers)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('edit'),
+              child: const Text('Modifier la fiche'),
+            ),
+          if (rights.canTakePayments && customer.balanceDue > 0)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('pay'),
+              child: const Text('Encaisser un règlement'),
+            ),
+          if (rights.canSell)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('sales'),
+              child: const Text('Historique des achats'),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.of(context).pop('history'),
+            child: const Text('Historique des règlements'),
+          ),
+          if (rights.canReadStatements)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop('statement'),
+              child: const Text('Relevé de compte (PDF)'),
+            ),
+        ],
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'pay') return _pay(customer);
+    if (action == 'statement') {
+      // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.
+      try {
+        final path = await ref.read(saveExportProvider)(
+          await ref
+              .read(salesApiProvider)
+              .customerStatement(customer.id, ExportFormat.pdf),
+        );
+        if (mounted) _snack(context, 'Enregistré sur ce poste : $path');
+      } on ApiException catch (error) {
+        if (mounted) _snack(context, error.userMessage);
+      } on Exception {
+        if (mounted) {
+          _snack(context, 'Le relevé n’a pas pu être enregistré sur ce poste.');
+        }
+      }
+      return;
+    }
+    if (action == 'edit') return _create(customer);
+    if (action == 'sales') {
+      final api = ref.read(salesApiProvider);
+      await showHistory(
+        context,
+        title: 'Achats — ${customer.name}',
+        empty: 'Ce client n’a encore rien acheté.',
+        load: () async => [
+          for (final s in (await api.sales(
+            limit: 100,
+            customerId: customer.id,
+          )).data)
+            (
+              title: [
+                s.invoiceNumber ?? s.number,
+                if (s.status == 'ANNULEE') 'annulée',
+              ].join(' · '),
+              subtitle: [
+                formatDateTime(s.soldAt),
+                '${s.lines.length} article(s)',
+                if (s.remainingAmount > 0)
+                  'reste ${formatDA(s.remainingAmount)}',
+              ].join(' · '),
+              trailing: '${formatDA(s.totalTtc)} TTC',
+            ),
+        ],
+      );
+      return;
+    }
+    final actions = ref.read(salesActionsProvider);
+    await showPaymentHistory(
+      context,
+      title: 'Règlements — ${customer.name}',
+      load: () => actions.customerPayments(customer.id),
+      onReverse: rights.canReversePayments
+          ? (payment, reason) =>
+                actions.reverseCustomerPayment(payment.id, reason)
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final customers = ref.watch(customerSearchProvider(_query));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  style: AmpereType.input.copyWith(color: colors.ink),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(LucideIcons.search, size: 17),
+                    hintText: 'Nom ou téléphone',
+                  ),
+                  onChanged: (v) => setState(() => _query = v.trim()),
+                ),
+              ),
+              if (widget.rights.canImportCustomers)
+                ImportButton(
+                  kind: ImportKind.customers,
+                  onImported: () => ref.invalidate(customerSearchProvider),
+                ),
+              ExportButton(
+                targets: [
+                  ExportTarget(
+                    'Clients',
+                    ref.read(salesApiProvider).exportCustomers,
+                  ),
+                  ExportTarget(
+                    'Dettes clients',
+                    (format) => ref
+                        .read(salesApiProvider)
+                        .exportCustomers(format, debtOnly: true),
+                  ),
+                ],
+              ),
+              if (widget.rights.canWriteCustomers) ...[
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: _create,
+                  icon: const Icon(LucideIcons.plus, size: 17),
+                  label: const Text('Nouveau client'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Expanded(
+          child: customers.when(
+            loading: () => const AmpereSkeletonList(rows: 5),
+            error: (error, _) => ScreenStateView(
+              status: error is ApiException && error.isOffline
+                  ? ScreenStatus.offline
+                  : ScreenStatus.error,
+              message: _errorText(error),
+              onRetry: () => ref.invalidate(customerSearchProvider),
+            ),
+            data: (items) => items.isEmpty
+                ? ScreenStateView(
+                    status: _query.isEmpty
+                        ? ScreenStatus.empty
+                        : ScreenStatus.noResults,
+                    title: _query.isEmpty ? 'Aucun client' : null,
+                    searchTerm: _query.isEmpty ? null : _query,
+                  )
+                : ListView(
+                    padding: EdgeInsets.fromLTRB(
+                      widget.margin,
+                      0,
+                      widget.margin,
+                      24,
+                    ),
+                    children: [
+                      for (final c in items)
+                        Card(
+                          child: ListTile(
+                            title: Text(c.name),
+                            subtitle: Text(
+                              '${c.phone ?? 'Sans téléphone'} · plafond '
+                              '${formatDA(c.creditLimit)}',
+                            ),
+                            trailing: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                AmpereBadge(
+                                  label: c.overdueAmount > 0
+                                      ? 'En retard ${formatDA(c.overdueAmount)}'
+                                      : c.balanceDue > 0
+                                      ? 'Dette ${formatDA(c.balanceDue)}'
+                                      : 'À jour',
+                                  tone: c.overdueAmount > 0
+                                      ? StatusTone.error
+                                      : c.balanceDue > 0
+                                      ? StatusTone.warn
+                                      : StatusTone.ok,
+                                ),
+                              ],
+                            ),
+                            onTap: () => _openCustomer(c),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+}

@@ -269,3 +269,15 @@ le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin do
   appareil où il était connecté (lecture du catalogue local, coûts d'achat compris) ; rien de ce qu'il fait ne
   passe — chaque mutation est rejugée au sync, et la session tombe dès que le serveur répond. Plafond connu :
   qui recule l'horloge à chaque lancement gagne au plus le temps passé app fermée.
+
+- **2026-10-05 (MEDMEDBEN) — TVA RETIRÉE.** Plus de TVA du tout : toute NOUVELLE vente, devis, commande, réception
+  hors commande et étiquette est à 0 % (`NO_TAX`, `backend/src/common/money.ts`) ; le prix saisi est le prix payé.
+  Les opérations d'avant gardent leur taux figé (une réception sur une commande d'avant aussi) et leurs documents
+  l'affichent. Gestion des taux (`/pricing/tax-rates`) et champ TVA du produit supprimés ; base intacte. Code
+  d'avant : `sandbox/tva/`, tag `avant-retrait-tva`. ⚠️ Mettre à jour TOUTES les apps (PC et téléphones) en même
+  temps que le serveur : une ancienne app estime le panier AVEC TVA, et une vente hors ligne serait rejetée
+  (`SALE_TOTAL_CHANGED`) au sync.
+- **2026-10-05 (MEDMEDBEN) — Unités proposées : Pièce, Mètre, Boîte.** Les produits déjà enregistrés en Rouleau,
+  Paquet ou Kilogramme gardent leur unité (rien n'est converti). « Supprimer » un produit = le retirer du catalogue
+  (désactivation) ; l'historique garde ses ventes et ses achats.
+

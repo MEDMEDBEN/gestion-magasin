@@ -106,7 +106,6 @@ describe('Import Excel/CSV (e2e)', () => {
       'Référence',
       'Nom',
       'Unité',
-      'TVA %',
       `Prix ${detailName} HT`,
       `Prix ${grosName} HT`,
       'Stock magasin',
@@ -118,19 +117,10 @@ describe('Import Excel/CSV (e2e)', () => {
     it('à blanc : toutes les erreurs, avec leur ligne, rien d’écrit', async () => {
       const file = csv(
         header(),
-        [
-          sku(1),
-          'Câble import',
-          'Mètre',
-          '19',
-          '145,00',
-          '120,00',
-          '12,5',
-          '100',
-        ],
-        [sku(2), 'Produit mal saisi', 'Carton', '19', '10', '', '', ''],
-        [sku(3), 'Prix illisible', 'Pièce', '19', 'dix dinars', '', '', ''],
-        [sku(1), 'Doublon de référence', 'Pièce', '19', '10', '', '', ''],
+        [sku(1), 'Câble import', 'Mètre', '145,00', '120,00', '12,5', '100'],
+        [sku(2), 'Produit mal saisi', 'Carton', '10', '', '', ''],
+        [sku(3), 'Prix illisible', 'Pièce', 'dix dinars', '', '', ''],
+        [sku(1), 'Doublon de référence', 'Pièce', '10', '', '', ''],
       );
       const res = await upload(tokens.admin, 'products', file, true).expect(
         200,
@@ -156,8 +146,8 @@ describe('Import Excel/CSV (e2e)', () => {
     it('appliqué avec des erreurs : refusé, RIEN n’est créé', async () => {
       const file = csv(
         header(),
-        [sku(10), 'Bon produit', 'Pièce', '19', '10', '', '', ''],
-        [sku(11), 'Mauvais', 'Carton', '19', '10', '', '', ''],
+        [sku(10), 'Bon produit', 'Pièce', '10', '', '', ''],
+        [sku(11), 'Mauvais', 'Carton', '10', '', '', ''],
       );
       await upload(tokens.admin, 'products', file, false).expect(422);
       expect(await prisma.product.count({ where: { sku: sku(10) } })).toBe(0);
@@ -168,18 +158,8 @@ describe('Import Excel/CSV (e2e)', () => {
     it('code-barres invalide : signalé à blanc, avec sa ligne', async () => {
       const file = csv(
         [...header(), 'Code-barres'],
-        [sku(20), 'Premier', 'Pièce', '19', '10', '', '5', '', ''],
-        [
-          sku(21),
-          'Code faux',
-          'Pièce',
-          '19',
-          '10',
-          '',
-          '',
-          '',
-          '2000000000016',
-        ],
+        [sku(20), 'Premier', 'Pièce', '10', '', '5', '', ''],
+        [sku(21), 'Code faux', 'Pièce', '10', '', '', '', '2000000000016'],
       );
       const res = await upload(tokens.admin, 'products', file, true).expect(
         200,
@@ -211,8 +191,8 @@ describe('Import Excel/CSV (e2e)', () => {
       try {
         const file = csv(
           header(),
-          [sku(22), 'Premier', 'Pièce', '19', '10', '', '5', ''],
-          [sku(23), 'Second', 'Pièce', '19', '10', '', '', ''],
+          [sku(22), 'Premier', 'Pièce', '10', '', '5', ''],
+          [sku(23), 'Second', 'Pièce', '10', '', '', ''],
         );
         const res = await upload(tokens.admin, 'products', file, false).expect(
           409,
@@ -234,7 +214,6 @@ describe('Import Excel/CSV (e2e)', () => {
         sku(25),
         'Concurrent',
         'Pièce',
-        '19',
         '10',
         '',
         '7',
@@ -254,28 +233,30 @@ describe('Import Excel/CSV (e2e)', () => {
     });
 
     /// Messages en français, nommant la COLONNE ; espaces de bord retirés à
-    /// la lecture ; TVA « 19 % » reconnue ; colonne inconnue signalée.
+    /// la lecture ; colonne inconnue signalée. « TVA % » n'existe plus (TVA
+    /// retirée, décision MEDMEDBEN 2026-10-05) : un vieux fichier qui la porte
+    /// la voit signalée comme les autres colonnes inconnues, jamais appliquée.
     it('messages par colonne, valeurs nettoyées, colonne inconnue signalée', async () => {
       const file = csv(
-        [...header(), 'Prix TTC'],
-        [sku(26), 'X', 'Pièce', '19', '10', '', '', '', '12'],
+        [...header(), 'TVA %', 'Prix TTC'],
+        [sku(26), 'X', 'Pièce', '10', '', '', '', '19', '12'],
         [
           `  ${sku(27)}  `,
           '  Nettoyé  ',
           'Pièce',
-          '19 %',
           '10',
           '',
           '',
           '',
+          '19 %',
           '',
         ],
-        [sku(28), 'Prix énorme', 'Pièce', '19', '99999999', '', '', '', ''],
+        [sku(28), 'Prix énorme', 'Pièce', '99999999', '', '', '', '19', ''],
       );
       const res = await upload(tokens.admin, 'products', file, true).expect(
         200,
       );
-      expect(res.body.ignored).toEqual(['Prix TTC']);
+      expect(res.body.ignored).toEqual(['TVA %', 'Prix TTC']);
       const byLine = Object.fromEntries(
         res.body.errors.map((e: { line: number; message: string }) => [
           e.line,
@@ -289,38 +270,25 @@ describe('Import Excel/CSV (e2e)', () => {
       await upload(
         tokens.admin,
         'products',
-        csv(header(), [
-          `  ${sku(27)}  `,
-          '  Nettoyé  ',
-          'Pièce',
-          '19 %',
-          '10',
-          '',
-          '',
-          '',
-        ]),
+        csv(
+          [...header(), 'TVA %'],
+          [`  ${sku(27)}  `, '  Nettoyé  ', 'Pièce', '10', '', '', '', '19 %'],
+        ),
         false,
       ).expect(200);
       const cleaned = await prisma.product.findUniqueOrThrow({
         where: { sku: sku(27) },
       });
       expect(cleaned.name).toBe('Nettoyé');
+      // La colonne « TVA % » est ignorée : aucun taux posé sur la fiche.
+      expect(cleaned.taxRateId).toBeNull();
     });
 
     it('appliqué : fiches, prix par tarif, stock initial par le journal', async () => {
       const file = csv(
         header(),
-        [
-          sku(30),
-          'Câble importé',
-          'Mètre',
-          '19',
-          '1 725,50',
-          '1500',
-          '12,5',
-          '100',
-        ],
-        [sku(31), 'Disjoncteur importé', 'Pièce', '', '850', '', '', ''],
+        [sku(30), 'Câble importé', 'Mètre', '1 725,50', '1500', '12,5', '100'],
+        [sku(31), 'Disjoncteur importé', 'Pièce', '850', '', '', ''],
       );
       const res = await upload(tokens.admin, 'products', file, false).expect(
         200,
@@ -378,7 +346,6 @@ describe('Import Excel/CSV (e2e)', () => {
         sku(40),
         'Unique',
         'Pièce',
-        '19',
         '10',
         '',
         '',

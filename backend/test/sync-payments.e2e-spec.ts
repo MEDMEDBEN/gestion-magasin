@@ -26,15 +26,16 @@ describe('Règlement client hors-ligne par /sync (e2e)', () => {
   let closedSessionId = '';
   let counter = 0;
 
-  /// 1 450,00 HT, TVA 19 % : une unité = 1 725,50 TTC.
-  const UNIT_TTC = 172550;
+  /// 1 450,00 l'unité. Le produit garde TVA 19 % en base, mais la TVA est
+  /// RETIRÉE (décision MEDMEDBEN 2026-10-05) : TTC = HT.
+  const UNIT_TTC = 145000;
 
   const as = (token: string) => ({
     post: (url: string) =>
       request(server).post(url).set('Authorization', `Bearer ${token}`),
   });
 
-  /// Client qui doit UNE vente à crédit de 1 725,50.
+  /// Client qui doit UNE vente à crédit de 1 450,00 (sans TVA : TTC = HT).
   const indebtedCustomer = async (): Promise<string> => {
     const n = ++counter;
     const tier = await prisma.priceTier.findUniqueOrThrow({

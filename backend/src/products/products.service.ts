@@ -88,7 +88,7 @@ export class ProductsService {
     const [products, tier] = await Promise.all([
       this.prisma.product.findMany({
         where: { id: { in: ids }, isActive: true },
-        include: { taxRate: true, prices: true },
+        include: { prices: true },
       }),
       this.prisma.priceTier.findFirst({
         where: dto.priceTierId
@@ -586,7 +586,6 @@ export class ProductsService {
         brand: dto.brand ?? null,
         unit: dto.unit,
         categoryId: dto.categoryId ?? null,
-        taxRateId: dto.taxRateId ?? null,
         mainSupplierId: dto.mainSupplierId ?? null,
         storageLocationId: dto.storageLocationId ?? null,
         minThreshold: ProductsService.threshold(
@@ -654,8 +653,6 @@ export class ProductsService {
       await this.assertReferences(tx, {
         categoryId:
           dto.categoryId !== before.categoryId ? dto.categoryId : undefined,
-        taxRateId:
-          dto.taxRateId !== before.taxRateId ? dto.taxRateId : undefined,
         mainSupplierId:
           dto.mainSupplierId !== before.mainSupplierId
             ? dto.mainSupplierId
@@ -698,7 +695,6 @@ export class ProductsService {
         data.unit = dto.unit;
       }
       if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
-      if (dto.taxRateId !== undefined) data.taxRateId = dto.taxRateId;
       if (dto.mainSupplierId !== undefined)
         data.mainSupplierId = dto.mainSupplierId;
       if (dto.storageLocationId !== undefined)
@@ -874,7 +870,7 @@ export class ProductsService {
     tx: Db,
     dto: Pick<
       UpdateProductDto,
-      'categoryId' | 'taxRateId' | 'mainSupplierId' | 'storageLocationId'
+      'categoryId' | 'mainSupplierId' | 'storageLocationId'
     >,
   ) {
     const missing = (field: string) =>
@@ -888,12 +884,6 @@ export class ProductsService {
         where: { id: dto.categoryId, isActive: true },
       });
       if (!found) throw missing('categoryId');
-    }
-    if (dto.taxRateId) {
-      const found = await tx.taxRate.findFirst({
-        where: { id: dto.taxRateId, isActive: true },
-      });
-      if (!found) throw missing('taxRateId');
     }
     if (dto.mainSupplierId) {
       const found = await tx.supplier.findUnique({

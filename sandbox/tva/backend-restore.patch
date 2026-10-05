@@ -1,0 +1,717 @@
+diff --git b/backend/src/common/export/export-guards.spec.ts a/backend/src/common/export/export-guards.spec.ts
+index fbf897f..e163fa0 100644
+--- b/backend/src/common/export/export-guards.spec.ts
++++ a/backend/src/common/export/export-guards.spec.ts
+@@ -83,13 +83,16 @@ describe('gardes des imports', () => {
+ /// `price.manage` ; l'identité du magasin, ADMIN + `settings.manage` (au
+ /// niveau du contrôleur, lecture comprise).
+ describe('gardes des Paramètres', () => {
+-  it.each(['createTier', 'updateTier'])('PricingController.%s', (method) => {
+-    const controller = PricingController as Controller;
+-    expect(meta(controller, method, ROLES_KEY)).toEqual([RoleCode.ADMIN]);
+-    expect(meta(controller, method, PERMISSIONS_KEY)).toEqual([
+-      PERMISSIONS.PRICE_MANAGE,
+-    ]);
+-  });
++  it.each(['createTier', 'updateTier', 'createTaxRate', 'updateTaxRate'])(
++    'PricingController.%s',
++    (method) => {
++      const controller = PricingController as Controller;
++      expect(meta(controller, method, ROLES_KEY)).toEqual([RoleCode.ADMIN]);
++      expect(meta(controller, method, PERMISSIONS_KEY)).toEqual([
++        PERMISSIONS.PRICE_MANAGE,
++      ]);
++    },
++  );
+ 
+   it('SettingsController', () => {
+     expect(Reflect.getMetadata(ROLES_KEY, SettingsController)).toEqual([
+diff --git b/backend/src/common/money.ts a/backend/src/common/money.ts
+index f75fc57..eebb579 100644
+--- b/backend/src/common/money.ts
++++ a/backend/src/common/money.ts
+@@ -11,11 +11,6 @@ export function roundMoney(value: Prisma.Decimal): number {
+ /// une étiquette, c'est le prix UNITAIRE : pour plusieurs mètres, la caisse
+ /// arrondit la TVA de la ligne entière — un écart d'au plus un demi-centime
+ /// par unité, comme entre le prix unitaire et le total d'un ticket.
+-/// TVA RETIRÉE (décision MEDMEDBEN 2026-10-05, `sandbox/tva/`) : toute
+-/// NOUVELLE opération (vente, devis, commande, réception) est à 0 %. Les
+-/// opérations passées gardent le taux figé sur leurs lignes.
+-export const NO_TAX = new Prisma.Decimal(0);
+-
+ export function taxAmount(
+   amountHt: number,
+   rate: Prisma.Decimal | number,
+diff --git b/backend/src/imports/imports.service.ts a/backend/src/imports/imports.service.ts
+index cc3e349..c224435 100644
+--- b/backend/src/imports/imports.service.ts
++++ a/backend/src/imports/imports.service.ts
+@@ -131,6 +131,7 @@ export class ImportsService {
+         'Code-barres',
+         'Unité',
+         'Catégorie',
++        'TVA %',
+         'Marque',
+         'Seuil minimum',
+         'Prix d’achat HT',
+@@ -174,6 +175,7 @@ export class ImportsService {
+           'Code-barres': '',
+           Unité: 'Mètre',
+           Catégorie: '',
++          'TVA %': '19',
+           Marque: '',
+           'Seuil minimum': '100',
+           'Prix d’achat HT': '110,00',
+@@ -481,8 +483,9 @@ export class ImportsService {
+   private async productBuilder(
+     tiers: { id: string; header: string }[],
+   ): Promise<(row: ImportRow) => Prepared<object> | string> {
+-    const [categories, locations] = await Promise.all([
++    const [categories, taxRates, locations] = await Promise.all([
+       this.prisma.category.findMany({ where: { isActive: true } }),
++      this.prisma.taxRate.findMany({ where: { isActive: true } }),
+       this.prisma.location.findMany({
+         where: { type: { in: ['MAGASIN', 'DEPOT'] }, isActive: true },
+       }),
+@@ -509,6 +512,19 @@ export class ImportsService {
+       if (c['Catégorie'] && !categoryId) {
+         problems.push(`catégorie « ${c['Catégorie']} » inconnue`);
+       }
++      let taxRateId: string | undefined;
++      if (c['TVA %']) {
++        const text = c['TVA %'].replace('%', '').replace(',', '.').trim();
++        // Une cellule Excel au format « % » vaut 0,19 pour 19 %.
++        const rate =
++          Number(text) > 0 && Number(text) < 1
++            ? Math.round(Number(text) * 10_000) / 100
++            : Number(text);
++        taxRateId = text
++          ? taxRates.find((t) => Number(t.rate) === rate)?.id
++          : undefined;
++        if (!taxRateId) problems.push(`taux de TVA « ${c['TVA %']} » inconnu`);
++      }
+       const quantity = (header: string) => {
+         if (!c[header]) return undefined;
+         const q = parseImportQuantity(c[header]);
+@@ -577,6 +593,7 @@ export class ImportsService {
+           ...(barcode && { barcode }),
+           unit,
+           ...(categoryId && { categoryId }),
++          ...(taxRateId && { taxRateId }),
+           ...(c['Marque'] && { brand: c['Marque'] }),
+           ...(minThreshold && { minThreshold }),
+           ...(initialStock.length > 0 && { initialStock }),
+diff --git b/backend/src/products/dto/pricing.dto.ts a/backend/src/products/dto/pricing.dto.ts
+index 632970a..fe7b3dc 100644
+--- b/backend/src/products/dto/pricing.dto.ts
++++ a/backend/src/products/dto/pricing.dto.ts
+@@ -23,6 +23,10 @@ const upper = ({ value }: { value: unknown }) =>
+ const CODE = /^[A-Z0-9_]{2,20}$/;
+ const CODE_MESSAGE = 'code : 2 à 20 lettres, chiffres ou _ (ex. GROS)';
+ 
++/// Taux en pourcentage, 0 à 100, deux décimales au plus (« 19 », « 9.5 »).
++const RATE = /^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)$/;
++const RATE_MESSAGE = 'rate : pourcentage de 0 à 100, 2 décimales au plus';
++
+ export class ListPricingQueryDto {
+   @ApiPropertyOptional({
+     description: 'Vrai : inactifs compris (écran Paramètres).',
+@@ -69,3 +73,53 @@ export class UpdatePriceTierDto {
+   @IsOptionalNotNull()
+   isActive?: boolean;
+ }
++
++export class CreateTaxRateDto {
++  @ApiProperty({ example: 'TVA9' })
++  @Transform(upper)
++  @IsString()
++  @Matches(CODE, { message: CODE_MESSAGE })
++  code!: string;
++
++  @ApiProperty({ example: 'TVA 9 %' })
++  @Transform(trim)
++  @IsString()
++  @MinLength(2, { message: 'name : 2 caractères au moins' })
++  @MaxLength(60, { message: 'name : 60 caractères au plus' })
++  name!: string;
++
++  @ApiProperty({ example: '9.00', description: 'Pourcentage, en chaîne.' })
++  @IsString()
++  @Matches(RATE, { message: RATE_MESSAGE })
++  rate!: string;
++}
++
++export class UpdateTaxRateDto {
++  @ApiPropertyOptional()
++  @Transform(trim)
++  @IsString()
++  @MinLength(2, { message: 'name : 2 caractères au moins' })
++  @MaxLength(60, { message: 'name : 60 caractères au plus' })
++  @IsOptionalNotNull()
++  name?: string;
++
++  @ApiPropertyOptional({
++    description:
++      'Nouveau taux : vaut pour les ventes FUTURES (chaque ligne vendue garde ' +
++      'le taux de son jour).',
++  })
++  @IsString()
++  @Matches(RATE, { message: RATE_MESSAGE })
++  @IsOptionalNotNull()
++  rate?: string;
++
++  @ApiPropertyOptional({ description: 'Seul `true`.' })
++  @IsIn([true])
++  @IsOptionalNotNull()
++  isDefault?: true;
++
++  @ApiPropertyOptional()
++  @IsBoolean()
++  @IsOptionalNotNull()
++  isActive?: boolean;
++}
+diff --git b/backend/src/products/dto/product.dto.ts a/backend/src/products/dto/product.dto.ts
+index b60dd48..32a2bac 100644
+--- b/backend/src/products/dto/product.dto.ts
++++ a/backend/src/products/dto/product.dto.ts
+@@ -115,6 +115,8 @@ export class CreateProductDto {
+ 
+   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() categoryId?:
+     string | null;
++  @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() taxRateId?:
++    string | null;
+   @ApiPropertyOptional() @IsCanonicalUuid() @IsOptional() mainSupplierId?:
+     string | null;
+   @ApiPropertyOptional({
+@@ -239,6 +241,10 @@ export class UpdateProductDto {
+   @ApiPropertyOptional({ nullable: true })
+   @IsCanonicalUuid()
+   @IsOptional()
++  taxRateId?: string | null;
++  @ApiPropertyOptional({ nullable: true })
++  @IsCanonicalUuid()
++  @IsOptional()
+   mainSupplierId?: string | null;
+   @ApiPropertyOptional({ nullable: true })
+   @IsCanonicalUuid()
+diff --git b/backend/src/products/labels.spec.ts a/backend/src/products/labels.spec.ts
+index c2e3e9f..0b4f6d8 100644
+--- b/backend/src/products/labels.spec.ts
++++ a/backend/src/products/labels.spec.ts
+@@ -22,11 +22,13 @@ const pages = (pdf: Buffer) =>
+   (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+ 
+ describe('étiquettes', () => {
+-  /// Sans TVA (retirée le 2026-10-05) : le prix en rayon est le prix du
+-  /// tarif, exactement celui payé en caisse.
+-  it('prix affiché = prix du tarif, sans TVA', () => {
+-    expect(labelFor(cable, 145).priceTtc).toBe(145);
+-    expect(labelFor(cable, 145000).priceTtc).toBe(145000);
++  /// Le prix unitaire TTC : HT + TVA arrondie au centime, demi vers le haut.
++  it('TTC unitaire arrondi au centime', () => {
++    // 145 centimes HT × 19 % = 27,55 → 28 : 1,73 DA TTC.
++    expect(labelFor(cable, 145).priceTtc).toBe(173);
++    // 1 450,00 HT × 19 % = 275,50 : 1 725,50 TTC.
++    expect(labelFor(cable, 145000).priceTtc).toBe(172550);
++    expect(labelFor({ ...cable, taxRate: null }, 145).priceTtc).toBe(145);
+   });
+ 
+   it('symbologie : EAN-13 si 13 chiffres à clé juste, Code128 sinon', async () => {
+diff --git b/backend/src/products/labels.ts a/backend/src/products/labels.ts
+index 55306da..1ea8a96 100644
+--- b/backend/src/products/labels.ts
++++ a/backend/src/products/labels.ts
+@@ -2,6 +2,7 @@ import { HttpStatus } from '@nestjs/common';
+ import { barcodePng } from '../common/barcode/barcode';
+ import { BusinessException } from '../common/business.exception';
+ import { ErrorCode } from '../common/error-codes';
++import { taxAmount } from '../common/money';
+ import {
+   formatDA,
+   openImage,
+@@ -25,22 +26,23 @@ export interface Label {
+   unit: string;
+ }
+ 
+-/// Étiquette d'un produit au prix de son tarif : sans TVA (`NO_TAX`), le
+-/// prix lu en rayon est EXACTEMENT celui payé en caisse.
++/// Étiquette d'un produit au prix HT de son tarif : TTC calculé EXACTEMENT
++/// comme la ligne de vente (`taxAmount`) — le prix lu en rayon est le prix payé.
+ export function labelFor(
+   product: {
+     name: string;
+     sku: string;
+     barcode: string;
+     unit: string;
++    taxRate: { rate: Parameters<typeof taxAmount>[1] } | null;
+   },
+-  price: number,
++  priceHt: number,
+ ): Label {
+   return {
+     name: product.name,
+     sku: product.sku,
+     barcode: product.barcode,
+-    priceTtc: price,
++    priceTtc: priceHt + taxAmount(priceHt, product.taxRate?.rate ?? 0),
+     unit: product.unit,
+   };
+ }
+diff --git b/backend/src/products/pricing.service.ts a/backend/src/products/pricing.service.ts
+index b782b47..66fb7b4 100644
+--- b/backend/src/products/pricing.service.ts
++++ a/backend/src/products/pricing.service.ts
+@@ -4,16 +4,22 @@ import { BusinessException } from '../common/business.exception';
+ import { ErrorCode } from '../common/error-codes';
+ import { Prisma, PriceTier } from '../generated/prisma/client';
+ import { PrismaService } from '../prisma/prisma.service';
+-import { CreatePriceTierDto, UpdatePriceTierDto } from './dto/pricing.dto';
+-import { PriceTierDto } from './dto/product.dto';
++import { CatalogService } from './catalog.service';
++import {
++  CreatePriceTierDto,
++  CreateTaxRateDto,
++  UpdatePriceTierDto,
++  UpdateTaxRateDto,
++} from './dto/pricing.dto';
++import { PriceTierDto, TaxRateDto } from './dto/product.dto';
+ 
+ type Db = Prisma.TransactionClient;
+ 
+-/// Écritures des tarifs : une à la fois (défaut unique).
++/// Écritures des tarifs et des taux de TVA : une à la fois (défaut unique).
+ const PRICING_LOCK = 7305;
+ 
+-/// Paramètres de prix (P1 bis n°21h) : les tarifs (la TVA est retirée depuis
+-/// le 2026-10-05, `sandbox/tva/`). Règles : code unique ; UN seul élément par défaut (en désigner un autre
++/// Paramètres de prix (P1 bis n°21h) : tarifs et taux de TVA. Règles communes
++/// aux deux : code unique ; UN seul élément par défaut (en désigner un autre
+ /// retire l'ancien) ; le défaut ne se désactive pas ; un inactif n'est pas
+ /// le défaut. Chaque écriture est auditée. Un tarif désactivé n'efface rien :
+ /// ses clients retombent sur le tarif par défaut (règle de `priceCart`).
+@@ -29,6 +35,14 @@ export class PricingService {
+     return rows.map(PricingService.tierToDto);
+   }
+ 
++  async taxRates(includeInactive = false): Promise<TaxRateDto[]> {
++    const rows = await this.prisma.taxRate.findMany({
++      where: includeInactive ? {} : { isActive: true },
++      orderBy: [{ isDefault: 'desc' }, { rate: 'asc' }],
++    });
++    return rows.map(CatalogService.taxRateToDto);
++  }
++
+   async createTier(
+     dto: CreatePriceTierDto,
+     actor: ActorContext,
+@@ -86,10 +100,73 @@ export class PricingService {
+     });
+   }
+ 
++  async createTaxRate(
++    dto: CreateTaxRateDto,
++    actor: ActorContext,
++  ): Promise<TaxRateDto> {
++    return this.prisma.$transaction(async (tx) => {
++      await PricingService.lock(tx);
++      await PricingService.assertCodeFree(
++        await tx.taxRate.findUnique({ where: { code: dto.code } }),
++        dto.code,
++      );
++      const created = CatalogService.taxRateToDto(
++        await tx.taxRate.create({
++          data: { code: dto.code, name: dto.name, rate: dto.rate },
++        }),
++      );
++      await writeAudit(tx, actor, {
++        action: 'CREATE',
++        entityType: 'TaxRate',
++        entityId: created.id,
++        newValue: PricingService.taxAudit(created),
++      });
++      return created;
++    });
++  }
++
++  async updateTaxRate(
++    id: string,
++    dto: UpdateTaxRateDto,
++    actor: ActorContext,
++  ): Promise<TaxRateDto> {
++    return this.prisma.$transaction(async (tx) => {
++      await PricingService.lock(tx);
++      const before = await tx.taxRate.findUnique({ where: { id } });
++      if (!before) throw PricingService.notFound('Taux de TVA');
++      PricingService.assertDefaultRules(before, dto, 'taux');
++      if (dto.isDefault) {
++        await tx.taxRate.updateMany({
++          where: { isDefault: true, id: { not: id } },
++          data: { isDefault: false },
++        });
++      }
++      // Le nouveau taux vaut pour les ventes futures : chaque ligne vendue a
++      // gardé le sien (`SaleLine.taxRate`). Le catalogue le redescend (delta).
++      const after = CatalogService.taxRateToDto(
++        await tx.taxRate.update({ where: { id }, data: dto }),
++      );
++      const oldValue = PricingService.taxAudit(
++        CatalogService.taxRateToDto(before),
++      );
++      const newValue = PricingService.taxAudit(after);
++      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
++        await writeAudit(tx, actor, {
++          action: 'UPDATE',
++          entityType: 'TaxRate',
++          entityId: id,
++          oldValue,
++          newValue,
++        });
++      }
++      return after;
++    });
++  }
++
+   private static assertDefaultRules(
+     before: { isDefault: boolean; isActive: boolean },
+     dto: { isDefault?: true; isActive?: boolean },
+-    what: 'tarif',
++    what: 'tarif' | 'taux',
+   ): void {
+     const active = dto.isActive ?? before.isActive;
+     const isDefault = dto.isDefault ?? before.isDefault;
+@@ -133,4 +210,14 @@ export class PricingService {
+       isActive: tier.isActive,
+     };
+   }
++
++  private static taxAudit(rate: TaxRateDto): Prisma.InputJsonObject {
++    return {
++      code: rate.code,
++      name: rate.name,
++      rate: rate.rate,
++      isDefault: rate.isDefault,
++      isActive: rate.isActive,
++    };
++  }
+ }
+diff --git b/backend/src/products/products.controller.ts a/backend/src/products/products.controller.ts
+index d8d6c19..d8e0050 100644
+--- b/backend/src/products/products.controller.ts
++++ a/backend/src/products/products.controller.ts
+@@ -57,6 +57,7 @@ import {
+   PriceChangeDto,
+   ProspectDto,
+   SetProductPriceDto,
++  TaxRateDto,
+   UpdateCategoryDto,
+   UpdateProductDto,
+ } from './dto/product.dto';
+@@ -64,8 +65,10 @@ import { ProductsService } from './products.service';
+ import { PricingService } from './pricing.service';
+ import {
+   CreatePriceTierDto,
++  CreateTaxRateDto,
+   ListPricingQueryDto,
+   UpdatePriceTierDto,
++  UpdateTaxRateDto,
+ } from './dto/pricing.dto';
+ 
+ const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
+@@ -391,6 +394,15 @@ export class PricingController {
+     return this.pricing.priceTiers(query.includeInactive);
+   }
+ 
++  @Roles(...ALL_ROLES)
++  @RequirePermissions(PERMISSIONS.PRICE_READ)
++  @Get('tax-rates')
++  @ApiOperation({ summary: 'Taux de TVA (actifs ; tous avec includeInactive)' })
++  @ApiOkResponse({ type: [TaxRateDto] })
++  taxRates(@Query() query: ListPricingQueryDto): Promise<TaxRateDto[]> {
++    return this.pricing.taxRates(query.includeInactive);
++  }
++
+   // ── Paramètres (P1 bis n°21h) : ADMIN + price.manage ─────────────────────
+ 
+   @Roles(RoleCode.ADMIN)
+@@ -421,6 +433,36 @@ export class PricingController {
+   ): Promise<PriceTierDto> {
+     return this.pricing.updateTier(id, dto, actorOf(user, ip));
+   }
++
++  @Roles(RoleCode.ADMIN)
++  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
++  @Post('tax-rates')
++  @ApiOperation({ summary: 'Crée un taux de TVA' })
++  @ApiCreatedResponse({ type: TaxRateDto })
++  createTaxRate(
++    @Body() dto: CreateTaxRateDto,
++    @CurrentUser() user: AuthenticatedUser,
++    @Ip() ip: string,
++  ): Promise<TaxRateDto> {
++    return this.pricing.createTaxRate(dto, actorOf(user, ip));
++  }
++
++  @Roles(RoleCode.ADMIN)
++  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
++  @Patch('tax-rates/:id')
++  @ApiOperation({
++    summary:
++      'Modifie un taux de TVA (le nouveau taux vaut pour les ventes futures)',
++  })
++  @ApiOkResponse({ type: TaxRateDto })
++  updateTaxRate(
++    @Param('id', CanonicalUuidPipe) id: string,
++    @Body() dto: UpdateTaxRateDto,
++    @CurrentUser() user: AuthenticatedUser,
++    @Ip() ip: string,
++  ): Promise<TaxRateDto> {
++    return this.pricing.updateTaxRate(id, dto, actorOf(user, ip));
++  }
+ }
+ 
+ @ApiTags('Catalogue (synchronisation)')
+diff --git b/backend/src/products/products.service.ts a/backend/src/products/products.service.ts
+index b15aba0..3f29bf7 100644
+--- b/backend/src/products/products.service.ts
++++ a/backend/src/products/products.service.ts
+@@ -88,7 +88,7 @@ export class ProductsService {
+     const [products, tier] = await Promise.all([
+       this.prisma.product.findMany({
+         where: { id: { in: ids }, isActive: true },
+-        include: { prices: true },
++        include: { taxRate: true, prices: true },
+       }),
+       this.prisma.priceTier.findFirst({
+         where: dto.priceTierId
+@@ -586,6 +586,7 @@ export class ProductsService {
+         brand: dto.brand ?? null,
+         unit: dto.unit,
+         categoryId: dto.categoryId ?? null,
++        taxRateId: dto.taxRateId ?? null,
+         mainSupplierId: dto.mainSupplierId ?? null,
+         storageLocationId: dto.storageLocationId ?? null,
+         minThreshold: ProductsService.threshold(
+@@ -653,6 +654,8 @@ export class ProductsService {
+       await this.assertReferences(tx, {
+         categoryId:
+           dto.categoryId !== before.categoryId ? dto.categoryId : undefined,
++        taxRateId:
++          dto.taxRateId !== before.taxRateId ? dto.taxRateId : undefined,
+         mainSupplierId:
+           dto.mainSupplierId !== before.mainSupplierId
+             ? dto.mainSupplierId
+@@ -695,6 +698,7 @@ export class ProductsService {
+         data.unit = dto.unit;
+       }
+       if (dto.categoryId !== undefined) data.categoryId = dto.categoryId;
++      if (dto.taxRateId !== undefined) data.taxRateId = dto.taxRateId;
+       if (dto.mainSupplierId !== undefined)
+         data.mainSupplierId = dto.mainSupplierId;
+       if (dto.storageLocationId !== undefined)
+@@ -870,7 +874,7 @@ export class ProductsService {
+     tx: Db,
+     dto: Pick<
+       UpdateProductDto,
+-      'categoryId' | 'mainSupplierId' | 'storageLocationId'
++      'categoryId' | 'taxRateId' | 'mainSupplierId' | 'storageLocationId'
+     >,
+   ) {
+     const missing = (field: string) =>
+@@ -885,6 +889,12 @@ export class ProductsService {
+       });
+       if (!found) throw missing('categoryId');
+     }
++    if (dto.taxRateId) {
++      const found = await tx.taxRate.findFirst({
++        where: { id: dto.taxRateId, isActive: true },
++      });
++      if (!found) throw missing('taxRateId');
++    }
+     if (dto.mainSupplierId) {
+       const found = await tx.supplier.findUnique({
+         where: { id: dto.mainSupplierId },
+diff --git b/backend/src/purchases/purchase-orders.service.ts a/backend/src/purchases/purchase-orders.service.ts
+index a5bcf02..2a3bb7a 100644
+--- b/backend/src/purchases/purchase-orders.service.ts
++++ a/backend/src/purchases/purchase-orders.service.ts
+@@ -9,7 +9,7 @@ import { formatDateTime, UNIT_LABEL } from '../common/pdf/pdf';
+ import { renderA4Document } from '../sales/sale-document';
+ import { storeIdentity } from '../settings/store-settings';
+ import { ConfigService } from '@nestjs/config';
+-import { NO_TAX, roundMoney, taxAmount } from '../common/money';
++import { roundMoney, taxAmount } from '../common/money';
+ import { formatQuantity, parseQuantity } from '../common/quantity';
+ import {
+   Prisma,
+@@ -633,7 +633,7 @@ export class PurchaseOrdersService {
+         productId: product.id,
+         orderedQuantity: quantity,
+         unitPriceHt: line.unitPriceHt,
+-        taxRate: NO_TAX,
++        taxRate: product.taxRate?.rate ?? new Prisma.Decimal(0),
+       };
+     });
+   }
+diff --git b/backend/src/receptions/receptions.service.ts a/backend/src/receptions/receptions.service.ts
+index e369434..134b2d4 100644
+--- b/backend/src/receptions/receptions.service.ts
++++ a/backend/src/receptions/receptions.service.ts
+@@ -5,7 +5,7 @@ import { BusinessException } from '../common/business.exception';
+ import { nextDocumentNumber } from '../common/document-number';
+ import { parseSort } from '../common/dto/pagination.dto';
+ import { ErrorCode } from '../common/error-codes';
+-import { NO_TAX, roundMoney, taxAmount } from '../common/money';
++import { roundMoney, taxAmount } from '../common/money';
+ import { assertSameMutation, runOnce } from '../common/idempotency';
+ import { formatQuantity, parseQuantity } from '../common/quantity';
+ import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
+@@ -397,7 +397,7 @@ export class ReceptionsService {
+           HttpStatus.UNPROCESSABLE_ENTITY,
+         );
+       }
+-      let taxRate = NO_TAX;
++      let taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+       let unitPriceHt = line.unitPriceHt;
+       if (line.purchaseLineId) {
+         const ordered = order?.lines.find((l) => l.id === line.purchaseLineId);
+diff --git b/backend/src/sales/sale-document.ts a/backend/src/sales/sale-document.ts
+index c9ef302..9ca2f7d 100644
+--- b/backend/src/sales/sale-document.ts
++++ a/backend/src/sales/sale-document.ts
+@@ -133,15 +133,10 @@ function renderTicket(data: SaleDocumentData): Promise<Buffer> {
+         }
+       }
+       rule();
+-      // Sans TVA (retirée le 2026-10-05) : un seul total. Un ticket d'avant
+-      // garde sa ventilation HT / TVA / TTC.
+-      const taxed = sale.totalTax > 0;
+-      if (taxed) {
+-        row('Total HT', formatDA(sale.totalHt));
+-        row('TVA', formatDA(sale.totalTax));
+-      }
++      row('Total HT', formatDA(sale.totalHt));
++      row('TVA', formatDA(sale.totalTax));
+       doc.fontSize(10);
+-      row(taxed ? 'TOTAL TTC' : 'TOTAL', formatDA(sale.totalTtc), true);
++      row('TOTAL TTC', formatDA(sale.totalTtc), true);
+       doc.fontSize(8);
+       row('Payé (espèces)', formatDA(sale.paidAmount));
+       if (sale.remainingAmount > 0) {
+@@ -263,27 +258,14 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
+       }
+       doc.moveDown(1.5);
+ 
+-      // Lignes. Sans TVA sur aucune ligne (retirée le 2026-10-05) : ni colonne
+-      // TVA, ni « HT » ; un document d'avant garde la sienne.
+-      const taxed = input.lines.some((l) => Number(l.taxRate) !== 0);
+-      const cols = taxed
+-        ? [
+-            { title: 'Désignation', width: w * 0.4, align: 'left' as const },
+-            { title: 'Qté', width: w * 0.1, align: 'right' as const },
+-            { title: 'PU HT', width: w * 0.16, align: 'right' as const },
+-            { title: 'TVA', width: w * 0.1, align: 'right' as const },
+-            { title: 'Total HT', width: w * 0.24, align: 'right' as const },
+-          ]
+-        : [
+-            { title: 'Désignation', width: w * 0.5, align: 'left' as const },
+-            { title: 'Qté', width: w * 0.1, align: 'right' as const },
+-            {
+-              title: 'Prix unitaire',
+-              width: w * 0.16,
+-              align: 'right' as const,
+-            },
+-            { title: 'Total', width: w * 0.24, align: 'right' as const },
+-          ];
++      // Lignes
++      const cols = [
++        { title: 'Désignation', width: w * 0.4, align: 'left' as const },
++        { title: 'Qté', width: w * 0.1, align: 'right' as const },
++        { title: 'PU HT', width: w * 0.16, align: 'right' as const },
++        { title: 'TVA', width: w * 0.1, align: 'right' as const },
++        { title: 'Total HT', width: w * 0.24, align: 'right' as const },
++      ];
+       const tableRow = (cells: string[], bold = false) => {
+         if (doc.y > doc.page.height - A4_MARGIN - 120) doc.addPage();
+         const y = doc.y;
+@@ -316,7 +298,7 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
+           d.sku ? `${d.name}\n${d.sku}` : d.name,
+           `${qty(line.quantity)} ${d.unit}`,
+           formatDA(line.unitPriceHt),
+-          ...(taxed ? [`${qty(line.taxRate)} %`] : []),
++          `${qty(line.taxRate)} %`,
+           formatDA(line.lineTotalHt),
+         ]);
+       }
+@@ -340,13 +322,11 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
+         doc.text(amount, totalsX, y, { width: w * 0.5, align: 'right' });
+         doc.moveDown(0.2);
+       };
+-      if (taxed) {
+-        total('Total HT', formatDA(input.totalHt));
+-        for (const [rate, amount] of byRate) {
+-          total(`TVA ${qty(rate)} %`, formatDA(amount));
+-        }
++      total('Total HT', formatDA(input.totalHt));
++      for (const [rate, amount] of byRate) {
++        total(`TVA ${qty(rate)} %`, formatDA(amount));
+       }
+-      total(taxed ? 'Total TTC' : 'Total', formatDA(input.totalTtc), true);
++      total('Total TTC', formatDA(input.totalTtc), true);
+       if (input.after.length > 0) doc.moveDown(0.5);
+       for (const [label, amount] of input.after) total(label, amount);
+       if (input.stamp) stamp(doc, input.stamp, left, w);
+diff --git b/backend/src/sales/sales.service.ts a/backend/src/sales/sales.service.ts
+index 08deb61..a9d4e10 100644
+--- b/backend/src/sales/sales.service.ts
++++ a/backend/src/sales/sales.service.ts
+@@ -12,7 +12,7 @@ import {
+ } from '../common/document-number';
+ import { collectAll, ExportDocument } from '../common/export/export';
+ import { ErrorCode } from '../common/error-codes';
+-import { NO_TAX, roundMoney, taxAmount } from '../common/money';
++import { roundMoney, taxAmount } from '../common/money';
+ import { assertSameMutation, runOnce } from '../common/idempotency';
+ import { PERMISSIONS } from '../common/permissions';
+ import { formatDA } from '../common/pdf/pdf';
+@@ -205,7 +205,7 @@ export class SalesService {
+     ) {
+       throw new BusinessException(
+         ErrorCode.SALE_TOTAL_CHANGED,
+-        `Le total a changé : ${formatDA(totalTtc)} (tarif mis à jour) — vérifiez avant d’encaisser`,
++        `Le total a changé : ${formatDA(totalTtc)} (tarif ou TVA mis à jour) — vérifiez avant d’encaisser`,
+         HttpStatus.CONFLICT,
+       );
+     }
+@@ -940,7 +940,7 @@ export class SalesService {
+         HttpStatus.UNPROCESSABLE_ENTITY,
+       );
+     }
+-    const taxRate = NO_TAX;
++    const taxRate = product.taxRate?.rate ?? new Prisma.Decimal(0);
+     const lineTotalHt = grossHt - discount;
+     // Le plancher vaut aussi pour le NET : une remise admin ne fait pas passer
+     // la ligne sous le coût.
+diff --git b/backend/src/suppliers/supplier-returns.service.ts a/backend/src/suppliers/supplier-returns.service.ts
+index e5d21e6..fe19619 100644
+--- b/backend/src/suppliers/supplier-returns.service.ts
++++ a/backend/src/suppliers/supplier-returns.service.ts
+@@ -216,6 +216,7 @@ export class SupplierReturnsService {
+           unitPriceHt: true,
+           lineTotalTtc: true,
+           purchaseLine: { select: { taxRate: true } },
++          product: { select: { taxRate: { select: { rate: true } } } },
+         },
+       }),
+       tx.supplierReturnLine.groupBy({
+@@ -235,7 +236,10 @@ export class SupplierReturnsService {
+           receivedQuantity: r.receivedQuantity,
+           unitPriceHt: r.unitPriceHt,
+           lineTotalTtc: r.lineTotalTtc,
+-          taxRate: r.purchaseLine?.taxRate ?? new Decimal(0),
++          taxRate:
++            r.purchaseLine?.taxRate ??
++            r.product.taxRate?.rate ??
++            new Decimal(0),
+         }));
+       const gone =
+         sentBack.find((r) => r.productId === input.productId)?._sum.quantity ??

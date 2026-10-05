@@ -2,7 +2,6 @@ import { HttpStatus } from '@nestjs/common';
 import { barcodePng } from '../common/barcode/barcode';
 import { BusinessException } from '../common/business.exception';
 import { ErrorCode } from '../common/error-codes';
-import { taxAmount } from '../common/money';
 import {
   formatDA,
   openImage,
@@ -26,23 +25,22 @@ export interface Label {
   unit: string;
 }
 
-/// Étiquette d'un produit au prix HT de son tarif : TTC calculé EXACTEMENT
-/// comme la ligne de vente (`taxAmount`) — le prix lu en rayon est le prix payé.
+/// Étiquette d'un produit au prix de son tarif : sans TVA (`NO_TAX`), le
+/// prix lu en rayon est EXACTEMENT celui payé en caisse.
 export function labelFor(
   product: {
     name: string;
     sku: string;
     barcode: string;
     unit: string;
-    taxRate: { rate: Parameters<typeof taxAmount>[1] } | null;
   },
-  priceHt: number,
+  price: number,
 ): Label {
   return {
     name: product.name,
     sku: product.sku,
     barcode: product.barcode,
-    priceTtc: priceHt + taxAmount(priceHt, product.taxRate?.rate ?? 0),
+    priceTtc: price,
     unit: product.unit,
   };
 }

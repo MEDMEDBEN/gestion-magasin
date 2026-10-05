@@ -11,6 +11,11 @@ export function roundMoney(value: Prisma.Decimal): number {
 /// une étiquette, c'est le prix UNITAIRE : pour plusieurs mètres, la caisse
 /// arrondit la TVA de la ligne entière — un écart d'au plus un demi-centime
 /// par unité, comme entre le prix unitaire et le total d'un ticket.
+/// TVA RETIRÉE (décision MEDMEDBEN 2026-10-05, `sandbox/tva/`) : toute
+/// NOUVELLE opération (vente, devis, commande, réception) est à 0 %. Les
+/// opérations passées gardent le taux figé sur leurs lignes.
+export const NO_TAX = new Prisma.Decimal(0);
+
 export function taxAmount(
   amountHt: number,
   rate: Prisma.Decimal | number,

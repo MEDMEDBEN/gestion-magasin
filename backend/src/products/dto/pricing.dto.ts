@@ -23,10 +23,6 @@ const upper = ({ value }: { value: unknown }) =>
 const CODE = /^[A-Z0-9_]{2,20}$/;
 const CODE_MESSAGE = 'code : 2 à 20 lettres, chiffres ou _ (ex. GROS)';
 
-/// Taux en pourcentage, 0 à 100, deux décimales au plus (« 19 », « 9.5 »).
-const RATE = /^(100(\.0{1,2})?|\d{1,2}(\.\d{1,2})?)$/;
-const RATE_MESSAGE = 'rate : pourcentage de 0 à 100, 2 décimales au plus';
-
 export class ListPricingQueryDto {
   @ApiPropertyOptional({
     description: 'Vrai : inactifs compris (écran Paramètres).',
@@ -64,56 +60,6 @@ export class UpdatePriceTierDto {
   @ApiPropertyOptional({
     description: 'Seul `true` : désigner un autre défaut retire l’ancien.',
   })
-  @IsIn([true])
-  @IsOptionalNotNull()
-  isDefault?: true;
-
-  @ApiPropertyOptional()
-  @IsBoolean()
-  @IsOptionalNotNull()
-  isActive?: boolean;
-}
-
-export class CreateTaxRateDto {
-  @ApiProperty({ example: 'TVA9' })
-  @Transform(upper)
-  @IsString()
-  @Matches(CODE, { message: CODE_MESSAGE })
-  code!: string;
-
-  @ApiProperty({ example: 'TVA 9 %' })
-  @Transform(trim)
-  @IsString()
-  @MinLength(2, { message: 'name : 2 caractères au moins' })
-  @MaxLength(60, { message: 'name : 60 caractères au plus' })
-  name!: string;
-
-  @ApiProperty({ example: '9.00', description: 'Pourcentage, en chaîne.' })
-  @IsString()
-  @Matches(RATE, { message: RATE_MESSAGE })
-  rate!: string;
-}
-
-export class UpdateTaxRateDto {
-  @ApiPropertyOptional()
-  @Transform(trim)
-  @IsString()
-  @MinLength(2, { message: 'name : 2 caractères au moins' })
-  @MaxLength(60, { message: 'name : 60 caractères au plus' })
-  @IsOptionalNotNull()
-  name?: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Nouveau taux : vaut pour les ventes FUTURES (chaque ligne vendue garde ' +
-      'le taux de son jour).',
-  })
-  @IsString()
-  @Matches(RATE, { message: RATE_MESSAGE })
-  @IsOptionalNotNull()
-  rate?: string;
-
-  @ApiPropertyOptional({ description: 'Seul `true`.' })
   @IsIn([true])
   @IsOptionalNotNull()
   isDefault?: true;

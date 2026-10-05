@@ -131,7 +131,6 @@ export class ImportsService {
         'Code-barres',
         'Unité',
         'Catégorie',
-        'TVA %',
         'Marque',
         'Seuil minimum',
         'Prix d’achat HT',
@@ -175,7 +174,6 @@ export class ImportsService {
           'Code-barres': '',
           Unité: 'Mètre',
           Catégorie: '',
-          'TVA %': '19',
           Marque: '',
           'Seuil minimum': '100',
           'Prix d’achat HT': '110,00',
@@ -483,9 +481,8 @@ export class ImportsService {
   private async productBuilder(
     tiers: { id: string; header: string }[],
   ): Promise<(row: ImportRow) => Prepared<object> | string> {
-    const [categories, taxRates, locations] = await Promise.all([
+    const [categories, locations] = await Promise.all([
       this.prisma.category.findMany({ where: { isActive: true } }),
-      this.prisma.taxRate.findMany({ where: { isActive: true } }),
       this.prisma.location.findMany({
         where: { type: { in: ['MAGASIN', 'DEPOT'] }, isActive: true },
       }),
@@ -511,19 +508,6 @@ export class ImportsService {
         : undefined;
       if (c['Catégorie'] && !categoryId) {
         problems.push(`catégorie « ${c['Catégorie']} » inconnue`);
-      }
-      let taxRateId: string | undefined;
-      if (c['TVA %']) {
-        const text = c['TVA %'].replace('%', '').replace(',', '.').trim();
-        // Une cellule Excel au format « % » vaut 0,19 pour 19 %.
-        const rate =
-          Number(text) > 0 && Number(text) < 1
-            ? Math.round(Number(text) * 10_000) / 100
-            : Number(text);
-        taxRateId = text
-          ? taxRates.find((t) => Number(t.rate) === rate)?.id
-          : undefined;
-        if (!taxRateId) problems.push(`taux de TVA « ${c['TVA %']} » inconnu`);
       }
       const quantity = (header: string) => {
         if (!c[header]) return undefined;
@@ -593,7 +577,6 @@ export class ImportsService {
           ...(barcode && { barcode }),
           unit,
           ...(categoryId && { categoryId }),
-          ...(taxRateId && { taxRateId }),
           ...(c['Marque'] && { brand: c['Marque'] }),
           ...(minThreshold && { minThreshold }),
           ...(initialStock.length > 0 && { initialStock }),

@@ -83,16 +83,13 @@ describe('gardes des imports', () => {
 /// `price.manage` ; l'identité du magasin, ADMIN + `settings.manage` (au
 /// niveau du contrôleur, lecture comprise).
 describe('gardes des Paramètres', () => {
-  it.each(['createTier', 'updateTier', 'createTaxRate', 'updateTaxRate'])(
-    'PricingController.%s',
-    (method) => {
-      const controller = PricingController as Controller;
-      expect(meta(controller, method, ROLES_KEY)).toEqual([RoleCode.ADMIN]);
-      expect(meta(controller, method, PERMISSIONS_KEY)).toEqual([
-        PERMISSIONS.PRICE_MANAGE,
-      ]);
-    },
-  );
+  it.each(['createTier', 'updateTier'])('PricingController.%s', (method) => {
+    const controller = PricingController as Controller;
+    expect(meta(controller, method, ROLES_KEY)).toEqual([RoleCode.ADMIN]);
+    expect(meta(controller, method, PERMISSIONS_KEY)).toEqual([
+      PERMISSIONS.PRICE_MANAGE,
+    ]);
+  });
 
   it('SettingsController', () => {
     expect(Reflect.getMetadata(ROLES_KEY, SettingsController)).toEqual([
