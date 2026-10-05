@@ -118,6 +118,49 @@ describe('Étiquettes (e2e)', () => {
     await e2e.app.close();
   });
 
+  const exportProducts = (token: string, body: object) =>
+    request(server)
+      .post('/api/products/export')
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((res, callback) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .send(body);
+
+  /// Export des produits SÉLECTIONNÉS (2026-10-05), mêmes droits.
+  it('export de la sélection : PDF et Excel, les trois rôles', async () => {
+    const a = await product({ detail: 145000 });
+    const b = await product({ detail: 99000 });
+    for (const who of ['admin', 'vendeur', 'magasinier']) {
+      const pdf = await exportProducts(tokens[who], {
+        format: 'pdf',
+        ids: [a, b],
+      }).expect(200);
+      expect(pdf.headers['content-type']).toContain('application/pdf');
+      expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+    }
+    const xlsx = await exportProducts(tokens.admin, {
+      format: 'xlsx',
+      ids: [a],
+    }).expect(200);
+    expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+    // CSV lisible : le produit et son prix y sont.
+    const csv = await exportProducts(tokens.admin, {
+      format: 'csv',
+      ids: [a],
+    }).expect(200);
+    expect((csv.body as Buffer).toString('utf8')).toContain('1450,00');
+    await exportProducts(tokens.admin, { format: 'pdf', ids: [] }).expect(400);
+    await exportProducts(tokens.admin, { format: 'doc', ids: [a] }).expect(400);
+    await request(server)
+      .post('/api/products/export')
+      .send({ format: 'pdf', ids: [a] })
+      .expect(401);
+  });
+
   it('les trois rôles impriment : planche A4 de 24 par page', async () => {
     const p = await product({ detail: 145000 });
     for (const who of ['admin', 'vendeur', 'magasinier']) {

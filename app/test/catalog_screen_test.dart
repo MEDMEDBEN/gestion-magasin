@@ -294,6 +294,68 @@ void main() {
     expect(find.text('Rouleau'), findsOneWidget);
   });
 
+  testWidgets('bouton Étiquette d’une ligne : ce produit seul', (tester) async {
+    useScreenSize(tester, const Size(900, 900));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [
+          product(id: 'p1', name: 'Câble'),
+          product(id: 'p2', name: 'Disjoncteur'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Étiquette').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Étiquettes — 1 produit(s)'), findsOneWidget);
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(api.labelCalls.single.$2.map((i) => i.productId), ['p2']);
+  });
+
+  testWidgets('sélection : cocher des produits, étiquettes de la sélection', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(900, 900));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [
+          product(id: 'p1', name: 'Câble'),
+          product(id: 'p2', name: 'Disjoncteur'),
+          product(id: 'p3', name: 'Gaine'),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Sélectionner'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 produit(s) sélectionné(s)'), findsOneWidget);
+    // En mode sélection, toucher la ligne coche (n'ouvre pas la fiche).
+    await tester.tap(find.text('Câble'));
+    await tester.tap(find.text('Gaine'));
+    await tester.pumpAndSettle();
+    expect(find.text('2 produit(s) sélectionné(s)'), findsOneWidget);
+    expect(find.byTooltip('Exporter'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Étiquettes').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Étiquettes — 2 produit(s)'), findsOneWidget);
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(api.labelCalls.single.$2.map((i) => i.productId), ['p1', 'p3']);
+
+    await tester.tap(find.text('Tout sélectionner'));
+    await tester.pumpAndSettle();
+    expect(find.text('3 produit(s) sélectionné(s)'), findsOneWidget);
+    await tester.tap(find.text('Terminer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('sélectionné(s)'), findsNothing);
+  });
+
   testWidgets('VENDEUR : ni Modifier ni Supprimer sur les lignes', (
     tester,
   ) async {
@@ -584,7 +646,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('PRIX GROS (HT)'),
+      find.text('PRIX GROS'),
       300,
       scrollable: find
           .descendant(
@@ -593,9 +655,7 @@ void main() {
           )
           .first,
     );
-    // « Gros » est le dernier prix ; le prix d'achat vient juste après.
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(fields.evaluate().length - 2), '1200,50');
+    await tester.enterText(find.byKey(const ValueKey('prix-gros')), '1200,50');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();
@@ -635,7 +695,7 @@ void main() {
     );
     expect(find.textContaining('Détail : 1'), findsOneWidget);
     expect(find.text('Gros : non fixé'), findsOneWidget);
-    expect(find.text('PRIX DÉTAIL (HT)'), findsNothing);
+    expect(find.text('PRIX DÉTAIL'), findsNothing);
   });
 
   test('menu : le catalogue est proposé à tout compte qui a product.read', () {

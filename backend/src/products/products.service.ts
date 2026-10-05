@@ -19,6 +19,7 @@ import { labelFor, renderLabels } from './labels';
 import {
   CreateProductDto,
   LabelsDto,
+  ProductsExportDto,
   PriceChangeDto,
   ProspectDto,
   ProductDto,
@@ -28,6 +29,8 @@ import {
   SELECTABLE_UNITS,
   UpdateProductDto,
 } from './dto/product.dto';
+import { ExportColumn, ExportDocument, section } from '../common/export/export';
+import { UNIT_LABEL } from '../common/pdf/pdf';
 
 type Db = Prisma.TransactionClient;
 
@@ -70,6 +73,61 @@ export class ProductsService {
     private readonly storage: StorageService,
     private readonly config: ConfigService,
   ) {}
+
+  /// Liste des produits choisis au catalogue (demande MEDMEDBEN du
+  /// 2026-10-05), dans l'ordre alphabétique. Le prix d'achat n'y figure que
+  /// pour qui le voit (`cost.read`, comme la fiche produit).
+  async exportSelection(
+    dto: ProductsExportDto,
+    viewer: AuthenticatedUser,
+  ): Promise<ExportDocument> {
+    const ids = [...new Set(dto.ids)];
+    const [products, tier] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: ids } },
+        include: { prices: true, category: { select: { name: true } } },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.priceTier.findFirst({
+        where: { isDefault: true, isActive: true },
+      }),
+    ]);
+    const withCost = viewer.permissions.includes(PERMISSIONS.COST_READ);
+    type Row = (typeof products)[number];
+    const columns: ExportColumn<Row>[] = [
+      { header: 'Référence', value: (p) => p.sku },
+      { header: 'Désignation', value: (p) => p.name },
+      { header: 'Code-barres', value: (p) => p.barcode },
+      { header: 'Unité', value: (p) => UNIT_LABEL[p.unit] ?? p.unit },
+      { header: 'Catégorie', value: (p) => p.category?.name ?? '' },
+      {
+        header: tier ? `Prix ${tier.name}` : 'Prix de vente',
+        kind: 'money',
+        value: (p) => p.prices.find((x) => x.priceTierId === tier?.id)?.priceHt,
+      },
+    ];
+    if (withCost) {
+      columns.push({
+        header: 'Prix d’achat',
+        kind: 'money',
+        value: (p) => p.lastPurchasePriceHt,
+      });
+    }
+    columns.push(
+      {
+        header: 'Seuil min.',
+        kind: 'quantity',
+        value: (p) => p.minThreshold.toString(),
+      },
+      { header: 'Actif', value: (p) => (p.isActive ? 'oui' : 'non') },
+    );
+    return {
+      title: 'Produits',
+      subtitle: `${products.length} produit(s) sélectionné(s)`,
+      filename: 'produits',
+      sections: [section<Row>({ columns, rows: products })],
+    };
+  }
 
   /// Étiquettes des produits demandés, dans l'ordre demandé, chacune répétée
   /// `copies` fois (spec §8ter). Le prix imprimé est le TTC du tarif choisi,

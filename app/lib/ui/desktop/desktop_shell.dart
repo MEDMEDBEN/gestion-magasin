@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -13,6 +14,7 @@ import '../theme/theme_controller.dart';
 import '../widgets/ampere_controls.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/sync_panel.dart';
+import '../../features/assistant/assistant.dart';
 
 /// Menu latéral réduit (rail d'icônes) ou étendu, au choix de l'utilisateur
 /// et **gardé par compte** sur le poste, comme le thème. `null` = automatique :
@@ -87,34 +89,41 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     final compact = ref.watch(sidebarCollapsedProvider) ?? widget.compact;
     final profile = entries.indexWhere((d) => d.label == 'Mon profil');
 
-    return Scaffold(
-      body: Row(
-        children: [
-          _Sidebar(
-            user: widget.user,
-            entries: entries,
-            selectedIndex: index,
-            compact: compact,
-            unread: ref.watch(unreadNotificationsProvider).value ?? 0,
-            onSelect: (i) => setState(() => _index = i),
-            onToggle: () => ref
-                .read(sidebarCollapsedProvider.notifier)
-                .set(collapsed: !compact),
-            onProfile: profile < 0
-                ? null
-                : () => setState(() => _index = profile),
-          ),
-          VerticalDivider(width: 1, color: colors.line),
-          Expanded(
-            child: Column(
-              children: [
-                _TopBar(title: entries[index].label),
-                Divider(height: 1, color: colors.line),
-                Expanded(child: entries[index].builder(context, widget.user)),
-              ],
+    // Ctrl+K ouvre l'assistant depuis n'importe quel écran du poste.
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
+            showAssistant(context, ref, widget.user),
+      },
+      child: Scaffold(
+        body: Row(
+          children: [
+            _Sidebar(
+              user: widget.user,
+              entries: entries,
+              selectedIndex: index,
+              compact: compact,
+              unread: ref.watch(unreadNotificationsProvider).value ?? 0,
+              onSelect: (i) => setState(() => _index = i),
+              onToggle: () => ref
+                  .read(sidebarCollapsedProvider.notifier)
+                  .set(collapsed: !compact),
+              onProfile: profile < 0
+                  ? null
+                  : () => setState(() => _index = profile),
             ),
-          ),
-        ],
+            VerticalDivider(width: 1, color: colors.line),
+            Expanded(
+              child: Column(
+                children: [
+                  _TopBar(title: entries[index].label, user: widget.user),
+                  Divider(height: 1, color: colors.line),
+                  Expanded(child: entries[index].builder(context, widget.user)),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -411,9 +420,10 @@ class _NavItem extends StatelessWidget {
 
 /// Barre supérieure 56 px (§6) : titre, indicateur de sync, bascule de thème.
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.title});
+  const _TopBar({required this.title, required this.user});
 
   final String title;
+  final AuthUser user;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -439,6 +449,13 @@ class _TopBar extends ConsumerWidget {
               style: AmpereType.h4.copyWith(color: colors.ink),
             ),
           ),
+          // Assistant (2026-10-05) : actions préparées, Ctrl+K au clavier.
+          IconButton(
+            tooltip: 'Assistant (Ctrl+K)',
+            onPressed: () => showAssistant(context, ref, user),
+            icon: const Icon(LucideIcons.sparkles, size: 17),
+          ),
+          const SizedBox(width: 6),
           SyncIndicator(
             pendingCount: pending.value ?? 0,
             rejectedCount: rejected.value?.length ?? 0,

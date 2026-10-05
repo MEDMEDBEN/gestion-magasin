@@ -113,6 +113,29 @@ export class DashboardTasksDto {
   late!: number;
 }
 
+/// Marge du jour (ADMIN + cost.read), calculée comme le rapport d'activité
+/// (règle 5 : dernier prix d'achat) — 2026-10-05.
+export class DashboardMarginDto {
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Marge en centimes sur les produits au coût connu ; null si aucun coût connu.',
+  })
+  marginHt!: number | null;
+  @ApiProperty({ description: 'CA des produits SANS coût connu (hors marge).' })
+  uncostedRevenueHt!: number;
+}
+
+/// Ma caisse (cash.session.manage) — 2026-10-05.
+export class DashboardCashDto {
+  @ApiProperty() open!: boolean;
+  @ApiProperty({
+    description: 'Espèces dans le tiroir, en centimes (0 si fermée).',
+  })
+  currentAmount!: number;
+  @ApiProperty({ nullable: true }) openedAt!: Date | null;
+}
+
 export class DashboardDto {
   @ApiProperty({
     example: '2026-09-23',
@@ -133,4 +156,8 @@ export class DashboardDto {
   suppliers!: DashboardSuppliersDto | null;
   @ApiProperty({ type: DashboardTasksDto, nullable: true })
   tasks!: DashboardTasksDto | null;
+  @ApiProperty({ type: DashboardMarginDto, nullable: true })
+  margin!: DashboardMarginDto | null;
+  @ApiProperty({ type: DashboardCashDto, nullable: true })
+  cash!: DashboardCashDto | null;
 }

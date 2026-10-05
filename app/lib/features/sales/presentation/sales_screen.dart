@@ -993,19 +993,22 @@ class _CartLineRow extends ConsumerWidget {
     final value = await askAmount(
       context,
       title: 'Prix de « ${line.product.name} »',
-      label: 'Prix unitaire HT',
+      label: 'Prix unitaire',
       confirm: 'Appliquer',
       initial: unitPriceHt,
       help: [
-        if (tariffPriceHt != null) 'Tarif : ${formatDA(tariffPriceHt!)} HT',
-        'minimum : ${formatDA(floor)} HT',
+        if (tariffPriceHt != null) 'Tarif : ${formatDA(tariffPriceHt!)}',
+        // Le coût d'achat guide la baisse de prix (2026-10-05).
+        if (line.product.lastPurchasePriceHt case final cost?)
+          'prix d’achat : ${formatDA(cost)}',
+        'minimum : ${formatDA(floor)}',
       ].join(' · '),
     );
     if (value == null || !context.mounted) return;
     if (value < floor) {
       _snack(
         context,
-        'Prix trop bas : minimum ${formatDA(floor)} HT '
+        'Prix trop bas : minimum ${formatDA(floor)} '
         '(${(line.product.lastPurchasePriceHt ?? 0) > 0 ? 'prix d’achat' : 'tarif'})',
       );
       return;
@@ -1062,12 +1065,18 @@ class _CartLineRow extends ConsumerWidget {
                 Text(
                   totalHt == null
                       ? line.product.sku
-                      : '${line.product.sku} · ${formatDA(totalHt!)} HT',
+                      : '${line.product.sku} · ${formatDA(totalHt!)}',
                   style: AmpereType.mono.copyWith(color: colors.ink3),
                 ),
                 if (unitPriceHt != null)
                   Text(
-                    '${formatDA(unitPriceHt!)} HT / ${line.product.unit.short}',
+                    [
+                      '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
+                      // Prix d'achat visible (2026-10-05) : savoir jusqu'où
+                      // baisser. Absent si inconnu ou non autorisé (serveur).
+                      if (line.product.lastPurchasePriceHt case final cost?)
+                        'achat ${formatDA(cost)}',
+                    ].join(' · '),
                     style: AmpereType.meta.copyWith(color: colors.ink2),
                   ),
                 if (missingPrice)
@@ -1088,7 +1097,7 @@ class _CartLineRow extends ConsumerWidget {
                   )
                 else if (line.discountHt > 0)
                   Text(
-                    'Remise ${formatDA(line.discountHt)} HT',
+                    'Remise ${formatDA(line.discountHt)}',
                     style: AmpereType.meta.copyWith(color: colors.warn),
                   ),
               ],

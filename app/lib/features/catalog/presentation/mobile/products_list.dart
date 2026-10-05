@@ -25,11 +25,19 @@ class ProductsList extends StatelessWidget {
     this.stock,
     this.onEdit,
     this.onDelete,
+    this.onLabel,
+    this.selection,
+    this.onToggle,
   });
 
   /// `null` sans le droit : le bouton n'apparaît pas.
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
+  final void Function(Product product)? onLabel;
+
+  /// Mode sélection : produits cochés (`null` = mode désactivé).
+  final Set<String>? selection;
+  final void Function(Product product)? onToggle;
 
   /// Stock par produit — `null` si non chargé ou non autorisé.
   final Map<String, ProductStock>? stock;
@@ -62,6 +70,9 @@ class ProductsList extends StatelessWidget {
           onTap: () => onTap(products[i]),
           onEdit: onEdit,
           onDelete: onDelete,
+          onLabel: onLabel,
+          selected: selection?.contains(products[i].id),
+          onToggle: onToggle == null ? null : () => onToggle!(products[i]),
         ),
       ),
     );
@@ -77,6 +88,9 @@ class _ProductRow extends StatelessWidget {
     required this.stock,
     this.onEdit,
     this.onDelete,
+    this.onLabel,
+    this.selected,
+    this.onToggle,
   });
 
   final String? defaultTierId;
@@ -86,13 +100,16 @@ class _ProductRow extends StatelessWidget {
   final Map<String, ProductStock>? stock;
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
+  final void Function(Product product)? onLabel;
+  final bool? selected;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
 
     return AmpereTappable(
-      onTap: onTap,
+      onTap: selected != null ? onToggle : onTap,
       borderRadius: AmpereGeometry.cardRadiusMobile,
       color: colors.surface,
       child: Container(
@@ -107,6 +124,8 @@ class _ProductRow extends StatelessWidget {
         ),
         child: Row(
           children: [
+            if (selected != null)
+              Checkbox(value: selected, onChanged: (_) => onToggle?.call()),
             ProductThumbnail(product: product, size: 44),
             const SizedBox(width: 12),
             Expanded(
@@ -164,11 +183,13 @@ class _ProductRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (onEdit != null || onDelete != null)
+            if (selected == null &&
+                (onEdit != null || onDelete != null || onLabel != null))
               ProductRowActions(
                 product: product,
                 onEdit: onEdit,
                 onDelete: onDelete,
+                onLabel: onLabel,
               ),
           ],
         ),

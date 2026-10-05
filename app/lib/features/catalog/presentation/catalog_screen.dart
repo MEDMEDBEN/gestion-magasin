@@ -25,6 +25,7 @@ import 'desktop/products_table.dart';
 import 'location_form.dart';
 import 'mobile/products_list.dart';
 import 'product_form.dart';
+import '../../../ui/widgets/export_button.dart';
 
 /// Droits du catalogue, MIROIRS des guards serveur (`docs/permissions.md`).
 class CatalogRights {
@@ -85,7 +86,22 @@ class CatalogScreen extends ConsumerStatefulWidget {
 }
 
 class _CatalogScreenState extends ConsumerState<CatalogScreen> {
-  final _search = TextEditingController();
+  // Pré-remplie par une recherche demandée (assistant), reprise une fois.
+  late final _search = TextEditingController(text: _requested());
+
+  String _requested() {
+    final asked = ref.read(requestedSearchProvider);
+    if (asked != null) {
+      // Après la construction : un provider ne se modifie pas pendant build.
+      Future.microtask(() {
+        if (!mounted) return;
+        ref.read(requestedSearchProvider.notifier).take();
+        ref.read(productFilterProvider.notifier).setSearch(asked);
+      });
+    }
+    return asked ?? ref.read(productFilterProvider).search;
+  }
+
   _Section _section = _Section.products;
 
   @override
@@ -285,6 +301,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                   : null,
               onDelete: rights.canDisableProducts ? _deleteProduct : null,
               onLabels: rights.canPrintLabels ? _printLabels : null,
+              onLabel: rights.canPrintLabels ? (p) => _printLabels([p]) : null,
               canImport: rights.canImportProducts,
             ),
             _Section.categories => CategoriesList(
@@ -325,8 +342,12 @@ class _ProductsSection extends ConsumerWidget {
     this.onEdit,
     this.onDelete,
     this.onLabels,
+    this.onLabel,
     this.canImport = false,
   });
+
+  /// Étiquette d'UN produit (bouton de ligne) ; `null` sans le droit.
+  final void Function(Product product)? onLabel;
 
   final TextEditingController search;
   final double margin;
@@ -357,6 +378,13 @@ class _ProductsSection extends ConsumerWidget {
     final notifier = ref.read(productFilterProvider.notifier);
     final categoryNames = {for (final c in categories) c.id: c.name};
     final stock = canReadStock ? ref.watch(stockByProductProvider).value : null;
+    final selection = ref.watch(productSelectionProvider);
+    final selecting = ref.read(productSelectionProvider.notifier);
+    final shown = products.value ?? const <Product>[];
+    final picked = [
+      for (final p in shown)
+        if (selection?.contains(p.id) ?? false) p,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -407,14 +435,42 @@ class _ProductsSection extends ConsumerWidget {
                     ref.invalidate(stockByProductProvider);
                   },
                 ),
+              // Sur téléphone, icônes seules (infobulle) : la barre tient en
+              // 360 px avec la recherche et « Nouveau ».
               if (onLabels case final print?) ...[
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: () => print(products.value ?? const []),
-                  icon: const Icon(LucideIcons.tag, size: 17),
-                  label: const Text('Étiquettes'),
-                ),
+                SizedBox(width: isDesktop ? 12 : 4),
+                isDesktop
+                    ? OutlinedButton.icon(
+                        onPressed: () => print(products.value ?? const []),
+                        icon: const Icon(LucideIcons.tag, size: 17),
+                        label: const Text('Étiquettes'),
+                      )
+                    : IconButton(
+                        tooltip: 'Étiquettes',
+                        onPressed: () => print(products.value ?? const []),
+                        icon: const Icon(LucideIcons.tag, size: 19),
+                      ),
               ],
+              SizedBox(width: isDesktop ? 12 : 0),
+              // Cocher des produits pour les exporter ou en imprimer les
+              // étiquettes (2026-10-05).
+              if (selection != null)
+                TextButton(
+                  onPressed: selecting.stop,
+                  child: const Text('Terminer'),
+                )
+              else if (isDesktop)
+                OutlinedButton.icon(
+                  onPressed: selecting.start,
+                  icon: const Icon(LucideIcons.listChecks, size: 17),
+                  label: const Text('Sélectionner'),
+                )
+              else
+                IconButton(
+                  tooltip: 'Sélectionner',
+                  onPressed: selecting.start,
+                  icon: const Icon(LucideIcons.listChecks, size: 19),
+                ),
               if (canCreate) ...[
                 const SizedBox(width: 12),
                 FilledButton.icon(
@@ -426,6 +482,44 @@ class _ProductsSection extends ConsumerWidget {
             ],
           ),
         ),
+        if (selection != null)
+          Padding(
+            padding: EdgeInsets.fromLTRB(margin, 0, margin, 10),
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  '${picked.length} produit(s) sélectionné(s)',
+                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                ),
+                TextButton(
+                  onPressed: () => selecting.setAll(shown.map((p) => p.id)),
+                  child: const Text('Tout sélectionner'),
+                ),
+                if (picked.isNotEmpty) ...[
+                  ExportButton(
+                    targets: [
+                      ExportTarget(
+                        'Produits sélectionnés',
+                        (format) => ref.read(catalogApiProvider).exportProducts(
+                          [for (final p in picked) p.id],
+                          format,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (onLabels case final print?)
+                    OutlinedButton.icon(
+                      onPressed: () => print(picked),
+                      icon: const Icon(LucideIcons.tag, size: 17),
+                      label: const Text('Étiquettes'),
+                    ),
+                ],
+              ],
+            ),
+          ),
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 0, margin, 10),
           child: Wrap(
@@ -489,6 +583,9 @@ class _ProductsSection extends ConsumerWidget {
                       onTap: onOpen,
                       onEdit: onEdit,
                       onDelete: onDelete,
+                      onLabel: onLabel,
+                      selection: selection,
+                      onToggle: (p) => selecting.toggle(p.id),
                     )
                   : ProductsList(
                       defaultTierId: defaultTierId,
@@ -498,6 +595,9 @@ class _ProductsSection extends ConsumerWidget {
                       onTap: onOpen,
                       onEdit: onEdit,
                       onDelete: onDelete,
+                      onLabel: onLabel,
+                      selection: selection,
+                      onToggle: (p) => selecting.toggle(p.id),
                       onRefresh: () =>
                           ref.read(catalogSyncProvider.notifier).refresh(),
                     );

@@ -935,6 +935,9 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
+    // Le prix d'achat est sur la ligne (2026-10-05) : savoir jusqu'où baisser.
+    expect(find.textContaining('achat ${formatDA(100000)}'), findsOneWidget);
+
     // Au-delà de ligne − coût (1 450 − 1 000 = 450 DA) : refusé.
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
@@ -948,7 +951,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '100');
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
-    expect(find.text('Remise ${formatDA(10000)} HT'), findsOneWidget);
+    expect(find.text('Remise ${formatDA(10000)}'), findsOneWidget);
 
     await tester.tap(find.textContaining('Encaisser'));
     await tester.pumpAndSettle();

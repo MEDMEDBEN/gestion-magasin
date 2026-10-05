@@ -321,6 +321,45 @@ void main() {
       expect(find.text('Mon profil'), findsAtLeastNWidgets(2));
     });
 
+    testWidgets(
+      'assistant : « chof câble » ouvre le catalogue, recherche remplie',
+      (tester) async {
+        await _pumpShell(
+          tester,
+          user: authUser(permissions: const ['user.manage', 'product.read']),
+          size: const Size(1300, 900),
+        );
+
+        await tester.tap(find.byTooltip('Assistant (Ctrl+K)'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'chof câble');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        // Le catalogue anime son chargement (synchro sans serveur) : pas de
+        // pumpAndSettle, quelques images suffisent.
+        for (var i = 0; i < 5; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+
+        // Barre du haut : le titre de l'écran ouvert.
+        expect(
+          find.descendant(
+            of: find.byType(DesktopShell),
+            matching: find.text('Catalogue'),
+          ),
+          findsWidgets,
+        );
+        final fields = tester
+            .widgetList<TextField>(find.byType(TextField))
+            .map((f) => f.controller?.text)
+            .toList();
+        expect(fields, contains('câble'));
+        // Le catalogue a lancé sa synchro (minuteries) : on démonte et on
+        // laisse passer le temps, sinon le test finit avec des minuteries.
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(minutes: 2));
+      },
+    );
+
     testWidgets('≥ 1180 : sidebar complète', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 

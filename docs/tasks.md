@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Retours terrain n°2 — 2026-10-05 (MEDMEDBEN, Claude)
+
+- **Étiquette par produit** : bouton sur chaque ligne du catalogue.
+- **Sélection + export** : « Sélectionner » au catalogue → cocher → Exporter (PDF / Excel / CSV via
+  `POST /products/export`) ou Étiquettes de la sélection.
+- **Vente** : prix d'achat affiché sur chaque ligne du panier et dans « Modifier le prix ».
+- **Un seul seuil** (seuil minimum) : stock de sécurité retiré des écrans et du calcul de réappro.
+- **Accueil** : panier moyen, marge du jour (admin, calcul du rapport d'activité), ma caisse (ouverte, montant).
+- **Assistant** (✦ / Ctrl+K) : actions préparées FR / darija / EN + guide d'utilisation.
+- Preuves : backend lint/tsc OK, 163 unitaires, **651 e2e** ; app analyze 0, **532 tests** ; captures vérifiées.
+- **Prochaine étape** : audits `reviewer` + `security-reviewer` de ce lot, puis rebuild/redéploiement.
+
 ### Retours terrain — 2026-10-05 (MEDMEDBEN, Claude)
 
 Liste de MEDMEDBEN traitée, chaque point testé et poussé sur `develop` :

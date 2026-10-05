@@ -28,11 +28,13 @@ export function isOutOfStock(quantity: Prisma.Decimal): boolean {
 /// Quantité proposée à commander. L'utilisateur la modifie avant de commander
 /// (spec §19) : ce n'est qu'un point de départ.
 ///
-/// Cible = **deux fois** le seuil, plus le stock de sécurité. Pourquoi le
+/// Cible = **deux fois** le seuil (UN seul seuil par produit depuis le
+/// 2026-10-05 : le stock de sécurité est retiré des écrans et du calcul,
+/// ses valeurs restent en base sans effet). Pourquoi le
 /// double : commander juste de quoi revenir AU seuil laisse le produit sur le
 /// seuil, donc l'alerte retombe à la vente suivante — la proposition serait
 /// inutile. Le plancher d'une unité évite une proposition à zéro sur un produit
-/// sans seuil ni stock de sécurité (le cas par défaut du catalogue).
+/// sans seuil (le cas par défaut du catalogue).
 ///
 /// ⚠️ Le multiplicateur est un CHOIX, pas une donnée : la spec §19 illustre
 /// « stock 8, seuil 20 → 50 », soit un facteur plus large encore. Rien dans la
@@ -42,9 +44,8 @@ export function isOutOfStock(quantity: Prisma.Decimal): boolean {
 export function suggestedOrderQuantity(
   quantity: Prisma.Decimal,
   minThreshold: Prisma.Decimal,
-  safetyStock: Prisma.Decimal,
 ): Prisma.Decimal {
-  const target = minThreshold.times(2).plus(safetyStock);
+  const target = minThreshold.times(2);
   const missing = target.minus(quantity);
   return missing.greaterThan(1) ? missing : new Prisma.Decimal(1);
 }

@@ -71,6 +71,10 @@ describe('Tableau de bord — graphiques (e2e)', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.cashMovement.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await prisma.cashSession.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.sale.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
@@ -134,5 +138,32 @@ describe('Tableau de bord — graphiques (e2e)', () => {
     expect(Number.isInteger(stock.okCount)).toBe(true);
     const actifs = await prisma.product.count({ where: { isActive: true } });
     expect(stock.okCount + stock.lowCount).toBeLessThanOrEqual(actifs);
+  });
+
+  /// Infos ajoutées le 2026-10-05 : marge du jour (admin), ma caisse.
+  it('marge du jour : admin seul ; ma caisse : qui tient une caisse', async () => {
+    const admin = (await dashboard(tokens.admin).expect(200)).body;
+    expect(admin.margin).toEqual(
+      expect.objectContaining({ uncostedRevenueHt: expect.any(Number) }),
+    );
+    const vendeur = (await dashboard(tokens.vendeur).expect(200)).body;
+    expect(vendeur.margin).toBeNull();
+    expect(vendeur.cash).toEqual({
+      open: false,
+      currentAmount: 0,
+      openedAt: null,
+    });
+
+    await request(server)
+      .post('/api/cash-sessions')
+      .set('Authorization', `Bearer ${tokens.vendeur}`)
+      .send({ locationId: magasinId, openingFloat: 250000 })
+      .expect(201);
+    const ouverte = (await dashboard(tokens.vendeur).expect(200)).body.cash;
+    expect(ouverte).toMatchObject({ open: true, currentAmount: 250000 });
+
+    const magasinier = (await dashboard(tokens.magasinier).expect(200)).body;
+    expect(magasinier.cash).toBeNull();
+    expect(magasinier.margin).toBeNull();
   });
 });

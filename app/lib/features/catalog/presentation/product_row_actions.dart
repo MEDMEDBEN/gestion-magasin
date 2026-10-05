@@ -13,9 +13,13 @@ class ProductRowActions extends StatelessWidget {
     required this.product,
     this.onEdit,
     this.onDelete,
+    this.onLabel,
   });
 
   final Product product;
+
+  /// Étiquette de CE produit (2026-10-05) ; `null` sans le droit.
+  final void Function(Product product)? onLabel;
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
 
@@ -25,6 +29,12 @@ class ProductRowActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (onLabel != null && product.isActive)
+          IconButton(
+            tooltip: 'Étiquette',
+            icon: Icon(LucideIcons.tag, size: 17, color: colors.ink2),
+            onPressed: () => onLabel!(product),
+          ),
         if (onEdit != null)
           IconButton(
             tooltip: 'Modifier',

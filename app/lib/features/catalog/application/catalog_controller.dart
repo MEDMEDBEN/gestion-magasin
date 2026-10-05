@@ -78,6 +78,26 @@ class ProductFilterController extends Notifier<ProductFilter> {
       state = state.copyWith(includeInactive: value);
 }
 
+/// Recherche DEMANDÉE avant d'ouvrir Catalogue ou Stock (assistant :
+/// « chof câble »). Gardée hors du filtre, qui est libéré quand aucun écran ne
+/// l'écoute ; l'écran ouvert la reprend une fois (`take`).
+class RequestedSearch extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void ask(String text) => state = text;
+
+  String? take() {
+    final text = state;
+    state = null;
+    return text;
+  }
+}
+
+final requestedSearchProvider = NotifierProvider<RequestedSearch, String?>(
+  RequestedSearch.new,
+);
+
 final productFilterProvider =
     NotifierProvider.autoDispose<ProductFilterController, ProductFilter>(
       ProductFilterController.new,
@@ -90,6 +110,30 @@ final categoriesProvider = StreamProvider.autoDispose<List<ProductCategory>>(
 final locationsProvider = StreamProvider.autoDispose<List<StorageLocation>>(
   (ref) => ref.watch(catalogRepositoryProvider).watchLocations(),
 );
+
+/// Produits cochés au catalogue (export, étiquettes) ; `null` = pas en mode
+/// sélection (2026-10-05).
+class ProductSelection extends Notifier<Set<String>?> {
+  @override
+  Set<String>? build() => null;
+
+  void start() => state = <String>{};
+  void stop() => state = null;
+
+  void toggle(String id) {
+    final current = state ?? <String>{};
+    state = current.contains(id)
+        ? ({...current}..remove(id))
+        : {...current, id};
+  }
+
+  void setAll(Iterable<String> ids) => state = ids.toSet();
+}
+
+final productSelectionProvider =
+    NotifierProvider.autoDispose<ProductSelection, Set<String>?>(
+      ProductSelection.new,
+    );
 
 final taxRatesProvider = StreamProvider.autoDispose<List<TaxRate>>(
   (ref) => ref.watch(catalogRepositoryProvider).watchTaxRates(),

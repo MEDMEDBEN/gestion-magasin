@@ -1177,6 +1177,22 @@ void main() {
     ),
   );
   testWidgets(
+    '47 assistant desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '47_assistant_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (tester) async {
+        await tester.tap(find.byTooltip('Assistant (Ctrl+K)'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, 'zid câble 3G2,5');
+        await tester.pumpAndSettle();
+      },
+    ),
+  );
+  testWidgets(
     '46 accueil mobile',
     skip: skip,
     (t) => _capture(

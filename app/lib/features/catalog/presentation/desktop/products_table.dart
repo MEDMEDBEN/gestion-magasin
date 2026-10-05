@@ -24,11 +24,19 @@ class ProductsTable extends StatelessWidget {
     this.defaultTierId,
     this.onEdit,
     this.onDelete,
+    this.onLabel,
+    this.selection,
+    this.onToggle,
   });
 
   /// `null` sans le droit : le bouton n'apparaît pas.
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
+  final void Function(Product product)? onLabel;
+
+  /// Mode sélection : produits cochés (`null` = mode désactivé).
+  final Set<String>? selection;
+  final void Function(Product product)? onToggle;
 
   /// Tarif par défaut : son prix est le « prix de vente » affiché.
   final String? defaultTierId;
@@ -64,7 +72,10 @@ class ProductsTable extends StatelessWidget {
                 width: width,
                 child: Column(
                   children: [
-                    _HeaderRow(actions: onEdit != null || onDelete != null),
+                    _HeaderRow(
+                      actions:
+                          onEdit != null || onDelete != null || onLabel != null,
+                    ),
                     Divider(height: 1, color: colors.line),
                     Expanded(
                       child: ListView.separated(
@@ -79,6 +90,11 @@ class ProductsTable extends StatelessWidget {
                           onTap: () => onTap(products[i]),
                           onEdit: onEdit,
                           onDelete: onDelete,
+                          onLabel: onLabel,
+                          selected: selection?.contains(products[i].id),
+                          onToggle: onToggle == null
+                              ? null
+                              : () => onToggle!(products[i]),
                         ),
                       ),
                     ),
@@ -94,7 +110,7 @@ class ProductsTable extends StatelessWidget {
 }
 
 /// Colonne des boutons Modifier / Supprimer.
-const double _actionsWidth = 96;
+const double _actionsWidth = 136;
 
 class _Columns {
   static const sku = 3;
@@ -155,6 +171,9 @@ class _ProductRow extends StatelessWidget {
     this.defaultTierId,
     this.onEdit,
     this.onDelete,
+    this.onLabel,
+    this.selected,
+    this.onToggle,
   });
 
   final Product product;
@@ -164,6 +183,11 @@ class _ProductRow extends StatelessWidget {
   final Map<String, ProductStock>? stock;
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
+  final void Function(Product product)? onLabel;
+
+  /// Mode sélection : coché ou non (`null` = mode désactivé).
+  final bool? selected;
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -172,12 +196,14 @@ class _ProductRow extends StatelessWidget {
         Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
 
     return AmpereTappable(
-      onTap: onTap,
+      onTap: selected != null ? onToggle : onTap,
       borderRadius: 0,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
+            if (selected != null)
+              Checkbox(value: selected, onChanged: (_) => onToggle?.call()),
             Expanded(
               flex: _Columns.sku,
               child: ellipsis(
@@ -264,16 +290,20 @@ class _ProductRow extends StatelessWidget {
                       ),
               ),
             ),
-            if (onEdit != null || onDelete != null)
+            if (onEdit != null || onDelete != null || onLabel != null)
               SizedBox(
                 width: _actionsWidth,
                 child: Align(
                   alignment: Alignment.centerRight,
-                  child: ProductRowActions(
-                    product: product,
-                    onEdit: onEdit,
-                    onDelete: onDelete,
-                  ),
+                  // En mode sélection, la ligne coche : pas d'action isolée.
+                  child: selected != null
+                      ? null
+                      : ProductRowActions(
+                          product: product,
+                          onEdit: onEdit,
+                          onDelete: onDelete,
+                          onLabel: onLabel,
+                        ),
                 ),
               ),
           ],

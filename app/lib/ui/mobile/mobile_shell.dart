@@ -10,6 +10,7 @@ import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/sync_panel.dart';
+import '../../features/assistant/assistant.dart';
 
 /// Coquille mobile : navigation basse, une action principale par écran, grandes
 /// cibles tactiles (spec §29). Ce n'est PAS le desktop en miniature.
@@ -48,6 +49,12 @@ class _MobileShellState extends ConsumerState<MobileShell> {
       appBar: AppBar(
         title: Text(current.label),
         actions: [
+          // Assistant (2026-10-05) : actions préparées, en mots simples.
+          IconButton(
+            tooltip: 'Assistant',
+            onPressed: () => showAssistant(context, ref, widget.user),
+            icon: const Icon(LucideIcons.sparkles),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(

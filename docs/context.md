@@ -282,4 +282,9 @@ le handler `CUSTOMER_PAYMENT` le refuse (« en ligne uniquement ») : l'admin do
 - **2026-10-05 (MEDMEDBEN) — Unités proposées : Pièce, Mètre, Boîte.** Les produits déjà enregistrés en Rouleau,
   Paquet ou Kilogramme gardent leur unité (rien n'est converti). « Supprimer » un produit = le retirer du catalogue
   (désactivation) ; l'historique garde ses ventes et ses achats.
+- **2026-10-05 (MEDMEDBEN) — UN seul seuil par produit.** Le « stock de sécurité » est retiré des écrans et du calcul
+  de réapprovisionnement (cible = 2 × seuil minimum) ; ses valeurs restent en base, sans effet.
+- **2026-10-05 (MEDMEDBEN) — Assistant de l'app** (`app/lib/features/assistant/`) : PAS une IA, une liste d'actions
+  préparées reconnues par mots-clés FR / darija / EN (« ajoute / zid / add », « vendre / bi3 », « chof », « aide »…),
+  filtrées par les droits du menu ; + guide d'utilisation. Bouton ✦ en haut, Ctrl+K au poste.
 

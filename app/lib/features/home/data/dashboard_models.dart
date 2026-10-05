@@ -19,10 +19,40 @@ abstract class DashboardSummary with _$DashboardSummary {
     DashboardCustomers? customers,
     DashboardSuppliers? suppliers,
     DashboardTasks? tasks,
+
+    /// Marge du jour (ADMIN + coût), 2026-10-05.
+    DashboardMargin? margin,
+
+    /// Ma caisse (qui tient une caisse), 2026-10-05.
+    DashboardCash? cash,
   }) = _DashboardSummary;
 
   factory DashboardSummary.fromJson(Map<String, dynamic> json) =>
       _$DashboardSummaryFromJson(json);
+}
+
+@freezed
+abstract class DashboardMargin with _$DashboardMargin {
+  const factory DashboardMargin({
+    /// `null` : aucun produit vendu aujourd'hui n'a de coût connu.
+    Money? marginHt,
+    @Default(0) Money uncostedRevenueHt,
+  }) = _DashboardMargin;
+
+  factory DashboardMargin.fromJson(Map<String, dynamic> json) =>
+      _$DashboardMarginFromJson(json);
+}
+
+@freezed
+abstract class DashboardCash with _$DashboardCash {
+  const factory DashboardCash({
+    required bool open,
+    @Default(0) Money currentAmount,
+    DateTime? openedAt,
+  }) = _DashboardCash;
+
+  factory DashboardCash.fromJson(Map<String, dynamic> json) =>
+      _$DashboardCashFromJson(json);
 }
 
 /// CA TTC d'une journée d'Alger, net des retours (peut être négatif).

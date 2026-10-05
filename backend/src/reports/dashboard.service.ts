@@ -11,6 +11,8 @@ import {
 } from '../common/replenishment';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CashSessionsService } from '../sales/cash-sessions.service';
+import { BusinessReportService } from './business-report.service';
 import { DashboardDto, DashboardLowStockDto } from './dto/dashboard.dto';
 
 /// Accueil (spec §21) : un RÉSUMÉ, pas une base de données. Aucune écriture.
@@ -20,7 +22,10 @@ import { DashboardDto, DashboardLowStockDto } from './dto/dashboard.dto';
 /// zéro, qui se lirait « aucune alerte ». Les montants restent en centimes.
 @Injectable()
 export class DashboardService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly reports: BusinessReportService,
+  ) {}
 
   async summary(user: AuthenticatedUser): Promise<DashboardDto> {
     const can = (permission: string) => user.permissions.includes(permission);
@@ -32,26 +37,39 @@ export class DashboardService {
     const startOfDay = startOfLocalDay(now);
     const today = parseApiDate(localDate(now), 'jour');
 
-    const [sales, stock, transfers, purchases, customers, suppliers, tasks] =
-      await Promise.all([
-        can(PERMISSIONS.SALE_CREATE) ? this.salesOfDay(user, startOfDay) : null,
-        // LES DEUX droits : le chiffre couvre le magasin ET le dépôt. Un « ou »
-        // montrerait le dépôt à qui n'a que le magasin si les permissions
-        // redevenaient individuelles (audit sécurité).
-        can(PERMISSIONS.STOCK_READ_STORE) &&
-        can(PERMISSIONS.STOCK_READ_WAREHOUSE)
-          ? this.stockAlerts()
-          : null,
-        can(PERMISSIONS.TRANSFER_REQUEST) ||
-        can(PERMISSIONS.TRANSFER_PREPARE) ||
-        can(PERMISSIONS.TRANSFER_RECEIVE)
-          ? this.transfers()
-          : null,
-        can(PERMISSIONS.RECEPTION_CREATE) ? this.ordersToReceive() : null,
-        can(PERMISSIONS.CUSTOMER_READ) ? this.customerDebt(today) : null,
-        can(PERMISSIONS.SUPPLIER_READ) ? this.supplierDebt() : null,
-        can(PERMISSIONS.PLANNING_TASK_READ) ? this.myTasks(user, today) : null,
-      ]);
+    const [
+      sales,
+      stock,
+      transfers,
+      purchases,
+      customers,
+      suppliers,
+      tasks,
+      margin,
+      cash,
+    ] = await Promise.all([
+      can(PERMISSIONS.SALE_CREATE) ? this.salesOfDay(user, startOfDay) : null,
+      // LES DEUX droits : le chiffre couvre le magasin ET le dépôt. Un « ou »
+      // montrerait le dépôt à qui n'a que le magasin si les permissions
+      // redevenaient individuelles (audit sécurité).
+      can(PERMISSIONS.STOCK_READ_STORE) && can(PERMISSIONS.STOCK_READ_WAREHOUSE)
+        ? this.stockAlerts()
+        : null,
+      can(PERMISSIONS.TRANSFER_REQUEST) ||
+      can(PERMISSIONS.TRANSFER_PREPARE) ||
+      can(PERMISSIONS.TRANSFER_RECEIVE)
+        ? this.transfers()
+        : null,
+      can(PERMISSIONS.RECEPTION_CREATE) ? this.ordersToReceive() : null,
+      can(PERMISSIONS.CUSTOMER_READ) ? this.customerDebt(today) : null,
+      can(PERMISSIONS.SUPPLIER_READ) ? this.supplierDebt() : null,
+      can(PERMISSIONS.PLANNING_TASK_READ) ? this.myTasks(user, today) : null,
+      // Marge : celle du rapport d'activité (ADMIN), jamais une approximation.
+      user.roles.includes(RoleCode.ADMIN) && can(PERMISSIONS.COST_READ)
+        ? this.marginOfDay(localDate(now))
+        : null,
+      can(PERMISSIONS.CASH_SESSION_MANAGE) ? this.myCash(user) : null,
+    ]);
 
     return {
       day: localDate(now),
@@ -62,6 +80,30 @@ export class DashboardService {
       customers,
       suppliers,
       tasks,
+      margin,
+      cash,
+    };
+  }
+
+  private async marginOfDay(day: string) {
+    const { totals } = await this.reports.sales({ from: day, to: day });
+    return {
+      marginHt: totals.marginHt,
+      uncostedRevenueHt: totals.uncostedRevenueHt,
+    };
+  }
+
+  /// Ma caisse ouverte : ce qu'il y a dans le tiroir, comme l'écran Caisse.
+  private async myCash(user: AuthenticatedUser) {
+    const session = await this.prisma.cashSession.findFirst({
+      where: { userId: user.id, status: 'OUVERTE' },
+    });
+    if (!session) return { open: false, currentAmount: 0, openedAt: null };
+    const totals = await CashSessionsService.totals(this.prisma, session.id);
+    return {
+      open: true,
+      currentAmount: session.openingFloat + totals.cashIn - totals.cashOut,
+      openedAt: session.openedAt,
     };
   }
 

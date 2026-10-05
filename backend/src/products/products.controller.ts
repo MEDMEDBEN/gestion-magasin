@@ -50,6 +50,7 @@ import {
   CreateCategoryDto,
   CreateProductDto,
   LabelsDto,
+  ProductsExportDto,
   PriceTierDto,
   ProductDto,
   ProductListDto,
@@ -67,6 +68,12 @@ import {
   ListPricingQueryDto,
   UpdatePriceTierDto,
 } from './dto/pricing.dto';
+import {
+  EXPORT_THROTTLE,
+  EXPORT_TYPES,
+  exportResponse,
+  renderExport,
+} from '../common/export/export';
 
 const ALL_ROLES = [RoleCode.ADMIN, RoleCode.VENDEUR, RoleCode.MAGASINIER];
 
@@ -100,6 +107,29 @@ export class ProductsController {
   /// Étiquettes (spec §8ter). Une lecture, en POST : la liste des produits
   /// dépasserait la longueur d'une URL. Le prix est imprimé : `price.read` en
   /// plus de `product.read` — les trois rôles les ont.
+  /// Export des produits SÉLECTIONNÉS (2026-10-05) : mêmes droits que les
+  /// étiquettes ; droits relus en base comme tout export.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.PRICE_READ)
+  @RequireFreshAccess()
+  @Throttle(EXPORT_THROTTLE)
+  @Post('export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Produits sélectionnés en PDF, Excel ou CSV' })
+  @ApiProduces(...EXPORT_TYPES)
+  @ApiOkResponse({ schema: { type: 'string', format: 'binary' } })
+  async exportSelection(
+    @Body() dto: ProductsExportDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<StreamableFile> {
+    return exportResponse(
+      await renderExport(
+        await this.productsService.exportSelection(dto, user),
+        dto.format,
+      ),
+    );
+  }
+
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.PRICE_READ)
   // Rendu synchrone (images + PDF) : bridé comme les autres documents.

@@ -488,6 +488,21 @@ export class LabelItemDto {
   copies!: number;
 }
 
+/// Export des produits SÉLECTIONNÉS au catalogue (demande MEDMEDBEN du
+/// 2026-10-05) : PDF, Excel ou CSV.
+export class ProductsExportDto {
+  @ApiProperty({ enum: ['pdf', 'xlsx', 'csv'] })
+  @IsIn(['pdf', 'xlsx', 'csv'])
+  format!: 'pdf' | 'xlsx' | 'csv';
+
+  @ApiProperty({ type: [String], maxItems: 2000 })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(2000)
+  @IsCanonicalUuid({ each: true })
+  ids!: string[];
+}
+
 /// Étiquettes à imprimer (spec §8ter) : nom, prix TTC, code-barres.
 export class LabelsDto {
   @ApiProperty({

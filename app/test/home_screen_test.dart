@@ -135,6 +135,45 @@ void main() {
     },
   );
 
+  testWidgets('panier moyen, marge du jour, ma caisse', (tester) async {
+    await _pump(
+      tester,
+      user: authUser(),
+      summary: const DashboardSummary(
+        day: '2026-10-05',
+        sales: DashboardSales(count: 4, revenueTtc: 400000),
+        margin: DashboardMargin(marginHt: 85000, uncostedRevenueHt: 20000),
+        cash: DashboardCash(open: true, currentAmount: 350000),
+      ),
+    );
+    expect(find.text('Panier moyen'), findsOneWidget);
+    expect(find.text(formatDA(100000)), findsOneWidget);
+    expect(find.text('Marge du jour'), findsOneWidget);
+    expect(find.text(formatDA(85000)), findsOneWidget);
+    expect(
+      find.text('${formatDA(20000)} vendus sans coût connu'),
+      findsOneWidget,
+    );
+    expect(find.text('Ma caisse'), findsOneWidget);
+    expect(find.text(formatDA(350000)), findsOneWidget);
+  });
+
+  testWidgets('caisse fermée : le dire ; pas de marge sans le bloc', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      user: _vendeur(),
+      summary: const DashboardSummary(
+        day: '2026-10-05',
+        cash: DashboardCash(open: false),
+      ),
+    );
+    expect(find.text('Fermée'), findsOneWidget);
+    expect(find.text('Marge du jour'), findsNothing);
+    expect(find.text('Panier moyen'), findsNothing);
+  });
+
   testWidgets('magasinier : anneau du stock, sans graphique de ventes', (
     tester,
   ) async {

@@ -124,6 +124,27 @@ class CatalogApi {
     return Uint8List.fromList(response.data!);
   }
 
+  /// Produits SÉLECTIONNÉS en PDF, Excel ou CSV (2026-10-05).
+  Future<ExportedFile> exportProducts(
+    List<String> ids,
+    ExportFormat format,
+  ) async {
+    final response = await guardBytes(
+      () => _dio.post<List<int>>(
+        '/products/export',
+        data: {'format': format.name, 'ids': ids},
+        options: Options(responseType: ResponseType.bytes),
+      ),
+    );
+    return ExportedFile(
+      Uint8List.fromList(response.data!),
+      exportFilename(
+        response.headers.value('content-disposition'),
+        fallback: 'produits.${format.name}',
+      ),
+    );
+  }
+
   /// Octets de la photo, par la route authentifiée (le stockage est privé).
   Future<Uint8List> imageBytes(String productId) {
     return guardApi(() async {

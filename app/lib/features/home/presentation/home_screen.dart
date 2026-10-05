@@ -255,7 +255,9 @@ class _Blocks extends StatelessWidget {
         purchases == null &&
         customers == null &&
         suppliers == null &&
-        tasks == null) {
+        tasks == null &&
+        summary.margin == null &&
+        summary.cash == null) {
       return const ScreenStateView(
         status: ScreenStatus.empty,
         title: 'Rien à résumer',
@@ -286,6 +288,44 @@ class _Blocks extends StatelessWidget {
                 label: 'Chiffre d’affaires du jour',
                 value: formatDA(sales.revenueTtc),
                 hint: '${sales.count} vente(s) validée(s)',
+                desktop: desktop,
+                width: width,
+              ),
+            // Infos ajoutées le 2026-10-05.
+            // À partir de 2 ventes : avec une seule, il répète le CA.
+            if (sales != null && sales.count > 1)
+              _Metric(
+                label: 'Panier moyen',
+                value: formatDA((sales.revenueTtc / sales.count).round()),
+                hint: 'par vente aujourd’hui',
+                desktop: desktop,
+                width: width,
+              ),
+            if (summary.margin case final margin?)
+              _Metric(
+                label: 'Marge du jour',
+                value: margin.marginHt == null
+                    ? '—'
+                    : formatDA(margin.marginHt!),
+                hint: margin.uncostedRevenueHt > 0
+                    ? '${formatDA(margin.uncostedRevenueHt)} vendus sans coût connu'
+                    : 'prix de vente − dernier prix d’achat',
+                tone: (margin.marginHt ?? 0) < 0
+                    ? StatusTone.error
+                    : StatusTone.neutral,
+                destination: to('Rapports'),
+                desktop: desktop,
+                width: width,
+              ),
+            if (summary.cash case final cash?)
+              _Metric(
+                label: 'Ma caisse',
+                value: cash.open ? formatDA(cash.currentAmount) : 'Fermée',
+                hint: cash.open
+                    ? 'dans le tiroir'
+                    : 'ouvrez-la avant d’encaisser',
+                tone: cash.open ? StatusTone.neutral : StatusTone.warn,
+                destination: to('Vente'),
                 desktop: desktop,
                 width: width,
               ),

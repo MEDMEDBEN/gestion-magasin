@@ -82,11 +82,7 @@ export class ReplenishmentService {
       if (!rupture && !isLowStock(quantity, product.minThreshold)) continue;
       if (query.outOfStockOnly && !rupture) continue;
 
-      const suggested = suggestedOrderQuantity(
-        quantity,
-        product.minThreshold,
-        product.safetyStock,
-      );
+      const suggested = suggestedOrderQuantity(quantity, product.minThreshold);
       lines.push({
         productId: product.id,
         sku: product.sku,

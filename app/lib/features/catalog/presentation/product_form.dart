@@ -41,7 +41,11 @@ class ProductForm extends ConsumerStatefulWidget {
     this.canSetPrices = false,
     this.canContactCustomers = false,
     this.initialBarcode,
+    this.initialName,
   });
+
+  /// Nouveau produit : nom déjà dicté (assistant, 2026-10-05).
+  final String? initialName;
 
   final Product? existing;
 
@@ -73,7 +77,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   late final TextEditingController _brand;
   late final TextEditingController _description;
   late final TextEditingController _minThreshold;
-  late final TextEditingController _safetyStock;
 
   /// Un champ de prix par tarif, créé à l'arrivée de la liste des tarifs.
   final Map<String, TextEditingController> _prices = {};
@@ -115,7 +118,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     super.initState();
     final p = widget.existing;
     _sku = TextEditingController(text: p?.sku ?? '');
-    _name = TextEditingController(text: p?.name ?? '');
+    _name = TextEditingController(text: p?.name ?? widget.initialName ?? '');
     _barcode = TextEditingController(
       text: p?.barcode ?? widget.initialBarcode ?? '',
     );
@@ -123,9 +126,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     _description = TextEditingController(text: p?.description ?? '');
     _minThreshold = TextEditingController(
       text: p == null ? '' : formatQuantity(p.minThreshold),
-    );
-    _safetyStock = TextEditingController(
-      text: p == null ? '' : formatQuantity(p.safetyStock),
     );
     _unit = p?.unit ?? ProductUnit.piece;
     _categoryId = p?.categoryId;
@@ -145,7 +145,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _description,
       _cost,
       _minThreshold,
-      _safetyStock,
       _storeStock,
       _depotStock,
       ..._prices.values,
@@ -194,7 +193,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'storageLocationId': _storageLocationId,
     if (widget.canReadSuppliers) 'mainSupplierId': _mainSupplierId,
     'minThreshold': _quantity(_minThreshold),
-    'safetyStock': _quantity(_safetyStock),
     'allowBackorder': _allowBackorder,
     if (_isEdit && widget.canDisable) 'isActive': _isActive,
     if (_costEditable) 'purchasePriceHt': parseDA(_cost.text),
@@ -211,7 +209,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'storageLocationId': p.storageLocationId,
     'mainSupplierId': p.mainSupplierId,
     'minThreshold': quantityToJson(p.minThreshold),
-    'safetyStock': quantityToJson(p.safetyStock),
     'allowBackorder': p.allowBackorder,
     'isActive': p.isActive,
     'purchasePriceHt': p.lastPurchasePriceHt,
@@ -328,15 +325,15 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     if (!_costEditable) {
       return Text(
         known == null
-            ? 'Prix d’achat HT : inconnu (fixé par la première réception)'
-            : 'Prix d’achat HT : ${formatDA(known)}',
+            ? 'Prix d’achat : inconnu (fixé par la première réception)'
+            : 'Prix d’achat : ${formatDA(known)}',
         style: AmpereType.body.copyWith(color: colors.ink),
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const AmpereFieldLabel('Prix d’achat HT'),
+        const AmpereFieldLabel('Prix d’achat'),
         TextFormField(
           controller: _cost,
           enabled: !_saving,
@@ -441,8 +438,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                AmpereFieldLabel('Prix ${tier.name} (HT)'),
+                AmpereFieldLabel('Prix ${tier.name}'),
                 TextFormField(
+                  key: ValueKey('prix-${tier.id}'),
                   controller: _prices.putIfAbsent(
                     tier.id,
                     () => TextEditingController(
@@ -757,47 +755,16 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           ),
           formFieldGap,
         ],
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AmpereFieldLabel('Seuil minimum'),
-                  TextFormField(
-                    controller: _minThreshold,
-                    enabled: !_locked,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: inputStyle,
-                    decoration: InputDecoration(suffixText: _unit.short),
-                    validator: _validateQuantity,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const AmpereFieldLabel('Stock de sécurité'),
-                  TextFormField(
-                    controller: _safetyStock,
-                    enabled: !_locked,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: inputStyle,
-                    decoration: InputDecoration(suffixText: _unit.short),
-                    validator: _validateQuantity,
-                  ),
-                ],
-              ),
-            ),
-          ],
+        // UN seul seuil (décision MEDMEDBEN du 2026-10-05) : il déclenche
+        // l'alerte et la proposition de réapprovisionnement.
+        const AmpereFieldLabel('Seuil minimum'),
+        TextFormField(
+          controller: _minThreshold,
+          enabled: !_locked,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          style: inputStyle,
+          decoration: InputDecoration(suffixText: _unit.short),
+          validator: _validateQuantity,
         ),
         formFieldGap,
         SwitchListTile(
@@ -833,8 +800,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
         ),
         formFieldGap,
         if (priceTiers.isNotEmpty) ...[
-          if (!widget.canSetPrices)
-            const AmpereFieldLabel('Prix de vente (HT)'),
+          if (!widget.canSetPrices) const AmpereFieldLabel('Prix de vente'),
           _pricesSection(colors, priceTiers),
         ],
         formFieldGap,

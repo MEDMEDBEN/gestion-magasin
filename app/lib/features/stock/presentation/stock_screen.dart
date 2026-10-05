@@ -125,7 +125,21 @@ class _LevelsSection extends ConsumerStatefulWidget {
 }
 
 class _LevelsSectionState extends ConsumerState<_LevelsSection> {
-  final _search = TextEditingController();
+  // Pré-remplie par une recherche demandée (assistant), reprise une fois.
+  late final _search = TextEditingController(text: _requested());
+
+  String _requested() {
+    final asked = ref.read(requestedSearchProvider);
+    if (asked != null) {
+      // Après la construction : un provider ne se modifie pas pendant build.
+      Future.microtask(() {
+        if (!mounted) return;
+        ref.read(requestedSearchProvider.notifier).take();
+        ref.read(productFilterProvider.notifier).setSearch(asked);
+      });
+    }
+    return asked ?? ref.read(productFilterProvider).search;
+  }
 
   @override
   void dispose() {

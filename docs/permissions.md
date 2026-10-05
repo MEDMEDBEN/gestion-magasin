@@ -261,6 +261,7 @@ d'environnement `STORE_*` du serveur.
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
 | Imprimer des étiquettes (`POST /products/labels`) | ✅ | ✅ | ✅ |
+| Exporter les produits sélectionnés (`POST /products/export`, PDF/Excel/CSV ; prix d'achat seulement avec `cost.read`) | ✅ | ✅ | ✅ |
 
 Garde : les trois rôles + `product.read` **ET** `price.read` (le prix est imprimé). Aucune écriture : une
 lecture en POST, parce qu'une liste de 200 produits ne tient pas dans une URL. Produits actifs seulement.
