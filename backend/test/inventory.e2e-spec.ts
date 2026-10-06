@@ -30,6 +30,8 @@ describe('Inventaire (e2e)', () => {
       request(server).get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string) =>
       request(server).post(url).set('Authorization', `Bearer ${token}`),
+    delete: (url: string) =>
+      request(server).delete(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Produit avec `quantity` unités au dépôt, entrées par le journal.
@@ -247,6 +249,18 @@ describe('Inventaire (e2e)', () => {
     });
     expect(await stockAt(inv.productId, depotId)).toBe('45.000');
 
+    // L'admin corrige la fiche : l'écran renvoie TOUTE la feuille, ce 47
+    // compris. Inchangé, il garde son théorique d'alors (sinon +2 → 47, faux).
+    const resent = (
+      await as(tokens.admin)
+        .post(`/api/inventories/${inv.id}/count`)
+        .send({
+          lines: [{ productId: inv.productId, countedQuantity: '47' }],
+        })
+        .expect(200)
+    ).body;
+    expect(resent.lines[0].difference).toBe('-3.000');
+
     await as(tokens.admin)
       .post(`/api/inventories/${inv.id}/validate`)
       .expect(200);
@@ -415,12 +429,75 @@ describe('Inventaire (e2e)', () => {
     expect(done.status).toBe('TERMINE');
     expect(done.lines[0].difference).toBe('-1.000');
 
-    // Terminé, il ne se recompte plus.
+    // Terminé : le compteur ne le réécrit plus, ni ne le rouvre (audit
+    // 2026-10-06 : sinon rouvrir puis supprimer effaçait les écarts).
+    for (const done of [true, false]) {
+      await as(tokens.magasinier)
+        .post(`/api/inventories/${inv.id}/count`)
+        .send({
+          done,
+          lines: [{ productId: inv.productId, countedQuantity: '50' }],
+        })
+        .expect(403);
+    }
+    await as(tokens.magasinier)
+      .delete(`/api/inventories/${inv.id}`)
+      .expect(403);
+    // L'admin le corrige : il reste TERMINÉ, à sa date de clôture d'origine.
+    const fixed = (
+      await as(tokens.admin)
+        .post(`/api/inventories/${inv.id}/count`)
+        .send({
+          lines: [{ productId: inv.productId, countedQuantity: '48' }],
+        })
+        .expect(200)
+    ).body;
+    expect(fixed.status).toBe('TERMINE');
+    expect(fixed.completedAt).toBe(done.completedAt);
+    expect(fixed.lines[0].difference).toBe('-2.000');
+
+    // Ajusté : figé.
+    await as(tokens.admin)
+      .post(`/api/inventories/${inv.id}/validate`)
+      .expect(200);
+    expect(await stockAt(inv.productId, depotId)).toBe('48.000');
     const closed = await as(tokens.magasinier)
       .post(`/api/inventories/${inv.id}/count`)
-      .send({ lines: [{ productId: inv.productId, countedQuantity: '48' }] })
+      .send({ lines: [{ productId: inv.productId, countedQuantity: '47' }] })
       .expect(409);
     expect(closed.body.code).toBe('INVALID_STATE_TRANSITION');
+  });
+
+  it('supprimer : jamais un ajusté, comptage terminé = admin seul, audité', async () => {
+    // En cours : le magasinier le supprime ; aucun stock n'a bougé.
+    const open = await tournant('20');
+    await as(tokens.magasinier)
+      .delete(`/api/inventories/${open.id}`)
+      .expect(204);
+    await as(tokens.admin).get(`/api/inventories/${open.id}`).expect(404);
+    expect(await stockAt(open.productId, depotId)).toBe('20.000');
+    const audit = await prisma.auditLog.findFirst({
+      where: { entityType: 'Inventory', entityId: open.id, action: 'CANCEL' },
+    });
+    expect(audit?.oldValue).toMatchObject({ number: open.body.number });
+
+    // Terminé : le magasinier ne fait pas disparaître des écarts.
+    const done = await counted('15', '20');
+    await as(tokens.magasinier)
+      .delete(`/api/inventories/${done.id}`)
+      .expect(403);
+    await as(tokens.vendeur).delete(`/api/inventories/${done.id}`).expect(403);
+    await as(tokens.admin).delete(`/api/inventories/${done.id}`).expect(204);
+
+    // Ajusté : jamais.
+    const adjusted = await counted('18', '20');
+    await as(tokens.admin)
+      .post(`/api/inventories/${adjusted.id}/validate`)
+      .expect(200);
+    const refused = await as(tokens.admin)
+      .delete(`/api/inventories/${adjusted.id}`)
+      .expect(409);
+    expect(refused.body.code).toBe('INVALID_STATE_TRANSITION');
   });
 
   it('validation rejouée : l’ajustement n’est appliqué qu’UNE fois', async () => {

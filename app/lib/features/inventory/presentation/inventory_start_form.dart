@@ -64,15 +64,8 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
             productIds: cycle ? _productIds.toList() : null,
             zone: _zone.text.trim().isEmpty ? null : _zone.text.trim(),
           );
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${inventory.number} lancé — ${inventory.lines.length} produit(s) à compter.',
-          ),
-        ),
-      );
+      // La saisie s'ouvre aussitôt (l'écran reçoit l'inventaire lancé).
+      if (mounted) Navigator.of(context).pop(inventory);
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {
@@ -94,22 +87,19 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
         if (l.isActive && (l.type == 'MAGASIN' || l.type == 'DEPOT')) l,
     ];
 
+    // Un seul choix utile la plupart du temps : déjà sélectionné.
+    if (_locationId == null && stockLocations.isNotEmpty) {
+      _locationId = stockLocations.first.id;
+    }
+
     return FormPanelFrame(
       formKey: _formKey,
-      title: 'Lancer un inventaire',
+      title: 'Nouvel inventaire',
       saving: _saving,
       error: _error,
-      submitLabel: 'Lancer le comptage',
+      submitLabel: 'Commencer le comptage',
       onSubmit: _saving ? null : _submit,
       children: [
-        const AmpereInlineAlert(
-          tone: StatusTone.info,
-          icon: LucideIcons.info,
-          message:
-              'Le stock théorique est figé maintenant. Rien ne bouge tant que '
-              'l’administrateur n’a pas validé les écarts.',
-        ),
-        const SizedBox(height: 16),
         const AmpereFieldLabel('Lieu compté'),
         DropdownButtonFormField<String>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),
@@ -126,11 +116,18 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
           validator: (v) => v == null ? 'Choisissez un lieu' : null,
         ),
         const SizedBox(height: 16),
-        const AmpereFieldLabel('Type'),
+        const AmpereFieldLabel('Quoi compter'),
         SegmentedButton<InventoryType>(
           segments: [
             for (final t in InventoryType.values)
-              ButtonSegment(value: t, label: Text(t.label)),
+              ButtonSegment(
+                value: t,
+                label: Text(
+                  t == InventoryType.full
+                      ? 'Tout le lieu'
+                      : 'Quelques produits',
+                ),
+              ),
           ],
           selected: {_type},
           onSelectionChanged: _saving
@@ -140,8 +137,9 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
         const SizedBox(height: 8),
         Text(
           _type == InventoryType.full
-              ? 'Complet : tout ce que le lieu porte est compté.'
-              : 'Tournant : seuls les produits cochés sont comptés.',
+              ? 'Tous les produits du lieu. Le stock ne bouge qu’à '
+                    'l’ajustement par l’administrateur.'
+              : 'Seulement les produits que vous cochez.',
           style: AmpereType.meta.copyWith(color: colors.ink3),
         ),
         if (_type == InventoryType.cycle) ...[

@@ -1691,8 +1691,6 @@ void main() {
         await _viaMore(t, 'Inventaire');
         await t.pumpAndSettle();
         await t.tap(find.text('INV-2026-00003'));
-        await t.pumpAndSettle();
-        await t.tap(find.text('Reprendre le comptage'));
       },
     ),
   );
@@ -1708,8 +1706,6 @@ void main() {
         await t.tap(find.text('Inventaire'));
         await t.pumpAndSettle();
         await t.tap(find.text('INV-2026-00002'));
-        await t.pumpAndSettle();
-        await t.tap(find.text('Voir les écarts'));
       },
     ),
   );

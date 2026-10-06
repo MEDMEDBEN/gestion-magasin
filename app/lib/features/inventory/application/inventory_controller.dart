@@ -77,6 +77,12 @@ class InventoryActions {
   Future<Inventory> validate(String id) =>
       _refresh(_api.validate(id), stockMoved: true);
 
+  /// Inventaire pas encore ajusté : rien ne bouge au stock.
+  Future<void> remove(String id) async {
+    await _api.remove(id);
+    _ref.invalidate(inventoriesProvider);
+  }
+
   Future<Inventory> _refresh(
     Future<Inventory> call, {
     bool stockMoved = false,

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -165,6 +167,31 @@ export class InventoryController {
     @Ip() ip: string,
   ): Promise<InventoryDto> {
     return this.inventories.validate(id, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
+  @RequireFreshAccess()
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Supprime un inventaire pas encore ajusté',
+    description:
+      'Aucun stock n’a bougé : l’inventaire et ses lignes sont supprimés, ' +
+      'l’état d’avant reste dans le journal d’audit. Comptage terminé : ADMIN ' +
+      'seul (403). Inventaire ajusté : jamais (409).',
+  })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  async remove(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<void> {
+    await this.inventories.remove(id, user, {
       userId: user.id,
       ipAddress: ip,
     });

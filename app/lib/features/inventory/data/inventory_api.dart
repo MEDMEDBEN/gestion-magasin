@@ -32,6 +32,11 @@ class InventoryApi {
   Future<Inventory> validate(String id) =>
       _send('/inventories/$id/validate', null);
 
+  /// Supprime un inventaire PAS ENCORE ajusté (aucun stock ne bouge).
+  Future<void> remove(String id) => guardApi(() async {
+    await _dio.delete<void>('/inventories/$id');
+  });
+
   Future<Inventory> _send(String path, Map<String, Object?>? fields) {
     return guardApi(() async {
       final response = await _dio.post<Map<String, dynamic>>(

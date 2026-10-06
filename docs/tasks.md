@@ -4,6 +4,23 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Inventaire simplifié — 2026-10-06 (MEDMEDBEN, Claude)
+
+- **Moins d'étapes** : « Nouvel inventaire » (lieu présélectionné, « Tout le lieu » par défaut) → la saisie
+  s'ouvre AUSSITÔT. Toucher un inventaire en cours = la saisie. Saisie : une ligne par produit (nom, case
+  « Compté »), recherche, compteur « x sur y comptés », deux boutons (Enregistrer / Terminer). L'admin a
+  « Terminer et ajuster » (confirmation puis ajustement). Terminé → fiche : écarts d'abord, Modifier / Ajuster
+  le stock / Supprimer.
+- **Modifier** : en cours = compteur ; terminé non ajusté = ADMIN seul (reste terminé, date de clôture
+  d'origine). **Supprimer** (`DELETE /inventories/:id`, droits relus) : en cours = ADMIN|MAGASINIER ; terminé =
+  ADMIN ; ajusté = jamais (409). État gardé à l'audit (CANCEL), alertes de l'inventaire retirées.
+- **Audits** (2026-10-06), corrigés avec contre-preuves e2e : le magasinier pouvait rouvrir un terminé puis le
+  supprimer (écarts effacés) → 403 ; une ligne renvoyée inchangée relisait son théorique (une vente survenue
+  depuis faussait l'ajustement) → ligne inchangée ignorée ; garde de double correction depuis le LANCEMENT.
+- Preuves : backend lint/tsc OK, 166 unitaires, **655 e2e** ; app analyze 0, **541 tests** ; captures 36-38
+  vérifiées.
+- **Prochaine étape** : rebuild des apps et redéploiement du backend.
+
 ### Fiche contact + suppression — 2026-10-06 (MEDMEDBEN, Claude)
 
 - **Fiche contact** (`ui/widgets/contact_profile.dart`) pour clients ET fournisseurs : initiales, coordonnées

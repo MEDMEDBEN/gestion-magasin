@@ -153,6 +153,11 @@ aucune migration destructive sans confirmation).
 |---|---|---|---|
 | Lancer un inventaire / comptage | ✅ | ❌ | ✅ |
 | Valider un ajustement d'inventaire | ✅ | ❌ | ❌ |
+| Modifier un comptage EN COURS | ✅ | ❌ | ✅ |
+| Corriger un comptage TERMINÉ non ajusté (reste terminé, date de clôture d'origine) | ✅ | ❌ | ❌ (403 : le compteur ne réécrit pas ses écarts) |
+| Supprimer un inventaire EN COURS (`DELETE /inventories/:id`, aucun stock ne bouge, état gardé à l'audit) | ✅ | ❌ | ✅ |
+| Supprimer un comptage TERMINÉ non ajusté | ✅ | ❌ | ❌ (403) |
+| Supprimer / modifier un inventaire AJUSTÉ | ❌ (409, figé — en refaire un) | ❌ | ❌ |
 | Créer un planning hebdomadaire | ✅ | ❌ | ❌ |
 | Voir / exécuter ses tâches planifiées | ✅ | ✅ | ✅ |
 

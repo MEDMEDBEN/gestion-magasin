@@ -134,11 +134,23 @@ export class InventoryService {
   ): Promise<InventoryDto> {
     return this.prisma.$transaction(async (tx) => {
       const before = await InventoryService.lockInventory(tx, id);
-      if (before.status !== 'EN_COURS') {
+      // Un comptage TERMINÉ se corrige tant que le stock n'est pas ajusté
+      // (2026-10-06) ; une fois validé, il est figé (règle 7).
+      if (before.validatedAt) {
         throw new BusinessException(
           ErrorCode.INVALID_STATE_TRANSITION,
-          `Inventaire ${before.number} déjà terminé : il ne se recompte plus`,
+          `Inventaire ${before.number} déjà ajusté : il ne se modifie plus — lancez-en un nouveau`,
           HttpStatus.CONFLICT,
+        );
+      }
+      // Comptage terminé : ses écarts attendent l'admin, le compteur ne les
+      // réécrit plus (séparation compteur / validateur, audit du 2026-10-06).
+      const closed = before.status === 'TERMINE';
+      if (closed && !user.roles.includes(RoleCode.ADMIN)) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_ROLE,
+          'Comptage terminé : seul l’administrateur le corrige',
+          HttpStatus.FORBIDDEN,
         );
       }
 
@@ -159,6 +171,13 @@ export class InventoryService {
         // Ligne non citée : son comptage précédent (ou son absence) est gardé.
         if (raw === undefined) continue;
         const quantity = parseQuantity(raw, 'lines.countedQuantity');
+        // Même quantité renvoyée (l'écran renvoie toute la feuille) : la ligne
+        // n'est pas recomptée, son théorique d'ALORS reste la référence — le
+        // relire compterait une vente survenue depuis (audit du 2026-10-06).
+        if (line.countedQuantity?.equals(quantity)) {
+          counted.delete(line.productId);
+          continue;
+        }
         // Théorique RELU au moment du comptage : c'est ce que le système
         // croyait quand le compteur avait le produit en main.
         const theoretical = await InventoryService.currentStock(
@@ -207,7 +226,11 @@ export class InventoryService {
       const after = await tx.inventory.update({
         where: { id },
         include: INVENTORY_INCLUDE,
-        data: done ? { status: 'TERMINE', completedAt: new Date() } : {},
+        // Un comptage terminé que l'admin corrige RESTE terminé, à sa date de
+        // clôture d'origine : `assertNotAlreadyAdjusted` doit voir tout
+        // ajustement concurrent survenu depuis le premier comptage.
+        data:
+          done && !closed ? { status: 'TERMINE', completedAt: new Date() } : {},
       });
       await writeAudit(tx, actor, {
         action: 'UPDATE',
@@ -220,7 +243,7 @@ export class InventoryService {
       // ajustements, il doit donc savoir qu'un inventaire l'attend. Averti au
       // moment où c'est complet, pas à chaque ligne saisie.
       const ecarts = after.lines.filter((l) => l.state === 'ECART').length;
-      if (done && ecarts > 0) {
+      if (done && !closed && ecarts > 0) {
         await NotificationsService.notifyRoles(
           tx,
           [RoleCode.ADMIN],
@@ -235,6 +258,47 @@ export class InventoryService {
         );
       }
       return InventoryService.toDto(after);
+    });
+  }
+
+  /// Suppression d'un inventaire PAS ENCORE AJUSTÉ (2026-10-06) : il n'a
+  /// touché aucun stock, rien ne se perd — l'état supprimé reste dans le
+  /// journal d'audit. Un inventaire ajusté, lui, ne se supprime jamais
+  /// (règle 7). Comptage terminé : ADMIN seul (ses écarts attendent l'admin,
+  /// le magasinier ne les fait pas disparaître).
+  async remove(
+    id: string,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const before = await InventoryService.lockInventory(tx, id);
+      if (before.validatedAt) {
+        throw new BusinessException(
+          ErrorCode.INVALID_STATE_TRANSITION,
+          `Inventaire ${before.number} déjà ajusté : il ne se supprime plus`,
+          HttpStatus.CONFLICT,
+        );
+      }
+      if (before.status === 'TERMINE' && !user.roles.includes(RoleCode.ADMIN)) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_ROLE,
+          'Comptage terminé : seul l’administrateur le supprime',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      await writeAudit(tx, actor, {
+        action: 'CANCEL',
+        entityType: 'Inventory',
+        entityId: id,
+        oldValue: InventoryService.snapshot(before),
+      });
+      // Les lignes partent avec (onDelete: Cascade) ; ses alertes « écarts à
+      // valider » n'ont plus d'objet.
+      await tx.notification.deleteMany({
+        where: { operationType: 'INVENTORY', operationId: id },
+      });
+      await tx.inventory.delete({ where: { id } });
     });
   }
 
@@ -426,14 +490,16 @@ export class InventoryService {
   /// l'inventaire invalidable sans rien protéger.
   ///
   /// Ce qui double-corrige vraiment, c'est un AUTRE ajustement d'inventaire sur
-  /// le même produit et le même lieu depuis la clôture du comptage : deux
+  /// le même produit et le même lieu depuis le lancement de l'inventaire : deux
   /// inventaires qui se chevauchent ont lu le même théorique et appliqueraient
   /// deux fois le même écart. C'est le seul cas refusé ici.
   private static async assertNotAlreadyAdjusted(
     tx: Db,
     inventory: InventoryWithLines,
   ): Promise<void> {
-    const since = inventory.completedAt;
+    // Depuis le LANCEMENT : une ligne comptée avant la clôture (comptage en
+    // plusieurs passages) a un théorique plus ancien que `completedAt`.
+    const since = inventory.completedAt ? inventory.startedAt : null;
     // `TERMINE` pose toujours `completedAt` (seul `submitCount` le fait), donc
     // ce cas est impossible — mais on refuse plutôt que de laisser passer une
     // validation dont on ne sait pas dater la référence (posture du projet).

@@ -13,6 +13,7 @@ import 'package:gestion_magasin/features/inventory/data/inventory_api.dart';
 import 'package:gestion_magasin/features/inventory/data/inventory_models.dart';
 import 'package:gestion_magasin/features/inventory/presentation/inventory_screen.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
@@ -85,6 +86,10 @@ class _FakeInventoryApi extends InventoryApi {
   Map<String, Object?>? created;
   Map<String, Object?>? countedFields;
   String? validatedId;
+  String? removedId;
+
+  @override
+  Future<void> remove(String id) async => removedId = id;
 
   @override
   Future<InventoryPage> list({String? status, int limit = 100}) async =>
@@ -172,57 +177,60 @@ Future<_FakeInventoryApi> _pump(
 }
 
 void main() {
+  /// Retour terrain du 2026-10-06 : « créer puis saisir » faisait trop
+  /// d'étapes. Lancer ouvre AUSSITÔT la saisie.
   testWidgets(
-    'lancer un inventaire TOURNANT : type, zone et produits partent',
+    'nouvel inventaire : lieu déjà choisi, la saisie s’ouvre aussitôt',
     (tester) async {
       final api = await _pump(tester, _magasinier());
-
-      await tester.tap(find.text('Lancer un inventaire'));
+      await tester.tap(find.text('Nouvel inventaire'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Commencer le comptage'));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dépôt').last);
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Tournant'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Zone A, rayon câbles…'),
-        'Zone A',
-      );
-      await tester.tap(find.byType(CheckboxListTile).first);
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Lancer le comptage'));
-      await tester.pumpAndSettle();
-
-      expect(api.created, containsPair('type', 'TOURNANT'));
-      expect(api.created, containsPair('zone', 'Zone A'));
-      expect(api.created!['productIds'], ['p1']);
-      expect(api.created!['clientMutationId'], isA<String>());
+      expect(api.created, containsPair('type', 'COMPLET'));
+      expect(api.created, containsPair('locationId', 'magasin'));
+      // Directement dans la saisie, sans repasser par la liste.
+      expect(find.text('Comptage INV-2026-00003'), findsOneWidget);
+      expect(find.text('0 sur 1 produit(s) comptés'), findsOneWidget);
     },
   );
 
-  testWidgets('un tournant sans produit coché ne part pas', (tester) async {
+  testWidgets('quelques produits : zone et produits cochés partent', (
+    tester,
+  ) async {
     final api = await _pump(tester, _magasinier());
-    await tester.tap(find.text('Lancer un inventaire'));
+    await tester.tap(find.text('Nouvel inventaire'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Dépôt').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Tournant'));
+    await tester.tap(find.text('Quelques produits'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Lancer le comptage'));
+    // Sans produit coché : refusé avant le serveur.
+    await tester.tap(find.text('Commencer le comptage'));
     await tester.pumpAndSettle();
-
     expect(find.textContaining('au moins un produit'), findsOneWidget);
     expect(api.created, isNull);
+
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Zone A, rayon câbles…'),
+      'Zone A',
+    );
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Commencer le comptage'));
+    await tester.pumpAndSettle();
+    expect(api.created, containsPair('type', 'TOURNANT'));
+    expect(api.created, containsPair('locationId', 'depot'));
+    expect(api.created, containsPair('zone', 'Zone A'));
+    expect(api.created!['productIds'], ['p1']);
+    expect(api.created!['clientMutationId'], isA<String>());
   });
 
-  testWidgets('le comptage part au serveur, et n’annonce AUCUN ajustement', (
+  testWidgets('en cours : un toucher ouvre la saisie ; le magasinier termine', (
     tester,
   ) async {
     final api = await _pump(tester, _magasinier(), inventories: [_inventory()]);
@@ -230,91 +238,152 @@ void main() {
 
     await tester.tap(find.text('INV-2026-00003'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Saisir le comptage'));
-    await tester.pumpAndSettle();
-
     // Le théorique n'est PAS révélé avant le premier comptage.
-    expect(find.textContaining('Théorique 50'), findsNothing);
-    expect(find.textContaining('ne bouge qu’à la validation'), findsOneWidget);
+    expect(find.textContaining('théorique 50'), findsNothing);
+    // Le magasinier n'ajuste pas le stock.
+    expect(find.text('Terminer et ajuster'), findsNothing);
 
     await tester.enterText(
-      find.widgetWithText(TextFormField, 'Quantité comptée'),
+      find.widgetWithText(TextFormField, 'Compté'),
       '47,5',
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Terminer le comptage'));
+    expect(find.text('1 sur 1 produit(s) comptés'), findsOneWidget);
+    await tester.tap(find.text('Terminer'));
     await tester.pumpAndSettle();
 
     expect(api.countedFields, containsPair('done', true));
     expect(api.countedFields!['lines'], [
       {'productId': 'p1', 'countedQuantity': '47.500'},
     ]);
+    expect(api.validatedId, isNull);
+    expect(find.textContaining('l’administrateur ajustera'), findsOneWidget);
+  });
+
+  testWidgets('incomplet : « Terminer » refusé, « Enregistrer » passe', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      _magasinier(),
+      inventories: [
+        _inventory(
+          lines: [
+            _line(productId: 'p1'),
+            _line(productId: 'p2'),
+          ],
+        ),
+      ],
+    );
+    await tester.tap(find.text('INV-2026-00003'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Compté').first,
+      '10',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Terminer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 produit(s) sans quantité'), findsOneWidget);
+    expect(api.countedFields, isNull);
+
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    expect(api.countedFields, containsPair('done', false));
+  });
+
+  testWidgets('admin : « Terminer et ajuster » en un seul passage', (
+    tester,
+  ) async {
+    final api = await _pump(tester, _admin(), inventories: [_inventory()]);
+    await tester.tap(find.text('INV-2026-00003'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Compté'),
+      '47,5',
+    );
+    await tester.tap(find.text('Terminer et ajuster'));
+    await tester.pumpAndSettle();
+
+    expect(api.countedFields, containsPair('done', true));
+    expect(api.validatedId, isNull); // rien sans confirmation
+    expect(find.textContaining('1 produit(s) en écart'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajuster le stock'));
+    await tester.pumpAndSettle();
+    expect(api.validatedId, 'i1');
   });
 
   testWidgets(
-    'comptage incomplet : « Terminer » est refusé, « en cours » passe',
+    'terminé : fiche avec écarts formatés ; le magasinier n’y touche plus',
     (tester) async {
       final api = await _pump(
         tester,
         _magasinier(),
         inventories: [
           _inventory(
+            status: InventoryStatus.completed,
             lines: [
-              _line(productId: 'p1'),
-              _line(productId: 'p2'),
+              _line(
+                counted: '47.5',
+                difference: '-2.5',
+                state: InventoryLineState.gap,
+              ),
+            ],
+          ),
+        ],
+      );
+      expect(find.text('À valider'), findsOneWidget);
+      expect(
+        find.textContaining('1 écart(s) sur 1 produit(s)'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('INV-2026-00003'));
+      await tester.pumpAndSettle();
+      expect(find.text('Câble 3G2,5'), findsOneWidget);
+      expect(find.text('Théorique 50 · compté 47,5'), findsOneWidget);
+      expect(find.text('-2,5'), findsOneWidget);
+      // Comptage terminé : le magasinier ne l'ajuste, ne le modifie ni ne le
+      // supprime (le serveur refuse : 403).
+      expect(find.text('Ajuster le stock'), findsNothing);
+      expect(find.text('Modifier'), findsNothing);
+      expect(find.text('Supprimer'), findsNothing);
+      expect(api.countedFields, isNull);
+    },
+  );
+
+  testWidgets(
+    'admin : modifie un comptage terminé, repris avec son théorique',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _admin(),
+        inventories: [
+          _inventory(
+            status: InventoryStatus.completed,
+            lines: [
+              _line(
+                counted: '47.5',
+                difference: '-2.5',
+                state: InventoryLineState.gap,
+              ),
             ],
           ),
         ],
       );
       await tester.tap(find.text('INV-2026-00003'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Saisir le comptage'));
+      await tester.tap(find.text('Modifier'));
       await tester.pumpAndSettle();
-
-      await tester.enterText(
-        find.widgetWithText(TextFormField, 'Quantité comptée').first,
-        '10',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Terminer le comptage'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('Comptage incomplet'), findsOneWidget);
-      expect(api.countedFields, isNull);
-
-      await tester.tap(find.text('Enregistrer en cours'));
+      expect(find.text('47,5'), findsOneWidget);
+      expect(find.textContaining('théorique 50'), findsOneWidget);
+      await tester.tap(find.text('Enregistrer'));
       await tester.pumpAndSettle();
       expect(api.countedFields, containsPair('done', false));
     },
   );
 
-  testWidgets('le magasinier ne valide JAMAIS les ajustements', (tester) async {
-    await _pump(
-      tester,
-      _magasinier(),
-      inventories: [
-        _inventory(
-          status: InventoryStatus.completed,
-          lines: [
-            _line(
-              counted: '47.5',
-              difference: '-2.5',
-              state: InventoryLineState.gap,
-            ),
-          ],
-        ),
-      ],
-    );
-    expect(find.text('À valider'), findsOneWidget);
-    expect(find.textContaining('1 écart(s) sur 1 produit(s)'), findsOneWidget);
-
-    await tester.tap(find.text('INV-2026-00003'));
-    await tester.pumpAndSettle();
-    expect(find.text('Valider les ajustements'), findsNothing);
-    expect(find.text('Saisir le comptage'), findsNothing);
-  });
-
-  testWidgets('l’ADMIN valide, après une confirmation qui annonce l’effet', (
+  testWidgets('admin : ajuster depuis la fiche, après confirmation', (
     tester,
   ) async {
     final api = await _pump(
@@ -335,42 +404,19 @@ void main() {
     );
     await tester.tap(find.text('INV-2026-00003'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Valider les ajustements'));
+    await tester.tap(find.text('Ajuster le stock'));
     await tester.pumpAndSettle();
-
-    expect(find.textContaining('1 ligne(s) en écart'), findsOneWidget);
-    expect(find.textContaining('mouvement daté'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Valider'));
+    expect(api.validatedId, isNull);
+    expect(find.textContaining('1 produit(s) en écart'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Ajuster le stock'));
     await tester.pumpAndSettle();
-
     expect(api.validatedId, 'i1');
   });
 
-  testWidgets('un inventaire déjà ajusté est clos : plus aucune action', (
+  testWidgets('admin : supprimer un comptage terminé, après confirmation', (
     tester,
   ) async {
-    await _pump(
-      tester,
-      _admin(),
-      inventories: [
-        _inventory(
-          status: InventoryStatus.completed,
-          validatedAt: DateTime.utc(2026, 9, 21, 2),
-        ),
-      ],
-    );
-    expect(find.text('Ajusté'), findsOneWidget);
-    await tester.tap(find.text('INV-2026-00003'));
-    await tester.pumpAndSettle();
-    expect(find.text('Valider les ajustements'), findsNothing);
-    expect(find.text('Saisir le comptage'), findsNothing);
-    expect(find.text('Voir les écarts'), findsOneWidget);
-  });
-
-  testWidgets('« Voir les écarts » montre des quantités FORMATÉES', (
-    tester,
-  ) async {
-    await _pump(
+    final api = await _pump(
       tester,
       _admin(),
       inventories: [
@@ -388,12 +434,50 @@ void main() {
     );
     await tester.tap(find.text('INV-2026-00003'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Voir les écarts'));
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
     await tester.pumpAndSettle();
+    expect(api.removedId, isNull);
+    expect(find.text('Supprimer INV-2026-00003 ?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer').last);
+    await tester.pumpAndSettle();
+    expect(api.removedId, 'i1');
+  });
 
-    expect(find.text('Câble 3G2,5'), findsOneWidget);
-    expect(find.text('Théorique 50 · compté 47,5'), findsOneWidget);
-    expect(find.text('-2,5'), findsOneWidget);
+  testWidgets('en cours : le magasinier le supprime depuis la saisie', (
+    tester,
+  ) async {
+    final api = await _pump(tester, _magasinier(), inventories: [_inventory()]);
+    await tester.tap(find.text('INV-2026-00003'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.widgetWithText(AmpereDangerButton, 'Supprimer l’inventaire'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    expect(api.removedId, 'i1');
+  });
+
+  testWidgets('ajusté : figé, ni modifier ni supprimer ni ajuster', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _admin(),
+      inventories: [
+        _inventory(
+          status: InventoryStatus.completed,
+          validatedAt: DateTime.utc(2026, 9, 21, 2),
+        ),
+      ],
+    );
+    expect(find.text('Ajusté'), findsWidgets);
+    await tester.tap(find.text('INV-2026-00003'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('figé'), findsOneWidget);
+    expect(find.text('Modifier'), findsNothing);
+    expect(find.text('Supprimer'), findsNothing);
+    expect(find.text('Ajuster le stock'), findsNothing);
   });
 
   testWidgets('aucun inventaire : l’écran le dit au lieu de rester vide', (
@@ -429,25 +513,6 @@ void main() {
       expect(find.textContaining('Serveur injoignable'), findsOneWidget);
     },
   );
-
-  testWidgets('un comptage déjà entamé propose de le REPRENDRE', (
-    tester,
-  ) async {
-    await _pump(
-      tester,
-      _magasinier(),
-      inventories: [
-        _inventory(
-          lines: [_line(counted: '12', difference: '0')],
-        ),
-      ],
-    );
-    expect(find.textContaining('1 sur 1 produit(s) comptés'), findsOneWidget);
-    await tester.tap(find.text('INV-2026-00003'));
-    await tester.pumpAndSettle();
-    expect(find.text('Reprendre le comptage'), findsOneWidget);
-    expect(find.text('Saisir le comptage'), findsNothing);
-  });
 
   testWidgets('comptage sans aucun écart : l’écran l’annonce clairement', (
     tester,

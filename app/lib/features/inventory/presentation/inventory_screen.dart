@@ -6,6 +6,7 @@ import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/offline_documents_notice.dart';
 import '../../../ui/widgets/export_button.dart';
@@ -30,17 +31,13 @@ class InventoryRights {
 
   final bool canCount;
   final bool canValidate;
-}
 
-void _snack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: SnackBarAction(label: 'Fermer', onPressed: () {}),
-      ),
-    );
+  /// Miroir du serveur (comptage et `DELETE /inventories/:id`) : jamais un
+  /// inventaire ajusté ; un comptage terminé, l'admin seul (le compteur ne
+  /// réécrit ni n'efface des écarts constatés).
+  bool canModify(Inventory i) =>
+      i.validatedAt == null &&
+      (i.status == InventoryStatus.inProgress ? canCount : canValidate);
 }
 
 /// Un inventaire validé est clos ; un comptage terminé attend l'admin ; un
@@ -107,10 +104,9 @@ class InventoryScreen extends ConsumerWidget {
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(
-                  onPressed: () =>
-                      openFormPanel<void>(context, const InventoryStartForm()),
+                  onPressed: () => _start(context, rights),
                   icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Lancer un inventaire'),
+                  label: const Text('Nouvel inventaire'),
                 ),
               ],
             ],
@@ -150,7 +146,7 @@ class InventoryScreen extends ConsumerWidget {
                               label: _badge(i),
                               tone: _tone(i),
                             ),
-                            onTap: () => _openActions(context, ref, i, rights),
+                            onTap: () => _open(context, ref, i, rights),
                           ),
                         ),
                     ],
@@ -161,145 +157,165 @@ class InventoryScreen extends ConsumerWidget {
     );
   }
 
-  /// Actions proposées = celles que le serveur accepterait à cet instant.
-  Future<void> _openActions(
+  /// Lancement puis, AUSSITÔT, la saisie : pas de retour à la liste.
+  Future<void> _start(BuildContext context, InventoryRights rights) async {
+    final inventory = await openFormPanel<Inventory>(
+      context,
+      const InventoryStartForm(),
+    );
+    if (inventory == null || !context.mounted) return;
+    await _count(context, inventory, rights);
+  }
+
+  Future<void> _count(
+    BuildContext context,
+    Inventory inventory,
+    InventoryRights rights,
+  ) => openFormPanel<void>(
+    context,
+    InventoryCountForm(
+      inventory: inventory,
+      canAdjust: rights.canValidate,
+      canDelete: rights.canModify(inventory),
+    ),
+  );
+
+  /// En cours : directement la saisie. Sinon, sa fiche (écarts + actions que
+  /// le serveur accepterait à cet instant).
+  Future<void> _open(
     BuildContext context,
     WidgetRef ref,
     Inventory inventory,
     InventoryRights rights,
   ) async {
-    final open = inventory.status == InventoryStatus.inProgress;
+    if (inventory.status == InventoryStatus.inProgress && rights.canCount) {
+      return _count(context, inventory, rights);
+    }
     final action = await showDialog<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('${inventory.number} — ${_badge(inventory)}'),
-        children: [
-          if (open && rights.canCount)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('count'),
-              child: Text(
-                inventory.countedCount == 0
-                    ? 'Saisir le comptage'
-                    : 'Reprendre le comptage',
-              ),
-            ),
-          if (inventory.awaitsValidation && rights.canValidate)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('validate'),
-              child: const Text('Valider les ajustements'),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('lines'),
-            child: const Text('Voir les écarts'),
-          ),
-        ],
+      builder: (context) => _InventoryDetail(
+        inventory: inventory,
+        canModify: rights.canModify(inventory),
+        canAdjust: inventory.awaitsValidation && rights.canValidate,
+        canDelete: rights.canModify(inventory),
       ),
     );
     if (action == null || !context.mounted) return;
-
-    if (action == 'count') {
-      await openFormPanel<void>(
-        context,
-        InventoryCountForm(inventory: inventory),
-      );
-      return;
-    }
-    if (action == 'lines') {
-      await _showLines(context, inventory);
-      return;
-    }
-
-    final gaps = inventory.gaps.length;
-    final sure = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Valider ${inventory.number} ?'),
-        content: Text(
-          gaps == 0
-              ? 'Aucun écart : le stock ne bougera pas, l’inventaire sera clos.'
-              : '$gaps ligne(s) en écart. Le stock sera corrigé d’autant, et '
-                    'chaque correction laissera un mouvement daté à ton nom.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Revenir'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Valider'),
-          ),
-        ],
-      ),
-    );
-    if (sure != true || !context.mounted) return;
-    try {
-      final updated = await ref
-          .read(inventoryActionsProvider)
-          .validate(inventory.id);
-      if (context.mounted) {
-        _snack(context, '${updated.number} : stock ajusté.');
-      }
-    } on ApiException catch (error) {
-      // Comptage périmé ou état changé : on relit pour montrer la réalité.
-      if (error.statusCode == 409) ref.invalidate(inventoriesProvider);
-      if (context.mounted) _snack(context, error.userMessage);
+    switch (action) {
+      case 'modify':
+        await _count(context, inventory, rights);
+      case 'adjust':
+        await adjustInventory(context, ref, inventory);
+      case 'delete':
+        await deleteInventory(context, ref, inventory);
     }
   }
+}
 
-  /// Le détail ligne à ligne : théorique, compté, écart.
-  Future<void> _showLines(BuildContext context, Inventory inventory) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Écarts de ${inventory.number}'),
-        content: SizedBox(
-          width: 460,
-          child: Consumer(
-            builder: (context, ref, _) {
-              final products = {
-                for (final p
-                    in ref.watch(activeProductsProvider).value ??
-                        const <Product>[])
-                  p.id: p.name,
-              };
-              final colors = AmpereColors.of(context);
-              return SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final l in inventory.lines)
-                      ListTile(
-                        dense: true,
-                        title: Text(products[l.productId] ?? 'Produit'),
-                        subtitle: Text(
-                          'Théorique ${formatQuantity(l.theoreticalQuantity)} · '
-                          'compté ${l.countedQuantity == null ? '—' : formatQuantity(l.countedQuantity!)}',
-                        ),
-                        trailing: Text(
-                          l.state == InventoryLineState.gap
-                              ? formatQuantity(l.difference)
-                              : '0',
-                          style: TextStyle(
-                            color: l.state == InventoryLineState.gap
-                                ? colors.warn
-                                : colors.ink3,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              );
-            },
-          ),
+/// Fiche d'un inventaire : chaque produit, théorique, compté, écart (les écarts
+/// d'abord), puis Modifier / Ajuster le stock / Supprimer.
+class _InventoryDetail extends ConsumerWidget {
+  const _InventoryDetail({
+    required this.inventory,
+    required this.canModify,
+    required this.canAdjust,
+    required this.canDelete,
+  });
+
+  final Inventory inventory;
+  final bool canModify;
+  final bool canAdjust;
+  final bool canDelete;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final products = {
+      for (final p
+          in ref.watch(activeProductsProvider).value ?? const <Product>[])
+        p.id: p.name,
+    };
+    final lines = [...inventory.lines]
+      ..sort(
+        (a, b) => (b.state == InventoryLineState.gap ? 1 : 0).compareTo(
+          a.state == InventoryLineState.gap ? 1 : 0,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Fermer'),
-          ),
+      );
+    final pop = Navigator.of(context).pop;
+    return AlertDialog(
+      title: Row(
+        children: [
+          Expanded(child: Text(inventory.number)),
+          AmpereBadge(label: _badge(inventory), tone: _tone(inventory)),
         ],
       ),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(_summary(inventory)),
+            if (inventory.validatedAt != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Stock ajusté : cet inventaire est figé. Pour corriger, '
+                  'faites-en un nouveau.',
+                  style: TextStyle(color: colors.ink3),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final l in lines)
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(products[l.productId] ?? 'Produit'),
+                      subtitle: Text(
+                        'Théorique ${formatQuantity(l.theoreticalQuantity)} · '
+                        'compté ${l.countedQuantity == null ? '—' : formatQuantity(l.countedQuantity!)}',
+                      ),
+                      trailing: Text(
+                        l.state == InventoryLineState.gap
+                            ? formatQuantity(l.difference)
+                            : '0',
+                        style: TextStyle(
+                          color: l.state == InventoryLineState.gap
+                              ? colors.warn
+                              : colors.ink3,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        if (canDelete)
+          AmpereDangerButton(
+            icon: LucideIcons.trash2,
+            label: 'Supprimer',
+            onPressed: () => pop('delete'),
+          ),
+        if (canModify)
+          OutlinedButton.icon(
+            onPressed: () => pop('modify'),
+            icon: const Icon(LucideIcons.pencil, size: 16),
+            label: const Text('Modifier'),
+          ),
+        if (canAdjust)
+          FilledButton(
+            onPressed: () => pop('adjust'),
+            child: const Text('Ajuster le stock'),
+          ),
+        TextButton(onPressed: () => pop(), child: const Text('Fermer')),
+      ],
     );
   }
 }
