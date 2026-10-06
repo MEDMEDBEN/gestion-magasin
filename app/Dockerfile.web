@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────
+# Version WEB de l'app (même code Flutter), servie par nginx derrière Traefik.
+# Construite sur le VPS par `docker compose` (infra/docker-compose.yml) :
+# aucune installation de Flutter nécessaire sur le serveur.
+# ─────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git curl unzip xz-utils ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+# MÊME version que les postes de dev (pubspec.lock exige Dart >= 3.12.2) :
+# une autre version de Flutter refuserait les dépendances figées.
+ARG FLUTTER_VERSION=3.44.8
+RUN git clone --depth 1 --branch "$FLUTTER_VERSION" \
+      https://github.com/flutter/flutter.git /opt/flutter
+ENV PATH="/opt/flutter/bin:$PATH"
+RUN flutter config --no-analytics --enable-web && flutter precache --web
+WORKDIR /src
+COPY pubspec.yaml pubspec.lock ./
+# Versions EXACTES de pubspec.lock (sqlite3.wasm / drift_worker.js y sont liés).
+RUN flutter pub get --enforce-lockfile
+COPY . .
+# Adresse de l'API, même domaine que le site (https://<domaine>/api).
+ARG API_BASE_URL
+RUN test -n "$API_BASE_URL" \
+ && flutter build web --release --no-web-resources-cdn \
+      --dart-define=API_BASE_URL="$API_BASE_URL"
+
+FROM nginx:1.27-alpine
+COPY web.nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /src/build/web /usr/share/nginx/html

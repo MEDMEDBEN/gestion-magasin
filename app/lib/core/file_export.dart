@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
 import 'error/api_exception.dart';
+import 'file_save.dart';
+
+export 'file_save.dart';
 
 /// Exports de fichiers (spec §8quinquies). Le fichier est RENDU PAR LE SERVEUR
 /// (rendu identique pour tous) ; l'app le télécharge et l'enregistre, rien de
@@ -104,34 +105,8 @@ String exportFilename(String? disposition, {required String fallback}) {
   return cleaned;
 }
 
-/// Enregistre un export dans « Téléchargements » (à défaut, les documents de
-/// l'app) SANS écraser un fichier existant — un export précédent peut être
-/// ouvert dans le tableur. Rend le chemin écrit. Remplaçable en test.
+/// Enregistre un export sur ce poste (disque, ou téléchargement du
+/// navigateur). Rend où il est. Remplaçable en test.
 final saveExportProvider = Provider<Future<String> Function(ExportedFile file)>(
-  (ref) => (file) async {
-    Directory? directory;
-    try {
-      directory = await getDownloadsDirectory();
-    } on UnsupportedError {
-      directory = null;
-    }
-    directory ??= await getApplicationDocumentsDirectory();
-    return saveWithoutOverwrite(directory, file);
-  },
+  (ref) => saveExportFile,
 );
-
-/// Écrit `file` dans `directory` sans jamais écraser : « x.csv », puis
-/// « x (2).csv », « x (3).csv »… Rend le chemin écrit.
-Future<String> saveWithoutOverwrite(
-  Directory directory,
-  ExportedFile file,
-) async {
-  final base = p.basenameWithoutExtension(file.filename);
-  final extension = p.extension(file.filename);
-  var target = File(p.join(directory.path, file.filename));
-  for (var n = 2; await target.exists(); n++) {
-    target = File(p.join(directory.path, '$base ($n)$extension'));
-  }
-  await target.writeAsBytes(file.bytes, flush: true);
-  return target.path;
-}

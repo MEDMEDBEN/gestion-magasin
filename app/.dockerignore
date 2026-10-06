@@ -1,0 +1,13 @@
+build/
+.dart_tool/
+android/
+windows/
+ios/
+test/
+*.iml
+.idea/
+# Jamais de secret dans le contexte de build, même par erreur.
+.env*
+**/*.jks
+**/*.keystore
+**/key.properties

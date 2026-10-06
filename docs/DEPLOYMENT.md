@@ -65,7 +65,7 @@ surface d'attaque en moins.
    anti-brute-force est partagé par tous les clients et l'audit enregistre l'IP de Traefik ; ne jamais mettre plus
    que le nombre réel de proxys.
 5. `cd infra && docker compose up -d --build`
-6. Vérifier que `https://api.tondomaine.com` répond (Traefik doit avoir généré le certificat automatiquement en quelques secondes)
+6. Vérifier que `https://<domaine>/api/health` répond (l'API), et que `https://<domaine>/` affiche la version web — Traefik génère le certificat automatiquement en quelques secondes
 7. **Rien à lancer à la main** : au démarrage, le conteneur applique les migrations (`prisma migrate deploy`)
    PUIS le seed (`node dist/seed.js`). Le seed est idempotent, fait autorité sur les permissions des rôles
    (ex. `cost.read` ajoutée le 2026-09-14 : sans re-seed, le magasinier ne voit pas le coût d'achat) et crée
@@ -164,3 +164,40 @@ La release n'est **plus signée avec la clé de debug**. Avant le premier `flutt
    quittent jamais la machine de build.
 3. Sans `key.properties`, le build release échoue — c'est voulu : aucune APK signée avec une clé de test
    ne doit sortir d'ici.
+
+## Version web (iPhone, navigateur) — 2026-10-06
+
+Même code Flutter que les apps, compilé pour le navigateur et servi **sur le même domaine** que l'API :
+
+- `https://<API_DOMAIN>/api` → backend (Traefik : `Host && PathPrefix(/api)`) ;
+- `https://<API_DOMAIN>/` → service `web` (nginx, `app/Dockerfile.web`, conf `app/web.nginx.conf`).
+
+**Aucune nouvelle variable** : l'adresse de l'API est déduite de `API_DOMAIN` (`.env`) au build.
+
+Mise en service / mise à jour, sur le VPS :
+
+```bash
+git pull
+cd infra
+docker compose up -d --build web backend
+```
+
+- Premier build long (~10 min) : l'image installe Flutter **3.44.8** (même version que les postes de dev,
+  exigée par `pubspec.lock`) ; prévoir **~4 Go** de disque libre sur le VPS. Les builds suivants réutilisent
+  le cache.
+- iPhone : ouvrir le domaine dans Safari → Partager → « Sur l'écran d'accueil » (plein écran, icône).
+- Base locale dans le navigateur (SQLite WebAssembly, `web/sqlite3.wasm` + `web/drift_worker.js`, versions
+  liées à `sqlite3` 3.5.2 et `drift` 2.34.4 : **les remplacer si ces paquets changent de version**).
+  Téléchargés des releases GitHub officielles (sqlite3.dart `sqlite3-3.5.2`, drift `drift-2.34.4`), SHA-256 :
+  `sqlite3.wasm` 13d3f11d05b39ba0618a7115fb41640a5d48b6300f5d3f325f554b42bd6688a4, `drift_worker.js` 104bc207d4a3a0b70fc249fcd91d72b558cf7a8677fe49b41cafffe22a5144f4.
+- Sécurité de la page : CSP stricte, Permissions-Policy, HSTS (Traefik), `server_tokens off`
+  (`app/web.nginx.conf`). Le scanner caméra est désactivé dans le navigateur (il chargerait un script d'un
+  CDN tiers) : la douchette USB marche dans les champs de recherche.
+- Session dans le navigateur : le jeton est gardé dans le stockage du site (pas d'équivalent DPAPI/Keystore).
+  Sur un poste partagé, **se déconnecter** en fin de journée.
+- Limites connues : navigation privée Safari = stockage non conservé (une vente faite hors ligne y serait
+  perdue au rechargement) ; images de base non épinglées par empreinte (`debian`, `nginx`).
+- Limites : il faut être en ligne pour **charger** la page ; une vente faite pendant une coupure reste en
+  file dans le navigateur et part au retour du réseau (même règles que l'app). Pour la caisse principale,
+  préférer l'app installée.
+

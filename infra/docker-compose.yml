@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────
 # Production — à lancer sur le VPS uniquement
 # Traefik gère le HTTPS automatique (Let's Encrypt) et route
-# le trafic vers le backend selon le nom de domaine.
+# le trafic : /api vers le backend, le reste vers la version web.
 # ─────────────────────────────────────────────────────────
 
 services:
@@ -40,10 +40,32 @@ services:
       - backend_storage:/app/var/storage
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`)"
+      # Seul /api va au backend ; le reste du domaine sert la version web.
+      - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`) && PathPrefix(`/api`)"
       - "traefik.http.routers.backend.entrypoints=websecure"
       - "traefik.http.routers.backend.tls.certresolver=le"
+      # HSTS : le navigateur n'essaie plus jamais le http (page de connexion web).
+      - "traefik.http.middlewares.hsts.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.hsts.headers.stsIncludeSubdomains=true"
+      - "traefik.http.routers.backend.middlewares=hsts"
       - "traefik.http.services.backend.loadbalancer.server.port=3000"
+
+  # Version WEB de l'app (iPhone, navigateur) sur le même domaine que l'API :
+  # https://${API_DOMAIN}/ — compilée au `docker compose build`.
+  web:
+    build:
+      context: ../app
+      dockerfile: Dockerfile.web
+      args:
+        API_BASE_URL: https://${API_DOMAIN:?API_DOMAIN manquant dans .env}/api
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=le"
+      - "traefik.http.routers.web.middlewares=hsts"
+      - "traefik.http.services.web.loadbalancer.server.port=80"
 
   postgres:
     image: postgres:16-alpine

@@ -4,6 +4,23 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Version web (iPhone / navigateur) — 2026-10-06 (MEDMEDBEN, Claude)
+
+- Même code, cible web ajoutée (`app/web/`) ; aucun écran réécrit. Adaptations : base locale par cible
+  (`data/local/database_opener*.dart` : fichier SQLite / SQLite WebAssembly en IndexedDB), exports par cible
+  (`core/file_save*.dart` : disque / téléchargement).
+- Hébergement : `app/Dockerfile.web` (Flutter 3.44.8 exact — l'image 3.44.0 aurait un Dart trop ancien — + nginx), service `web` dans
+  `infra/docker-compose.yml`, Traefik : `/api` → backend, le reste → web. Voir `docs/DEPLOYMENT.md`.
+- Preuves : app analyze 0, **542 tests** ; `flutter build web` OK ; Chrome sans écran : écran de connexion
+  sans erreur ; base de l'app ouverte dans le navigateur et CONSERVÉE après rechargement (IndexedDB).
+- **Audits** (2026-10-06) : 0 bloquant. Corrigés : CSP stricte + Permissions-Policy + `server_tokens off`
+  (nginx), HSTS (Traefik), scanner caméra retiré du web (script d'un CDN tiers), téléchargement différé
+  (Safari), gzip, 404 pour un fichier manquant, `pub get --enforce-lockfile`, `.dockerignore` sans secrets,
+  `API_DOMAIN` obligatoire. **Vérifié sous la CSP** dans Chrome : app affichée, aucune violation, base OK.
+- Non prouvé ici (disque du PC plein, Docker figé) : build de l'image `web` et connexion bout en bout →
+  à constater au premier `docker compose up -d --build web` sur le VPS.
+- Ce PC : build Windows en échec `atlstr.h` manquant → réinstaller « C++ ATL » (Visual Studio Installer).
+
 ### Vente en mode caisse — 2026-10-06 (MEDMEDBEN, Claude)
 
 - **Grand écran** : à gauche recherche/douchette + catalogue en TUILES (nom, réf., prix, pastille « déjà au
