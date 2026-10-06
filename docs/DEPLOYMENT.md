@@ -191,8 +191,11 @@ docker compose up -d --build web backend
   Téléchargés des releases GitHub officielles (sqlite3.dart `sqlite3-3.5.2`, drift `drift-2.34.4`), SHA-256 :
   `sqlite3.wasm` 13d3f11d05b39ba0618a7115fb41640a5d48b6300f5d3f325f554b42bd6688a4, `drift_worker.js` 104bc207d4a3a0b70fc249fcd91d72b558cf7a8677fe49b41cafffe22a5144f4.
 - Sécurité de la page : CSP stricte, Permissions-Policy, HSTS (Traefik), `server_tokens off`
-  (`app/web.nginx.conf`). Le scanner caméra est désactivé dans le navigateur (il chargerait un script d'un
-  CDN tiers) : la douchette USB marche dans les champs de recherche.
+  (`app/web.nginx.conf`). Scanner caméra dans le navigateur : la bibliothèque de lecture (zxing-wasm 3.1.3,
+  celle que `mobile_scanner` 7.4.2 chargerait d'un CDN) est **hébergée par le site** (`web/zxing/`, intégrité
+  npm sha512 vérifiée au téléchargement ; SHA-256 `reader.js` 98e44c80…0a7a, `zxing_reader.wasm`
+  2ebda08a…d1ba). À remplacer si `mobile_scanner` change de version de zxing-wasm. Caméra autorisée pour le
+  site seul (`Permissions-Policy: camera=(self)`).
 - Session dans le navigateur : le jeton est gardé dans le stockage du site (pas d'équivalent DPAPI/Keystore).
   Sur un poste partagé, **se déconnecter** en fin de journée.
 - Limites connues : navigation privée Safari = stockage non conservé (une vente faite hors ligne y serait

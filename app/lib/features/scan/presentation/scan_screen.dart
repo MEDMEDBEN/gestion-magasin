@@ -13,12 +13,11 @@ import 'scanned_product_sheet.dart';
 /// lit à la DOUCHETTE (clavier) dans l'écran Vente — inutile d'ouvrir une
 /// caméra qui n'existe pas.
 bool get scannerSupported =>
-    // Pas dans le navigateur : sur Safari, la lecture chargerait un script
-    // d'un CDN tiers sur la page qui détient la session (audit 2026-10-06).
-    // La douchette USB reste utilisable dans les champs de recherche.
-    !kIsWeb &&
-    (defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.iOS);
+    // Navigateur (iPhone) : caméra via mobile_scanner ; sa bibliothèque de
+    // lecture est HÉBERGÉE par le site (web/zxing/), pas chargée d'un CDN.
+    kIsWeb ||
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
 
 /// Premier code exploitable d'une capture (la caméra en émet plusieurs par
 /// seconde) : le premier non vide, ou `null` s'il n'y a rien à lire.

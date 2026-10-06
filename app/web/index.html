@@ -24,6 +24,10 @@
   </style>
 </head>
 <body>
+  <!-- Scanner caméra (Safari) : bibliothèque hébergée ici. L'id est celui que
+       mobile_scanner cherche avant de charger sa copie depuis un CDN. -->
+  <script id="mobile-scanner-zxing-wasm" src="zxing/reader.js" defer></script>
+  <script src="zxing/setup.js" defer></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

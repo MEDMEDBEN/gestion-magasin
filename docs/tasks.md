@@ -17,6 +17,9 @@
   (nginx), HSTS (Traefik), scanner caméra retiré du web (script d'un CDN tiers), téléchargement différé
   (Safari), gzip, 404 pour un fichier manquant, `pub get --enforce-lockfile`, `.dockerignore` sans secrets,
   `API_DOMAIN` obligatoire. **Vérifié sous la CSP** dans Chrome : app affichée, aucune violation, base OK.
+- **Mis en ligne** sur le VPS (fix : `build_runner` dans l'image, les modèles générés sont hors Git).
+- **Scanner caméra réactivé sur le web** (demande MEDMEDBEN) : zxing-wasm hébergé dans `web/zxing/` au lieu du
+  CDN ; vérifié sous la CSP dans Chrome : EAN-13 décodé (`2000000000015`), aucune requête vers le CDN.
 - Non prouvé ici (disque du PC plein, Docker figé) : build de l'image `web` et connexion bout en bout →
   à constater au premier `docker compose up -d --build web` sur le VPS.
 - Ce PC : build Windows en échec `atlstr.h` manquant → réinstaller « C++ ATL » (Visual Studio Installer).
