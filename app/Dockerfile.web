@@ -19,6 +19,9 @@ COPY pubspec.yaml pubspec.lock ./
 # Versions EXACTES de pubspec.lock (sqlite3.wasm / drift_worker.js y sont liés).
 RUN flutter pub get --enforce-lockfile
 COPY . .
+# Modèles générés (*.freezed.dart, *.g.dart) : hors Git, à produire ici
+# (même étape que sur les postes, docs/BUILD.md §6).
+RUN dart run build_runner build
 # Adresse de l'API, même domaine que le site (https://<domaine>/api).
 ARG API_BASE_URL
 RUN test -n "$API_BASE_URL" \
