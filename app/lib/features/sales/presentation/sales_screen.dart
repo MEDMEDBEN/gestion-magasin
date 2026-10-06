@@ -173,7 +173,6 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                 selected: {_section},
                 onSelectionChanged: (s) => setState(() => _section = s.first),
               ),
-              if (rights.canManageCash) const _CashBar(),
               // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
               // Le vendeur n'y trouve que SES ventes (le serveur filtre).
               if (rights.canSell)
@@ -569,10 +568,17 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     if (match == null) {
       _snack(context, 'Aucun produit pour le code $code');
     } else {
-      ref.read(cartProvider.notifier).add(match);
+      _add(match);
     }
     _search.clear();
     _searchFocus.requestFocus();
+  }
+
+  /// Ajout au ticket. Le message précédent (erreur d'encaissement…) part :
+  /// en bas d'écran, il masquerait le bouton Encaisser.
+  void _add(Product product) {
+    ref.read(cartProvider.notifier).add(product);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
   }
 
   /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
@@ -754,32 +760,28 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     );
   }
 
+  /// Champ de recherche / douchette / caméra, commun aux deux dispositions.
+  InputDecoration _searchDecoration(List<Product> products) => InputDecoration(
+    prefixIcon: const Icon(LucideIcons.scanBarcode, size: 20),
+    hintText: 'Scanner un code-barres ou chercher un produit',
+    suffixIcon: CameraScanButton(onCode: (code) => _scan(code, products)),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    final cart = ref.watch(cartProvider);
-    final estimate = ref.watch(cartEstimateProvider);
     final products = ref.watch(activeProductsProvider).value ?? const [];
-    final cashState = ref.watch(currentCashSessionProvider);
-    // Hors ligne, la caisse est INCONNUE (pas « fermée ») : pas d'alerte, le
-    // serveur vérifiera à la synchronisation.
-    final noCash = cashState.hasValue && cashState.value == null;
-
     if (!widget.rights.canSell) {
       return const ScreenStateView(
         status: ScreenStatus.empty,
         title: 'Vente réservée aux vendeurs',
       );
     }
-
     final sync = ref.watch(catalogSyncProvider);
-    return ListView(
-      padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
-      children: [
-        // Catalogue local encore vide (poste neuf) : on dit pourquoi, au lieu
-        // de laisser croire qu'aucun produit n'existe.
-        if (products.isEmpty) ...[
-          AmpereInlineAlert(
+    // Catalogue local encore vide (poste neuf) : on dit pourquoi, au lieu de
+    // laisser croire qu'aucun produit n'existe.
+    final catalogAlert = products.isNotEmpty
+        ? null
+        : AmpereInlineAlert(
             tone: sync.hasError ? StatusTone.error : StatusTone.info,
             message: sync.isLoading
                 ? 'Chargement du catalogue…'
@@ -793,86 +795,254 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     child: const Text('Réessayer'),
                   )
                 : null,
-          ),
-          const SizedBox(height: 12),
-        ],
-        Autocomplete<Product>(
-          displayStringForOption: (p) => p.name,
-          optionsBuilder: (value) {
-            final term = foldForSearch(value.text);
-            if (term.length < 2) return const Iterable<Product>.empty();
-            return products
-                .where(
-                  (p) => foldForSearch(
-                    '${p.name} ${p.sku} ${p.barcode}',
-                  ).contains(term),
-                )
-                .take(20);
-          },
-          onSelected: (p) {
-            ref.read(cartProvider.notifier).add(p);
-            _search.clear();
-          },
-          fieldViewBuilder: (context, controller, focus, _) {
-            // Le champ de l'Autocomplete sert aussi à la douchette.
-            return TextField(
-              controller: controller,
-              focusNode: focus,
-              autofocus: true,
-              autocorrect: false,
-              style: AmpereType.input.copyWith(color: colors.ink),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(LucideIcons.scanBarcode, size: 17),
-                hintText: 'Scanner un code-barres ou chercher un produit',
-                suffixIcon: CameraScanButton(
-                  onCode: (code) => _scan(code, products),
+          );
+
+    // Caisse (2026-10-06) : catalogue en tuiles à gauche, ticket à droite —
+    // dès que la place le permet ; sinon le ticket seul, payer en bas.
+    return LayoutBuilder(
+      builder: (context, box) => box.maxWidth >= 860
+          ? _wideLayout(products, catalogAlert)
+          : _narrowLayout(products, catalogAlert),
+    );
+  }
+
+  Widget _wideLayout(List<Product> products, Widget? catalogAlert) {
+    final m = widget.margin;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(m, 14, m, m),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ?catalogAlert,
+                if (catalogAlert != null) const SizedBox(height: 12),
+                TextField(
+                  controller: _search,
+                  focusNode: _searchFocus,
+                  autofocus: true,
+                  autocorrect: false,
+                  style: AmpereType.input,
+                  decoration: _searchDecoration(products),
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (value) => _submitSearch(value, products),
                 ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _ProductGrid(
+                    products: products,
+                    query: _search.text,
+                    onPick: (p) {
+                      _add(p);
+                      _searchFocus.requestFocus();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: m),
+          SizedBox(
+            width: 420,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AmpereColors.of(context).surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AmpereColors.of(context).line),
               ),
-              onSubmitted: (value) {
-                _scan(value, products);
-                controller.clear();
-              },
-            );
-          },
-        ),
-        if (cart.quote case final quote?) ...[
-          const SizedBox(height: 12),
-          AmpereInlineAlert(
-            tone: StatusTone.info,
-            message:
-                'Modification du devis ${quote.number} : le panier remplacera '
-                'ses lignes. « Vider le panier » abandonne la modification.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: _ticketBody(),
+                    ),
+                  ),
+                  _payPanel(),
+                ],
+              ),
+            ),
           ),
         ],
-        const SizedBox(height: 12),
-        _CustomerPicker(customer: cart.customer),
-        const SizedBox(height: 12),
-        if (cart.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: ScreenStateView(
-              status: ScreenStatus.empty,
-              title: 'Panier vide',
-              message: 'Scannez ou cherchez un produit pour commencer.',
+      ),
+    );
+  }
+
+  Widget _narrowLayout(List<Product> products, Widget? catalogAlert) {
+    final m = widget.margin;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(m, 14, m, 16),
+            children: [
+              ?catalogAlert,
+              if (catalogAlert != null) const SizedBox(height: 12),
+              Autocomplete<Product>(
+                displayStringForOption: (p) => p.name,
+                optionsBuilder: (value) {
+                  final term = foldForSearch(value.text);
+                  if (term.length < 2) return const Iterable<Product>.empty();
+                  return products
+                      .where(
+                        (p) => foldForSearch(
+                          '${p.name} ${p.sku} ${p.barcode}',
+                        ).contains(term),
+                      )
+                      .take(20);
+                },
+                onSelected: (p) {
+                  _add(p);
+                  _search.clear();
+                },
+                fieldViewBuilder: (context, controller, focus, _) {
+                  // Le champ de l'Autocomplete sert aussi à la douchette.
+                  return TextField(
+                    controller: controller,
+                    focusNode: focus,
+                    autofocus: true,
+                    autocorrect: false,
+                    style: AmpereType.input,
+                    decoration: _searchDecoration(products),
+                    onSubmitted: (value) {
+                      _scan(value, products);
+                      controller.clear();
+                    },
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              ..._ticketBody(),
+            ],
+          ),
+        ),
+        if (!ref.watch(cartProvider).isEmpty)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: AmpereColors.of(context).surface,
+              border: Border(
+                top: BorderSide(color: AmpereColors.of(context).line),
+              ),
             ),
-          )
-        else
-          for (final line in cart.lines)
-            _CartLineRow(
-              line: line,
-              missingPrice: estimate.missingPrices.contains(line.product),
-              invalidDiscount: estimate.invalidDiscounts.contains(line.product),
-              totalHt: estimate.lineTotalsHt[line.product.id],
-              unitPriceHt: estimate.unitPricesHt[line.product.id],
-              tariffPriceHt: estimate.tariffPricesHt[line.product.id],
-              canDiscount: widget.rights.canDiscount,
-            ),
-        if (!cart.isEmpty) ...[
-          const Divider(height: 28),
-          _TotalRow('Total', estimate.totalTtc, strong: true),
+            child: _payPanel(compact: true),
+          ),
+      ],
+    );
+  }
+
+  /// « Entrée » dans la recherche : code-barres exact, sinon l'UNIQUE produit
+  /// trouvé (on tape « 3G2 », Entrée, c'est ajouté).
+  void _submitSearch(String value, List<Product> products) {
+    if (productForBarcode(products, value.trim()) == null) {
+      final found = _searchProducts(products, value);
+      if (found.length == 1) {
+        _add(found.single);
+        _search.clear();
+        _searchFocus.requestFocus();
+        setState(() {});
+        return;
+      }
+    }
+    _scan(value, products);
+    setState(() {});
+  }
+
+  /// Le ticket : caisse, client, lignes.
+  List<Widget> _ticketBody() {
+    final colors = AmpereColors.of(context);
+    final cart = ref.watch(cartProvider);
+    final estimate = ref.watch(cartEstimateProvider);
+    final articles = cart.lines.length;
+    return [
+      if (widget.rights.canManageCash) ...[
+        const _CashBar(),
+        const SizedBox(height: 12),
+      ],
+      Row(
+        children: [
+          Icon(LucideIcons.receipt, size: 18, color: colors.ink2),
+          const SizedBox(width: 8),
           Text(
-            'Estimation — le montant exact est calculé par le serveur.',
-            style: AmpereType.meta.copyWith(color: colors.ink3),
+            'Ticket',
+            style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+          ),
+          const Spacer(),
+          if (articles > 0)
+            Text(
+              '$articles article(s)',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      _CustomerPicker(customer: cart.customer),
+      if (cart.quote case final quote?) ...[
+        const SizedBox(height: 10),
+        AmpereInlineAlert(
+          tone: StatusTone.info,
+          message:
+              'Modification du devis ${quote.number} : le panier remplacera '
+              'ses lignes. « Vider » abandonne la modification.',
+        ),
+      ],
+      const SizedBox(height: 10),
+      if (cart.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 36),
+          child: Column(
+            children: [
+              Icon(LucideIcons.shoppingCart, size: 40, color: colors.ink3),
+              const SizedBox(height: 10),
+              Text(
+                'Panier vide',
+                style: AmpereType.rowTitle.copyWith(color: colors.ink2),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Scannez ou touchez un produit pour commencer.',
+                textAlign: TextAlign.center,
+                style: AmpereType.meta.copyWith(color: colors.ink3),
+              ),
+            ],
+          ),
+        )
+      else
+        for (final line in cart.lines)
+          _CartLineRow(
+            line: line,
+            missingPrice: estimate.missingPrices.contains(line.product),
+            invalidDiscount: estimate.invalidDiscounts.contains(line.product),
+            totalHt: estimate.lineTotalsHt[line.product.id],
+            unitPriceHt: estimate.unitPricesHt[line.product.id],
+            tariffPriceHt: estimate.tariffPricesHt[line.product.id],
+            canDiscount: widget.rights.canDiscount,
+          ),
+    ];
+  }
+
+  /// Zone de paiement : afficheur du total, alertes, gros bouton Encaisser.
+  Widget _payPanel({bool compact = false}) {
+    final cart = ref.watch(cartProvider);
+    final estimate = ref.watch(cartEstimateProvider);
+    final cashState = ref.watch(currentCashSessionProvider);
+    // Hors ligne, la caisse est INCONNUE (pas « fermée ») : pas d'alerte, le
+    // serveur vérifiera à la synchronisation.
+    final noCash = cashState.hasValue && cashState.value == null;
+    final blocked = _busy || estimate.blocked || cart.isEmpty;
+    return Padding(
+      padding: EdgeInsets.all(compact ? 12 : 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _TotalDisplay(
+            total: estimate.totalTtc,
+            articles: cart.lines.length,
+            compact: compact,
           ),
           if (estimate.missingPrices.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -890,80 +1060,369 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
             ),
           ],
-          if (noCash && cart.customer == null) ...[
+          if (noCash && cart.customer == null && !cart.isEmpty) ...[
             const SizedBox(height: 10),
             const AmpereInlineAlert(
               tone: StatusTone.warn,
               message: 'Ouvrez la caisse pour encaisser des espèces.',
             ),
           ],
-          const SizedBox(height: 16),
+          SizedBox(height: compact ? 8 : 12),
           if (cart.quote case final quote?)
             // Un devis en cours de modification ne s'encaisse pas ici : il se
             // met à jour, puis suit son cycle (envoi, acceptation, conversion).
-            SizedBox(
-              height: AmpereGeometry.touchPrimary,
-              child: FilledButton.icon(
-                onPressed: _busy || estimate.blocked ? null : _updateQuote,
-                icon: const Icon(LucideIcons.fileText, size: 18),
-                label: Text('Mettre à jour le devis ${quote.number}'),
-              ),
+            _PayButton(
+              icon: LucideIcons.fileText,
+              label: 'Mettre à jour le devis ${quote.number}',
+              height: compact ? 52 : 60,
+              onPressed: blocked ? null : _updateQuote,
             )
-          else ...[
-            SizedBox(
-              height: AmpereGeometry.touchPrimary,
-              child: FilledButton.icon(
-                onPressed: _busy || estimate.blocked
-                    ? null
-                    : () => _checkout(estimate),
-                icon: const Icon(LucideIcons.banknote, size: 18),
-                label: Text('Encaisser ${formatDA(estimate.totalTtc)}'),
-              ),
+          else
+            _PayButton(
+              icon: LucideIcons.banknote,
+              label: 'Encaisser ${formatDA(estimate.totalTtc)}',
+              height: compact ? 52 : 60,
+              onPressed: blocked ? null : () => _checkout(estimate),
             ),
-            const SizedBox(height: 8),
-            // Même panier, aucun encaissement, aucun mouvement de stock.
-            OutlinedButton.icon(
-              onPressed: _busy || estimate.blocked ? null : _makeQuote,
-              icon: const Icon(LucideIcons.fileText, size: 18),
-              label: const Text('Faire un devis'),
+          if (!cart.isEmpty) ...[
+            SizedBox(height: compact ? 6 : 8),
+            Row(
+              children: [
+                if (cart.quote == null)
+                  Expanded(
+                    // Même panier, aucun encaissement, aucun mouvement de stock.
+                    child: OutlinedButton.icon(
+                      onPressed: blocked ? null : _makeQuote,
+                      icon: const Icon(LucideIcons.fileText, size: 17),
+                      label: const Text('Faire un devis'),
+                    ),
+                  ),
+                if (cart.quote == null) const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => ref.read(cartProvider.notifier).clear(),
+                    icon: const Icon(LucideIcons.x, size: 17),
+                    label: const Text('Vider le panier'),
+                  ),
+                ),
+              ],
             ),
           ],
-          TextButton(
-            onPressed: _busy
-                ? null
-                : () => ref.read(cartProvider.notifier).clear(),
-            child: const Text('Vider le panier'),
+        ],
+      ),
+    );
+  }
+}
+
+/// Afficheur de caisse : le montant à payer, en grand, comme sur un terminal.
+class _TotalDisplay extends StatelessWidget {
+  const _TotalDisplay({
+    required this.total,
+    required this.articles,
+    this.compact = false,
+  });
+
+  final int total;
+  final int articles;
+
+  /// Téléphone : une seule ligne, « TOTAL » à gauche, le montant à droite.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final amount = Text(
+      formatDA(total),
+      style: AmpereType.numericHero.copyWith(
+        fontSize: compact ? 30 : 40,
+        color: colors.accentHi,
+      ),
+    );
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.bg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.accent.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TOTAL',
+                  style: AmpereType.label.copyWith(
+                    color: colors.ink3,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Text(
+                  '$articles article(s)',
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FittedBox(
+                alignment: Alignment.centerRight,
+                fit: BoxFit.scaleDown,
+                child: amount,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      decoration: BoxDecoration(
+        color: colors.bg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.accent.withValues(alpha: 0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'TOTAL À PAYER',
+                style: AmpereType.label.copyWith(
+                  color: colors.ink3,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$articles article(s)',
+                style: AmpereType.meta.copyWith(color: colors.ink3),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            alignment: Alignment.centerRight,
+            fit: BoxFit.scaleDown,
+            child: amount,
+          ),
+          Text(
+            'Estimation — le montant exact est calculé par le serveur.',
+            textAlign: TextAlign.end,
+            style: AmpereType.meta.copyWith(color: colors.ink3, fontSize: 11),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Le bouton qui encaisse : grand, vert, impossible à manquer.
+class _PayButton extends StatelessWidget {
+  const _PayButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.height = 60,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return SizedBox(
+      height: height,
+      child: FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: colors.ok,
+          foregroundColor: colors.bg,
+          textStyle: AmpereType.sectionTitle,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 22),
+        label: Text(label),
+      ),
+    );
+  }
+}
+
+/// Catalogue de la caisse : des tuiles à toucher (nom, prix, déjà au panier).
+class _ProductGrid extends ConsumerWidget {
+  const _ProductGrid({
+    required this.products,
+    required this.query,
+    required this.onPick,
+  });
+
+  final List<Product> products;
+  final String query;
+  final ValueChanged<Product> onPick;
+
+  /// Au-delà, on demande d'affiner : une grille de 2 000 tuiles ne se lit pas.
+  static const _shown = 120;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final tiers = ref.watch(priceTiersProvider).value ?? const <PriceTier>[];
+    final defaultTier = tiers.where((t) => t.isDefault).firstOrNull?.id;
+    final inCart = {
+      for (final l in ref.watch(cartProvider).lines) l.product.id: l.quantity,
+    };
+    final found = query.trim().isEmpty
+        ? products
+        : _searchProducts(products, query);
+    if (found.isEmpty) {
+      return Center(
+        child: Text(
+          'Aucun produit ne correspond à « ${query.trim()} ».',
+          style: AmpereType.body.copyWith(color: colors.ink3),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 210,
+              mainAxisExtent: 112,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: found.length.clamp(0, _shown),
+            itemBuilder: (context, i) {
+              final p = found[i];
+              return _ProductTile(
+                product: p,
+                price: p.salePriceHt(defaultTier),
+                inCart: inCart[p.id],
+                onTap: () => onPick(p),
+              );
+            },
+          ),
+        ),
+        if (found.length > _shown)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '${found.length - _shown} autre(s) produit(s) : affinez la '
+              'recherche.',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+          ),
       ],
     );
   }
 }
 
-class _TotalRow extends StatelessWidget {
-  const _TotalRow(this.label, this.amount, {this.strong = false});
+class _ProductTile extends StatelessWidget {
+  const _ProductTile({
+    required this.product,
+    required this.price,
+    required this.inCart,
+    required this.onTap,
+  });
 
-  final String label;
-  final int amount;
-  final bool strong;
+  final Product product;
+  final int? price;
+  final Quantity? inCart;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final style = (strong ? AmpereType.sectionTitle : AmpereType.body).copyWith(
-      color: colors.ink,
-      fontFeatures: AmpereType.tabular,
-    );
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: style)),
-          Text(formatDA(amount), style: style),
-        ],
+    final picked = inCart != null;
+    return Material(
+      color: picked ? colors.accentBg : colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: picked ? colors.accent : colors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        product.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                      ),
+                    ),
+                    if (picked)
+                      Container(
+                        margin: const EdgeInsets.only(left: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          formatQuantity(inCart!),
+                          style: AmpereType.label.copyWith(
+                            color: colors.onAccent,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Text(
+                product.sku,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.mono.copyWith(color: colors.ink3),
+              ),
+              Text(
+                price == null
+                    ? 'Prix non fixé'
+                    : '${formatDA(price!)} / ${product.unit.short}',
+                style: AmpereType.bodyStrong.copyWith(
+                  color: price == null ? colors.error : colors.accentHi,
+                  fontFeatures: AmpereType.tabular,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+/// Recherche de la caisse : nom, référence ou code-barres, sans accents.
+List<Product> _searchProducts(List<Product> products, String query) {
+  final term = foldForSearch(query);
+  if (term.isEmpty) return products;
+  return [
+    for (final p in products)
+      if (foldForSearch('${p.name} ${p.sku} ${p.barcode}').contains(term)) p,
+  ];
 }
 
 class _CartLineRow extends ConsumerWidget {
@@ -1057,96 +1516,125 @@ class _CartLineRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final cart = ref.read(cartProvider.notifier);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+    final compact = VisualDensity.compact;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: colors.lineSoft)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
                   line.product.name,
                   style: AmpereType.rowTitle.copyWith(color: colors.ink),
                 ),
-                Text(
-                  totalHt == null
-                      ? line.product.sku
-                      : '${line.product.sku} · ${formatDA(totalHt!)}',
-                  style: AmpereType.mono.copyWith(color: colors.ink3),
-                ),
-                if (unitPriceHt != null)
-                  Text(
-                    [
-                      '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
-                      // Prix d'achat visible (2026-10-05) : savoir jusqu'où
-                      // baisser. Absent si inconnu ou non autorisé (serveur).
-                      if (line.product.lastPurchasePriceHt case final cost?)
-                        'achat ${formatDA(cost)}',
-                    ].join(' · '),
-                    style: AmpereType.meta.copyWith(color: colors.ink2),
-                  ),
-                if (missingPrice)
-                  const AmpereBadge(
-                    label: 'Prix non fixé',
-                    tone: StatusTone.error,
-                  )
-                else if (unitPriceHt != tariffPriceHt)
-                  const AmpereBadge(
-                    label: 'Prix modifié',
-                    tone: StatusTone.warn,
-                  ),
-                if (invalidDiscount)
-                  AmpereBadge(
-                    label:
-                        'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
-                    tone: StatusTone.error,
-                  )
-                else if (line.discountHt > 0)
-                  Text(
-                    'Remise ${formatDA(line.discountHt)}',
-                    style: AmpereType.meta.copyWith(color: colors.warn),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Modifier le prix',
-            icon: const Icon(LucideIcons.pencil, size: 17),
-            onPressed: () => _editPrice(context, ref),
-          ),
-          if (canDiscount && !missingPrice)
-            IconButton(
-              tooltip: 'Remise',
-              icon: const Icon(LucideIcons.percent, size: 17),
-              onPressed: () => _editDiscount(context, ref),
-            ),
-          IconButton(
-            tooltip: 'Moins',
-            icon: const Icon(LucideIcons.minus, size: 17),
-            onPressed: () =>
-                cart.setQuantity(line.product.id, line.quantity - Quantity.one),
-          ),
-          SizedBox(
-            width: 72,
-            child: Text(
-              '${formatQuantity(line.quantity)} ${line.product.unit.short}',
-              textAlign: TextAlign.center,
-              style: AmpereType.bodyStrong.copyWith(
-                color: colors.ink,
-                fontFeatures: AmpereType.tabular,
               ),
+              const SizedBox(width: 12),
+              if (totalHt != null)
+                Text(
+                  formatDA(totalHt!),
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: colors.ink,
+                    fontFeatures: AmpereType.tabular,
+                  ),
+                ),
+            ],
+          ),
+          Text(
+            [
+              line.product.sku,
+              if (unitPriceHt != null)
+                '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
+              // Prix d'achat visible (2026-10-05) : savoir jusqu'où baisser.
+              // Absent si inconnu ou non autorisé (serveur).
+              if (line.product.lastPurchasePriceHt case final cost?)
+                'achat ${formatDA(cost)}',
+            ].join(' · '),
+            style: AmpereType.meta.copyWith(color: colors.ink3),
+          ),
+          if (missingPrice)
+            const AmpereBadge(label: 'Prix non fixé', tone: StatusTone.error)
+          else if (unitPriceHt != tariffPriceHt)
+            const AmpereBadge(label: 'Prix modifié', tone: StatusTone.warn),
+          if (invalidDiscount)
+            AmpereBadge(
+              label:
+                  'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
+              tone: StatusTone.error,
+            )
+          else if (line.discountHt > 0)
+            Text(
+              'Remise ${formatDA(line.discountHt)}',
+              style: AmpereType.meta.copyWith(color: colors.warn),
             ),
-          ),
-          IconButton(
-            tooltip: 'Plus',
-            icon: const Icon(LucideIcons.plus, size: 17),
-            onPressed: () => cart.add(line.product),
-          ),
-          IconButton(
-            tooltip: 'Retirer',
-            icon: Icon(LucideIcons.trash2, size: 17, color: colors.error),
-            onPressed: () => cart.setQuantity(line.product.id, Quantity.zero),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              // Quantité : − 2 pce +, dans une pastille comme sur un terminal.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.surface2,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      visualDensity: compact,
+                      tooltip: 'Moins',
+                      icon: const Icon(LucideIcons.minus, size: 16),
+                      onPressed: () => cart.setQuantity(
+                        line.product.id,
+                        line.quantity - Quantity.one,
+                      ),
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 56),
+                      child: Text(
+                        '${formatQuantity(line.quantity)} ${line.product.unit.short}',
+                        textAlign: TextAlign.center,
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                          fontFeatures: AmpereType.tabular,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      visualDensity: compact,
+                      tooltip: 'Plus',
+                      icon: const Icon(LucideIcons.plus, size: 16),
+                      onPressed: () => cart.add(line.product),
+                    ),
+                  ],
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                visualDensity: compact,
+                tooltip: 'Modifier le prix',
+                icon: const Icon(LucideIcons.pencil, size: 16),
+                onPressed: () => _editPrice(context, ref),
+              ),
+              if (canDiscount && !missingPrice)
+                IconButton(
+                  visualDensity: compact,
+                  tooltip: 'Remise',
+                  icon: const Icon(LucideIcons.percent, size: 16),
+                  onPressed: () => _editDiscount(context, ref),
+                ),
+              IconButton(
+                visualDensity: compact,
+                tooltip: 'Retirer',
+                icon: Icon(LucideIcons.trash2, size: 16, color: colors.error),
+                onPressed: () =>
+                    cart.setQuantity(line.product.id, Quantity.zero),
+              ),
+            ],
           ),
         ],
       ),

@@ -842,6 +842,29 @@ void main() {
     },
   );
 
+  /// Caisse desktop (2026-10-06) : catalogue en tuiles, ticket, afficheur.
+  testWidgets(
+    'caisse large : toucher une tuile ou « Entrée » remplit le ticket',
+    (tester) async {
+      useScreenSize(tester, const Size(1300, 900));
+      await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+      expect(find.text('Panier vide'), findsOneWidget);
+      expect(find.text('TOTAL À PAYER'), findsOneWidget);
+
+      // Tuile du catalogue : un toucher = une unité de plus.
+      await tester.tap(find.text('Câble 3G2,5'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 pce'), findsOneWidget);
+
+      // Recherche à un seul résultat, puis Entrée : ajouté, champ vidé.
+      await tester.enterText(find.byType(TextField).first, '3g2');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(find.text('2 pce'), findsOneWidget);
+      expect(find.textContaining('Encaisser'), findsOneWidget);
+    },
+  );
+
   /// Retour de test humain (2026-09-27) : l'historique des achats d'un client
   /// était introuvable depuis sa fiche.
   testWidgets('fiche client : historique des achats, filtré serveur', (

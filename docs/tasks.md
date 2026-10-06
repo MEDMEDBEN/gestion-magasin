@@ -4,6 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente en mode caisse — 2026-10-06 (MEDMEDBEN, Claude)
+
+- **Grand écran** : à gauche recherche/douchette + catalogue en TUILES (nom, réf., prix, pastille « déjà au
+  panier ») ; à droite le TICKET : caisse (ouvrir / mouvements / clôturer, déplacée de l'en-tête), client,
+  lignes (nom + montant, − qté +, prix / remise / retirer), afficheur « TOTAL À PAYER », gros bouton vert
+  Encaisser, Devis / Vider. « Entrée » : code-barres exact, sinon le produit UNIQUE trouvé.
+- **Téléphone** : recherche + ticket en liste, barre de paiement fixe en bas (total sur une ligne, Encaisser).
+- Ajouter un produit efface le message précédent (il masquait le bouton Encaisser).
+- Audit sécurité : rien à signaler (droits inchangés, serveur inchangé). Reviewer bloqué (délai) : points
+  vérifiés à la main (code mort retiré, droits caisse, règle Entrée).
+- Preuves : app analyze 0, **542 tests** ; captures 21 (desktop) et 22 (mobile) vérifiées.
+- Limite connue : la tuile montre le prix au tarif par défaut ; la ligne applique celui du client choisi.
+
 ### Inventaire simplifié — 2026-10-06 (MEDMEDBEN, Claude)
 
 - **Moins d'étapes** : « Nouvel inventaire » (lieu présélectionné, « Tout le lieu » par défaut) → la saisie
