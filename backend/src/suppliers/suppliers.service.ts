@@ -397,6 +397,36 @@ export class SuppliersService {
       await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${id}::uuid FOR UPDATE`;
       const before = await tx.supplier.findUnique({ where: { id } });
       if (!before) throw SuppliersService.notFound();
+      // « Supprimer » = retirer des listes (isActive), jamais effacer achats ni
+      // paiements (règle 7) ; refusé tant que le solde n'est pas nul : ce
+      // qu'on doit encore au fournisseur ne disparaît pas (2026-10-06).
+      if (dto.isActive === false && before.isActive) {
+        // Une commande en cours ne pourrait plus être reçue (la réception
+        // exige un fournisseur actif) : la clôturer ou l'annuler d'abord.
+        const pending = await tx.purchaseOrder.count({
+          where: {
+            supplierId: id,
+            status: { notIn: ['RECUE', 'CLOTUREE', 'ANNULEE'] },
+          },
+        });
+        if (pending > 0) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            `${before.name} a encore ${pending} commande(s) en cours : clôturez-les ou annulez-les avant de le supprimer`,
+            HttpStatus.CONFLICT,
+          );
+        }
+        const { balanceDue } = await SuppliersService.debt(tx, before);
+        if (balanceDue !== 0) {
+          throw new BusinessException(
+            ErrorCode.INVALID_STATE_TRANSITION,
+            balanceDue > 0
+              ? `Il reste ${formatDA(balanceDue)} à payer à ${before.name} : réglez-le avant de le supprimer`
+              : `${before.name} vous doit ${formatDA(-balanceDue)} (trop-payé) : soldez-le avant de le supprimer`,
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
       if (dto.openingBalance !== undefined) {
         // La reprise révisée ne doit pas rendre la dette négative : ce qui est
         // déjà payé, moins la marchandise reçue depuis, reste un plancher.

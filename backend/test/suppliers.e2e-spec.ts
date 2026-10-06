@@ -238,6 +238,56 @@ describe('Fournisseurs et dettes (e2e)', () => {
       expect(all.body.data).toHaveLength(1);
     });
 
+    /// « Supprimer » (2026-10-06) : retiré des listes, jamais avec un solde.
+    it('supprimer : refusé tant qu’on lui doit, masqué une fois soldé', async () => {
+      const owed = await createSupplier({ openingBalance: 300000 });
+      const refused = await as(tokens.admin)
+        .patch(`/api/suppliers/${owed.id}`)
+        .send({ isActive: false })
+        .expect(409);
+      expect(refused.body.message).toContain('à payer');
+
+      const clear = await createSupplier({});
+      await as(tokens.magasinier)
+        .patch(`/api/suppliers/${clear.id}`)
+        .send({ isActive: false })
+        .expect(403);
+      await as(tokens.admin)
+        .patch(`/api/suppliers/${clear.id}`)
+        .send({ isActive: false })
+        .expect(200);
+      const list = (
+        await as(tokens.admin).get('/api/suppliers?limit=200').expect(200)
+      ).body.data.map((x: { id: string }) => x.id);
+      expect(list).not.toContain(clear.id);
+      expect(list).toContain(owed.id);
+    });
+
+    it('supprimer : refusé tant qu’une commande est en cours', async () => {
+      const supplier = await createSupplier({});
+      const order = await prisma.purchaseOrder.create({
+        data: {
+          number: `E2E-BC-DEL-${suffix}`,
+          supplierId: supplier.id,
+          createdById: userIds[0],
+          status: 'CONFIRMEE',
+        },
+      });
+      const refused = await as(tokens.admin)
+        .patch(`/api/suppliers/${supplier.id}`)
+        .send({ isActive: false })
+        .expect(409);
+      expect(refused.body.message).toContain('commande(s) en cours');
+      await prisma.purchaseOrder.update({
+        where: { id: order.id },
+        data: { status: 'ANNULEE' },
+      });
+      await as(tokens.admin)
+        .patch(`/api/suppliers/${supplier.id}`)
+        .send({ isActive: false })
+        .expect(200);
+    });
+
     it('création et modification auditées (reprise de dette comprise)', async () => {
       const supplier = await createSupplier({ openingBalance: 100000 });
       await as(tokens.admin)

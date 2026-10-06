@@ -188,6 +188,61 @@ describe('Clients et règlements (e2e)', () => {
     );
   });
 
+  /// « Supprimer » un client (2026-10-06) : le retirer des listes, ADMIN seul,
+  /// jamais avec une dette en cours ; ses ventes restent.
+  it('supprimer : ADMIN seul, refusé avec une dette, client masqué ensuite', async () => {
+    const c = (
+      await createCustomer(tokens.admin, {
+        name: `Client à retirer ${suffix}`,
+        creditLimit: 150000,
+      })
+    ).body;
+    await as(tokens.vendeur)
+      .patch(`/api/customers/${c.id}`)
+      .send({ isActive: false })
+      .expect(403);
+
+    await as(tokens.vendeur)
+      .post('/api/sales')
+      .send({
+        customerId: c.id,
+        lines: [{ productId, quantity: '1' }],
+        paidAmount: 0,
+        dueDate: DUE_DATE,
+      })
+      .expect(201);
+    const refused = await as(tokens.admin)
+      .patch(`/api/customers/${c.id}`)
+      .send({ isActive: false })
+      .expect(409);
+    expect(refused.body.message).toContain('doit encore');
+
+    // Dette soldée par la caisse de l'admin : le retrait passe.
+    await as(tokens.admin)
+      .post('/api/cash-sessions')
+      .send({ locationId: magasinId, openingFloat: 0 })
+      .expect(201);
+    await as(tokens.admin)
+      .post('/api/payments/customer')
+      .send({
+        id: randomUUID(),
+        clientMutationId: randomUUID(),
+        customerId: c.id,
+        amount: 100000,
+      })
+      .expect(201);
+    await as(tokens.admin)
+      .patch(`/api/customers/${c.id}`)
+      .send({ isActive: false })
+      .expect(200);
+    const list = (
+      await as(tokens.admin).get('/api/customers?limit=200').expect(200)
+    ).body.data.map((x: { id: string }) => x.id);
+    expect(list).not.toContain(c.id);
+    // Rien n'est effacé : sa vente est toujours là.
+    expect(await prisma.sale.count({ where: { customerId: c.id } })).toBe(1);
+  });
+
   it('dette : vente à crédit, règlement partiel en espèces, crédit à nouveau disponible', async () => {
     const c = (
       await createCustomer(tokens.admin, {

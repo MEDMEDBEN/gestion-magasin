@@ -130,7 +130,13 @@ export class UpdateCustomerDto {
   @IsOptional()
   notes?: string | null;
 
-  @ApiPropertyOptional() @IsOptionalNotNull() @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional({
+    description:
+      'ADMIN seul (403 sinon) ; false refusé (409) tant que la dette ≠ 0',
+  })
+  @IsOptionalNotNull()
+  @IsBoolean()
+  isActive?: boolean;
 
   @ApiPropertyOptional({ nullable: true, description: 'ADMIN seul' })
   @IsCanonicalUuid()

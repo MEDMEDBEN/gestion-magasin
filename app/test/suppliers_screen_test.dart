@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/file_export.dart';
@@ -101,6 +102,12 @@ class _FakeSuppliersApi extends SuppliersApi {
 
   @override
   Future<Supplier> create(Map<String, Object?> fields) async {
+    saved = fields;
+    return _suppliers.first;
+  }
+
+  @override
+  Future<Supplier> update(String id, Map<String, Object?> fields) async {
     saved = fields;
     return _suppliers.first;
   }
@@ -353,6 +360,31 @@ void main() {
     expect(find.text('Enregistrer un paiement'), findsNothing);
     expect(find.text('Modifier la fiche'), findsNothing);
     expect(find.byTooltip('Importer'), findsNothing);
+    // Supprimer : réservé à l'admin.
+    expect(find.text('Supprimer'), findsNothing);
+  });
+
+  /// Fiche contact (2026-10-06) : coordonnées copiables, compte, supprimer.
+  testWidgets('fiche contact : coordonnées, compte, puis supprimer', (
+    tester,
+  ) async {
+    final api = await _pump(tester, _admin());
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Fournisseur'), findsOneWidget);
+    expect(find.text('S'), findsOneWidget); // initiales (un seul mot)
+    expect(find.text('M. Rahmani'), findsOneWidget);
+    expect(find.text('0550 11 22 33'), findsOneWidget);
+    expect(find.text('Reste dû'), findsOneWidget);
+
+    await tester.tap(find.text('Supprimer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Supprimer « Sonelec » ?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    // Désactivation, jamais un effacement : achats et paiements restent.
+    expect(api.saved, {'isActive': false});
   });
 
   test('menu : « Fournisseurs » pour ADMIN/MAGASINIER, jamais le vendeur', () {

@@ -16,10 +16,18 @@ import '../data/sales_models.dart';
 /// envoyés seulement pour qui a `price.manage` (ADMIN) — le serveur refuse
 /// sinon. Sans plafond, un client n'a pas de crédit (vente à crédit refusée).
 class CustomerForm extends ConsumerStatefulWidget {
-  const CustomerForm({this.existing, required this.canManageTerms, super.key});
+  const CustomerForm({
+    this.existing,
+    required this.canManageTerms,
+    this.canChangeActive = false,
+    super.key,
+  });
 
   final Customer? existing;
   final bool canManageTerms;
+
+  /// Retirer / réactiver un client : ADMIN seul (le serveur refuse sinon).
+  final bool canChangeActive;
 
   @override
   ConsumerState<CustomerForm> createState() => _CustomerFormState();
@@ -65,7 +73,7 @@ class _CustomerFormState extends ConsumerState<CustomerForm> {
         'email': _text(_email),
         'address': _text(_address),
         'notes': _text(_notes),
-        if (_c != null) 'isActive': _active,
+        if (_c != null && widget.canChangeActive) 'isActive': _active,
         // Envoyés seulement s'ils changent : un tarif depuis désactivé ne
         // bloque pas la modification du reste de la fiche.
         if (widget.canManageTerms && (_c == null || _tierId != _c.priceTierId))
@@ -189,7 +197,7 @@ class _CustomerFormState extends ConsumerState<CustomerForm> {
             style: AmpereType.meta.copyWith(color: colors.ink3),
           ),
         ],
-        if (_c != null)
+        if (_c != null && widget.canChangeActive)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Client actif'),

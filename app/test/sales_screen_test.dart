@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/ampere_controls.dart';
 import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
@@ -153,6 +154,15 @@ class _FakeSalesApi extends SalesApi {
   Future<Sale> cancelSale(String saleId) async {
     cancelled.add(saleId);
     return (await sales()).data.single;
+  }
+
+  /// Champs envoyés à la fiche client (création ou modification).
+  Map<String, Object?>? customerSaved;
+
+  @override
+  Future<Customer> saveCustomer(String? id, Map<String, Object?> fields) async {
+    customerSaved = fields;
+    return (await customers()).data.single;
   }
 
   @override
@@ -884,6 +894,46 @@ void main() {
       expect(printed.single, startsWith('TK-2026-000007.pdf'));
     },
   );
+
+  /// Demande MEDMEDBEN du 2026-10-06 : fiche contact, et « Supprimer »
+  /// réservé à l'admin (le serveur refuse s'il reste une dette).
+  testWidgets('fiche contact client : le vendeur ne supprime pas', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await tester.tap(find.text('Clients'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Benali'));
+    await tester.pumpAndSettle();
+    expect(find.text('Client'), findsWidgets);
+    expect(find.text('Reste dû'), findsOneWidget);
+    expect(find.text('Supprimer'), findsNothing);
+  });
+
+  testWidgets('fiche contact client : l’admin supprime, après confirmation', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    final admin = authUser(
+      id: 'a',
+      roles: const ['ADMIN'],
+      permissions: const ['sale.create', 'customer.read', 'customer.write'],
+    );
+    await _pumpScreen(tester, api, [], user: admin);
+    await tester.tap(find.text('Clients'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Benali'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    expect(api.customerSaved, isNull); // rien sans confirmation
+    expect(find.text('Supprimer « Benali » ?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer').last);
+    await tester.pumpAndSettle();
+    expect(api.customerSaved, {'isActive': false});
+  });
 
   testWidgets('historique : l’admin annule une vente, après confirmation', (
     tester,

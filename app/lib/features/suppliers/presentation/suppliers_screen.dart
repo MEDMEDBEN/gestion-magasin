@@ -22,6 +22,8 @@ import '../data/suppliers_api.dart';
 import '../application/suppliers_controller.dart';
 import '../data/suppliers_models.dart';
 import '../../sales/application/sales_controller.dart';
+import '../../../ui/widgets/contact_profile.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 import 'supplier_return_dialog.dart';
 
 /// Droits fournisseurs, MIROIRS des guards serveur (`docs/permissions.md`) :
@@ -198,67 +200,112 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
     );
   }
 
+  /// « Supprimer » = retirer des listes : achats et paiements restent ; le
+  /// serveur refuse tant qu'il reste un solde (il le dit).
+  Future<void> _delete(Supplier supplier) async {
+    final confirmed = await showAmpereConfirmDialog(
+      context,
+      title: 'Supprimer « ${supplier.name} » ?',
+      body:
+          'Le fournisseur disparaît des listes et des commandes. Ses achats '
+          'et ses paiements restent dans l’historique. Impossible tant qu’il '
+          'reste quelque chose à lui payer.',
+      confirmLabel: 'Supprimer',
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await ref.read(suppliersApiProvider).update(supplier.id, {
+        'isActive': false,
+      });
+      ref.invalidate(supplierSearchProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${supplier.name} supprimé des fournisseurs.'),
+          ),
+        );
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.userMessage)));
+      }
+    }
+  }
+
   Future<void> _openActions(Supplier supplier, SupplierRights rights) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text(supplier.name),
-              subtitle: Text('Reste dû : ${formatDA(supplier.balanceDue)}'),
-            ),
-            if (rights.canPay && supplier.balanceDue > 0)
-              ListTile(
-                leading: const Icon(LucideIcons.banknote, size: 18),
-                title: const Text('Enregistrer un paiement'),
-                onTap: () => Navigator.of(context).pop('pay'),
-              ),
-            if (rights.canSeePurchases)
-              ListTile(
-                leading: const Icon(LucideIcons.package, size: 18),
-                title: const Text('Historique des achats'),
-                onTap: () => Navigator.of(context).pop('purchases'),
-              ),
-            ListTile(
-              leading: const Icon(LucideIcons.chartLine, size: 18),
-              title: const Text('Indicateurs'),
-              onTap: () => Navigator.of(context).pop('stats'),
-            ),
-            ListTile(
-              leading: const Icon(LucideIcons.fileText, size: 18),
-              title: const Text('Relevé de compte (PDF)'),
-              onTap: () => Navigator.of(context).pop('statement'),
-            ),
-            if (rights.canReturn) ...[
-              ListTile(
-                leading: const Icon(LucideIcons.undo2, size: 18),
-                title: const Text('Retour de marchandise'),
-                onTap: () => Navigator.of(context).pop('return'),
-              ),
-              ListTile(
-                leading: const Icon(LucideIcons.fileText, size: 18),
-                title: const Text('Retours de marchandise'),
-                onTap: () => Navigator.of(context).pop('returns'),
-              ),
-            ],
-            ListTile(
-              leading: const Icon(LucideIcons.history, size: 18),
-              title: const Text('Historique des paiements'),
-              onTap: () => Navigator.of(context).pop('history'),
-            ),
-            if (rights.canWrite)
-              ListTile(
-                leading: const Icon(LucideIcons.pencil, size: 18),
-                title: const Text('Modifier la fiche'),
-                onTap: () => Navigator.of(context).pop('edit'),
-              ),
-          ],
+    // Fiche CONTACT (2026-10-06) : coordonnées, compte, actions, supprimer.
+    final action = await showContactProfile(
+      context,
+      name: supplier.name,
+      kind: 'Fournisseur',
+      contactName: supplier.contactName,
+      phone: supplier.phone,
+      email: supplier.email,
+      address: supplier.address,
+      notes: supplier.notes,
+      figures: [
+        (
+          label: 'Marchandise reçue',
+          value: formatDA(supplier.receivedAmount),
+          tone: StatusTone.neutral,
         ),
-      ),
+        (
+          label: 'Payé',
+          value: formatDA(supplier.paidAmount),
+          tone: StatusTone.neutral,
+        ),
+        (
+          label: 'Reste dû',
+          value: formatDA(supplier.balanceDue),
+          tone: supplier.balanceDue > 0 ? StatusTone.warn : StatusTone.ok,
+        ),
+      ],
+      actions: [
+        if (rights.canPay && supplier.balanceDue > 0)
+          (
+            icon: LucideIcons.banknote,
+            label: 'Enregistrer un paiement',
+            value: 'pay',
+          ),
+        if (rights.canSeePurchases)
+          (
+            icon: LucideIcons.package,
+            label: 'Historique des achats',
+            value: 'purchases',
+          ),
+        (icon: LucideIcons.chartLine, label: 'Indicateurs', value: 'stats'),
+        (
+          icon: LucideIcons.fileText,
+          label: 'Relevé de compte (PDF)',
+          value: 'statement',
+        ),
+        if (rights.canReturn) ...[
+          (
+            icon: LucideIcons.undo2,
+            label: 'Retour de marchandise',
+            value: 'return',
+          ),
+          (
+            icon: LucideIcons.fileText,
+            label: 'Retours de marchandise',
+            value: 'returns',
+          ),
+        ],
+        (
+          icon: LucideIcons.history,
+          label: 'Historique des paiements',
+          value: 'history',
+        ),
+        if (rights.canWrite)
+          (icon: LucideIcons.pencil, label: 'Modifier la fiche', value: 'edit'),
+      ],
+      // `PATCH /suppliers/:id` : ADMIN + supplier.write (comme la fiche).
+      canDelete: rights.canWrite,
     );
     if (!mounted) return;
+    if (action == contactDeleteAction) return _delete(supplier);
     if (action == 'pay') return _pay(supplier);
     if (action == 'edit') return _openForm(supplier);
     if (action == 'return') return _returnGoods(supplier);

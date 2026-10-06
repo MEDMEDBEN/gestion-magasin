@@ -59,7 +59,11 @@ Future<_FakeSalesApi> _pump(
       child: MaterialApp(
         theme: AppTheme.desktop(dark: true),
         home: Scaffold(
-          body: CustomerForm(existing: existing, canManageTerms: admin),
+          body: CustomerForm(
+            existing: existing,
+            canManageTerms: admin,
+            canChangeActive: admin,
+          ),
         ),
       ),
     ),
@@ -115,5 +119,29 @@ void main() {
     expect(id, 'c1');
     expect(sent['creditLimit'], 5000000);
     expect(sent['priceTierId'], 'gros');
+    expect(sent['isActive'], isTrue);
+  });
+
+  /// Audit du 2026-10-06 : retirer un client est réservé à l'admin (403
+  /// serveur) ; le vendeur n'a plus l'interrupteur, rien n'est envoyé.
+  testWidgets('vendeur : ni interrupteur « Client actif », ni isActive', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      admin: false,
+      existing: const Customer(
+        id: 'c1',
+        name: 'Benali',
+        creditLimit: 0,
+        balanceDue: 0,
+        isActive: true,
+      ),
+    );
+    expect(find.text('Client actif'), findsNothing);
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+    final (_, sent) = api.saved.single;
+    expect(sent.containsKey('isActive'), isFalse);
   });
 }

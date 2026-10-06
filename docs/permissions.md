@@ -88,6 +88,7 @@ aucune migration destructive sans confirmation).
 |---|---|---|---|
 | Consulter clients | ✅ | ✅ | 👁️ |
 | Créer / modifier client | ✅ | ✅ | ❌ |
+| Supprimer un client (= désactiver `isActive:false`, historique gardé ; refusé 409 tant que sa dette ou son avoir ≠ 0) | ✅ | ❌ (403) | ❌ |
 | Fixer le tarif et le plafond de crédit d'un client | ✅ (`price.manage`) | ❌ | ❌ |
 | Voir le total acheté / payé d'un client (un chiffre d'affaires) | ✅ | ❌ (`null`) | ❌ (`null`) |
 | Historique des ventes (`GET /sales`, recherche `q`) | ✅ toutes | ✅ les SIENNES | ❌ |
@@ -100,6 +101,7 @@ aucune migration destructive sans confirmation).
 | Relevé de compte client PDF/Excel/CSV (`GET /customers/:id/statement`, P1 bis n°21n) | ✅ (`customer.read`, droits relus) | ❌ (tout le CA du client) | ❌ |
 | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Gérer fournisseurs | ✅ | ❌ | ❌ |
+| Supprimer un fournisseur (= désactiver, historique gardé ; refusé 409 tant qu'il reste à payer, un trop-payé ou une commande en cours) | ✅ | ❌ | ❌ (403) |
 | Enregistrer paiement fournisseur | ✅ | ❌ | ❌ |
 | Consulter l'historique des paiements fournisseur | ✅ | ❌ | 👁️ (`supplier.read`) |
 | Indicateurs fournisseur (`GET /suppliers/:id/stats` : produits fournis, ponctualité, prix d'achat) | ✅ | ❌ | 👁️ (`supplier.read`) |

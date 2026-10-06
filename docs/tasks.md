@@ -4,6 +4,20 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Fiche contact + suppression — 2026-10-06 (MEDMEDBEN, Claude)
+
+- **Fiche contact** (`ui/widgets/contact_profile.dart`) pour clients ET fournisseurs : initiales, coordonnées
+  copiables, chiffres du compte, actions, bouton **Supprimer**.
+- **Supprimer = désactiver** (`isActive:false`, règle 7 : ventes/achats/règlements gardés). ADMIN seul.
+  Refusé (409) tant que la dette client / le reste à payer fournisseur n'est pas à 0 (ni avoir/trop-payé),
+  et pour un fournisseur tant qu'une commande est en cours. Pas de réactivation dans l'app (les inactifs ne sont
+  listés nulle part) : à ajouter si le terrain le demande.
+- **Audits** (2026-10-06) : 0 bloquant. Corrigés : interrupteur « Client actif » réservé à l'admin (le vendeur
+  aurait pris un 403, test) ; verrou `Supplier FOR UPDATE` dans réception et commande (course avec la
+  suppression) ; refus si commande en cours (e2e) ; doc OpenAPI de `isActive`.
+- Preuves : backend lint/tsc OK, 166 unitaires, **654 e2e** ; app analyze 0, **539 tests**.
+- **Prochaine étape** : rebuild des apps et redéploiement du backend.
+
 ### Retours terrain n°2 — 2026-10-05 (MEDMEDBEN, Claude)
 
 - **Étiquette par produit** : bouton sur chaque ligne du catalogue.

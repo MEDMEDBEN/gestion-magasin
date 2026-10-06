@@ -31,6 +31,8 @@ import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 import '../../scan/presentation/scan_screen.dart';
+import '../../../ui/widgets/ampere_controls.dart';
+import '../../../ui/widgets/contact_profile.dart';
 import 'customer_form.dart';
 import 'sales_history.dart';
 
@@ -48,6 +50,8 @@ class SalesRights {
       canWriteCustomers = user.can('customer.write'),
       // `POST /imports/customers` : ADMIN + customer.write (saisie en masse).
       canImportCustomers = user.hasRole('ADMIN') && user.can('customer.write'),
+      // `PATCH /customers/:id` avec isActive : ADMIN seul (2026-10-06).
+      canDeleteCustomers = user.hasRole('ADMIN') && user.can('customer.write'),
       canTakePayments = user.can('customer.payment.create'),
       canReversePayments =
           user.hasRole('ADMIN') && user.can('customer.payment.create'),
@@ -66,6 +70,9 @@ class SalesRights {
   final bool canManageCash;
   final bool canWriteCustomers;
   final bool canImportCustomers;
+
+  /// « Supprimer » un client = le retirer des listes (historique conservé).
+  final bool canDeleteCustomers;
   final bool canTakePayments;
 
   /// Contre-passation d'un règlement : ADMIN (miroir du guard serveur).
@@ -1372,6 +1379,7 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     CustomerForm(
       existing: existing,
       canManageTerms: widget.rights.canManageCustomerTerms,
+      canChangeActive: widget.rights.canDeleteCustomers,
     ),
   );
 
@@ -1405,55 +1413,98 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     }
   }
 
+  /// « Supprimer » = retirer des listes : ventes et règlements restent ; le
+  /// serveur refuse tant qu'il reste une dette (il le dit).
+  Future<void> _delete(Customer customer) async {
+    final confirmed = await showAmpereConfirmDialog(
+      context,
+      title: 'Supprimer « ${customer.name} » ?',
+      body:
+          'Le client disparaît des listes et de la vente. Ses ventes et ses '
+          'règlements restent dans l’historique. Impossible tant qu’il a une '
+          'dette.',
+      confirmLabel: 'Supprimer',
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await ref.read(salesActionsProvider).saveCustomer(customer.id, {
+        'isActive': false,
+      });
+      if (mounted) _snack(context, '${customer.name} supprimé des clients.');
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    }
+  }
+
   Future<void> _openCustomer(Customer customer) async {
     final rights = widget.rights;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(customer.name),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-            child: Text(
-              [
-                if (customer.totalPurchased case final bought?)
-                  'Total acheté ${formatDA(bought)}',
-                if (customer.totalPaid case final paid?)
-                  'payé ${formatDA(paid)}',
-                'reste ${formatDA(customer.balanceDue)}',
-                if (customer.overdueAmount > 0)
-                  'en retard ${formatDA(customer.overdueAmount)}',
-              ].join(' · '),
-            ),
+    // Fiche CONTACT (2026-10-06) : coordonnées, compte, actions, supprimer.
+    final action = await showContactProfile(
+      context,
+      name: customer.name,
+      kind: 'Client',
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+      notes: customer.notes,
+      figures: [
+        if (customer.totalPurchased case final bought?)
+          (
+            label: 'Total acheté',
+            value: formatDA(bought),
+            tone: StatusTone.neutral,
           ),
-          if (rights.canWriteCustomers)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('edit'),
-              child: const Text('Modifier la fiche'),
-            ),
-          if (rights.canTakePayments && customer.balanceDue > 0)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('pay'),
-              child: const Text('Encaisser un règlement'),
-            ),
-          if (rights.canSell)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('sales'),
-              child: const Text('Historique des achats'),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('history'),
-            child: const Text('Historique des règlements'),
+        if (customer.totalPaid case final paid?)
+          (label: 'Payé', value: formatDA(paid), tone: StatusTone.neutral),
+        (
+          label: 'Reste dû',
+          value: formatDA(customer.balanceDue),
+          tone: customer.balanceDue > 0 ? StatusTone.warn : StatusTone.ok,
+        ),
+        if (customer.overdueAmount > 0)
+          (
+            label: 'En retard',
+            value: formatDA(customer.overdueAmount),
+            tone: StatusTone.error,
           ),
-          if (rights.canReadStatements)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('statement'),
-              child: const Text('Relevé de compte (PDF)'),
-            ),
-        ],
-      ),
+        if (customer.creditLimit > 0)
+          (
+            label: 'Plafond de crédit',
+            value: formatDA(customer.creditLimit),
+            tone: StatusTone.neutral,
+          ),
+      ],
+      actions: [
+        if (rights.canTakePayments && customer.balanceDue > 0)
+          (
+            icon: LucideIcons.banknote,
+            label: 'Encaisser un règlement',
+            value: 'pay',
+          ),
+        if (rights.canSell)
+          (
+            icon: LucideIcons.shoppingBag,
+            label: 'Historique des achats',
+            value: 'sales',
+          ),
+        (
+          icon: LucideIcons.history,
+          label: 'Historique des règlements',
+          value: 'history',
+        ),
+        if (rights.canReadStatements)
+          (
+            icon: LucideIcons.fileText,
+            label: 'Relevé de compte (PDF)',
+            value: 'statement',
+          ),
+        if (rights.canWriteCustomers)
+          (icon: LucideIcons.pencil, label: 'Modifier la fiche', value: 'edit'),
+      ],
+      canDelete: rights.canDeleteCustomers,
     );
     if (!mounted || action == null) return;
+    if (action == contactDeleteAction) return _delete(customer);
     if (action == 'pay') return _pay(customer);
     if (action == 'statement') {
       // P1 bis n°21n : enregistré sur ce poste, comme les autres exports.

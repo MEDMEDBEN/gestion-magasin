@@ -78,6 +78,9 @@ export class ReceptionsService {
     actor: ActorContext | null,
     receivedAt: Date = new Date(),
   ): Promise<ReceptionDto> {
+    // Verrou : une suppression (désactivation) concurrente attend la fin de
+    // cette opération, qui crée une dette (audit du 2026-10-06).
+    await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${dto.supplierId}::uuid FOR UPDATE`;
     const supplier = await tx.supplier.findFirst({
       where: { id: dto.supplierId, isActive: true },
     });

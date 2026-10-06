@@ -269,6 +269,9 @@ export class CustomersService {
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.customer.findUnique({ where: { id } });
       if (!before) throw CustomersService.notFound();
+      if (dto.isActive !== undefined && dto.isActive !== before.isActive) {
+        await CustomersService.assertCanChangeActive(tx, before, dto, user);
+      }
       if (dto.priceTierId)
         await CustomersService.assertTier(tx, dto.priceTierId);
       const customer = await tx.customer.update({
@@ -682,6 +685,38 @@ export class CustomersService {
       reversesPaymentId: payment.reversesPaymentId,
       balanceDue,
     };
+  }
+
+  /// « Supprimer » un client = le retirer des listes (isActive), jamais
+  /// effacer ses ventes ni ses règlements (règle 7). ADMIN seul (le vendeur
+  /// modifie une fiche, il ne la retire pas) ; refusé tant que le solde n'est
+  /// pas nul — masquer une dette ferait perdre sa trace (2026-10-06).
+  private static async assertCanChangeActive(
+    tx: Db,
+    before: { id: string; name: string },
+    dto: { isActive?: boolean },
+    user: AuthenticatedUser,
+  ) {
+    if (!user.roles.includes(RoleCode.ADMIN)) {
+      throw new BusinessException(
+        ErrorCode.FORBIDDEN_ROLE,
+        'Seul l’administrateur retire ou réactive un client',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (dto.isActive !== false) return;
+    // Verrou du client : un règlement simultané ne passe pas entre-temps.
+    await tx.$queryRaw`SELECT "id" FROM "Customer" WHERE "id" = ${before.id}::uuid FOR UPDATE`;
+    const debt = await SalesService.customerDebt(tx, before.id);
+    if (debt !== 0) {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        debt > 0
+          ? `${before.name} doit encore ${formatDA(debt)} : encaissez sa dette avant de le supprimer`
+          : `${before.name} a un avoir de ${formatDA(-debt)} : soldez-le avant de le supprimer`,
+        HttpStatus.CONFLICT,
+      );
+    }
   }
 
   /// Tarif et plafond de crédit : conditions commerciales fixées par l'ADMIN
