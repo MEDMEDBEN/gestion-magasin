@@ -140,6 +140,11 @@ class UsersController extends AsyncNotifier<UsersListState> {
     await refresh();
   }
 
+  Future<void> remove(String id) async {
+    await ref.read(usersApiProvider).remove(id);
+    await refresh();
+  }
+
   /// Ne recharge pas la liste : révoquer ne change aucune donnée affichée.
   Future<int> revokeSessions(String id) {
     return ref.read(usersApiProvider).revokeSessions(id);

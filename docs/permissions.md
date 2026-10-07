@@ -416,6 +416,7 @@ où le serveur reste juge.
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
 | Gérer utilisateurs / rôles / permissions | ✅ | ❌ | ❌ |
+| Supprimer un compte (`DELETE /users/:id` : ARCHIVÉ — inactif, sans rôle, sessions coupées, email/téléphone libérés, hors liste ; l'historique le garde nommé ; jamais soi-même ni le dernier admin actif ; irréversible) | ✅ | ❌ | ❌ |
 | Modifier les paramètres système | ✅ | ❌ | ❌ |
 | Consulter l'audit / traçabilité | ✅ | ❌ | ❌ |
 

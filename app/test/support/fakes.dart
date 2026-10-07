@@ -145,6 +145,12 @@ class FakeUsersApi implements UsersApi {
 
   @override
   Future<int> revokeSessions(String id) async => 2;
+
+  /// Comptes supprimés (ids), dans l'ordre.
+  final List<String> removed = [];
+
+  @override
+  Future<void> remove(String id) async => removed.add(id);
 }
 
 /// Faux `AuthApi` pilotable.

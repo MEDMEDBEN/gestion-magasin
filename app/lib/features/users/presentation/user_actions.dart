@@ -11,7 +11,7 @@ import '../application/users_controller.dart';
 import '../data/user_models.dart';
 import 'user_form.dart';
 
-enum _UserAction { edit, toggle, reset, revoke }
+enum _UserAction { edit, toggle, reset, revoke, delete }
 
 /// Menu d'actions d'un compte (ligne de liste mobile, cellule de tableau
 /// desktop). Sur SON propre compte, l'admin n'a que « Modifier » : son
@@ -64,6 +64,15 @@ class UserActionsMenu extends ConsumerWidget {
             child: _MenuRow(
               icon: LucideIcons.smartphone,
               label: 'Révoquer les sessions',
+            ),
+          ),
+          const PopupMenuDivider(),
+          const PopupMenuItem(
+            value: _UserAction.delete,
+            child: _MenuRow(
+              icon: LucideIcons.trash2,
+              label: 'Supprimer',
+              danger: true,
             ),
           ),
         ],
@@ -142,6 +151,23 @@ class UserActionsMenu extends ConsumerWidget {
                 : '$count session${count > 1 ? 's' : ''} révoquée'
                       '${count > 1 ? 's' : ''}.',
           );
+
+        case _UserAction.delete:
+          final ok = await showAmpereConfirmDialog(
+            context,
+            title: 'Supprimer ${user.fullName} ?',
+            body:
+                'Synchronisez d’abord ses appareils : une vente faite hors '
+                'ligne et pas encore envoyée serait perdue.\n\n'
+                'Le compte ne pourra plus se connecter et disparaît de la '
+                'liste. Ses ventes et opérations restent dans l’historique, à '
+                'son nom. Son email et son téléphone redeviennent libres. '
+                'Irréversible : pour revenir, on crée un nouveau compte.',
+            confirmLabel: 'Supprimer',
+          );
+          if (!ok) return;
+          await controller.remove(user.id);
+          onMessage('${user.fullName} supprimé.');
       }
     } on ApiException catch (error) {
       onMessage(error.userMessage);
@@ -230,21 +256,34 @@ class _TemporaryPasswordDialogState extends State<_TemporaryPasswordDialog> {
 }
 
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({required this.icon, required this.label});
+  const _MenuRow({
+    required this.icon,
+    required this.label,
+    this.danger = false,
+  });
 
   final IconData icon;
   final String label;
 
+  /// Action destructive (Supprimer) : en rouge.
+  final bool danger;
+
   @override
   Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 17, color: AmpereColors.of(context).ink2),
+        Icon(icon, size: 17, color: danger ? colors.error : colors.ink2),
         const SizedBox(width: 10),
         // Flexible : au zoom texte 200 % (§12), le libellé passe à la ligne au
         // lieu de déborder du menu.
-        Flexible(child: Text(label)),
+        Flexible(
+          child: Text(
+            label,
+            style: danger ? TextStyle(color: colors.error) : null,
+          ),
+        ),
       ],
     );
   }

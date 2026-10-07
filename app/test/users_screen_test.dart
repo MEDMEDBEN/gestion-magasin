@@ -227,6 +227,28 @@ void main() {
     expect(find.text('Modifier'), findsOneWidget);
     expect(find.text('Désactiver'), findsNothing);
     expect(find.text('Réinitialiser le mot de passe'), findsNothing);
+    expect(find.text('Supprimer'), findsNothing);
+  });
+
+  /// Demande MEDMEDBEN du 2026-10-07 : supprimer un compte.
+  testWidgets('supprimer un compte : confirmation Danger, puis appel serveur', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 800));
+    final api = FakeUsersApi(users: [managedUser()]);
+
+    await tester.pumpWidget(_wrap(api));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Supprimer'));
+    await tester.pumpAndSettle();
+
+    expect(api.removed, isEmpty); // rien sans confirmation
+    expect(find.textContaining('restent dans l’historique'), findsOneWidget);
+    await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+    await tester.pumpAndSettle();
+    expect(api.removed, [managedUser().id]);
   });
 
   testWidgets('désactiver un compte : confirmation en style Danger (§6)', (

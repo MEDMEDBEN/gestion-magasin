@@ -115,15 +115,19 @@ export class UsersService {
   }
 
   async findAll(query: PaginationQueryDto): Promise<UserListDto> {
-    const where: Prisma.UserWhereInput = query.q
-      ? {
-          OR: [
-            { fullName: { contains: query.q, mode: 'insensitive' } },
-            { email: { contains: query.q, mode: 'insensitive' } },
-            { phone: { contains: query.q } },
-          ],
-        }
-      : {};
+    // Un compte supprimé n'est plus listé (il reste nommé dans l'historique).
+    const where: Prisma.UserWhereInput = {
+      deletedAt: null,
+      ...(query.q
+        ? {
+            OR: [
+              { fullName: { contains: query.q, mode: 'insensitive' } },
+              { email: { contains: query.q, mode: 'insensitive' } },
+              { phone: { contains: query.q } },
+            ],
+          }
+        : {}),
+    };
     const orderBy = parseSort(query.sort, SORTABLE_FIELDS, {
       createdAt: 'desc',
     });
@@ -183,12 +187,14 @@ export class UsersService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      if (touchesAccess) {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`;
-      }
+      // Toujours sous le verrou des comptes : une suppression concurrente ne
+      // peut pas se glisser entre le contrôle « supprimé ? » et l'écriture
+      // (qui rendrait son email à un compte supprimé — audit du 2026-10-07).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`;
       // Lu SOUS le verrou : l'« avant » de l'audit et le contrôle « dernier
       // admin » portent sur l'état réel, pas sur une lecture périmée.
       const before = await this.findOne(id, tx);
+      await UsersService.assertNotDeleted(tx, id);
       await this.assertIdentifiersFree(tx, dto.email, dto.phone, id);
 
       const finalRoles = dto.roles ?? (before.roles as RoleCode[]);
@@ -259,6 +265,8 @@ export class UsersService {
     const passwordHash = await hashPassword(dto.temporaryPassword);
 
     return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`;
+      await UsersService.assertNotDeleted(tx, id);
       const user = await tx.user.update({
         where: { id },
         data: { passwordHash, mustChangePassword: true },
@@ -299,6 +307,83 @@ export class UsersService {
       });
       return { revoked };
     });
+  }
+
+  /// SUPPRESSION d'un compte (2026-10-07). L'historique le désigne (ventes,
+  /// mouvements, audit) : il n'est donc pas effacé (règle 7) mais archivé —
+  /// inactif, sans rôle, sessions coupées, email/téléphone libérés pour un
+  /// autre compte, absent de la liste. Irréversible depuis l'app : on recrée
+  /// un compte. Mêmes gardes que la désactivation : jamais soi-même, jamais le
+  /// dernier administrateur actif. Rejouée, elle ne refait rien.
+  async remove(id: string, actor: ActorContext): Promise<void> {
+    if (actor.userId?.toLowerCase() === id.toLowerCase()) {
+      throw new BusinessException(
+        ErrorCode.SELF_MODIFICATION_FORBIDDEN,
+        'Votre propre compte est supprimé par un autre administrateur',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ADMIN_SET_LOCK})`;
+      const before = await this.findOne(id, tx);
+      const row = await tx.user.findUniqueOrThrow({
+        where: { id },
+        select: { deletedAt: true },
+      });
+      if (row.deletedAt) return;
+
+      if (before.isActive && before.roles.includes(RoleCode.ADMIN)) {
+        const remainingAdmins = await tx.user.count({
+          where: {
+            isActive: true,
+            roles: { some: { code: RoleCode.ADMIN } },
+            NOT: { id },
+          },
+        });
+        if (remainingAdmins === 0) {
+          throw new BusinessException(
+            ErrorCode.LAST_ACTIVE_ADMIN,
+            'Impossible : ce compte est le dernier administrateur actif',
+            HttpStatus.CONFLICT,
+          );
+        }
+      }
+
+      await tx.user.update({
+        where: { id },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          email: null,
+          phone: null,
+          roles: { set: [] },
+          permissions: { set: [] },
+        },
+      });
+      const revoked = await this.authService.revokeAllForUser(id, tx);
+      await writeAudit(tx, actor, {
+        action: 'CANCEL',
+        entityType: 'User',
+        entityId: id,
+        oldValue: UsersService.auditSnapshot(before),
+        newValue: { operation: 'DELETE', revokedSessions: revoked },
+      });
+    });
+  }
+
+  /// Un compte supprimé ne se modifie plus (ni réactivation, ni mot de passe).
+  private static async assertNotDeleted(db: Db, id: string): Promise<void> {
+    const row = await db.user.findUnique({
+      where: { id },
+      select: { deletedAt: true },
+    });
+    if (row?.deletedAt) {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        'Ce compte a été supprimé : créez-en un nouveau',
+        HttpStatus.CONFLICT,
+      );
+    }
   }
 
   /// Unicité des identifiants de connexion. L'email est comparé sans casse (les

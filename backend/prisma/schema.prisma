@@ -286,6 +286,10 @@ model User {
   /// Force le changement de mot de passe à la première connexion (spec §2bis).
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
+  /// Compte SUPPRIMÉ par l'admin (2026-10-07) : inactif, sans rôle, identifiants
+  /// libérés, absent de la liste — mais gardé, car l'historique (ventes,
+  /// mouvements, audit) le désigne toujours (règle 7).
+  deletedAt          DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

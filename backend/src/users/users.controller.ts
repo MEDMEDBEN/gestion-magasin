@@ -8,12 +8,14 @@ import {
   Param,
   Patch,
   Post,
+  Delete,
   Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -162,5 +164,24 @@ export class UsersController {
   /// L'acteur d'une action sensible : QUI, depuis OÙ (spec §24).
   private static actorOf(user: AuthenticatedUser, ip?: string): ActorContext {
     return { userId: user.id, ipAddress: ip };
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Supprime un compte (archivé : l’historique le garde nommé)',
+    description:
+      'Inactif, sans rôle, sessions coupées, email/téléphone libérés, absent ' +
+      'de la liste. Jamais son propre compte (403), jamais le dernier ' +
+      'administrateur actif (409). Rejouée : sans effet.',
+  })
+  @ApiNoContentResponse()
+  @ApiConflictResponse({ type: ErrorResponseDto })
+  async remove(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<void> {
+    await this.usersService.remove(id, UsersController.actorOf(actor, ip));
   }
 }

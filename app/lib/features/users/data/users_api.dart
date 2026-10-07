@@ -85,6 +85,11 @@ class UsersApi {
       return (response.data?['revoked'] as int?) ?? 0;
     });
   }
+
+  /// Supprime un compte : archivé par le serveur (l'historique le garde
+  /// nommé), il ne se connecte plus et sort de la liste.
+  Future<void> remove(String id) =>
+      guardApi(() async => _dio.delete<void>('/users/$id'));
 }
 
 final usersApiProvider = Provider<UsersApi>(

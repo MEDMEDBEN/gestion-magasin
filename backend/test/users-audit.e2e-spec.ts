@@ -36,6 +36,8 @@ describe('Gestion des comptes (e2e)', () => {
       request(server).post(url).set('Authorization', `Bearer ${token}`),
     patch: (url: string) =>
       request(server).patch(url).set('Authorization', `Bearer ${token}`),
+    delete: (url: string) =>
+      request(server).delete(url).set('Authorization', `Bearer ${token}`),
   });
 
   /// Entrées d'audit portant sur un compte donné, la plus récente d'abord.
@@ -250,6 +252,12 @@ describe('Gestion des comptes (e2e)', () => {
       );
 
       expect((await login(target.email, PASSWORD)).status).toBe(401);
+      // Son access token encore valide (≤ 15 min) n'écrit plus rien : la
+      // synchro (ventes hors ligne) est refusée, droits relus en base.
+      await as(target.token)
+        .post('/api/sync')
+        .send({ deviceId: 'poste-suppr', mutations: [] })
+        .expect(403);
       const withTemporary = await login(target.email, 'NouveauTemporaire1!');
       expect(withTemporary.status).toBe(200);
       expect(withTemporary.body.user.mustChangePassword).toBe(true);
@@ -487,6 +495,94 @@ describe('Gestion des comptes (e2e)', () => {
       // `supplier.read` posée en base ne rouvre RIEN : la route reste fermée
       // (au rôle ici, la matrice fermant les fournisseurs au vendeur).
       expect(suppliers.body.code).toBe('FORBIDDEN_ROLE');
+    });
+  });
+
+  /// Demande MEDMEDBEN du 2026-10-07 : supprimer un compte. L'historique le
+  /// désigne : archivé (règle 7), jamais effacé.
+  describe('suppression d’un compte', () => {
+    it('archivé : plus de connexion, plus listé, identifiants libérés, tracé', async () => {
+      const target = await sessionFor('suppr', [RoleCode.VENDEUR]);
+      // Nom unique : la liste se cherche par le NOM, qui survit à la suppression.
+      const name = `Suppr ${suffix}`;
+      await prisma.user.update({
+        where: { id: target.id },
+        data: { fullName: name },
+      });
+      const listedIds = async () =>
+        (
+          await as(adminToken)
+            .get(`/api/users?limit=100&q=${encodeURIComponent(name)}`)
+            .expect(200)
+        ).body.data.map((u: { id: string }) => u.id);
+      expect(await listedIds()).toContain(target.id);
+
+      // Ni le vendeur, ni l'admin sur lui-même.
+      await as(target.token).delete(`/api/users/${adminId}`).expect(403);
+      await as(adminToken).delete(`/api/users/${adminId}`).expect(403);
+
+      await as(adminToken).delete(`/api/users/${target.id}`).expect(204);
+      // Rejouée : sans effet.
+      await as(adminToken).delete(`/api/users/${target.id}`).expect(204);
+
+      const row = await prisma.user.findUniqueOrThrow({
+        where: { id: target.id },
+        include: { roles: true },
+      });
+      expect(row.deletedAt).not.toBeNull();
+      expect(row.isActive).toBe(false);
+      expect(row.email).toBeNull();
+      expect(row.roles).toHaveLength(0);
+      expect(row.fullName).toBe(name); // l'historique garde son nom
+      expect(
+        await prisma.refreshToken.count({
+          where: { userId: target.id, revokedAt: null },
+        }),
+      ).toBe(0);
+      expect((await login(target.email, PASSWORD)).status).toBe(401);
+
+      expect(await listedIds()).not.toContain(target.id);
+
+      // Plus de réactivation ni de mot de passe : on recrée un compte…
+      await as(adminToken)
+        .patch(`/api/users/${target.id}`)
+        .send({ isActive: true })
+        .expect(409);
+      await as(adminToken)
+        .post(`/api/users/${target.id}/reset-password`)
+        .send({ temporaryPassword: PASSWORD })
+        .expect(409);
+      // … avec le même email, désormais libre.
+      const again = await as(adminToken)
+        .post('/api/users')
+        .send({
+          email: target.email,
+          fullName: 'Compte recréé',
+          temporaryPassword: PASSWORD,
+          roles: [RoleCode.VENDEUR],
+        })
+        .expect(201);
+      createdIds.push(again.body.id);
+
+      const trace = (await auditFor(target.id)).find(
+        (e) => e.action === 'CANCEL',
+      );
+      expect(trace!.newValue).toMatchObject({ operation: 'DELETE' });
+      expect(trace!.oldValue).toMatchObject({ isActive: true });
+    });
+
+    it('jamais le DERNIER administrateur actif', async () => {
+      const last = await sessionFor('suppr-dernier', [RoleCode.ADMIN]);
+      const service = e2e.app.get(UsersService);
+      await withOnlyTheseAdminsActive([last.id], async () => {
+        await expect(
+          service.remove(last.id, { userId: adminId }),
+        ).rejects.toMatchObject({ response: { code: 'LAST_ACTIVE_ADMIN' } });
+      });
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: last.id } }))
+          .deletedAt,
+      ).toBeNull();
     });
   });
 

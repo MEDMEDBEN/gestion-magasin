@@ -4,6 +4,23 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Supprimer un utilisateur — 2026-10-07 (MEDMEDBEN, Claude)
+
+- `DELETE /users/:id` (ADMIN, `user.manage`, droits relus) : le compte est ARCHIVÉ (règle 7, l'historique le
+  désigne) — `deletedAt` posé, inactif, rôles retirés, sessions révoquées, email/téléphone libérés, absent de
+  `GET /users`. Plus de réactivation ni de mot de passe (409) : on recrée un compte. Jamais soi-même (403),
+  jamais le dernier admin actif (409). Audit `CANCEL` (opération DELETE) avec l'état d'avant.
+- Migration **additive** `20261007090000_user_deleted_at` (colonne `User.deletedAt`, appliquée au démarrage
+  du backend).
+- App : « Supprimer » (rouge) dans le menu d'un compte, confirmation Danger.
+- **Audit sécurité** (2026-10-07) : 0 bloquant. Corrigés : la confirmation dit de synchroniser d'abord ses
+  appareils (sa file hors ligne ne pourra plus partir) ; `update`/`resetPassword` toujours sous le verrou des
+  comptes (course qui rendait son email à un compte supprimé) ; e2e « son token encore valide n'écrit plus
+  rien (POST /sync → 403) ».
+- Preuves : backend tsc/lint OK, **166 unitaires** ; app analyze 0, **543 tests**.
+  ⚠️ **e2e NON lancés** (disque du PC plein, Docker arrêté) : `users-audit.e2e-spec.ts` (2 tests ajoutés) et la
+  migration sont à passer — `npm run test:e2e -- --runInBand users-audit` dès que Docker tourne.
+
 ### Version web (iPhone / navigateur) — 2026-10-06 (MEDMEDBEN, Claude)
 
 - Même code, cible web ajoutée (`app/web/`) ; aucun écran réécrit. Adaptations : base locale par cible
