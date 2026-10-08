@@ -157,36 +157,20 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SegmentedButton<_Section>(
-                showSelectedIcon: false,
-                segments: [
-                  const ButtonSegment(
-                    value: _Section.sale,
-                    label: Text('Vente'),
-                  ),
+              _SectionTabs(
+                selected: _section,
+                onSelect: (section) => setState(() => _section = section),
+                items: [
+                  (_Section.sale, LucideIcons.shoppingCart, 'Vente'),
                   // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
                   if (rights.canSell)
-                    const ButtonSegment(
-                      value: _Section.history,
-                      label: Text('Historique'),
-                    ),
-                  const ButtonSegment(
-                    value: _Section.customers,
-                    label: Text('Clients'),
-                  ),
+                    (_Section.history, LucideIcons.history, 'Historique'),
+                  (_Section.customers, LucideIcons.users, 'Clients'),
                   if (rights.canSeeConfreres)
-                    const ButtonSegment(
-                      value: _Section.confreres,
-                      label: Text('Confrères'),
-                    ),
+                    (_Section.confreres, LucideIcons.handshake, 'Confrères'),
                   if (rights.canSeeAllCash)
-                    const ButtonSegment(
-                      value: _Section.cashSessions,
-                      label: Text('Caisses'),
-                    ),
+                    (_Section.cashSessions, LucideIcons.landmark, 'Caisses'),
                 ],
-                selected: {_section},
-                onSelectionChanged: (s) => setState(() => _section = s.first),
               ),
               // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
               // Le vendeur n'y trouve que SES ventes (le serveur filtre).
@@ -229,12 +213,132 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   }
 }
 
-/// État de la caisse, toujours visible : ouvrir / clôturer (rapport Z).
+/// Onglets de l'écran Vente : des pastilles qui défilent (le téléphone n'a
+/// pas la place de 5 segments), l'onglet choisi en dégradé d'accent.
+class _SectionTabs extends StatelessWidget {
+  const _SectionTabs({
+    required this.items,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<(_Section, IconData, String)> items;
+  final _Section selected;
+  final ValueChanged<_Section> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: colors.surface2,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colors.lineSoft),
+      ),
+      // Téléphone : les pastilles passent à la ligne, toutes visibles.
+      child: Wrap(
+        runSpacing: 4,
+        children: [
+          for (final (section, icon, label) in items)
+            _tab(colors, section, icon, label),
+        ],
+      ),
+    );
+  }
+
+  Widget _tab(
+    AmpereColors colors,
+    _Section section,
+    IconData icon,
+    String label,
+  ) {
+    final on = section == selected;
+    final ink = on ? colors.onAccent : colors.ink2;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onSelect(section),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              gradient: on
+                  ? LinearGradient(colors: [colors.accent, colors.accentHi])
+                  : null,
+              boxShadow: on
+                  ? [
+                      BoxShadow(
+                        color: colors.accent.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: ink),
+                const SizedBox(width: 7),
+                Text(label, style: AmpereType.bodyStrong.copyWith(color: ink)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ouvrir la caisse : le fond de caisse du jour, AVANT toute vente ou sortie
+/// (une caisse ne vit qu'un jour — décision MEDMEDBEN du 2026-10-08).
+Future<void> _openCashFlow(BuildContext context, WidgetRef ref) async {
+  final store = (ref.read(locationsProvider).value ?? const [])
+      .where((l) => l.type == 'MAGASIN' && l.isActive)
+      .firstOrNull;
+  if (store == null) {
+    _snack(context, 'Magasin introuvable dans le catalogue local');
+    return;
+  }
+  final amount = await askAmount(
+    context,
+    title: 'Ouvrir la caisse du jour',
+    label: 'Fond de caisse (espèces dans le tiroir)',
+    help: 'Comptez le tiroir avant la première vente.',
+    confirm: 'Ouvrir',
+  );
+  if (amount == null || !context.mounted) return;
+  try {
+    final outcome = await ref
+        .read(salesActionsProvider)
+        .openCash(store.id, amount);
+    if (context.mounted) {
+      _snack(
+        context,
+        outcome is Queued
+            ? 'Caisse ouverte sur cet appareil — en attente de synchronisation.'
+            : 'Caisse ouverte.',
+      );
+    }
+  } on ApiException catch (error) {
+    if (context.mounted) _snack(context, error.userMessage);
+  }
+}
+
+/// État de la caisse, toujours visible : une carte « tiroir » — ce qu'il y a
+/// dedans, mouvements, clôture (rapport Z) ; fermée, elle invite à l'ouvrir.
 class _CashBar extends ConsumerWidget {
   const _CashBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
     final session = ref.watch(currentCashSessionProvider);
     // Gardé en vie : « Ouvrir la caisse » y cherche le magasin. Lu seulement au
     // clic, ce provider auto-libéré était encore vide (« Magasin introuvable »).
@@ -253,29 +357,42 @@ class _CashBar extends ConsumerWidget {
         icon: LucideIcons.cloudOff,
       ),
       data: (cash) => cash == null
-          ? OutlinedButton.icon(
-              onPressed: () => _openCash(context, ref),
-              icon: const Icon(LucideIcons.lockOpen, size: 17),
-              label: const Text('Ouvrir la caisse'),
+          ? _DrawerCard(
+              tone: colors.warn,
+              icon: LucideIcons.lock,
+              title: 'Caisse fermée',
+              subtitle:
+                  'Saisissez le fond de caisse du jour avant la première '
+                  'vente ou sortie.',
+              trailing: FilledButton.icon(
+                onPressed: () => _openCashFlow(context, ref),
+                icon: const Icon(LucideIcons.lockOpen, size: 17),
+                label: const Text('Ouvrir la caisse'),
+              ),
             )
-          : Wrap(
-              spacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                cash.status == cashPendingSync
-                    ? const AmpereBadge(
-                        label: 'Caisse ouverte · en attente de synchronisation',
-                        tone: StatusTone.warn,
-                        icon: LucideIcons.refreshCw,
-                      )
-                    : AmpereBadge(
-                        label:
-                            'Caisse ouverte · ${formatDA(cash.currentAmount)}',
-                        tone: StatusTone.ok,
-                      ),
-                // Pas de mouvement sur une caisse encore en file : le serveur
-                // ne la connaît pas.
-                if (cash.status != cashPendingSync)
+          : cash.status == cashPendingSync
+          // Pas de mouvement sur une caisse encore en file : le serveur ne la
+          // connaît pas.
+          ? _DrawerCard(
+              tone: colors.warn,
+              icon: LucideIcons.refreshCw,
+              title: 'Caisse ouverte · en attente de synchronisation',
+              subtitle: 'Fond : ${formatDA(cash.openingFloat)}',
+              trailing: TextButton(
+                onPressed: () => _closeCash(context, ref, cash),
+                child: const Text('Clôturer'),
+              ),
+            )
+          : _DrawerCard(
+              tone: colors.ok,
+              icon: LucideIcons.wallet,
+              title: 'Caisse ouverte · ${formatDA(cash.currentAmount)}',
+              subtitle:
+                  'Depuis ${formatTime(cash.openedAt)} · fond '
+                  '${formatDA(cash.openingFloat)}',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   PopupMenuButton<String>(
                     tooltip: 'Mouvement de caisse',
                     icon: const Icon(LucideIcons.arrowLeftRight, size: 17),
@@ -296,11 +413,12 @@ class _CashBar extends ConsumerWidget {
                       ),
                     ],
                   ),
-                TextButton(
-                  onPressed: () => _closeCash(context, ref, cash),
-                  child: const Text('Clôturer'),
-                ),
-              ],
+                  TextButton(
+                    onPressed: () => _closeCash(context, ref, cash),
+                    child: const Text('Clôturer'),
+                  ),
+                ],
+              ),
             ),
     );
   }
@@ -343,38 +461,6 @@ class _CashBar extends ConsumerWidget {
         _snack(
           context,
           '${titles[type]!} enregistrée — tiroir : ${formatDA(after.currentAmount)}',
-        );
-      }
-    } on ApiException catch (error) {
-      if (context.mounted) _snack(context, error.userMessage);
-    }
-  }
-
-  Future<void> _openCash(BuildContext context, WidgetRef ref) async {
-    final store = (ref.read(locationsProvider).value ?? const [])
-        .where((l) => l.type == 'MAGASIN' && l.isActive)
-        .firstOrNull;
-    if (store == null) {
-      _snack(context, 'Magasin introuvable dans le catalogue local');
-      return;
-    }
-    final amount = await askAmount(
-      context,
-      title: 'Ouvrir la caisse',
-      label: 'Fond de caisse',
-      confirm: 'Ouvrir',
-    );
-    if (amount == null || !context.mounted) return;
-    try {
-      final outcome = await ref
-          .read(salesActionsProvider)
-          .openCash(store.id, amount);
-      if (context.mounted) {
-        _snack(
-          context,
-          outcome is Queued
-              ? 'Caisse ouverte sur cet appareil — en attente de synchronisation.'
-              : 'Caisse ouverte.',
         );
       }
     } on ApiException catch (error) {
@@ -430,6 +516,83 @@ class _CashBar extends ConsumerWidget {
   }
 }
 
+/// Carte « tiroir-caisse » : teinte d'état en dégradé, icône, titre, détail,
+/// actions. Large : une ligne ; étroit, les actions passent dessous.
+class _DrawerCard extends StatelessWidget {
+  const _DrawerCard({
+    required this.tone,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+  });
+
+  final Color tone;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: AmpereType.rowTitle.copyWith(color: colors.ink)),
+        const SizedBox(height: 2),
+        Text(subtitle, style: AmpereType.meta.copyWith(color: colors.ink2)),
+      ],
+    );
+    final badge = Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(icon, size: 20, color: tone),
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tone.withValues(alpha: 0.45)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tone.withValues(alpha: 0.16), tone.withValues(alpha: 0.03)],
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, box) => box.maxWidth >= 420
+            ? Row(
+                children: [
+                  badge,
+                  const SizedBox(width: 12),
+                  Expanded(child: text),
+                  trailing,
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      badge,
+                      const SizedBox(width: 12),
+                      Expanded(child: text),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Align(alignment: Alignment.centerRight, child: trailing),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 const _movementLabel = {
   'ENTREE': 'Entrée',
   'SORTIE': 'Sortie',
@@ -458,12 +621,22 @@ Future<void> _showZReport(BuildContext context, CashSession report) {
           Text('Entrées totales : ${formatDA(report.cashInAmount)}'),
           Text('Sorties : ${formatDA(report.cashOutAmount)}'),
           Text('Attendu : ${formatDA(report.expectedAmount ?? 0)}'),
-          Text('Compté : ${formatDA(report.countedAmount ?? 0)}'),
+          // Clôture automatique (changement de jour) : rien n'a été compté —
+          // ni « 0 compté » ni écart inventé.
+          Text(
+            report.countedAmount == null
+                ? 'Compté : non comptée'
+                : 'Compté : ${formatDA(report.countedAmount!)}',
+          ),
           const SizedBox(height: 6),
           Text(
-            'Écart : ${formatDA(report.difference ?? 0)}',
+            report.difference == null
+                ? 'Écart : —'
+                : 'Écart : ${formatDA(report.difference!)}',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
+          if (report.countedAmount == null)
+            const Text('Clôture automatique (changement de jour).'),
           if (report.movements.isNotEmpty) ...[
             const Divider(height: 20),
             const Text('Mouvements hors vente'),
@@ -523,16 +696,20 @@ class _CashSessionsSection extends ConsumerWidget {
                         s.status == 'OUVERTE'
                             ? 'En cours · ${formatDA(s.currentAmount)} dans le tiroir'
                             : 'Attendu ${formatDA(s.expectedAmount ?? 0)} · '
-                                  'compté ${formatDA(s.countedAmount ?? 0)}',
+                                  '${s.countedAmount == null ? 'non comptée' : 'compté ${formatDA(s.countedAmount!)}'}',
                       ),
                       trailing: AmpereBadge(
                         label: s.status == 'OUVERTE'
                             ? 'Ouverte'
+                            : s.countedAmount == null
+                            ? 'Clôture auto'
                             : (s.difference ?? 0) == 0
                             ? 'Juste'
                             : 'Écart ${formatDA(s.difference!)}',
                         tone: s.status == 'OUVERTE'
                             ? StatusTone.info
+                            : s.countedAmount == null
+                            ? StatusTone.warn
                             : (s.difference ?? 0) == 0
                             ? StatusTone.ok
                             : StatusTone.warn,
@@ -996,14 +1173,21 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             'Ticket',
             style: AmpereType.sectionTitle.copyWith(color: colors.ink),
           ),
-          const Spacer(),
-          if (articles > 0)
-            Text(
-              '$articles article(s)',
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              articles > 0
+                  ? '$articles article(s) · ${formatDate(DateTime.now())}'
+                  : formatDate(DateTime.now()),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
               style: AmpereType.meta.copyWith(color: colors.ink3),
             ),
+          ),
         ],
       ),
+      const SizedBox(height: 8),
+      _DashedLine(color: colors.line),
       const SizedBox(height: 10),
       _CustomerPicker(customer: cart.customer),
       if (cart.quote case final quote?) ...[
@@ -1086,15 +1270,20 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
             ),
           ],
-          if (noCash && cart.customer == null && !cart.isEmpty) ...[
-            const SizedBox(height: 10),
-            const AmpereInlineAlert(
-              tone: StatusTone.warn,
-              message: 'Ouvrez la caisse pour encaisser des espèces.',
-            ),
-          ],
           SizedBox(height: compact ? 8 : 12),
-          if (cart.quote case final quote?)
+          if (noCash && cart.customer == null && cart.quote == null)
+            // Une caisse ne vit qu'un jour : avant la première vente
+            // espèces, on compte le tiroir (décision du 2026-10-08).
+            _PayButton(
+              icon: LucideIcons.lockOpen,
+              label: 'Ouvrir la caisse pour encaisser',
+              height: compact ? 52 : 60,
+              tone: AmpereColors.of(context).warn,
+              onPressed: widget.rights.canManageCash
+                  ? () => _openCashFlow(context, ref)
+                  : null,
+            )
+          else if (cart.quote case final quote?)
             // Un devis en cours de modification ne s'encaisse pas ici : il se
             // met à jour, puis suit son cycle (envoi, acceptation, conversion).
             _PayButton(
@@ -1142,6 +1331,28 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   }
 }
 
+/// Pointillés d'un ticket de caisse.
+class _DashedLine extends StatelessWidget {
+  const _DashedLine({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) => Row(
+      children: [
+        for (var i = 0; i < box.maxWidth ~/ 9; i++)
+          Container(
+            width: 5,
+            height: 1.5,
+            margin: const EdgeInsets.only(right: 4),
+            color: color,
+          ),
+      ],
+    ),
+  );
+}
+
 /// Afficheur de caisse : le montant à payer, en grand, comme sur un terminal.
 class _TotalDisplay extends StatelessWidget {
   const _TotalDisplay({
@@ -1162,18 +1373,33 @@ class _TotalDisplay extends StatelessWidget {
     final amount = Text(
       formatDA(total),
       style: AmpereType.numericHero.copyWith(
-        fontSize: compact ? 30 : 40,
+        fontSize: compact ? 30 : 42,
         color: colors.accentHi,
+        shadows: [
+          Shadow(color: colors.accent.withValues(alpha: 0.55), blurRadius: 14),
+        ],
       ),
+    );
+    final screen = BoxDecoration(
+      borderRadius: BorderRadius.circular(compact ? 12 : 16),
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [colors.bgAlt, colors.bg],
+      ),
+      border: Border.all(color: colors.accent.withValues(alpha: 0.5)),
+      boxShadow: [
+        BoxShadow(
+          color: colors.accent.withValues(alpha: 0.16),
+          blurRadius: 18,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
     if (compact) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: colors.bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: colors.accent.withValues(alpha: 0.45)),
-        ),
+        decoration: screen,
         child: Row(
           children: [
             Column(
@@ -1206,11 +1432,7 @@ class _TotalDisplay extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-      decoration: BoxDecoration(
-        color: colors.bg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.accent.withValues(alpha: 0.45)),
-      ),
+      decoration: screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1254,6 +1476,7 @@ class _PayButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.height = 60,
+    this.tone,
   });
 
   final IconData icon;
@@ -1261,23 +1484,56 @@ class _PayButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final double height;
 
+  /// Couleur du dégradé ; par défaut le vert « encaisser ».
+  final Color? tone;
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    final tone = this.tone ?? colors.ok;
+    final enabled = onPressed != null;
+    final radius = BorderRadius.circular(16);
     return SizedBox(
       height: height,
-      child: FilledButton.icon(
-        style: FilledButton.styleFrom(
-          backgroundColor: colors.ok,
-          foregroundColor: colors.bg,
-          textStyle: AmpereType.sectionTitle,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          color: enabled ? null : colors.surface3,
+          gradient: enabled
+              ? LinearGradient(
+                  // Vert → turquoise ; une autre teinte s'éclaircit seule.
+                  colors: [
+                    tone,
+                    tone == colors.ok
+                        ? Color.lerp(tone, colors.accent, 0.45)!
+                        : Color.lerp(tone, colors.ink, 0.25)!,
+                  ],
+                )
+              : null,
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: tone.withValues(alpha: 0.35),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
-        onPressed: onPressed,
-        icon: Icon(icon, size: 22),
-        label: Text(label),
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            foregroundColor: colors.bg,
+            disabledForegroundColor: colors.ink3,
+            textStyle: AmpereType.sectionTitle,
+            shape: RoundedRectangleBorder(borderRadius: radius),
+          ),
+          onPressed: onPressed,
+          icon: Icon(icon, size: 22),
+          label: Text(label),
+        ),
       ),
     );
   }
@@ -1324,7 +1580,7 @@ class _ProductGrid extends ConsumerWidget {
           child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 210,
-              mainAxisExtent: 112,
+              mainAxisExtent: 126,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -1371,6 +1627,18 @@ class _ProductTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final picked = inCart != null;
+    // Couleur stable par catégorie (sinon par référence) : le catalogue se
+    // lit d'un coup d'œil, sans palette inventée (couleurs du thème).
+    final palette = [
+      colors.accent,
+      colors.vizAlt,
+      colors.ok,
+      colors.warn,
+      colors.info,
+    ];
+    final key = product.categoryId ?? product.sku;
+    final tone =
+        palette[key.codeUnits.fold<int>(0, (a, c) => a + c) % palette.length];
     return Material(
       color: picked ? colors.accentBg : colors.surface,
       shape: RoundedRectangleBorder(
@@ -1381,10 +1649,19 @@ class _ProductTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                width: 28,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 7),
+                decoration: BoxDecoration(
+                  color: tone,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1424,13 +1701,23 @@ class _ProductTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: AmpereType.mono.copyWith(color: colors.ink3),
               ),
-              Text(
-                price == null
-                    ? 'Prix non fixé'
-                    : '${formatDA(price!)} / ${product.unit.short}',
-                style: AmpereType.bodyStrong.copyWith(
-                  color: price == null ? colors.error : colors.accentHi,
-                  fontFeatures: AmpereType.tabular,
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (price == null ? colors.error : tone).withValues(
+                    alpha: 0.14,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  price == null
+                      ? 'Prix non fixé'
+                      : '${formatDA(price!)} / ${product.unit.short}',
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: price == null ? colors.error : colors.ink,
+                    fontFeatures: AmpereType.tabular,
+                  ),
                 ),
               ),
             ],

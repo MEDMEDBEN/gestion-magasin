@@ -786,7 +786,7 @@ class _CaptureSalesApi extends SalesApi {
     cashSalesAmount: 1845000,
     cashSalesCount: 7,
     currentAmount: 2345000,
-    openedAt: DateTime(2026, 9, 15, 8, 2),
+    openedAt: DateTime.now(),
   );
 
   @override

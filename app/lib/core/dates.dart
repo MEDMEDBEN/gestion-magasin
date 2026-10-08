@@ -8,9 +8,13 @@ String formatDate(DateTime value) {
   return '${_two(local.day)}/${_two(local.month)}/${local.year}';
 }
 
-String formatDateTime(DateTime value) {
+String formatDateTime(DateTime value) =>
+    '${formatDate(value)} ${formatTime(value)}';
+
+/// Heure seule `HH:MM` (ouverture de caisse du jour).
+String formatTime(DateTime value) {
   final local = value.toLocal();
-  return '${formatDate(local)} ${_two(local.hour)}:${_two(local.minute)}';
+  return '${_two(local.hour)}:${_two(local.minute)}';
 }
 
 /// Jour civil `AAAA-MM-JJ` (échéance saisie au calendrier, sans heure) — le

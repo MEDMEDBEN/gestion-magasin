@@ -4,6 +4,24 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Caisse du jour + refonte visuelle de la Vente — 2026-10-08 (MEDMEDBEN, Claude)
+
+- **Une caisse ne vit qu'un jour** (heure d'Alger, décision MEDMEDBEN) : une caisse d'un jour passé n'accepte
+  plus ni vente espèces ni mouvement (`lockOpenSession`) ; elle est **clôturée automatiquement** (attendu
+  calculé, compté et écart VIDES, note « Clôture automatique… », audit VALIDATE) dès que `GET
+  /cash-sessions/current`, la liste admin ou une ouverture passe. Le caissier rouvre avec le fond du jour.
+  App : `todaysCash()` traite aussi une caisse mémorisée d'hier (hors ligne) comme fermée ; rapport Z et liste
+  admin affichent « non comptée » / « Clôture auto » (jamais un faux 0).
+  ⚠️ Limite connue : une vente espèces faite hors ligne la veille et synchronisée après minuit est refusée
+  (caisse close) — comme après une clôture manuelle.
+- **Refonte visuelle Vente** (sans changer les règles) : onglets en pastilles (dégradé d'accent, passent à la
+  ligne sur téléphone — le 4ᵉ onglet « Confrères » écrasait le sélecteur), carte « tiroir » (ouverte : montant,
+  heure, fond, mouvements, clôturer ; fermée : « Ouvrir la caisse » + consigne), afficheur total lumineux,
+  bouton Encaisser en dégradé vert→turquoise (caisse fermée : « Ouvrir la caisse pour encaisser »), tuiles
+  avec liseré couleur par catégorie et prix en pastille, ticket daté avec pointillés. Couleurs du thème AMPÈRE.
+- Preuves : backend tsc/lint OK, 166 unitaires ; app analyze 0, **545 tests** ; captures 21/22 vérifiées.
+  ⚠️ e2e NON lancés (Docker arrêté) : `cash-sessions.e2e-spec.ts` (test « caisse de la veille » ajouté).
+
 ### Confrères — 2026-10-08 (MEDMEDBEN, Claude)
 
 - Décisions MEDMEDBEN : admin + vendeur (magasinier exclu), depuis l'écran Vente ; dette SANS plafond des deux

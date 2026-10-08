@@ -40,6 +40,7 @@ describe('Caisse (e2e)', () => {
       ['vendeur2', RoleCode.VENDEUR],
       ['vendeur3', RoleCode.VENDEUR],
       ['caissier', RoleCode.VENDEUR],
+      ['veille', RoleCode.VENDEUR],
       ['magasinier', RoleCode.MAGASINIER],
     ] as const) {
       const email = `e2e-cash-${key}-${suffix}@test.local`;
@@ -115,6 +116,45 @@ describe('Caisse (e2e)', () => {
       orderBy: { createdAt: 'asc' },
     });
     expect(audit.map((a) => a.action)).toEqual(['CREATE', 'VALIDATE']);
+  });
+
+  /// Décision MEDMEDBEN du 2026-10-08 : une caisse ne vit qu'un jour.
+  it('caisse de la veille : plus de sortie, clôture auto non comptée, on rouvre', async () => {
+    const opened = (
+      await as(tokens.veille)
+        .post('/api/cash-sessions')
+        .send({ locationId: magasinId, openingFloat: 300000 })
+        .expect(201)
+    ).body as { id: string };
+    // Ouverte « hier » (deux jours plus tôt, quel que soit le fuseau).
+    await prisma.cashSession.update({
+      where: { id: opened.id },
+      data: { openedAt: new Date(Date.now() - 2 * 86_400_000) },
+    });
+    const out = await as(tokens.veille)
+      .post(`/api/cash-sessions/${opened.id}/movements`)
+      .send({ type: 'SORTIE', amount: 1000, note: 'Café' });
+    expect(out.status).toBeGreaterThanOrEqual(400);
+
+    const current = await as(tokens.veille)
+      .get('/api/cash-sessions/current')
+      .expect(200);
+    expect(current.body).toEqual({});
+    const closed = await prisma.cashSession.findUniqueOrThrow({
+      where: { id: opened.id },
+    });
+    expect(closed).toMatchObject({
+      status: 'CLOTUREE',
+      expectedAmount: 300000,
+      countedAmount: null,
+      difference: null,
+    });
+    expect(closed.note).toContain('automatique');
+
+    await as(tokens.veille)
+      .post('/api/cash-sessions')
+      .send({ locationId: magasinId, openingFloat: 250000 })
+      .expect(201);
   });
 
   /// P1 bis n°21k : entrée, sortie, prélèvement — avec motif, jamais sous 0,

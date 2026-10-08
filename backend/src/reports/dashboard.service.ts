@@ -98,7 +98,9 @@ export class DashboardService {
     const session = await this.prisma.cashSession.findFirst({
       where: { userId: user.id, status: 'OUVERTE' },
     });
-    if (!session) return { open: false, currentAmount: 0, openedAt: null };
+    if (!session || CashSessionsService.isStale(session)) {
+      return { open: false, currentAmount: 0, openedAt: null };
+    }
     return {
       open: true,
       currentAmount: await CashSessionsService.drawerAmount(

@@ -37,7 +37,23 @@ const cashPendingSync = 'EN_ATTENTE';
 ///    une, elle pourrait déjà l'être au serveur (audit tranche C).
 final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>((
   ref,
-) async {
+) async => todaysCash(await _cashSession(ref)));
+
+/// Une caisse ne vit qu'UN jour (décision MEDMEDBEN du 2026-10-08) : celle
+/// d'un jour passé est close (le serveur la clôture) — on rouvre avec le fond
+/// du jour. Vrai aussi hors ligne, sur l'état mémorisé.
+CashSession? todaysCash(CashSession? session, [DateTime? now]) {
+  if (session == null) return null;
+  final opened = session.openedAt.toLocal();
+  final today = (now ?? DateTime.now()).toLocal();
+  final sameDay =
+      opened.year == today.year &&
+      opened.month == today.month &&
+      opened.day == today.day;
+  return sameDay ? session : null;
+}
+
+Future<CashSession?> _cashSession(Ref ref) async {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return null;
   // Recalcul à chaque mouvement de la file (mise en file, synchro, rejet).
@@ -74,7 +90,7 @@ final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>((
         ? null
         : CashSession.fromJson(jsonDecode(known) as Map<String, dynamic>);
   }
-});
+}
 
 final customerSearchProvider = FutureProvider.autoDispose
     .family<List<Customer>, String>((ref, query) async {

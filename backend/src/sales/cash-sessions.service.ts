@@ -3,6 +3,7 @@ import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { parseApiDate } from '../common/api-date';
+import { localDate } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import { assertSameMutation, runOnce } from '../common/idempotency';
@@ -82,6 +83,7 @@ export class CashSessionsService {
     openedAt: Date = new Date(),
   ): Promise<CashSessionDto> {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, hashtext(${user.id}))`;
+    await CashSessionsService.closeStale(tx, user.id, openedAt);
     const already = await tx.cashSession.findFirst({
       where: { userId: user.id, status: 'OUVERTE' },
     });
@@ -127,6 +129,7 @@ export class CashSessionsService {
   /// Toutes les caisses (ADMIN) : qui, quand, attendu / compté / écart. Totaux
   /// de TOUTE la page en une requête (jamais une par session).
   async findAll(query: CashSessionListQueryDto): Promise<CashSessionListDto> {
+    await this.prisma.$transaction((tx) => CashSessionsService.closeStale(tx));
     const where: Prisma.CashSessionWhereInput = {
       ...(query.status && { status: query.status }),
       ...(query.userId && { userId: query.userId }),
@@ -170,6 +173,9 @@ export class CashSessionsService {
 
   /// Caisse ouverte du compte connecté, ou `null`.
   async current(user: AuthenticatedUser): Promise<CashSessionDto | null> {
+    await this.prisma.$transaction((tx) =>
+      CashSessionsService.closeStale(tx, user.id),
+    );
     const session = await this.prisma.cashSession.findFirst({
       where: { userId: user.id, status: 'OUVERTE' },
     });
@@ -404,7 +410,53 @@ export class CashSessionsService {
     const session = await tx.cashSession.findUnique({
       where: { id: rows[0].id },
     });
-    return session?.status === 'OUVERTE' ? session : null;
+    // Caisse d'un jour passé : plus d'encaissement ni de sortie (elle sera
+    // clôturée automatiquement ; on rouvre avec le fond du jour).
+    return session?.status === 'OUVERTE' &&
+      !CashSessionsService.isStale(session)
+      ? session
+      : null;
+  }
+
+  /// Une caisse ne vit qu'UN jour, heure d'Alger (décision MEDMEDBEN du
+  /// 2026-10-08) : le lendemain, on rouvre avec le fond de caisse du jour.
+  static isStale(session: { openedAt: Date }, now = new Date()): boolean {
+    return localDate(session.openedAt) < localDate(now);
+  }
+
+  /// Clôture AUTOMATIQUE des caisses restées ouvertes un jour passé (d'un
+  /// compte, ou de tous) : attendu calculé, rien compté — compté et écart
+  /// restent vides, la note le dit. Auditée au nom du caissier.
+  static async closeStale(tx: Db, userId?: string, now = new Date()) {
+    const open = await tx.cashSession.findMany({
+      where: { status: 'OUVERTE', ...(userId && { userId }) },
+    });
+    for (const session of open) {
+      if (!CashSessionsService.isStale(session, now)) continue;
+      const totals = await CashSessionsService.totals(tx, session.id);
+      const expected = session.openingFloat + totals.cashIn - totals.cashOut;
+      // `updateMany` sous condition : une clôture manuelle simultanée gagne.
+      const { count } = await tx.cashSession.updateMany({
+        where: { id: session.id, status: 'OUVERTE' },
+        data: {
+          status: 'CLOTUREE',
+          closedAt: now,
+          expectedAmount: expected,
+          note: 'Clôture automatique (changement de jour) — caisse non comptée',
+        },
+      });
+      if (count === 0) continue;
+      await writeAudit(
+        tx,
+        { userId: session.userId },
+        {
+          action: 'VALIDATE',
+          entityType: 'CashSession',
+          entityId: session.id,
+          newValue: { automatic: true, expectedAmount: expected },
+        },
+      );
+    }
   }
 
   /// Espèces présentes dans le tiroir de la session, en ce moment.

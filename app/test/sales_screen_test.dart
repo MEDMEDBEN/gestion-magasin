@@ -288,7 +288,8 @@ final _openCash = CashSession(
   cashSalesAmount: 0,
   cashSalesCount: 0,
   currentAmount: 500000,
-  openedAt: DateTime.utc(2026, 9, 15, 8),
+  // Caisse du JOUR : celle d'un jour passé est close (2026-10-08).
+  openedAt: DateTime.now(),
 );
 
 Product _cable() =>
@@ -335,7 +336,7 @@ class _MemoryQueue implements MutationQueue {
       deviceId: 'poste-caisse',
       operationType: last.type,
       payload: jsonEncode(last.payload),
-      deviceTimestamp: DateTime.utc(2026, 9, 22, 8),
+      deviceTimestamp: DateTime.now().toUtc(),
       status: LocalMutationStatus.enAttente,
       attemptCount: 0,
       createdAt: DateTime.utc(2026, 9, 22, 8),
@@ -535,6 +536,17 @@ void main() {
     },
   );
 
+  test('une caisse ne vit qu’un jour : celle d’hier est close (2026-10-08)', () {
+    final now = DateTime(2026, 10, 9, 9, 30);
+    final today = _openCash.copyWith(openedAt: DateTime(2026, 10, 9, 7));
+    final yesterday = _openCash.copyWith(
+      openedAt: DateTime(2026, 10, 8, 23, 50),
+    );
+    expect(todaysCash(today, now), today);
+    expect(todaysCash(yesterday, now), isNull);
+    expect(todaysCash(null, now), isNull);
+  });
+
   testWidgets(
     'douchette → panier → encaissement : produit + quantité, monnaie rendue',
     (tester) async {
@@ -658,14 +670,18 @@ void main() {
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       final api = _FakeSalesApi();
-      await _pumpScreen(tester, api, []);
+      await _pumpScreen(tester, api, [], withStore: true);
       for (var i = 0; i < 2; i++) {
         await tester.enterText(find.byType(TextField).first, '3245060123458');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
       }
-      await tester.tap(find.textContaining('Encaisser 2'));
+      // Caisse fermée (2026-10-08) : pas de bouton Encaisser — le bouton
+      // principal ouvre la caisse (fond du jour) avant la première vente.
+      expect(find.textContaining('Encaisser 2'), findsNothing);
+      await tester.tap(find.text('Ouvrir la caisse pour encaisser'));
       await tester.pumpAndSettle();
+      expect(find.text('Ouvrir la caisse du jour'), findsOneWidget);
 
       expect(api.sent, isNull);
       expect(find.text('Valider la vente'), findsNothing);
