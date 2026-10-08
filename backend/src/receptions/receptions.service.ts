@@ -7,6 +7,7 @@ import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
 import { NO_TAX, roundMoney, taxAmount } from '../common/money';
 import { assertSameMutation, runOnce } from '../common/idempotency';
+import { formatDA } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -77,6 +78,9 @@ export class ReceptionsService {
     user: AuthenticatedUser,
     actor: ActorContext | null,
     receivedAt: Date = new Date(),
+    /// Achat à un CONFRÈRE (route `/confreres`, admin ou vendeur) : hors
+    /// commande par nature (décision MEDMEDBEN 2026-10-08).
+    confrere = false,
   ): Promise<ReceptionDto> {
     // Verrou : une suppression (désactivation) concurrente attend la fin de
     // cette opération, qui crée une dette (audit du 2026-10-06).
@@ -107,7 +111,7 @@ export class ReceptionsService {
     // Hors commande, la réception EST un achat : elle crée du stock, de
     // la dette et un coût d'achat sans qu'aucun admin ait engagé quoi que
     // ce soit. Réservée à l'ADMIN (audit sécurité du 2026-09-20).
-    if (!order && !user.roles.includes('ADMIN')) {
+    if (!order && !confrere && !user.roles.includes('ADMIN')) {
       throw new BusinessException(
         ErrorCode.FORBIDDEN_ROLE,
         'Réception hors commande réservée à l’administrateur : ' +
@@ -151,6 +155,27 @@ export class ReceptionsService {
     }
 
     const lines = await this.buildLines(tx, dto, order);
+    // Achat d'un VENDEUR à un confrère : le prix d'achat devient le plancher
+    // de vente (règle 13) — il ne peut pas le faire baisser (audit sécu du
+    // 2026-10-08 : sinon, un achat à 1 centime ouvrait la vente à perte).
+    // ponytail: sans coût connu, le premier prix saisi fixe le plancher.
+    if (confrere && !user.roles.includes('ADMIN')) {
+      const costs = await tx.product.findMany({
+        where: { id: { in: lines.map((l) => l.productId) } },
+        select: { id: true, name: true, lastPurchasePriceHt: true },
+      });
+      for (const line of lines) {
+        const p = costs.find((c) => c.id === line.productId)!;
+        if (p.lastPurchasePriceHt && line.unitPriceHt < p.lastPurchasePriceHt) {
+          throw new BusinessException(
+            ErrorCode.PRICE_BELOW_COST,
+            `${p.name} : prix d’achat sous le coût actuel ` +
+              `(${formatDA(p.lastPurchasePriceHt)} HT) — à voir avec l’administrateur`,
+            HttpStatus.UNPROCESSABLE_ENTITY,
+          );
+        }
+      }
+    }
     const totalTtc = ReceptionsService.totalTtc(lines);
     const number = await nextDocumentNumber(tx, 'RECEPTION', 'BR', 5);
     const reception = await tx.reception.create({

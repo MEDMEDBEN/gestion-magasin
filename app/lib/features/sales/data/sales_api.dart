@@ -7,6 +7,7 @@ import '../../../core/error/api_exception.dart';
 import '../../../core/file_export.dart';
 import '../../../core/providers.dart';
 import '../../payments/data/payment_models.dart';
+import 'confrere.dart';
 import 'sales_models.dart';
 
 /// Accès réseau Caisse / Ventes / Clients. Aucune règle ici : le serveur fixe
@@ -231,6 +232,30 @@ class SalesApi {
       );
     });
   }
+
+  // ── Confrères (admin + vendeur, en ligne) ───────────────────────────────
+  Future<List<Confrere>> confreres() => guardApi(() async {
+    final response = await _dio.get<List<dynamic>>('/confreres');
+    return [
+      for (final row in response.data!)
+        Confrere.fromJson(row as Map<String, dynamic>),
+    ];
+  });
+
+  Future<Confrere> createConfrere(Map<String, Object?> body) =>
+      _post('/confreres', body, Confrere.fromJson);
+
+  /// Achat (`receive`) ou échange (`receive` + `give`) : rend le n° du bon,
+  /// celui de la vente éventuelle et les nouveaux soldes.
+  Future<Map<String, dynamic>> confrereDeal(
+    String id,
+    Map<String, Object?> body,
+  ) => _post('/confreres/$id/deals', body, (json) => json);
+
+  Future<Customer> customer(String id) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>('/customers/$id');
+    return Customer.fromJson(response.data!);
+  });
 
   Future<T> _post<T>(
     String path,

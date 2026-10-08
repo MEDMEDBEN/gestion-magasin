@@ -117,7 +117,7 @@ aucune migration destructive sans confirmation).
 | Lire une photo de facture (`POST /receptions/scan-invoice`, P2 n°24 — lignes proposées, rien d'écrit) | ✅ | ❌ | ✅ (`reception.create`) |
 | Préparer des commandes BROUILLON depuis le réapprovisionnement (`POST /replenishment/orders`, P2 n°22) ; message au fournisseur (`GET /purchase-orders/:id/message`) | ✅ | ❌ | ✅ (`purchase.create`) |
 | Retour de marchandise au fournisseur (`POST /supplier-returns`, bon RF) | ✅ (`reception.create`) | ❌ | ✅ (`reception.create`) |
-| Réceptionner **hors commande** | ✅ | ❌ | ❌ |
+| Réceptionner **hors commande** | ✅ | ❌ (sauf achat à un CONFRÈRE, voir ci-dessous) | ❌ |
 
 **Décisions du 2026-09-20 (audit sécurité de P0 #7)**
 - **Le prix d'achat vient de la commande confirmée**, jamais du bon de réception : l'admin engage le prix en
@@ -128,6 +128,23 @@ aucune migration destructive sans confirmation).
   Le magasinier crée d'abord la commande, l'admin la confirme, puis la réception suit le chemin normal.
 - Les lectures de réceptions (`GET /receptions`) portent la permission `reception.create` : la matrice
   n'accorde « Réceptionner » qu'à l'admin et au magasinier et ne prévoit pas de droit de lecture distinct.
+
+## Confrères (ajouté le 2026-10-08)
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Liste et soldes (`GET /confreres` : il me doit / je lui dois / net) | ✅ (`customer.read`) | ✅ (`customer.read`) | ❌ (403) |
+| Nouveau confrère (`POST /confreres` : crée sa fiche client ET sa fiche fournisseur liée) | ✅ (`customer.write`) | ✅ (`customer.write`) | ❌ (403) |
+| Achat / échange (`POST /confreres/:id/deals` : réception hors commande au magasin + vente à crédit) | ✅ (`sale.create`) | ✅ (`sale.create`, prix d'achat jamais sous le coût actuel) | ❌ (403) |
+| Vente au confrère (panier `POST /sales`, hors ligne compris) : crédit SANS plafond, échéance facultative | ✅ | ✅ (`sale.credit`) | ❌ |
+| Encaisser un règlement du confrère | ✅ | ✅ | ❌ |
+| Verser un règlement AU confrère (paiement fournisseur) | ✅ | ❌ | ❌ |
+
+**Décisions MEDMEDBEN du 2026-10-08** : admin + vendeur (depuis l'écran Vente), dette sans plafond, solde net
+affiché — le vendeur voit donc la dette envers un CONFRÈRE (exception limitée aux confrères à « le vendeur n'a
+aucun accès aux fournisseurs ») et crée la fiche fournisseur liée à un nouveau confrère, jamais une autre.
+Audit sécurité du 2026-10-08 : l'achat d'un vendeur ne peut pas faire baisser le dernier prix d'achat (il fixe
+le plancher de vente, règle 13) → 422 `PRICE_BELOW_COST`. Fournisseur lié désactivé : le client redevient
+ordinaire (plafond). Limite connue : sans coût connu, le premier prix saisi fixe le plancher.
 
 ## Transferts magasin ↔ dépôt
 | Action | Admin | Vendeur/Caissier | Magasinier |

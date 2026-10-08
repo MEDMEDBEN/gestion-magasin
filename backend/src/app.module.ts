@@ -12,6 +12,7 @@ import { RolesGuard } from './common/roles.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { LocationsModule } from './locations/locations.module';
 import { ProductsModule } from './products/products.module';
+import { ConfreresModule } from './confreres/confreres.module';
 import { CustomersModule } from './customers/customers.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { ReceptionsModule } from './receptions/receptions.module';
@@ -60,6 +61,7 @@ import { UsersModule } from './users/users.module';
     PlanningModule,
     AuditModule,
     CustomersModule,
+    ConfreresModule,
     ProductsModule,
     LocationsModule,
     ReplenishmentModule,

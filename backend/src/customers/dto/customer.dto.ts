@@ -206,6 +206,11 @@ export class CustomerDto {
   })
   totalPaid!: number | null;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({
+    description:
+      'Confrère : aussi fournisseur, dette sans plafond (2026-10-08).',
+  })
+  isConfrere!: boolean;
 }
 
 export class CustomerListDto {

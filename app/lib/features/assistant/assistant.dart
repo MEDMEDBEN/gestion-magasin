@@ -239,7 +239,7 @@ final assistantCommands = <AssistantCommand>[
   ),
   AssistantCommand(
     title: 'Chercher un produit',
-    example: 'cherche disjoncteur · 9aleb · find',
+    example: 'cherche disjoncteur · hawes · find',
     icon: LucideIcons.search,
     keywords: const [
       'cherche',
@@ -248,8 +248,7 @@ final assistantCommands = <AssistantCommand>[
       'trouve',
       'trouver',
       'prix',
-      '9aleb',
-      'qaleb',
+      'hawes',
       'chof',
       'chouf',
       'find',

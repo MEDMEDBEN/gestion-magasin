@@ -4,6 +4,29 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Confrères — 2026-10-08 (MEDMEDBEN, Claude)
+
+- Décisions MEDMEDBEN : admin + vendeur (magasinier exclu), depuis l'écran Vente ; dette SANS plafond des deux
+  côtés ; le versement AU confrère = paiement fournisseur, admin seul.
+- Modèle : un confrère = un `Customer` relié à sa fiche `Supplier` (`Customer.supplierId`, unique). Migration
+  **additive** `20261008090000_customer_confrere`.
+- Serveur (`src/confreres/`) : `GET /confreres` (soldes : il me doit / je lui dois / net), `POST /confreres`
+  (crée client + fournisseur), `POST /confreres/:id/deals` = achat (`receive`) ou échange (`receive` + `give`)
+  en UNE transaction : réception hors commande au magasin (exception `confrere` dans
+  `ReceptionsService.createInTx`) + vente à crédit. Idempotent (2 clés : `clientMutationId`, `saleMutationId`).
+  Vente à un confrère (panier, hors ligne compris) : ni plafond ni échéance obligatoire.
+- App : segment « Confrères » dans Vente (Lui vendre → panier, Lui acheter, Échange, Il me paie, Je le paie
+  [admin]). Achat/échange EN LIGNE seulement. `SupplierPaymentDialog` rendu réutilisable.
+- **Audit sécurité** (2026-10-08) : corrigés — un vendeur ne peut plus faire baisser le coût (plancher de vente)
+  par un achat à un confrère (422) ; fournisseur lié désactivé = plus de crédit illimité ; création du fournisseur
+  auditée. Exception vendeur documentée dans `docs/permissions.md` (section Confrères). Non corrigés (mineurs) :
+  rejeu d'un échange renvoyé sans `give` répond `saleNumber: null` ; pas de seuil de montant sur l'achat vendeur
+  (audité + notifié à l'admin).
+- Assistant : « 9aleb » / « qaleb » remplacés par « hawes ».
+- Preuves : backend tsc/lint OK, **166 unitaires** ; app analyze 0, **544 tests**.
+  ⚠️ **e2e NON lancés** (Docker arrêté) : `confreres.e2e-spec.ts` (8 tests), `money-contract` (route ajoutée) et
+  la migration — `npm run test:e2e -- --runInBand confreres money-contract`.
+
 ### Supprimer un utilisateur — 2026-10-07 (MEDMEDBEN, Claude)
 
 - `DELETE /users/:id` (ADMIN, `user.manage`, droits relus) : le compte est ARCHIVÉ (règle 7, l'historique le

@@ -142,6 +142,9 @@ abstract class Customer with _$Customer {
     /// Part de la dette dont l'échéance est dépassée.
     @Default(0) int overdueAmount,
     required bool isActive,
+
+    /// Confrère : dette sans plafond, échéance facultative (2026-10-08).
+    @Default(false) bool isConfrere,
   }) = _Customer;
 
   factory Customer.fromJson(Map<String, dynamic> json) =>

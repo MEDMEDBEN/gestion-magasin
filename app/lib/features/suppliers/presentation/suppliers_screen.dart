@@ -464,7 +464,10 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   Future<void> _pay(Supplier supplier) async {
     final result = await showDialog<({int amount, bool fromCash})>(
       context: context,
-      builder: (context) => _PaymentDialog(supplier: supplier),
+      builder: (context) => SupplierPaymentDialog(
+        name: supplier.name,
+        balanceDue: supplier.balanceDue,
+      ),
     );
     if (result == null || !mounted) return;
     try {
@@ -484,18 +487,25 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
   }
 }
 
-class _PaymentDialog extends StatefulWidget {
-  const _PaymentDialog({required this.supplier});
+/// Paiement À un fournisseur (ou à un confrère) : montant, depuis la caisse
+/// ou non. Rend `(amount, fromCash)`.
+class SupplierPaymentDialog extends StatefulWidget {
+  const SupplierPaymentDialog({
+    super.key,
+    required this.name,
+    required this.balanceDue,
+  });
 
-  final Supplier supplier;
+  final String name;
+  final int balanceDue;
 
   @override
-  State<_PaymentDialog> createState() => _PaymentDialogState();
+  State<SupplierPaymentDialog> createState() => _SupplierPaymentDialogState();
 }
 
-class _PaymentDialogState extends State<_PaymentDialog> {
+class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
   late final TextEditingController _amount = TextEditingController(
-    text: formatDA(widget.supplier.balanceDue, withSymbol: false),
+    text: formatDA(widget.balanceDue, withSymbol: false),
   );
   bool _fromCash = true;
   String? _error;
@@ -512,7 +522,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
       setState(() => _error = 'Montant invalide');
       return;
     }
-    if (amount > widget.supplier.balanceDue) {
+    if (amount > widget.balanceDue) {
       setState(() => _error = 'Au-delà du reste dû');
       return;
     }
@@ -522,12 +532,12 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Payer ${widget.supplier.name}'),
+      title: Text('Payer ${widget.name}'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Reste dû : ${formatDA(widget.supplier.balanceDue)}'),
+          Text('Reste dû : ${formatDA(widget.balanceDue)}'),
           const SizedBox(height: 8),
           TextField(
             controller: _amount,

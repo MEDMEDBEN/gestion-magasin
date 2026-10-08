@@ -650,10 +650,15 @@ model Customer {
   creditLimit Int      @default(0)
   notes       String?
   isActive    Boolean  @default(true)
+  /// Confrère (décision MEDMEDBEN 2026-10-08) : un autre commerçant, à la fois
+  /// client (on lui vend) et fournisseur (on lui achète) — sa fiche
+  /// fournisseur. Solde net = sa dette client − notre dette fournisseur.
+  supplierId  String?  @unique @db.Uuid
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   priceTier PriceTier?        @relation(fields: [priceTierId], references: [id])
+  supplier  Supplier?         @relation(fields: [supplierId], references: [id])
   sales     Sale[]
   quotes    Quote[]
   payments  CustomerPayment[]
@@ -923,6 +928,7 @@ model Supplier {
   receptions     Reception[]
   payments       SupplierPayment[]
   returns        SupplierReturn[]
+  confrere       Customer?
 
   @@index([name])
 }

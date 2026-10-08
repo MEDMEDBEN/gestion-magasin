@@ -23,6 +23,8 @@ export const MONEY_ROUTES = [
   '/api/receptions',
   // La conversion d'un devis CRÉE une vente : encaissement, crédit, stock.
   '/api/quotes/:id/convert',
+  // Achat / échange avec un confrère : stock, dette fournisseur et client.
+  '/api/confreres/:id/deals',
 ] as const;
 
 /// `/api/payments/customer/:id/reverse` → motif de chemin réel.

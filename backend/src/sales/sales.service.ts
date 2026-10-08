@@ -251,6 +251,12 @@ export class SalesService {
 
     // Crédit : client identifié, droit `sale.credit`, dans son plafond.
     const credit = totalTtc - dto.paidAmount;
+    // Confrère = fiche fournisseur liée et ACTIVE (désactivée : client ordinaire).
+    const confrere =
+      customer?.supplierId != null &&
+      (await tx.supplier.count({
+        where: { id: customer.supplierId, isActive: true },
+      })) > 0;
     if (credit > 0) {
       if (!customer) {
         throw new BusinessException(
@@ -266,8 +272,11 @@ export class SalesService {
           HttpStatus.FORBIDDEN,
         );
       }
-      const debt = await SalesService.customerDebt(tx, customer.id);
-      if (debt + credit > customer.creditLimit) {
+      const debt = confrere
+        ? 0
+        : await SalesService.customerDebt(tx, customer.id);
+      // Confrère : dette SANS plafond (décision MEDMEDBEN 2026-10-08).
+      if (!confrere && debt + credit > customer.creditLimit) {
         throw new BusinessException(
           ErrorCode.CREDIT_LIMIT_EXCEEDED,
           `Plafond de crédit dépassé : dette ${formatDA(debt)}, crédit demandé ` +
@@ -278,7 +287,11 @@ export class SalesService {
     }
 
     // Échéance vérifiée APRÈS client, droit et plafond (messages plus utiles).
-    const dueDate = SalesService.dueDate(dto.dueDate, credit, soldAt);
+    // Entre confrères, l'échéance est facultative.
+    const dueDate =
+      confrere && dto.dueDate === undefined
+        ? null
+        : SalesService.dueDate(dto.dueDate, credit, soldAt);
 
     const [{ value }] = await tx.$queryRaw<{ value: bigint }[]>`
     SELECT nextval('sale_ticket_seq') AS value`;

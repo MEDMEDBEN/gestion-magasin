@@ -806,6 +806,7 @@ export class CustomersService {
       totalPurchased: account.purchased,
       totalPaid: account.purchased - account.balance,
       isActive: customer.isActive,
+      isConfrere: customer.supplierId !== null,
     };
   }
 }

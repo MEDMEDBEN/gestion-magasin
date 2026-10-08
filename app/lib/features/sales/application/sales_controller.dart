@@ -17,6 +17,7 @@ import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../../stock/application/stock_controller.dart';
 import '../../payments/data/payment_models.dart';
+import '../data/confrere.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 import '../../../ui/widgets/period_filter.dart';
@@ -83,6 +84,12 @@ final customerSearchProvider = FutureProvider.autoDispose
           .customers(query: query.isEmpty ? null : query);
       return page.data;
     });
+
+/// Confrères et soldes — lus EN LIGNE (les soldes sont calculés serveur).
+final confreresProvider = FutureProvider.autoDispose<List<Confrere>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.watch(salesApiProvider).confreres();
+});
 
 final mySalesProvider = FutureProvider.autoDispose<List<Sale>>((ref) async {
   ref.watch(currentUserIdProvider);

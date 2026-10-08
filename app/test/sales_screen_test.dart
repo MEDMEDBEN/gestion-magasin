@@ -18,6 +18,7 @@ import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/sales/application/sales_controller.dart';
+import 'package:gestion_magasin/features/sales/data/confrere.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/sales/presentation/sales_screen.dart';
@@ -164,6 +165,29 @@ class _FakeSalesApi extends SalesApi {
     customerSaved = fields;
     return (await customers()).data.single;
   }
+
+  /// Confrères (2026-10-08) : un seul, à qui je dois 1 500,00 net.
+  @override
+  Future<List<Confrere>> confreres() async => const [
+    Confrere(
+      id: 'cf1',
+      supplierId: 'sf1',
+      name: 'Ali Élec',
+      theyOwe: 50000,
+      weOwe: 200000,
+      net: -150000,
+    ),
+  ];
+
+  @override
+  Future<Customer> customer(String id) async => Customer(
+    id: id,
+    name: 'Ali Élec',
+    creditLimit: 0,
+    balanceDue: 50000,
+    isActive: true,
+    isConfrere: true,
+  );
 
   @override
   Future<CustomerPage> customers({String? query, int limit = 50}) async =>
@@ -864,6 +888,26 @@ void main() {
       expect(find.textContaining('Encaisser'), findsOneWidget);
     },
   );
+
+  /// Demande MEDMEDBEN du 2026-10-08 : les confrères, depuis l'écran Vente.
+  testWidgets('confrères : soldes, « Lui vendre » ouvre la vente sans plafond', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await tester.tap(find.text('Confrères'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ali Élec'), findsOneWidget);
+    expect(find.text('Je lui dois ${formatDA(150000)}'), findsOneWidget);
+    // Verser au confrère = paiement fournisseur : pas pour le vendeur.
+    expect(find.text('Je le paie'), findsNothing);
+    expect(find.text('Lui acheter'), findsOneWidget);
+    expect(find.text('Échange'), findsOneWidget);
+
+    await tester.tap(find.text('Lui vendre'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('confrère, sans plafond'), findsOneWidget);
+  });
 
   /// Retour de test humain (2026-09-27) : l'historique des achats d'un client
   /// était introuvable depuis sa fiche.

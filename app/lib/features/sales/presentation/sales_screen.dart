@@ -33,6 +33,7 @@ import '../data/sales_models.dart';
 import '../../scan/presentation/scan_screen.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/contact_profile.dart';
+import 'confreres_section.dart';
 import 'customer_form.dart';
 import 'sales_history.dart';
 
@@ -63,9 +64,18 @@ class SalesRights {
       canManageCustomerTerms =
           user.hasRole('ADMIN') && user.can('price.manage'),
       // Relevé de compte : ADMIN + customer.read (tout le CA d'un client).
-      canReadStatements = user.hasRole('ADMIN') && user.can('customer.read');
+      canReadStatements = user.hasRole('ADMIN') && user.can('customer.read'),
+      // `/confreres` : ADMIN|VENDEUR + customer.read (2026-10-08).
+      canSeeConfreres =
+          (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+          user.can('customer.read'),
+      // Verser à un confrère = `POST /payments/supplier` : ADMIN.
+      canPayConfreres =
+          user.hasRole('ADMIN') && user.can('supplier.payment.create');
 
   final bool canSell;
+  final bool canSeeConfreres;
+  final bool canPayConfreres;
   final bool canInvoice;
   final bool canManageCash;
   final bool canWriteCustomers;
@@ -88,7 +98,7 @@ class SalesRights {
   final bool canReadStatements;
 }
 
-enum _Section { sale, history, customers, cashSessions }
+enum _Section { sale, history, customers, confreres, cashSessions }
 
 void _snack(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
@@ -164,6 +174,11 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                     value: _Section.customers,
                     label: Text('Clients'),
                   ),
+                  if (rights.canSeeConfreres)
+                    const ButtonSegment(
+                      value: _Section.confreres,
+                      label: Text('Confrères'),
+                    ),
                   if (rights.canSeeAllCash)
                     const ButtonSegment(
                       value: _Section.cashSessions,
@@ -197,6 +212,14 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             _Section.customers => _CustomersSection(
               margin: margin,
               rights: rights,
+            ),
+            _Section.confreres => ConfreresSection(
+              margin: margin,
+              canPayConfreres: rights.canPayConfreres,
+              onSell: (customer) {
+                ref.read(cartProvider.notifier).setCustomer(customer);
+                setState(() => _section = _Section.sale);
+              },
             ),
             _Section.cashSessions => _CashSessionsSection(margin: margin),
           },
@@ -656,7 +679,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
     // Crédit : l'échéance est obligatoire (le serveur la refuse sinon).
     DateTime? dueDate;
-    if (kept < estimate.totalTtc && cart.customer != null) {
+    // Entre confrères, l'échéance est facultative (2026-10-08).
+    if (kept < estimate.totalTtc &&
+        cart.customer != null &&
+        !cart.customer!.isConfrere) {
       final today = DateUtils.dateOnly(DateTime.now());
       dueDate = await showDatePicker(
         context: context,
@@ -1656,7 +1682,7 @@ class _CustomerPicker extends ConsumerWidget {
         icon: LucideIcons.user,
         message:
             '${chosen.name} · dette ${formatDA(chosen.balanceDue)} · '
-            'plafond ${formatDA(chosen.creditLimit)}',
+            '${chosen.isConfrere ? 'confrère, sans plafond' : 'plafond ${formatDA(chosen.creditLimit)}'}',
         action: TextButton(
           onPressed: () => ref.read(cartProvider.notifier).setCustomer(null),
           child: const Text('Retirer'),
