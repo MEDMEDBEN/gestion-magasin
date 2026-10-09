@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Accueil : code couleur explicite — 2026-10-09 (MEDMEDBEN, Claude)
+
+- Code couleur UNIQUE, rappelé par une légende : vert = bon / argent qui rentre, bleu = en cours, orange = à
+  surveiller, rouge = urgent. Chaque carte prend la couleur de SON état (ex. tâches rouges s'il y a du retard,
+  stock rouge si rupture, orange si sous le seuil, vert sinon).
+- Verdict du jour en tête (« Tout est en ordre » / « N points à surveiller » / « N urgences »), « À faire
+  maintenant » (du plus grave au moins grave, cliquable vers l'écran où agir ; téléphone : 3 puis « Voir les
+  autres » ; poste ≥ 1200 px : colonne de droite). Trois blocs titrés : Ventes du jour (tendance vs hier),
+  Travail en cours, Dettes (part en retard en barre). Courbe et meilleurs produits en vert (CA). À
+  réapprovisionner : rouge épuisé, orange sous le seuil. Aucune donnée nouvelle, aucun droit changé.
+- Preuves : app analyze 0, **545 tests** ; captures 45/46 vérifiées.
+
 ### Vente v3 : Clients, Confrères, Historique en cartes — 2026-10-09 (MEDMEDBEN, Claude)
 
 - `contact_card.dart` (partagé) : carte contact (avatar à initiales teinté par l'état, téléphone, étiquettes,

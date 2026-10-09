@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../ui/breakpoints.dart';
@@ -223,6 +224,25 @@ Future<void> quickAddProduct(
   );
 }
 
+/// LE code couleur de l'accueil (demande MEDMEDBEN du 2026-10-09 : des
+/// couleurs qui EXPLIQUENT). Le même partout, rappelé par la légende :
+/// vert = l'argent rentre / tout va bien ; bleu = travail en cours ;
+/// orange = à surveiller ; rouge = urgent.
+enum _Meaning { good, work, watch, urgent }
+
+Color _tone(AmpereColors colors, _Meaning meaning) => switch (meaning) {
+  _Meaning.good => colors.ok,
+  _Meaning.work => colors.accent,
+  _Meaning.watch => colors.warn,
+  _Meaning.urgent => colors.error,
+};
+
+/// « 1 tâche » / « 3 tâches » : accorder plutôt que d'écrire « tâche(s) ».
+String _n(int n, String one, String many) => '$n ${n > 1 ? many : one}';
+
+/// Un point « à faire maintenant » : gravité, icône, phrase, écran où agir.
+typedef _Alert = (_Meaning, IconData, String, String?);
+
 class _Blocks extends StatelessWidget {
   const _Blocks({
     required this.summary,
@@ -236,7 +256,7 @@ class _Blocks extends StatelessWidget {
   final bool desktop;
   final double margin;
 
-  /// Espace entre deux cartes ; sert aussi à calculer la largeur mobile.
+  /// Espace entre deux cartes.
   static const _gap = 12.0;
 
   @override
@@ -272,162 +292,616 @@ class _Blocks extends StatelessWidget {
     // (cumul de rôles), et un bouton mort est pire qu'un chiffre simple.
     final open = destinationsFor(user).map((d) => d.label).toSet();
     String? to(String label) => open.contains(label) ? label : null;
-    final width = desktop
-        ? 232.0
-        : (MediaQuery.sizeOf(context).width - 2 * margin - _gap) / 2;
 
+    // Ce qui demande une action, du plus grave au moins grave.
+    final alerts = <_Alert>[
+      if (tasks != null && tasks.late > 0)
+        (
+          _Meaning.urgent,
+          LucideIcons.alarmClock,
+          tasks.late > 1
+              ? '${tasks.late} tâches ont dépassé leur échéance'
+              : '1 tâche a dépassé son échéance',
+          to('Tâches'),
+        ),
+      if (stock != null && stock.outOfStockCount > 0)
+        (
+          _Meaning.urgent,
+          LucideIcons.packageX,
+          '${_n(stock.outOfStockCount, 'produit épuisé', 'produits épuisés')}'
+              ' : plus rien à vendre',
+          to('Stock'),
+        ),
+      if (customers != null && customers.overdue > 0)
+        (
+          _Meaning.urgent,
+          LucideIcons.hourglass,
+          'Créances échues à relancer : ${formatDA(customers.overdue)}',
+          null,
+        ),
+      if (summary.margin?.marginHt case final m? when m < 0)
+        (
+          _Meaning.urgent,
+          LucideIcons.trendingDown,
+          'Ventes à perte aujourd’hui : vérifiez les prix',
+          to('Rapports'),
+        ),
+      if (summary.cash case final cash? when !cash.open)
+        (
+          _Meaning.watch,
+          LucideIcons.lock,
+          'Caisse non ouverte : saisissez le fond du jour',
+          to('Vente'),
+        ),
+      if (stock != null && stock.lowCount > 0)
+        (
+          _Meaning.watch,
+          LucideIcons.packageMinus,
+          stock.lowCount > 1
+              ? '${stock.lowCount} produits sont sous leur seuil'
+              : '1 produit est sous son seuil',
+          to('Stock'),
+        ),
+      if (transfers != null && transfers.toPrepare > 0)
+        (
+          _Meaning.work,
+          LucideIcons.arrowLeftRight,
+          '${_n(transfers.toPrepare, 'demande', 'demandes')} de transfert à traiter',
+          to('Transferts'),
+        ),
+      if (purchases != null && purchases.toReceive > 0)
+        (
+          _Meaning.work,
+          LucideIcons.truck,
+          _n(
+            purchases.toReceive,
+            'livraison fournisseur attendue',
+            'livraisons fournisseur attendues',
+          ),
+          to('Achats'),
+        ),
+    ];
+
+    final width = desktop
+        ? 236.0
+        : (MediaQuery.sizeOf(context).width - 2 * margin - _gap) / 2;
+    Widget grid(List<Widget> cards) =>
+        Wrap(spacing: _gap, runSpacing: _gap, children: cards);
+
+    final days = sales?.last7Days ?? const <DashboardDay>[];
+    final salesCards = [
+      if (sales != null)
+        _Metric(
+          meaning: _Meaning.good,
+          icon: LucideIcons.banknote,
+          label: 'Chiffre d’affaires du jour',
+          value: formatDA(sales.revenueTtc),
+          hint: '${sales.count} vente(s) validée(s)',
+          trend: days.length >= 2
+              ? (
+                  today: days.last.revenueTtc,
+                  before: days[days.length - 2].revenueTtc,
+                )
+              : null,
+          desktop: desktop,
+          width: width,
+        ),
+      // À partir de 2 ventes (avec une seule, il répète le CA) et un CA
+      // positif (des retours d'anciennes ventes le fausseraient).
+      if (sales != null && sales.count > 1 && sales.revenueTtc > 0)
+        _Metric(
+          meaning: _Meaning.good,
+          icon: LucideIcons.shoppingBag,
+          label: 'Panier moyen',
+          // Division ENTIÈRE arrondie, en centimes (règle 4).
+          value: formatDA(
+            (sales.revenueTtc * 2 + sales.count) ~/ (sales.count * 2),
+          ),
+          hint: 'par vente aujourd’hui',
+          desktop: desktop,
+          width: width,
+        ),
+      if (summary.margin case final margin?)
+        _Metric(
+          meaning: (margin.marginHt ?? 0) < 0 ? _Meaning.urgent : _Meaning.good,
+          icon: LucideIcons.trendingUp,
+          label: 'Marge du jour',
+          value: margin.marginHt == null ? '—' : formatDA(margin.marginHt!),
+          hint: margin.uncostedRevenueHt > 0
+              ? '${formatDA(margin.uncostedRevenueHt)} vendus sans coût connu'
+              : 'prix de vente − dernier prix d’achat',
+          destination: to('Rapports'),
+          desktop: desktop,
+          width: width,
+        ),
+      if (summary.cash case final cash?)
+        _Metric(
+          meaning: cash.open ? _Meaning.good : _Meaning.watch,
+          icon: cash.open ? LucideIcons.wallet : LucideIcons.lock,
+          label: 'Ma caisse',
+          value: cash.open ? formatDA(cash.currentAmount) : 'Fermée',
+          hint: cash.open ? 'dans le tiroir' : 'ouvrez-la avant d’encaisser',
+          destination: to('Vente'),
+          desktop: desktop,
+          width: width,
+        ),
+    ];
+    final workCards = [
+      if (tasks != null)
+        _Metric(
+          meaning: tasks.late > 0 ? _Meaning.urgent : _Meaning.work,
+          icon: LucideIcons.listChecks,
+          label: 'Mes tâches',
+          value: '${tasks.open}',
+          hint: tasks.late == 0
+              ? 'Aucune en retard'
+              : '${tasks.late} en retard',
+          destination: to('Tâches'),
+          desktop: desktop,
+          width: width,
+        ),
+      if (stock != null)
+        _Metric(
+          meaning: stock.outOfStockCount > 0
+              ? _Meaning.urgent
+              : stock.lowCount > 0
+              ? _Meaning.watch
+              : _Meaning.good,
+          icon: LucideIcons.boxes,
+          label: 'Alertes de stock',
+          value: '${stock.lowCount}',
+          hint: stock.outOfStockCount == 0
+              ? 'Aucune rupture'
+              : '${stock.outOfStockCount} en rupture',
+          destination: to('Stock'),
+          desktop: desktop,
+          width: width,
+        ),
+      if (transfers != null)
+        _Metric(
+          meaning: _Meaning.work,
+          icon: LucideIcons.arrowLeftRight,
+          label: 'Transferts',
+          value: '${transfers.toPrepare}',
+          hint: '${transfers.inTransit} en route',
+          destination: to('Transferts'),
+          desktop: desktop,
+          width: width,
+        ),
+      if (purchases != null)
+        _Metric(
+          meaning: _Meaning.work,
+          icon: LucideIcons.truck,
+          label: 'Commandes à recevoir',
+          value: '${purchases.toReceive}',
+          hint: 'livraisons attendues',
+          destination: to('Achats'),
+          desktop: desktop,
+          width: width,
+        ),
+    ];
+    final debtCards = [
+      if (customers != null)
+        _Metric(
+          meaning: customers.overdue > 0
+              ? _Meaning.urgent
+              : customers.debt > 0
+              ? _Meaning.watch
+              : _Meaning.good,
+          icon: LucideIcons.handCoins,
+          label: 'Dettes clients',
+          value: formatDA(customers.debt),
+          hint: customers.overdue == 0
+              ? 'Rien en retard'
+              : '${formatDA(customers.overdue)} en retard',
+          share: customers.debt > 0 ? customers.overdue / customers.debt : null,
+          desktop: desktop,
+          width: width,
+        ),
+      if (suppliers != null)
+        _Metric(
+          meaning: suppliers.debt > 0 ? _Meaning.watch : _Meaning.good,
+          icon: LucideIcons.receipt,
+          label: 'Dettes fournisseurs',
+          value: formatDA(suppliers.debt),
+          hint: suppliers.debt > 0
+              ? 'à payer aux fournisseurs'
+              : 'Tout est réglé',
+          destination: to('Fournisseurs'),
+          desktop: desktop,
+          width: width,
+        ),
+    ];
+
+    final figures = <Widget>[
+      if (salesCards.isNotEmpty) ...[
+        const _SectionTitle(
+          meaning: _Meaning.good,
+          title: 'Ventes du jour',
+          subtitle: 'L’argent qui rentre aujourd’hui',
+        ),
+        grid(salesCards),
+      ],
+      if (workCards.isNotEmpty) ...[
+        const _SectionTitle(
+          meaning: _Meaning.work,
+          title: 'Travail en cours',
+          subtitle: 'Tâches, stock, transferts, livraisons',
+        ),
+        grid(workCards),
+      ],
+      if (debtCards.isNotEmpty) ...[
+        const _SectionTitle(
+          meaning: _Meaning.watch,
+          title: 'Dettes',
+          subtitle: 'À récupérer des clients, à payer aux fournisseurs',
+        ),
+        grid(debtCards),
+      ],
+      // Graphiques (2026-10-05) : chacun n'apparaît que si son bloc est
+      // envoyé par le serveur — le tableau de bord suit donc le RÔLE.
+      if (charts(sales, stock).isNotEmpty) ...[
+        const SizedBox(height: 18),
+        _ChartGrid(desktop: desktop, children: charts(sales, stock)),
+      ],
+      if (stock != null && stock.low.isNotEmpty) ...[
+        const _SectionTitle(
+          meaning: _Meaning.watch,
+          title: 'À réapprovisionner',
+          subtitle: 'Rouge : épuisé · orange : sous le seuil',
+        ),
+        for (final row in stock.low)
+          _LowStockRow(row: row, destination: to('Stock')),
+      ],
+    ];
+    final header = [
+      _Verdict(alerts: alerts),
+      const SizedBox(height: 10),
+      const _Legend(),
+    ];
+    // Grand écran : ce qu'il faut FAIRE reste à droite, toujours sous les
+    // yeux ; les chiffres défilent à gauche. Téléphone : une colonne.
+    if (desktop &&
+        MediaQuery.sizeOf(context).width >= 1200 &&
+        alerts.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...header,
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: figures,
+                ),
+              ),
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 360,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 18),
+                  child: _AttentionList(alerts: alerts, limit: null),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Wrap(
-          spacing: _gap,
-          runSpacing: _gap,
-          children: [
-            if (sales != null)
-              _Metric(
-                label: 'Chiffre d’affaires du jour',
-                value: formatDA(sales.revenueTtc),
-                hint: '${sales.count} vente(s) validée(s)',
-                desktop: desktop,
-                width: width,
-              ),
-            // Infos ajoutées le 2026-10-05.
-            // À partir de 2 ventes (avec une seule, il répète le CA) et un CA
-            // positif (des retours d'anciennes ventes le fausseraient).
-            if (sales != null && sales.count > 1 && sales.revenueTtc > 0)
-              _Metric(
-                label: 'Panier moyen',
-                // Division ENTIÈRE arrondie, en centimes (règle 4).
-                value: formatDA(
-                  (sales.revenueTtc * 2 + sales.count) ~/ (sales.count * 2),
-                ),
-                hint: 'par vente aujourd’hui',
-                desktop: desktop,
-                width: width,
-              ),
-            if (summary.margin case final margin?)
-              _Metric(
-                label: 'Marge du jour',
-                value: margin.marginHt == null
-                    ? '—'
-                    : formatDA(margin.marginHt!),
-                hint: margin.uncostedRevenueHt > 0
-                    ? '${formatDA(margin.uncostedRevenueHt)} vendus sans coût connu'
-                    : 'prix de vente − dernier prix d’achat',
-                tone: (margin.marginHt ?? 0) < 0
-                    ? StatusTone.error
-                    : StatusTone.neutral,
-                destination: to('Rapports'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (summary.cash case final cash?)
-              _Metric(
-                label: 'Ma caisse',
-                value: cash.open ? formatDA(cash.currentAmount) : 'Fermée',
-                hint: cash.open
-                    ? 'dans le tiroir'
-                    : 'ouvrez-la avant d’encaisser',
-                tone: cash.open ? StatusTone.neutral : StatusTone.warn,
-                destination: to('Vente'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (tasks != null)
-              _Metric(
-                label: 'Mes tâches',
-                value: '${tasks.open}',
-                hint: tasks.late == 0
-                    ? 'Aucune en retard'
-                    : '${tasks.late} en retard',
-                tone: tasks.late == 0 ? StatusTone.neutral : StatusTone.error,
-                destination: to('Tâches'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (stock != null)
-              _Metric(
-                label: 'Alertes de stock',
-                value: '${stock.lowCount}',
-                hint: stock.outOfStockCount == 0
-                    ? 'Aucune rupture'
-                    : '${stock.outOfStockCount} en rupture',
-                tone: stock.lowCount == 0 && stock.outOfStockCount == 0
-                    ? StatusTone.ok
-                    : StatusTone.warn,
-                destination: to('Stock'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (transfers != null)
-              _Metric(
-                label: 'Transferts',
-                value: '${transfers.toPrepare}',
-                hint: '${transfers.inTransit} en route',
-                tone: transfers.toPrepare == 0
-                    ? StatusTone.neutral
-                    : StatusTone.info,
-                destination: to('Transferts'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (purchases != null)
-              _Metric(
-                label: 'Commandes à recevoir',
-                value: '${purchases.toReceive}',
-                destination: to('Achats'),
-                desktop: desktop,
-                width: width,
-              ),
-            if (customers != null)
-              _Metric(
-                label: 'Dettes clients',
-                value: formatDA(customers.debt),
-                hint: customers.overdue == 0
-                    ? 'Rien en retard'
-                    : '${formatDA(customers.overdue)} en retard',
-                tone: customers.overdue == 0
-                    ? StatusTone.neutral
-                    : StatusTone.error,
-                desktop: desktop,
-                width: width,
-              ),
-            if (suppliers != null)
-              _Metric(
-                label: 'Dettes fournisseurs',
-                value: formatDA(suppliers.debt),
-                destination: to('Fournisseurs'),
-                desktop: desktop,
-                width: width,
-              ),
-          ],
+        ...header,
+        const SizedBox(height: 16),
+        _AttentionList(alerts: alerts, limit: 3),
+        ...figures,
+      ],
+    );
+  }
+}
+
+/// Le jour en une phrase, dans la couleur du point le plus grave.
+class _Verdict extends StatelessWidget {
+  const _Verdict({required this.alerts});
+
+  final List<_Alert> alerts;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final urgent = alerts.where((a) => a.$1 == _Meaning.urgent).length;
+    final watch = alerts.where((a) => a.$1 == _Meaning.watch).length;
+    final (meaning, icon, text) = urgent > 0
+        ? (
+            _Meaning.urgent,
+            LucideIcons.siren,
+            '${_n(urgent, 'urgence', 'urgences')} à régler aujourd’hui',
+          )
+        : watch > 0
+        ? (
+            _Meaning.watch,
+            LucideIcons.eye,
+            '${_n(watch, 'point', 'points')} à surveiller',
+          )
+        : (_Meaning.good, LucideIcons.circleCheck, 'Tout est en ordre');
+    final tone = _tone(colors, meaning);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tone.withValues(alpha: 0.45)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tone.withValues(alpha: 0.18), tone.withValues(alpha: 0.03)],
         ),
-        // Graphiques (2026-10-05) : chacun n'apparaît que si son bloc est
-        // envoyé par le serveur — le tableau de bord suit donc le RÔLE.
-        if (charts(sales, stock).isNotEmpty) ...[
-          const SizedBox(height: 18),
-          _ChartGrid(desktop: desktop, children: charts(sales, stock)),
-        ],
-        if (stock != null && stock.low.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Text('À réapprovisionner', style: AmpereType.sectionTitle),
-          const SizedBox(height: 8),
-          for (final row in stock.low)
-            Card(
-              child: ListTile(
-                minTileHeight: AmpereGeometry.listRowMin,
-                title: Text(row.name),
-                subtitle: Text(
-                  'Reste ${row.quantity} · seuil ${row.minThreshold}',
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: tone, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: AmpereType.sectionTitle.copyWith(color: colors.ink),
                 ),
-                trailing: const AmpereBadge(
-                  label: 'Sous le seuil',
-                  tone: StatusTone.warn,
+                Text(
+                  'Résumé du ${formatDate(DateTime.now())}',
+                  style: AmpereType.meta.copyWith(color: colors.ink2),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// La clé de lecture des couleurs, toujours visible.
+class _Legend extends StatelessWidget {
+  const _Legend();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Wrap(
+      spacing: 16,
+      runSpacing: 6,
+      children: [
+        for (final (meaning, label) in [
+          (_Meaning.good, 'Bon / argent qui rentre'),
+          (_Meaning.work, 'En cours'),
+          (_Meaning.watch, 'À surveiller'),
+          (_Meaning.urgent, 'Urgent'),
+        ])
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  color: _tone(colors, meaning),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(label, style: AmpereType.meta.copyWith(color: colors.ink2)),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+/// « À faire maintenant » : les points qui demandent un geste, chacun dans
+/// sa couleur, cliquable vers l'écran où agir. Rien : on le dit, en vert.
+class _AttentionList extends ConsumerStatefulWidget {
+  const _AttentionList({required this.alerts, required this.limit});
+
+  final List<_Alert> alerts;
+
+  /// Nombre de points montrés d'abord (les plus graves) ; `null` : tous.
+  final int? limit;
+
+  @override
+  ConsumerState<_AttentionList> createState() => _AttentionListState();
+}
+
+class _AttentionListState extends ConsumerState<_AttentionList> {
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final alerts = widget.alerts;
+    if (alerts.isEmpty) return const SizedBox.shrink();
+    final limit = widget.limit;
+    final hidden = limit == null || _all ? 0 : alerts.length - limit;
+    final shown = hidden > 0 ? alerts.take(limit!) : alerts;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'À faire maintenant',
+          style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+        ),
+        const SizedBox(height: 8),
+        for (final (meaning, icon, text, destination) in shown)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: colors.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: colors.line),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: destination == null
+                    ? null
+                    : () => goToDestination(ref, destination),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(width: 4, color: _tone(colors, meaning)),
+                      const SizedBox(width: 12),
+                      Icon(icon, size: 18, color: _tone(colors, meaning)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            text,
+                            style: AmpereType.body.copyWith(color: colors.ink),
+                          ),
+                        ),
+                      ),
+                      if (destination != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Icon(
+                            LucideIcons.chevronRight,
+                            size: 18,
+                            color: colors.ink3,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-        ],
+          ),
+        if (hidden > 0)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => setState(() => _all = true),
+              icon: const Icon(LucideIcons.chevronDown, size: 16),
+              label: Text('Voir ${_n(hidden, 'autre point', 'autres points')}'),
+            ),
+          ),
+        const SizedBox(height: 4),
       ],
+    );
+  }
+}
+
+/// Titre d'un bloc, précédé de SA couleur : on sait ce qu'on lit.
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({
+    required this.meaning,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final _Meaning meaning;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 30,
+            decoration: BoxDecoration(
+              color: _tone(colors, meaning),
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+                ),
+                Text(
+                  subtitle,
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un produit à réapprovisionner : rouge s'il est épuisé, orange sinon.
+class _LowStockRow extends ConsumerWidget {
+  const _LowStockRow({required this.row, required this.destination});
+
+  final DashboardLowStock row;
+  final String? destination;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final out = (double.tryParse(row.quantity) ?? 0) <= 0;
+    final tone = out ? colors.error : colors.warn;
+    final target = destination;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: colors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: colors.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: target == null ? null : () => goToDestination(ref, target),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Icon(
+                  out ? LucideIcons.packageX : LucideIcons.packageMinus,
+                  color: tone,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.name,
+                        style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                      ),
+                      Text(
+                        'Reste ${row.quantity} · seuil ${row.minThreshold}',
+                        style: AmpereType.meta.copyWith(color: colors.ink2),
+                      ),
+                    ],
+                  ),
+                ),
+                AmpereBadge(
+                  label: out ? 'Épuisé' : 'Sous le seuil',
+                  tone: out ? StatusTone.error : StatusTone.warn,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -500,61 +974,134 @@ class _ChartGrid extends StatelessWidget {
   }
 }
 
-/// Un chiffre et ce qu'il veut dire. Cliquable quand l'écran correspondant est
-/// ouvert à ce compte — sinon simple carte (jamais un bouton qui refuse).
+/// Un chiffre, ce qu'il veut dire, et SA couleur (le code de l'accueil) :
+/// liseré + icône teintés, tendance vs hier, part en retard. Cliquable quand
+/// l'écran correspondant est ouvert à ce compte (jamais un bouton qui refuse).
 class _Metric extends ConsumerWidget {
   const _Metric({
+    required this.meaning,
+    required this.icon,
     required this.label,
     required this.value,
     required this.desktop,
     required this.width,
     this.hint,
-    this.tone = StatusTone.neutral,
     this.destination,
+    this.trend,
+    this.share,
   });
 
+  final _Meaning meaning;
+  final IconData icon;
   final String label;
   final String value;
   final bool desktop;
 
-  /// Desktop : largeur fixe (grille). Mobile : deux cartes par ligne — une
-  /// seule faisait défiler le résumé sur trois écrans.
+  /// Desktop : largeur fixe (grille). Mobile : deux cartes par ligne.
   final double width;
   final String? hint;
-  final StatusTone tone;
   final String? destination;
+
+  /// Aujourd'hui comparé à hier : flèche verte en hausse, rouge en baisse.
+  final ({int today, int before})? trend;
+
+  /// Part (0..1) en retard d'un montant dû : barre rouge sur fond orange.
+  final double? share;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
+    final tone = _tone(colors, meaning);
     final target = destination;
-    final card = Padding(
+    final evolution = switch (trend) {
+      (today: final t, before: final b) when b > 0 =>
+        ((t - b) * 100 / b).round(),
+      _ => null,
+    };
+    final card = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tone.withValues(alpha: 0.13), colors.surface],
+        ),
+      ),
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: AmpereType.label.copyWith(color: colors.ink2)),
-          const SizedBox(height: 6),
-          // Un montant long RÉTRÉCIT au lieu de passer à la ligne : coupé en
-          // deux, un chiffre d'affaires se lit mal et déforme la grille.
+          Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 16, color: tone),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 2,
+                  style: AmpereType.label.copyWith(color: colors.ink2),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Un montant long RÉTRÉCIT au lieu de passer à la ligne.
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(value, maxLines: 1, style: AmpereType.numericHero),
+            child: Text(
+              value,
+              maxLines: 1,
+              style: AmpereType.numericHero.copyWith(color: colors.ink),
+            ),
           ),
           if (hint case final hint?) ...[
             const SizedBox(height: 4),
             Text(
               hint,
               style: AmpereType.meta.copyWith(
-                color: switch (tone) {
-                  StatusTone.error => colors.error,
-                  StatusTone.warn => colors.warn,
-                  StatusTone.ok => colors.ok,
-                  StatusTone.info => colors.info,
-                  StatusTone.neutral => colors.ink3,
-                },
+                color: meaning == _Meaning.work ? colors.ink3 : tone,
+              ),
+            ),
+          ],
+          if (evolution case final e?) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  e >= 0 ? LucideIcons.trendingUp : LucideIcons.trendingDown,
+                  size: 15,
+                  color: e >= 0 ? colors.ok : colors.error,
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '${e >= 0 ? '+' : ''}$e % par rapport à hier',
+                  style: AmpereType.meta.copyWith(
+                    color: e >= 0 ? colors.ok : colors.error,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ],
+          if (share case final s?) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                value: s.clamp(0, 1),
+                minHeight: 6,
+                color: colors.error,
+                backgroundColor: colors.warn.withValues(alpha: 0.35),
               ),
             ),
           ],
@@ -565,17 +1112,14 @@ class _Metric extends ConsumerWidget {
     return SizedBox(
       width: width,
       child: Card(
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: tone.withValues(alpha: 0.35)),
+        ),
         child: target == null
             ? card
-            : InkWell(
-                onTap: () => goToDestination(ref, target),
-                borderRadius: BorderRadius.circular(
-                  desktop
-                      ? AmpereGeometry.cardRadiusDesktop
-                      : AmpereGeometry.cardRadiusMobile,
-                ),
-                child: card,
-              ),
+            : InkWell(onTap: () => goToDestination(ref, target), child: card),
       ),
     );
   }

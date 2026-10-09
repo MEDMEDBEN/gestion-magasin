@@ -171,12 +171,13 @@ class RevenueTrendChart extends StatelessWidget {
                 isCurved: true,
                 preventCurveOverShooting: true,
                 barWidth: 3,
-                gradient: LinearGradient(colors: [colors.info, colors.accent]),
+                // Vert = l'argent qui rentre (code couleur de l'accueil).
+                gradient: LinearGradient(colors: [colors.accent, colors.ok]),
                 dotData: FlDotData(
                   checkToShowDot: (spot, _) => spot.x == days.length - 1,
                   getDotPainter: (_, _, _, _) => FlDotCirclePainter(
                     radius: 5,
-                    color: colors.accent,
+                    color: colors.ok,
                     strokeWidth: 2,
                     strokeColor: colors.surface,
                   ),
@@ -187,8 +188,8 @@ class RevenueTrendChart extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      colors.accent.withValues(alpha: 0.35),
-                      colors.accent.withValues(alpha: 0.0),
+                      colors.ok.withValues(alpha: 0.30),
+                      colors.ok.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -272,11 +273,12 @@ class TopProductsChart extends StatelessWidget {
                               height: 10,
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
+                                  // Vert : du chiffre d'affaires ; le 1er plein.
                                   colors: i == 0
-                                      ? [colors.info, colors.accent]
+                                      ? [colors.ok, colors.accent]
                                       : [
-                                          colors.info.withValues(alpha: 0.55),
-                                          colors.vizAlt,
+                                          colors.ok.withValues(alpha: 0.55),
+                                          colors.ok.withValues(alpha: 0.85),
                                         ],
                                 ),
                               ),
