@@ -454,8 +454,9 @@ class _CashBar extends ConsumerWidget {
   }
 }
 
-/// Carte « tiroir-caisse » : teinte d'état en dégradé, icône, titre, détail,
-/// actions. Large : une ligne ; étroit, les actions passent dessous.
+/// Bandeau « tiroir-caisse » du ticket : UNE ligne teintée par l'état
+/// (icône, titre, gestes), le détail en infobulle — la place va aux produits
+/// du panier (demande MEDMEDBEN du 2026-10-09).
 class _DrawerCard extends StatelessWidget {
   const _DrawerCard({
     required this.tone,
@@ -474,58 +475,35 @@ class _DrawerCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final text = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: AmpereType.rowTitle.copyWith(color: colors.ink)),
-        const SizedBox(height: 2),
-        Text(subtitle, style: AmpereType.meta.copyWith(color: colors.ink2)),
-      ],
-    );
-    final badge = Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(icon, size: 20, color: tone),
-    );
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: tone.withValues(alpha: 0.45)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [tone.withValues(alpha: 0.16), tone.withValues(alpha: 0.03)],
+    return Tooltip(
+      message: subtitle,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 2, 2, 2),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: tone.withValues(alpha: 0.45)),
+          gradient: LinearGradient(
+            colors: [
+              tone.withValues(alpha: 0.16),
+              tone.withValues(alpha: 0.03),
+            ],
+          ),
         ),
-      ),
-      child: LayoutBuilder(
-        builder: (context, box) => box.maxWidth >= 420
-            ? Row(
-                children: [
-                  badge,
-                  const SizedBox(width: 12),
-                  Expanded(child: text),
-                  trailing,
-                ],
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      badge,
-                      const SizedBox(width: 12),
-                      Expanded(child: text),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Align(alignment: Alignment.centerRight, child: trailing),
-                ],
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: tone),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.bodyStrong.copyWith(color: colors.ink),
               ),
+            ),
+            trailing,
+          ],
+        ),
       ),
     );
   }
@@ -1116,7 +1094,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           ),
           SizedBox(width: m),
           SizedBox(
-            width: 420,
+            width: (MediaQuery.sizeOf(context).width * 0.34).clamp(
+              420.0,
+              520.0,
+            ),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AmpereColors.of(context).surface,
@@ -1351,45 +1332,72 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             ),
           ],
           SizedBox(height: compact ? 8 : 12),
-          if (noCash && cart.customer == null && cart.quote == null)
-            // Une caisse ne vit qu'un jour : avant la première vente
-            // espèces, on compte le tiroir (décision du 2026-10-08).
-            _PayButton(
-              icon: LucideIcons.lockOpen,
-              label: 'Ouvrir la caisse pour encaisser',
-              height: compact ? 52 : 60,
-              tone: AmpereColors.of(context).warn,
-              onPressed: widget.rights.canManageCash
-                  ? () => _openCashFlow(context, ref)
-                  : null,
-            )
-          else if (cart.quote case final quote?)
-            // Un devis en cours de modification ne s'encaisse pas ici : il se
-            // met à jour, puis suit son cycle (envoi, acceptation, conversion).
-            _PayButton(
-              icon: LucideIcons.fileText,
-              label: 'Mettre à jour le devis ${quote.number}',
-              height: compact ? 52 : 60,
-              onPressed: blocked ? null : _updateQuote,
-            )
-          else
-            _PayButton(
-              icon: LucideIcons.banknote,
-              label: 'Encaisser ${formatDA(estimate.totalTtc)}',
-              shortcut: compact ? null : 'F9',
-              height: compact ? 52 : 60,
-              onPressed: blocked || shortages.isNotEmpty
-                  ? null
-                  : () => _checkout(estimate),
-            ),
-          if (!cart.isEmpty) ...[
-            SizedBox(height: compact ? 6 : 8),
+          // Téléphone : devis et vider en icônes À CÔTÉ du bouton principal —
+          // une ligne de plus pour les produits du ticket.
+          Row(
+            children: [
+              Expanded(
+                child: (noCash && cart.customer == null && cart.quote == null)
+                    ?
+                      // Une caisse ne vit qu'un jour : avant la première vente
+                      // espèces, on compte le tiroir (décision du 2026-10-08).
+                      _PayButton(
+                        icon: LucideIcons.lockOpen,
+                        label: 'Ouvrir la caisse pour encaisser',
+                        height: 52,
+                        tone: AmpereColors.of(context).warn,
+                        onPressed: widget.rights.canManageCash
+                            ? () => _openCashFlow(context, ref)
+                            : null,
+                      )
+                    : cart.quote != null
+                    ?
+                      // Un devis en cours de modification ne s'encaisse pas ici : il se
+                      // met à jour, puis suit son cycle (envoi, acceptation, conversion).
+                      _PayButton(
+                        icon: LucideIcons.fileText,
+                        label: 'Mettre à jour le devis ${cart.quote!.number}',
+                        height: 52,
+                        onPressed: blocked ? null : _updateQuote,
+                      )
+                    : _PayButton(
+                        icon: LucideIcons.banknote,
+                        label: 'Encaisser ${formatDA(estimate.totalTtc)}',
+                        shortcut: compact ? null : 'F9',
+                        height: 52,
+                        onPressed: blocked || shortages.isNotEmpty
+                            ? null
+                            : () => _checkout(estimate),
+                      ),
+              ),
+              if (compact && !cart.isEmpty) ...[
+                if (cart.quote == null) ...[
+                  const SizedBox(width: 8),
+                  IconButton.outlined(
+                    tooltip: 'Faire un devis',
+                    onPressed: blocked ? null : _makeQuote,
+                    icon: const Icon(LucideIcons.fileText, size: 18),
+                  ),
+                ],
+                const SizedBox(width: 4),
+                IconButton.outlined(
+                  tooltip: 'Vider le panier',
+                  onPressed: _busy
+                      ? null
+                      : () => ref.read(cartProvider.notifier).clear(),
+                  icon: const Icon(LucideIcons.x, size: 18),
+                ),
+              ],
+            ],
+          ),
+          if (!compact && !cart.isEmpty) ...[
+            const SizedBox(height: 4),
             Row(
               children: [
                 if (cart.quote == null)
                   Expanded(
                     // Même panier, aucun encaissement, aucun mouvement de stock.
-                    child: OutlinedButton.icon(
+                    child: TextButton.icon(
                       onPressed: blocked ? null : _makeQuote,
                       icon: const Icon(LucideIcons.fileText, size: 17),
                       label: const Text('Faire un devis'),
@@ -1397,7 +1405,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   ),
                 if (cart.quote == null) const SizedBox(width: 8),
                 Expanded(
-                  child: OutlinedButton.icon(
+                  child: TextButton.icon(
                     onPressed: _busy
                         ? null
                         : () => ref.read(cartProvider.notifier).clear(),
@@ -1456,7 +1464,7 @@ class _TotalDisplay extends StatelessWidget {
     final amount = Text(
       formatDA(total),
       style: AmpereType.numericHero.copyWith(
-        fontSize: compact ? 30 : 42,
+        fontSize: compact ? 30 : 34,
         color: colors.accentHi,
         shadows: [
           Shadow(color: colors.accent.withValues(alpha: 0.55), blurRadius: 14),
@@ -1479,72 +1487,34 @@ class _TotalDisplay extends StatelessWidget {
         ),
       ],
     );
-    if (compact) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: screen,
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'TOTAL',
-                  style: AmpereType.label.copyWith(
-                    color: colors.ink3,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                Text(
-                  '$articles article(s)',
-                  style: AmpereType.meta.copyWith(color: colors.ink3),
-                ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FittedBox(
-                alignment: Alignment.centerRight,
-                fit: BoxFit.scaleDown,
-                child: amount,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: screen,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'TOTAL À PAYER',
+                compact ? 'TOTAL' : 'TOTAL À PAYER',
                 style: AmpereType.label.copyWith(
                   color: colors.ink3,
                   letterSpacing: 1.2,
                 ),
               ),
-              const Spacer(),
               Text(
                 '$articles article(s)',
                 style: AmpereType.meta.copyWith(color: colors.ink3),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          FittedBox(
-            alignment: Alignment.centerRight,
-            fit: BoxFit.scaleDown,
-            child: amount,
-          ),
-          Text(
-            'Estimation — le montant exact est calculé par le serveur.',
-            textAlign: TextAlign.end,
-            style: AmpereType.meta.copyWith(color: colors.ink3, fontSize: 11),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FittedBox(
+              alignment: Alignment.centerRight,
+              fit: BoxFit.scaleDown,
+              child: amount,
+            ),
           ),
         ],
       ),
@@ -2031,7 +2001,7 @@ class _CartLineRow extends ConsumerWidget {
     final cart = ref.read(cartProvider.notifier);
     final compact = VisualDensity.compact;
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.lineSoft)),
       ),
@@ -2085,7 +2055,6 @@ class _CartLineRow extends ConsumerWidget {
               'Remise ${formatDA(line.discountHt)}',
               style: AmpereType.meta.copyWith(color: colors.warn),
             ),
-          const SizedBox(height: 6),
           Row(
             children: [
               // Quantité : − 2 pce +, dans une pastille comme sur un terminal.
@@ -2195,24 +2164,29 @@ class _CustomerPicker extends ConsumerWidget {
           }
         },
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              Icon(LucideIcons.userPlus, size: 20, color: colors.accent),
+              Icon(LucideIcons.userPlus, size: 18, color: colors.accent),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Client (facultatif)',
-                      style: AmpereType.rowTitle.copyWith(color: colors.ink),
-                    ),
-                    Text(
-                      'Pour un crédit, une facture ou son tarif',
-                      style: AmpereType.meta.copyWith(color: colors.ink3),
-                    ),
-                  ],
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: 'Client (facultatif)',
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '  · crédit, facture, tarif',
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               Icon(LucideIcons.chevronRight, size: 18, color: colors.ink3),

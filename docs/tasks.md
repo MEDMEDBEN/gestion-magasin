@@ -4,6 +4,13 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : ticket aéré — 2026-10-09 (MEDMEDBEN, Claude)
+
+- Le ticket ne montrait qu'un produit : caisse en UNE ligne (détail en infobulle), client sur une ligne
+  fine, total sur une ligne, Encaisser 52 px, devis / vider discrets (téléphone : icônes à côté
+  d'Encaisser), lignes du ticket resserrées, panneau plus large sur grand écran (420 → 520 px).
+- Preuves : app analyze 0, **546 tests** ; captures 21/22 vérifiées (3 produits visibles sur téléphone).
+
 ### Vente : rupture au magasin — 2026-10-09 (MEDMEDBEN, Claude)
 
 - Ajout d'un produit sans stock au MAGASIN (tuile, recherche, douchette) : fenêtre « en rupture au
