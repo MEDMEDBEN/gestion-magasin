@@ -1583,6 +1583,22 @@ void main() {
     ),
   );
   testWidgets(
+    '21d rupture desktop vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '21d_rupture_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: (t) async {
+        await _fillCart(t);
+        await t.tap(find.text('Gaine ICTA Ø20 (couronne 100 m)'));
+      },
+    ),
+  );
+  testWidgets(
     '22 vente mobile vendeuse',
     skip: skip,
     (t) => _capture(

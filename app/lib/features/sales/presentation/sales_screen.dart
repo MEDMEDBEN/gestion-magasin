@@ -714,11 +714,99 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     _searchFocus.requestFocus();
   }
 
-  /// Ajout au ticket. Le message précédent (erreur d'encaissement…) part :
-  /// en bas d'écran, il masquerait le bouton Encaisser.
-  void _add(Product product) {
+  /// Stock CONNU d'un produit au magasin et au dépôt ; `null` hors ligne
+  /// ou sans le droit (rien n'est alors affirmé : le serveur jugera).
+  ({Quantity store, Quantity depot})? _stockOf(Product product) {
+    final stock = ref.read(stockByProductProvider).value;
+    final locations = ref.read(locationsProvider).value ?? const [];
+    if (stock == null || !locations.any((l) => l.type == 'MAGASIN')) {
+      return null;
+    }
+    Quantity at(String type) => locations
+        .where((l) => l.type == type)
+        .fold(
+          Quantity.zero,
+          (sum, l) => sum + (stock[product.id]?.at(l.id) ?? Quantity.zero),
+        );
+    return (store: at('MAGASIN'), depot: at('DEPOT'));
+  }
+
+  /// Lignes du ticket qui dépassent le stock du MAGASIN (règle 9 : le
+  /// serveur refusera la vente), sauf produit en « commande autorisée ».
+  List<(Product, Quantity)> _shortages(CartState cart) => [
+    for (final line in cart.lines)
+      if (!line.product.allowBackorder)
+        if (_stockOf(line.product) case final s? when s.store < line.quantity)
+          (line.product, s.store),
+  ];
+
+  /// Ajout au ticket. Plus rien au magasin (demande MEDMEDBEN du
+  /// 2026-10-09) : on le DIT, avec le stock du dépôt, et le vendeur choisit —
+  /// ne pas l'ajouter, ou l'ajouter quand même (on va le ramener). Le message
+  /// précédent part : en bas d'écran, il masquerait le bouton Encaisser.
+  Future<void> _add(Product product) async {
+    final known = _stockOf(product);
+    final inCart =
+        ref
+            .read(cartProvider)
+            .lines
+            .where((l) => l.product.id == product.id)
+            .firstOrNull
+            ?.quantity ??
+        Quantity.zero;
+    if (known != null && !product.allowBackorder && known.store <= inCart) {
+      final unit = product.unit.short;
+      final add = await showDialog<bool>(
+        context: context,
+        builder: (context) {
+          final colors = AmpereColors.of(context);
+          return AlertDialog(
+            constraints: const BoxConstraints(maxWidth: 460),
+            icon: Icon(LucideIcons.packageX, color: colors.error, size: 32),
+            title: Text(
+              known.store <= Quantity.zero
+                  ? '« ${product.name} » est en rupture au magasin'
+                  : 'Plus de « ${product.name} » au magasin',
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Magasin : ${formatQuantity(known.store)} $unit'
+                  '${inCart > Quantity.zero ? ' (déjà ${formatQuantity(inCart)} $unit au ticket)' : ''}'
+                  ' · dépôt : ${formatQuantity(known.depot)} $unit',
+                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  known.depot > Quantity.zero
+                      ? 'Vous pouvez l’ajouter si on le ramène du dépôt : la '
+                            'vente ne passera qu’une fois la marchandise arrivée '
+                            'au magasin.'
+                      : 'Le dépôt n’en a pas non plus. La vente sera refusée '
+                            'tant qu’il n’est pas réapprovisionné.',
+                  style: AmpereType.body.copyWith(color: colors.ink2),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Ne pas l’ajouter'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('L’ajouter quand même'),
+              ),
+            ],
+          );
+        },
+      );
+      if (add != true || !mounted) return;
+    }
     ref.read(cartProvider.notifier).add(product);
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
   }
 
   /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
@@ -818,6 +906,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       final change = received - kept;
       switch (outcome) {
         case Applied(value: final sale):
+          ref.invalidate(stockByProductProvider);
           await _showTicket(sale, change: change);
         case Queued():
           await _showQueued(
@@ -908,6 +997,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   @override
   Widget build(BuildContext context) {
     final products = ref.watch(activeProductsProvider).value ?? const [];
+    // Stock du magasin gardé chargé : il juge les ajouts et l'encaissement.
+    ref.watch(stockByProductProvider);
     if (!widget.rights.canSell) {
       return const ScreenStateView(
         status: ScreenStatus.empty,
@@ -961,7 +1052,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   void _payShortcut() {
     final estimate = ref.read(cartEstimateProvider);
     final cart = ref.read(cartProvider);
-    if (_busy || estimate.blocked || cart.isEmpty || cart.quote != null) {
+    if (_busy ||
+        estimate.blocked ||
+        cart.isEmpty ||
+        cart.quote != null ||
+        _shortages(cart).isNotEmpty) {
       return;
     }
     final cash = ref.read(currentCashSessionProvider);
@@ -1216,6 +1311,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // serveur vérifiera à la synchronisation.
     final noCash = cashState.hasValue && cashState.value == null;
     final blocked = _busy || estimate.blocked || cart.isEmpty;
+    final shortages = _shortages(cart);
     return Padding(
       padding: EdgeInsets.all(compact ? 12 : 16),
       child: Column(
@@ -1241,6 +1337,17 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               message:
                   'Une remise dépasse désormais ce que sa ligne permet (elle '
                   'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
+            ),
+          ],
+          if (shortages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            AmpereInlineAlert(
+              icon: LucideIcons.packageX,
+              message:
+                  'Pas assez au magasin : '
+                  '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
+                  '. Retirez-le, baissez la quantité ou faites-le venir du '
+                  'dépôt — sinon la vente sera refusée.',
             ),
           ],
           SizedBox(height: compact ? 8 : 12),
@@ -1271,7 +1378,9 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               label: 'Encaisser ${formatDA(estimate.totalTtc)}',
               shortcut: compact ? null : 'F9',
               height: compact ? 52 : 60,
-              onPressed: blocked ? null : () => _checkout(estimate),
+              onPressed: blocked || shortages.isNotEmpty
+                  ? null
+                  : () => _checkout(estimate),
             ),
           if (!cart.isEmpty) ...[
             SizedBox(height: compact ? 6 : 8),

@@ -35,9 +35,9 @@ const cashPendingSync = 'EN_ATTENTE';
 /// 3. hors ligne, ce DERNIER ÉTAT CONNU — même après un redémarrage. Jamais
 ///    connu : erreur (caisse inconnue) — on ne propose alors pas d'en ouvrir
 ///    une, elle pourrait déjà l'être au serveur (audit tranche C).
-final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>((
-  ref,
-) async => todaysCash(await _cashSession(ref)));
+final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>(
+  (ref) async => todaysCash(await _cashSession(ref)),
+);
 
 /// Une caisse ne vit qu'UN jour (décision MEDMEDBEN du 2026-10-08) : celle
 /// d'un jour passé est close (le serveur la clôture) — on rouvre avec le fond

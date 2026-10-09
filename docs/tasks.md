@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : rupture au magasin — 2026-10-09 (MEDMEDBEN, Claude)
+
+- Ajout d'un produit sans stock au MAGASIN (tuile, recherche, douchette) : fenêtre « en rupture au
+  magasin » avec stock magasin + dépôt ; « Ne pas l'ajouter » / « L'ajouter quand même » (s'il est ramené
+  du dépôt). Ticket qui dépasse le stock du magasin : alerte qui nomme les produits et **Encaisser bloqué**
+  (F9 aussi) — le serveur refuserait (règle 9). Devis toujours possible. Produit « commande autorisée »
+  (backorder) : aucun blocage, comme au serveur. Stock inconnu (hors ligne / sans droit) : rien n'est
+  bloqué côté app, le serveur juge à la synchronisation. Stock relu après chaque vente.
+- Preuves : app analyze 0, **546 tests** (test « rupture au magasin » ajouté) ; capture 21d vérifiée.
+
 ### Catalogue modernisé — 2026-10-09 (MEDMEDBEN, Claude)
 
 - Onglets en pastilles (`ui/widgets/pill_tabs.dart`, partagé avec la Vente). Catégories en pastilles sur UNE

@@ -23,6 +23,7 @@ import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/sales/presentation/sales_screen.dart';
 import 'package:gestion_magasin/features/stock/application/stock_controller.dart';
+import 'package:gestion_magasin/features/stock/data/stock_models.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
@@ -375,13 +376,17 @@ Future<void> _pumpScreen(
   MemorySettingsStore? settings,
   Product? product,
   AuthUser? user,
+  Map<String, ProductStock>? stock,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         salesApiProvider.overrideWithValue(api),
         // Stock du magasin : inconnu ici (aucun réseau dans les tests).
-        stockByProductProvider.overrideWith((ref) async => throw Exception()),
+        // Stock du magasin : inconnu par défaut (aucun réseau dans les tests).
+        stockByProductProvider.overrideWith(
+          (ref) async => stock ?? (throw Exception()),
+        ),
         categoriesProvider.overrideWith((ref) => Stream.value(const [])),
         currentUserIdProvider.overrideWithValue('v'),
         deviceIdProvider.overrideWith((ref) async => 'poste-caisse'),
@@ -909,6 +914,55 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('2 pce'), findsOneWidget);
       expect(find.textContaining('Encaisser'), findsOneWidget);
+    },
+  );
+
+  /// Demande MEDMEDBEN du 2026-10-09 : un produit en rupture au magasin ne
+  /// s'ajoute qu'après confirmation, et la vente reste bloquée.
+  testWidgets(
+    'rupture au magasin : on prévient, on choisit, Encaisser bloqué',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      final api = _FakeSalesApi(cash: _openCash);
+      await _pumpScreen(
+        tester,
+        api,
+        [],
+        withStore: true,
+        stock: {
+          'p1': ProductStock([
+            StockLevel(
+              productId: 'p1',
+              locationId: 'magasin',
+              quantity: Decimal.zero,
+              reservedQuantity: Decimal.zero,
+              inTransitQuantity: Decimal.zero,
+              availableQuantity: Decimal.zero,
+            ),
+          ]),
+        },
+      );
+      Future<void> scan() async {
+        await tester.enterText(find.byType(TextField).first, '3245060123458');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+      }
+
+      await scan();
+      expect(find.textContaining('en rupture au magasin'), findsOneWidget);
+      await tester.tap(find.text('Ne pas l’ajouter'));
+      await tester.pumpAndSettle();
+      expect(find.text('Panier vide'), findsOneWidget);
+
+      await scan();
+      await tester.tap(find.text('L’ajouter quand même'));
+      await tester.pumpAndSettle();
+      expect(find.text('Câble 3G2,5'), findsOneWidget);
+      expect(find.textContaining('Pas assez au magasin'), findsOneWidget);
+      await tester.tap(find.textContaining('Encaisser'));
+      await tester.pumpAndSettle();
+      expect(find.text('Valider la vente'), findsNothing);
+      expect(api.sent, isNull);
     },
   );
 
