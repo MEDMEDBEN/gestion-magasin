@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente v2 : couleurs utiles, encaissement façon caisse — 2026-10-09 (MEDMEDBEN, Claude)
+
+- Tuiles : couleur = état du stock AU MAGASIN (vert en stock, orange ≤ seuil, rouge rupture) + quantité,
+  légende ; hors ligne, pas de couleur (jamais un stock inventé). Filtres par catégorie au-dessus de la grille.
+- Encaissement (`payment_dialog.dart`) : total en afficheur, montants rapides (compte juste, arrondis
+  100/500/1 000/5 000, billets), résultat en direct (vert monnaie, orange reste à crédit, rouge il manque —
+  vente comptoir non soldée : bouton grisé). Poste : F2 recherche, F9 encaisser. Client : zone dédiée.
+- **À valider par MEDMEDBEN** avant d'attaquer le reste de l'app (sa demande : on finit la Vente d'abord).
+- Preuves : app analyze 0, **545 tests** ; captures 21, 21c (encaissement), 22 vérifiées.
+
 ### Caisse du jour + refonte visuelle de la Vente — 2026-10-08 (MEDMEDBEN, Claude)
 
 - **Une caisse ne vit qu'un jour** (heure d'Alger, décision MEDMEDBEN) : une caisse d'un jour passé n'accepte

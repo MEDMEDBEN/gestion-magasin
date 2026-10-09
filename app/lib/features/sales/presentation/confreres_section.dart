@@ -82,11 +82,7 @@ class ConfreresSection extends ConsumerWidget {
   }
 
   /// Il me paie : un règlement client ordinaire (caisse ouverte).
-  Future<void> _receive(
-    BuildContext context,
-    WidgetRef ref,
-    Confrere c,
-  ) async {
+  Future<void> _receive(BuildContext context, WidgetRef ref, Confrere c) async {
     final amount = await askAmount(
       context,
       title: 'Règlement de ${c.name}',
@@ -345,35 +341,36 @@ class _ConfrereDealFormState extends ConsumerState<ConfrereDealForm> {
       _error = null;
     });
     try {
-      final result = await ref
-          .read(salesApiProvider)
-          .confrereDeal(widget.confrere.id, {
-            'clientMutationId': _receptionKey,
-            'receive': [
-              for (final l in _receive)
+      final result = await ref.read(salesApiProvider).confrereDeal(
+        widget.confrere.id,
+        {
+          'clientMutationId': _receptionKey,
+          'receive': [
+            for (final l in _receive)
+              {
+                'productId': l.productId,
+                'receivedQuantity': formatQuantity(
+                  parseQuantity(l.quantity.text)!,
+                ),
+                'unitPriceHt': parseDA(l.price.text),
+              },
+          ],
+          if (_give.isNotEmpty) ...{
+            'saleMutationId': _saleKey,
+            'give': [
+              for (final l in _give)
                 {
                   'productId': l.productId,
-                  'receivedQuantity': formatQuantity(
-                    parseQuantity(l.quantity.text)!,
-                  ),
-                  'unitPriceHt': parseDA(l.price.text),
+                  'quantity': formatQuantity(parseQuantity(l.quantity.text)!),
+                  if (l.price.text.trim().isNotEmpty) ...{
+                    'unitPriceHt': parseDA(l.price.text),
+                    'priceEdited': true,
+                  },
                 },
             ],
-            if (_give.isNotEmpty) ...{
-              'saleMutationId': _saleKey,
-              'give': [
-                for (final l in _give)
-                  {
-                    'productId': l.productId,
-                    'quantity': formatQuantity(parseQuantity(l.quantity.text)!),
-                    if (l.price.text.trim().isNotEmpty) ...{
-                      'unitPriceHt': parseDA(l.price.text),
-                      'priceEdited': true,
-                    },
-                  },
-              ],
-            },
-          });
+          },
+        },
+      );
       ref.invalidate(confreresProvider);
       ref.invalidate(customerSearchProvider);
       if (!mounted) return;

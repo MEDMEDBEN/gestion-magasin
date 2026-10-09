@@ -1473,6 +1473,25 @@ void main() {
     ),
   );
   testWidgets(
+    '21c encaissement desktop vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '21c_encaissement_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: (t) async {
+        await _fillCart(t);
+        await t.tap(find.textContaining('Encaisser'));
+        await t.pumpAndSettle();
+        await t.enterText(find.byType(TextField).last, '4000');
+        await t.pump();
+      },
+    ),
+  );
+  testWidgets(
     '22 vente mobile vendeuse',
     skip: skip,
     (t) => _capture(

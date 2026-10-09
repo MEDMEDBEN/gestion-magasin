@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -34,7 +35,9 @@ import '../../scan/presentation/scan_screen.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/contact_profile.dart';
 import 'confreres_section.dart';
+import '../../stock/application/stock_controller.dart';
 import 'customer_form.dart';
+import 'payment_dialog.dart';
 import 'sales_history.dart';
 
 /// Droits de la vente, MIROIRS des guards serveur (`docs/permissions.md`).
@@ -152,26 +155,38 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _SectionTabs(
-                selected: _section,
-                onSelect: (section) => setState(() => _section = section),
-                items: [
-                  (_Section.sale, LucideIcons.shoppingCart, 'Vente'),
-                  // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
-                  if (rights.canSell)
-                    (_Section.history, LucideIcons.history, 'Historique'),
-                  (_Section.customers, LucideIcons.users, 'Clients'),
-                  if (rights.canSeeConfreres)
-                    (_Section.confreres, LucideIcons.handshake, 'Confrères'),
-                  if (rights.canSeeAllCash)
-                    (_Section.cashSessions, LucideIcons.landmark, 'Caisses'),
-                ],
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _SectionTabs(
+                    selected: _section,
+                    onSelect: (section) => setState(() => _section = section),
+                    items: [
+                      (_Section.sale, LucideIcons.shoppingCart, 'Vente'),
+                      // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
+                      if (rights.canSell)
+                        (_Section.history, LucideIcons.history, 'Historique'),
+                      (_Section.customers, LucideIcons.users, 'Clients'),
+                      if (rights.canSeeConfreres)
+                        (
+                          _Section.confreres,
+                          LucideIcons.handshake,
+                          'Confrères',
+                        ),
+                      if (rights.canSeeAllCash)
+                        (
+                          _Section.cashSessions,
+                          LucideIcons.landmark,
+                          'Caisses',
+                        ),
+                    ],
+                  ),
+                ),
               ),
+              const SizedBox(width: 8),
               // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
               // Le vendeur n'y trouve que SES ventes (le serveur filtre).
               if (rights.canSell)
@@ -748,6 +763,8 @@ class _SaleSection extends ConsumerStatefulWidget {
 }
 
 class _SaleSectionState extends ConsumerState<_SaleSection> {
+  /// Filtre de la grille : une catégorie, ou tout (null).
+  String? _categoryId;
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
   bool _busy = false;
@@ -842,15 +859,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       _snack(context, 'Ouvrez la caisse avant d’encaisser des espèces');
       return;
     }
-    final received = await askAmount(
+    final received = await showPaymentDialog(
       context,
-      title: 'Encaisser ${formatDA(estimate.totalTtc)}',
-      label: 'Espèces reçues',
-      confirm: 'Valider la vente',
-      initial: estimate.totalTtc,
-      help: cart.customer == null
-          ? 'Vente comptoir : doit être soldée'
-          : 'Moins que le total : le reste part en crédit de ${cart.customer!.name}',
+      total: estimate.totalTtc,
+      customerName: cart.customer?.name,
     );
     if (received == null || !mounted) return;
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
@@ -966,7 +978,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   /// Champ de recherche / douchette / caméra, commun aux deux dispositions.
   InputDecoration _searchDecoration(List<Product> products) => InputDecoration(
     prefixIcon: const Icon(LucideIcons.scanBarcode, size: 20),
-    hintText: 'Scanner un code-barres ou chercher un produit',
+    hintText: 'Scanner un code-barres ou chercher un produit (F2)',
     suffixIcon: CameraScanButton(onCode: (code) => _scan(code, products)),
   );
 
@@ -1011,6 +1023,33 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
 
   Widget _wideLayout(List<Product> products, Widget? catalogAlert) {
     final m = widget.margin;
+    // Caisse au clavier : F2 cherche / scanne, F9 encaisse.
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.f2): () =>
+            _searchFocus.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.f9): _payShortcut,
+      },
+      child: _wideBody(products, catalogAlert, m),
+    );
+  }
+
+  /// F9 : le même geste que le bouton principal, s'il est actif.
+  void _payShortcut() {
+    final estimate = ref.read(cartEstimateProvider);
+    final cart = ref.read(cartProvider);
+    if (_busy || estimate.blocked || cart.isEmpty || cart.quote != null) {
+      return;
+    }
+    final cash = ref.read(currentCashSessionProvider);
+    if (cash.hasValue && cash.value == null && cart.customer == null) {
+      if (widget.rights.canManageCash) _openCashFlow(context, ref);
+      return;
+    }
+    _checkout(estimate);
+  }
+
+  Widget _wideBody(List<Product> products, Widget? catalogAlert, double m) {
     return Padding(
       padding: EdgeInsets.fromLTRB(m, 14, m, m),
       child: Row(
@@ -1033,9 +1072,20 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   onSubmitted: (value) => _submitSearch(value, products),
                 ),
                 const SizedBox(height: 12),
+                _CategoryChips(
+                  products: products,
+                  selected: _categoryId,
+                  onSelect: (id) => setState(() => _categoryId = id),
+                ),
+                const SizedBox(height: 10),
                 Expanded(
                   child: _ProductGrid(
-                    products: products,
+                    products: _categoryId == null
+                        ? products
+                        : [
+                            for (final p in products)
+                              if (p.categoryId == _categoryId) p,
+                          ],
                     query: _search.text,
                     onPick: (p) {
                       _add(p);
@@ -1296,6 +1346,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             _PayButton(
               icon: LucideIcons.banknote,
               label: 'Encaisser ${formatDA(estimate.totalTtc)}',
+              shortcut: compact ? null : 'F9',
               height: compact ? 52 : 60,
               onPressed: blocked ? null : () => _checkout(estimate),
             ),
@@ -1477,7 +1528,11 @@ class _PayButton extends StatelessWidget {
     required this.onPressed,
     this.height = 60,
     this.tone,
+    this.shortcut,
   });
+
+  /// Touche du poste qui fait le même geste (affichée en petit).
+  final String? shortcut;
 
   final IconData icon;
   final String label;
@@ -1532,8 +1587,70 @@ class _PayButton extends StatelessWidget {
           ),
           onPressed: onPressed,
           icon: Icon(icon, size: 22),
-          label: Text(label),
+          label: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: Text(label, overflow: TextOverflow.ellipsis)),
+              if (shortcut case final key?) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: colors.bg.withValues(alpha: 0.5)),
+                  ),
+                  child: Text(key, style: AmpereType.label),
+                ),
+              ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// Filtres de la grille : « Tout » puis les catégories qui ont des produits.
+class _CategoryChips extends ConsumerWidget {
+  const _CategoryChips({
+    required this.products,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<Product> products;
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final used = {for (final p in products) ?p.categoryId};
+    final categories = [
+      for (final c in ref.watch(categoriesProvider).value ?? const [])
+        if (used.contains(c.id)) c,
+    ]..sort((a, b) => a.name.compareTo(b.name));
+    if (categories.isEmpty) return const SizedBox.shrink();
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final (id, label) in [
+            (null, 'Tout'),
+            for (final c in categories) (c.id, c.name),
+          ])
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(label),
+                selected: selected == id,
+                showCheckmark: false,
+                onSelected: (_) => onSelect(id),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1562,6 +1679,15 @@ class _ProductGrid extends ConsumerWidget {
     final inCart = {
       for (final l in ref.watch(cartProvider).lines) l.product.id: l.quantity,
     };
+    // Stock du MAGASIN (lu en ligne) : la couleur de la tuile dit s'il y en a.
+    // Inconnu (hors ligne) : pas de couleur, jamais un état inventé.
+    final stock = ref.watch(stockByProductProvider).value;
+    final store = (ref.watch(locationsProvider).value ?? const [])
+        .where((l) => l.type == 'MAGASIN')
+        .firstOrNull;
+    Quantity? atStore(Product p) => stock == null || store == null
+        ? null
+        : stock[p.id]?.at(store.id) ?? Quantity.zero;
     final found = query.trim().isEmpty
         ? products
         : _searchProducts(products, query);
@@ -1576,6 +1702,37 @@ class _ProductGrid extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (stock != null && store != null) ...[
+          Wrap(
+            spacing: 14,
+            children: [
+              for (final (tone, label) in [
+                (colors.ok, 'En stock'),
+                (colors.warn, 'Stock bas'),
+                (colors.error, 'Rupture'),
+              ])
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: tone,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: AmpereType.meta.copyWith(color: colors.ink2),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         Expanded(
           child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -1589,6 +1746,7 @@ class _ProductGrid extends ConsumerWidget {
               final p = found[i];
               return _ProductTile(
                 product: p,
+                stock: atStore(p),
                 price: p.salePriceHt(defaultTier),
                 inCart: inCart[p.id],
                 onTap: () => onPick(p),
@@ -1613,6 +1771,7 @@ class _ProductGrid extends ConsumerWidget {
 class _ProductTile extends StatelessWidget {
   const _ProductTile({
     required this.product,
+    required this.stock,
     required this.price,
     required this.inCart,
     required this.onTap,
@@ -1621,24 +1780,30 @@ class _ProductTile extends StatelessWidget {
   final Product product;
   final int? price;
   final Quantity? inCart;
+
+  /// Stock au magasin ; `null` = inconnu (hors ligne).
+  final Quantity? stock;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final picked = inCart != null;
-    // Couleur stable par catégorie (sinon par référence) : le catalogue se
-    // lit d'un coup d'œil, sans palette inventée (couleurs du thème).
-    final palette = [
-      colors.accent,
-      colors.vizAlt,
-      colors.ok,
-      colors.warn,
-      colors.info,
-    ];
-    final key = product.categoryId ?? product.sku;
-    final tone =
-        palette[key.codeUnits.fold<int>(0, (a, c) => a + c) % palette.length];
+    // La couleur DIT quelque chose : vert en stock, orange sous le seuil,
+    // rouge en rupture (le serveur refusera la vente, sauf backorder).
+    final level = stock;
+    final tone = level == null
+        ? colors.ink3
+        : level <= Quantity.zero
+        ? colors.error
+        : level <= product.minThreshold
+        ? colors.warn
+        : colors.ok;
+    final stockLabel = level == null
+        ? product.sku
+        : level <= Quantity.zero
+        ? 'Rupture · ${product.sku}'
+        : 'Stock ${formatQuantity(level)} ${product.unit.short} · ${product.sku}';
     return Material(
       color: picked ? colors.accentBg : colors.surface,
       shape: RoundedRectangleBorder(
@@ -1696,18 +1861,21 @@ class _ProductTile extends StatelessWidget {
                 ),
               ),
               Text(
-                product.sku,
+                stockLabel,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AmpereType.mono.copyWith(color: colors.ink3),
+                style: AmpereType.meta.copyWith(
+                  color: level == null ? colors.ink3 : tone,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: (price == null ? colors.error : tone).withValues(
-                    alpha: 0.14,
-                  ),
+                  color: price == null
+                      ? colors.error.withValues(alpha: 0.14)
+                      : colors.accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -1976,10 +2144,16 @@ class _CustomerPicker extends ConsumerWidget {
         ),
       );
     }
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: OutlinedButton.icon(
-        onPressed: () async {
+    final colors = AmpereColors.of(context);
+    return Material(
+      color: colors.surface2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
           final picked = await showDialog<Customer>(
             context: context,
             builder: (_) => const _CustomerSearchDialog(),
@@ -1988,8 +2162,31 @@ class _CustomerPicker extends ConsumerWidget {
             ref.read(cartProvider.notifier).setCustomer(picked);
           }
         },
-        icon: const Icon(LucideIcons.userSearch, size: 17),
-        label: const Text('Client (facultatif)'),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(LucideIcons.userPlus, size: 20, color: colors.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Client (facultatif)',
+                      style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                    ),
+                    Text(
+                      'Pour un crédit, une facture ou son tarif',
+                      style: AmpereType.meta.copyWith(color: colors.ink3),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, size: 18, color: colors.ink3),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -22,6 +22,7 @@ import 'package:gestion_magasin/features/sales/data/confrere.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/sales/presentation/sales_screen.dart';
+import 'package:gestion_magasin/features/stock/application/stock_controller.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
@@ -379,6 +380,9 @@ Future<void> _pumpScreen(
     ProviderScope(
       overrides: [
         salesApiProvider.overrideWithValue(api),
+        // Stock du magasin : inconnu ici (aucun réseau dans les tests).
+        stockByProductProvider.overrideWith((ref) async => throw Exception()),
+        categoriesProvider.overrideWith((ref) => Stream.value(const [])),
         currentUserIdProvider.overrideWithValue('v'),
         deviceIdProvider.overrideWith((ref) async => 'poste-caisse'),
         mutationQueueProvider.overrideWithValue(queue ?? _MemoryQueue()),
@@ -536,16 +540,19 @@ void main() {
     },
   );
 
-  test('une caisse ne vit qu’un jour : celle d’hier est close (2026-10-08)', () {
-    final now = DateTime(2026, 10, 9, 9, 30);
-    final today = _openCash.copyWith(openedAt: DateTime(2026, 10, 9, 7));
-    final yesterday = _openCash.copyWith(
-      openedAt: DateTime(2026, 10, 8, 23, 50),
-    );
-    expect(todaysCash(today, now), today);
-    expect(todaysCash(yesterday, now), isNull);
-    expect(todaysCash(null, now), isNull);
-  });
+  test(
+    'une caisse ne vit qu’un jour : celle d’hier est close (2026-10-08)',
+    () {
+      final now = DateTime(2026, 10, 9, 9, 30);
+      final today = _openCash.copyWith(openedAt: DateTime(2026, 10, 9, 7));
+      final yesterday = _openCash.copyWith(
+        openedAt: DateTime(2026, 10, 8, 23, 50),
+      );
+      expect(todaysCash(today, now), today);
+      expect(todaysCash(yesterday, now), isNull);
+      expect(todaysCash(null, now), isNull);
+    },
+  );
 
   testWidgets(
     'douchette → panier → encaissement : produit + quantité, monnaie rendue',
@@ -906,24 +913,25 @@ void main() {
   );
 
   /// Demande MEDMEDBEN du 2026-10-08 : les confrères, depuis l'écran Vente.
-  testWidgets('confrères : soldes, « Lui vendre » ouvre la vente sans plafond', (
-    tester,
-  ) async {
-    useScreenSize(tester, const Size(500, 1400));
-    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
-    await tester.tap(find.text('Confrères'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ali Élec'), findsOneWidget);
-    expect(find.text('Je lui dois ${formatDA(150000)}'), findsOneWidget);
-    // Verser au confrère = paiement fournisseur : pas pour le vendeur.
-    expect(find.text('Je le paie'), findsNothing);
-    expect(find.text('Lui acheter'), findsOneWidget);
-    expect(find.text('Échange'), findsOneWidget);
+  testWidgets(
+    'confrères : soldes, « Lui vendre » ouvre la vente sans plafond',
+    (tester) async {
+      useScreenSize(tester, const Size(500, 1400));
+      await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+      await tester.tap(find.text('Confrères'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ali Élec'), findsOneWidget);
+      expect(find.text('Je lui dois ${formatDA(150000)}'), findsOneWidget);
+      // Verser au confrère = paiement fournisseur : pas pour le vendeur.
+      expect(find.text('Je le paie'), findsNothing);
+      expect(find.text('Lui acheter'), findsOneWidget);
+      expect(find.text('Échange'), findsOneWidget);
 
-    await tester.tap(find.text('Lui vendre'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('confrère, sans plafond'), findsOneWidget);
-  });
+      await tester.tap(find.text('Lui vendre'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('confrère, sans plafond'), findsOneWidget);
+    },
+  );
 
   /// Retour de test humain (2026-09-27) : l'historique des achats d'un client
   /// était introuvable depuis sa fiche.
