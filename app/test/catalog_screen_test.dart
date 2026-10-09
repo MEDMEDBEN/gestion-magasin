@@ -454,20 +454,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byTooltip('Filtrer par catégorie'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Câbles').last);
-      await tester.pumpAndSettle();
-      expect(find.widgetWithText(Chip, 'Câbles'), findsOneWidget);
+      // Pastilles à toucher (2026-10-09) : le choix se voit, sans menu.
+      ChoiceChip chip(String label) =>
+          tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label));
+      // La ligne de pastilles défile : on amène chacune à l'écran.
+      Future<void> tapChip(String label) async {
+        final finder = find.widgetWithText(ChoiceChip, label);
+        await tester.ensureVisible(finder);
+        await tester.pumpAndSettle();
+        await tester.tap(finder);
+      }
 
-      await tester.tap(find.byTooltip('Filtrer par catégorie'));
+      await tapChip('Câbles');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Toutes les catégories').last);
+      expect(chip('Câbles').selected, isTrue);
+      expect(chip('Toutes les catégories').selected, isFalse);
+
+      await tapChip('Toutes les catégories');
       await tester.pumpAndSettle();
-      expect(
-        find.widgetWithText(Chip, 'Toutes les catégories'),
-        findsOneWidget,
-      );
+      expect(chip('Toutes les catégories').selected, isTrue);
+      expect(chip('Câbles').selected, isFalse);
     },
   );
 
@@ -556,7 +562,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Tableau dense sur desktop.
-    expect(find.text('RÉFÉRENCE'), findsOneWidget);
+    expect(find.text('PRODUIT'), findsOneWidget);
     await tester.tap(find.text('Ancien nom'));
     await tester.pumpAndSettle();
 

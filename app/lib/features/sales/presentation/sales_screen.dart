@@ -19,6 +19,7 @@ import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/fields_dialog.dart';
 import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/import_button.dart';
+import '../../../ui/widgets/pill_tabs.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -162,7 +163,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
               Expanded(
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: _SectionTabs(
+                  child: PillTabs<_Section>(
                     selected: _section,
                     onSelect: (section) => setState(() => _section = section),
                     items: [
@@ -229,89 +230,6 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
           },
         ),
       ],
-    );
-  }
-}
-
-/// Onglets de l'écran Vente : des pastilles qui défilent (le téléphone n'a
-/// pas la place de 5 segments), l'onglet choisi en dégradé d'accent.
-class _SectionTabs extends StatelessWidget {
-  const _SectionTabs({
-    required this.items,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  final List<(_Section, IconData, String)> items;
-  final _Section selected;
-  final ValueChanged<_Section> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: colors.surface2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.lineSoft),
-      ),
-      // Téléphone : les pastilles passent à la ligne, toutes visibles.
-      child: Wrap(
-        runSpacing: 4,
-        children: [
-          for (final (section, icon, label) in items)
-            _tab(colors, section, icon, label),
-        ],
-      ),
-    );
-  }
-
-  Widget _tab(
-    AmpereColors colors,
-    _Section section,
-    IconData icon,
-    String label,
-  ) {
-    final on = section == selected;
-    final ink = on ? colors.onAccent : colors.ink2;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () => onSelect(section),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: on
-                  ? LinearGradient(colors: [colors.accent, colors.accentHi])
-                  : null,
-              boxShadow: on
-                  ? [
-                      BoxShadow(
-                        color: colors.accent.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 16, color: ink),
-                const SizedBox(width: 7),
-                Text(label, style: AmpereType.bodyStrong.copyWith(color: ink)),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

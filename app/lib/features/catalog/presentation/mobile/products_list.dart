@@ -126,7 +126,7 @@ class _ProductRow extends StatelessWidget {
           children: [
             if (selected != null)
               Checkbox(value: selected, onChanged: (_) => onToggle?.call()),
-            ProductThumbnail(product: product, size: 44),
+            ProductThumbnail(product: product, size: 52),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -140,19 +140,30 @@ class _ProductRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${product.sku} · ${product.barcode}',
+                    [product.sku, ?product.brand].join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AmpereType.mono.copyWith(color: colors.ink3),
+                    style: AmpereType.meta.copyWith(color: colors.ink3),
                   ),
-                  Text(
-                    [
-                      'Vente ${_amount(product.salePriceHt(defaultTierId))}',
-                      'Achat ${_amount(product.lastPurchasePriceHt)}',
-                    ].join(' · '),
+                  const SizedBox(height: 4),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: _amount(product.salePriceHt(defaultTierId)),
+                          style: AmpereType.bodyStrong.copyWith(
+                            color: colors.accentHi,
+                          ),
+                        ),
+                        TextSpan(
+                          text:
+                              '  ·  achat ${_amount(product.lastPurchasePriceHt)}',
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        ),
+                      ],
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AmpereType.meta.copyWith(color: colors.ink2),
                   ),
                   if (category != null ||
                       !product.isActive ||

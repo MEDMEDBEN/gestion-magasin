@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -26,6 +27,8 @@ import 'location_form.dart';
 import 'mobile/products_list.dart';
 import 'product_form.dart';
 import '../../../ui/widgets/export_button.dart';
+import '../../../ui/widgets/pill_tabs.dart';
+import '../../stock/presentation/stock_status.dart';
 import 'requested_search.dart';
 
 /// Droits du catalogue, MIROIRS des guards serveur (`docs/permissions.md`).
@@ -246,21 +249,25 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
             padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: SegmentedButton<_Section>(
-                showSelectedIcon: false,
-                segments: [
+              child: PillTabs<_Section>(
+                selected: section,
+                onSelect: (s) => setState(() => _section = s),
+                items: [
                   for (final s in sections)
-                    ButtonSegment(
-                      value: s,
-                      label: Text(switch (s) {
-                        _Section.products => 'Produits',
-                        _Section.categories => 'Catégories',
-                        _Section.locations => 'Emplacements',
-                      }),
-                    ),
+                    switch (s) {
+                      _Section.products => (s, LucideIcons.package, 'Produits'),
+                      _Section.categories => (
+                        s,
+                        LucideIcons.folderTree,
+                        'Catégories',
+                      ),
+                      _Section.locations => (
+                        s,
+                        LucideIcons.mapPin,
+                        'Emplacements',
+                      ),
+                    },
                 ],
-                selected: {section},
-                onSelectionChanged: (s) => setState(() => _section = s.first),
               ),
             ),
           ),
@@ -321,6 +328,20 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
         'enregistrée sur ce poste reste affichée.';
   }
 }
+
+/// Filtre « état du stock » du bandeau : un état, ou tous (null).
+class _StockFilter extends Notifier<StockState?> {
+  @override
+  StockState? build() => null;
+
+  /// Toucher le filtre actif le retire.
+  void toggle(StockState? state) =>
+      this.state = state == this.state ? null : state;
+}
+
+final _stockFilterProvider = NotifierProvider<_StockFilter, StockState?>(
+  _StockFilter.new,
+);
 
 class _ProductsSection extends ConsumerWidget {
   const _ProductsSection({
@@ -522,22 +543,25 @@ class _ProductsSection extends ConsumerWidget {
           ),
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 0, margin, 10),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _CategoryFilter(
-                categories: categories,
-                selectedId: filter.categoryId,
-                onSelected: notifier.setCategory,
-              ),
-              FilterChip(
-                label: const Text('Inclure les inactifs'),
-                selected: filter.includeInactive,
-                onSelected: notifier.setIncludeInactive,
-              ),
-            ],
+          // Une seule ligne qui défile : sur téléphone, des pastilles à la
+          // ligne mangeaient la moitié de l'écran.
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _CategoryFilter(
+                  categories: categories,
+                  selectedId: filter.categoryId,
+                  onSelected: notifier.setCategory,
+                ),
+                FilterChip(
+                  avatar: const Icon(LucideIcons.eyeOff, size: 15),
+                  label: const Text('Inclure les inactifs'),
+                  selected: filter.includeInactive,
+                  onSelected: notifier.setIncludeInactive,
+                ),
+              ],
+            ),
           ),
         ),
         Expanded(
@@ -548,7 +572,45 @@ class _ProductsSection extends ConsumerWidget {
               message: 'Lecture du catalogue local impossible.',
               onRetry: () => ref.invalidate(productsProvider),
             ),
-            data: (items) {
+            data: (all) {
+              final stockFilter = ref.watch(_stockFilterProvider);
+              StockState stateOf(Product p) => stockStateOf(
+                stock?[p.id]?.total ?? Quantity.zero,
+                p.minThreshold,
+              );
+              final items = stock == null || stockFilter == null
+                  ? all
+                  : [
+                      for (final p in all)
+                        if (p.isActive && stateOf(p) == stockFilter) p,
+                    ];
+              final stats = stock == null || all.isEmpty
+                  ? null
+                  : _StockStats(
+                      total: all.length,
+                      counts: {
+                        for (final state in StockState.values)
+                          state: all
+                              .where((p) => p.isActive && stateOf(p) == state)
+                              .length,
+                      },
+                      selected: stockFilter,
+                      onSelect: ref.read(_stockFilterProvider.notifier).toggle,
+                    );
+              if (items.isEmpty && stockFilter != null) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(margin, 0, margin, 10),
+                      child: stats,
+                    ),
+                    const Expanded(
+                      child: ScreenStateView(status: ScreenStatus.noResults),
+                    ),
+                  ],
+                );
+              }
               if (items.isEmpty) {
                 final filtered =
                     filter.search.isNotEmpty || filter.categoryId != null;
@@ -574,7 +636,7 @@ class _ProductsSection extends ConsumerWidget {
                   ?.where((t) => t.isDefault)
                   .firstOrNull
                   ?.id;
-              return isDesktop
+              final list = isDesktop
                   ? ProductsTable(
                       defaultTierId: defaultTierId,
                       products: items,
@@ -601,6 +663,17 @@ class _ProductsSection extends ConsumerWidget {
                       onRefresh: () =>
                           ref.read(catalogSyncProvider.notifier).refresh(),
                     );
+              if (stats == null) return list;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 10),
+                    child: stats,
+                  ),
+                  Expanded(child: list),
+                ],
+              );
             },
           ),
         ),
@@ -622,25 +695,142 @@ class _CategoryFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = categories.where((c) => c.id == selectedId).firstOrNull;
-    // Flutter traite un choix `null` comme une fermeture du menu : « Toutes »
-    // passe par une valeur sentinelle, convertie en « aucun filtre ».
-    const all = '';
-    return PopupMenuButton<String>(
-      tooltip: 'Filtrer par catégorie',
-      onSelected: (id) => onSelected(id == all ? null : id),
-      itemBuilder: (_) => [
-        const PopupMenuItem(value: all, child: Text('Toutes les catégories')),
-        for (final root in categories.where((c) => c.parentId == null)) ...[
-          PopupMenuItem(value: root.id, child: Text(root.name)),
-          for (final child in categories.where((c) => c.parentId == root.id))
-            PopupMenuItem(value: child.id, child: Text('    ${child.name}')),
-        ],
+    // Racines puis leurs sous-catégories, dans l'ordre de l'arbre.
+    final ordered = [
+      for (final root in categories.where((c) => c.parentId == null)) ...[
+        root,
+        ...categories.where((c) => c.parentId == root.id),
       ],
-      child: Chip(
-        avatar: const Icon(LucideIcons.folderTree, size: 15),
-        label: Text(selected?.name ?? 'Toutes les catégories'),
-      ),
+    ];
+    Widget gap(Widget chip) =>
+        Padding(padding: const EdgeInsets.only(right: 8), child: chip);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        gap(
+          ChoiceChip(
+            avatar: const Icon(LucideIcons.layoutGrid, size: 15),
+            label: const Text('Toutes les catégories'),
+            selected: selectedId == null,
+            showCheckmark: false,
+            onSelected: (_) => onSelected(null),
+          ),
+        ),
+        for (final c in ordered)
+          gap(
+            ChoiceChip(
+              label: Text(c.name),
+              selected: c.id == selectedId,
+              showCheckmark: false,
+              onSelected: (_) => onSelected(c.id == selectedId ? null : c.id),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Bandeau du catalogue : combien de produits, et leur état de stock — vert
+/// en stock, orange stock faible, rouge rupture. Toucher un état FILTRE la
+/// liste (le toucher à nouveau le retire).
+class _StockStats extends StatelessWidget {
+  const _StockStats({
+    required this.total,
+    required this.counts,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final int total;
+  final Map<StockState, int> counts;
+  final StockState? selected;
+  final ValueChanged<StockState?> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    Widget tile(
+      StockState? state,
+      IconData icon,
+      String label,
+      int count,
+      Color tone,
+    ) {
+      final on = state != null && state == selected;
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => onSelect(state),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: tone.withValues(alpha: on ? 0.9 : 0.35),
+                width: on ? 2 : 1,
+              ),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  tone.withValues(alpha: on ? 0.25 : 0.12),
+                  tone.withValues(alpha: 0.02),
+                ],
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: tone),
+                const SizedBox(width: 8),
+                Text(
+                  '$count',
+                  style: AmpereType.sectionTitle.copyWith(
+                    color: tone,
+                    fontFeatures: AmpereType.tabular,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: AmpereType.meta.copyWith(color: colors.ink2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        tile(null, LucideIcons.package, 'produits', total, colors.accentHi),
+        tile(
+          StockState.inStock,
+          LucideIcons.circleCheck,
+          'en stock',
+          counts[StockState.inStock] ?? 0,
+          colors.ok,
+        ),
+        tile(
+          StockState.low,
+          LucideIcons.triangleAlert,
+          'stock faible',
+          counts[StockState.low] ?? 0,
+          colors.warn,
+        ),
+        tile(
+          StockState.out,
+          LucideIcons.packageX,
+          'en rupture',
+          counts[StockState.out] ?? 0,
+          colors.error,
+        ),
+      ],
     );
   }
 }

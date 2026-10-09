@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Catalogue modernisé — 2026-10-09 (MEDMEDBEN, Claude)
+
+- Onglets en pastilles (`ui/widgets/pill_tabs.dart`, partagé avec la Vente). Catégories en pastilles sur UNE
+  ligne qui défile (« Toutes » + l'arbre), « Inclure les inactifs » au bout.
+- Bandeau cliquable : produits / en stock (vert) / stock faible (orange) / en rupture (rouge) — toucher un
+  état filtre la liste, le retoucher le retire (stock lu en ligne ; sans droit ni réseau, pas de bandeau).
+- Tableau poste : colonne Produit (photo, nom, réf · marque), catégorie en pastille, prix de vente mis en
+  avant, stock + seuil ; **débordement corrigé** (colonne des 3 boutons trop étroite). Téléphone : prix de
+  vente en couleur, photo plus grande, réf · marque.
+- Preuves : app analyze 0, **545 tests** (2 tests adaptés : pastilles au lieu du menu, colonne « Produit ») ;
+  captures 12/14 vérifiées.
+
 ### Accueil : code couleur explicite — 2026-10-09 (MEDMEDBEN, Claude)
 
 - Code couleur UNIQUE, rappelé par une légende : vert = bon / argent qui rentre, bleu = en cours, orange = à
