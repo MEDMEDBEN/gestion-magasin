@@ -22,6 +22,7 @@ import '../application/sales_controller.dart';
 import '../data/confrere.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
+import 'contact_card.dart';
 
 void _snack(BuildContext context, String message) =>
     ScaffoldMessenger.of(context)
@@ -184,100 +185,74 @@ class ConfreresSection extends ConsumerWidget {
                 : ListView(
                     padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
                     children: [
-                      for (final c in items)
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        c.phone == null
-                                            ? c.name
-                                            : '${c.name} · ${c.phone}',
-                                        style: AmpereType.bodyStrong.copyWith(
-                                          color: colors.ink,
-                                        ),
-                                      ),
-                                    ),
-                                    AmpereBadge(
-                                      label: c.net > 0
-                                          ? 'Il me doit ${formatDA(c.net)}'
-                                          : c.net < 0
-                                          ? 'Je lui dois ${formatDA(-c.net)}'
-                                          : 'À jour',
-                                      tone: c.net == 0
-                                          ? StatusTone.ok
-                                          : StatusTone.warn,
-                                    ),
-                                  ],
+                      SummaryStrip(
+                        items: [
+                          ('Confrères', '${items.length}', colors.accentHi),
+                          (
+                            'Ils me doivent',
+                            formatDA(items.fold(0, (s, c) => s + c.theyOwe)),
+                            colors.ok,
+                          ),
+                          (
+                            'Je leur dois',
+                            formatDA(items.fold(0, (s, c) => s + c.weOwe)),
+                            colors.warn,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      ContactGrid(
+                        children: [
+                          for (final c in items)
+                            ContactCard(
+                              name: c.name,
+                              phone: c.phone,
+                              tags: const ['Confrère'],
+                              status: c.net > 0
+                                  ? 'Il me doit ${formatDA(c.net)}'
+                                  : c.net < 0
+                                  ? 'Je lui dois ${formatDA(-c.net)}'
+                                  : 'À jour',
+                              tone: c.net > 0
+                                  ? colors.ok
+                                  : c.net < 0
+                                  ? colors.warn
+                                  : colors.accent,
+                              amounts: [
+                                ('Il me doit', formatDA(c.theyOwe), colors.ok),
+                                ('Je lui dois', formatDA(c.weOwe), colors.warn),
+                              ],
+                              actions: [
+                                (
+                                  LucideIcons.shoppingCart,
+                                  'Lui vendre',
+                                  () => _sell(context, ref, c),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Il me doit ${formatDA(c.theyOwe)} · '
-                                  'je lui dois ${formatDA(c.weOwe)}',
-                                  style: AmpereType.meta.copyWith(
-                                    color: colors.ink3,
+                                (
+                                  LucideIcons.packagePlus,
+                                  'Lui acheter',
+                                  () => _deal(context, c, exchange: false),
+                                ),
+                                (
+                                  LucideIcons.arrowLeftRight,
+                                  'Échange',
+                                  () => _deal(context, c, exchange: true),
+                                ),
+                                (
+                                  LucideIcons.banknote,
+                                  'Il me paie',
+                                  () => _receive(context, ref, c),
+                                ),
+                                if (canPayConfreres)
+                                  (
+                                    LucideIcons.handCoins,
+                                    'Je le paie',
+                                    () => _pay(context, ref, c),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 4,
-                                  children: [
-                                    TextButton.icon(
-                                      onPressed: () => _sell(context, ref, c),
-                                      icon: const Icon(
-                                        LucideIcons.shoppingCart,
-                                        size: 16,
-                                      ),
-                                      label: const Text('Lui vendre'),
-                                    ),
-                                    TextButton.icon(
-                                      onPressed: () =>
-                                          _deal(context, c, exchange: false),
-                                      icon: const Icon(
-                                        LucideIcons.packagePlus,
-                                        size: 16,
-                                      ),
-                                      label: const Text('Lui acheter'),
-                                    ),
-                                    TextButton.icon(
-                                      onPressed: () =>
-                                          _deal(context, c, exchange: true),
-                                      icon: const Icon(
-                                        LucideIcons.arrowLeftRight,
-                                        size: 16,
-                                      ),
-                                      label: const Text('Échange'),
-                                    ),
-                                    TextButton.icon(
-                                      onPressed: () =>
-                                          _receive(context, ref, c),
-                                      icon: const Icon(
-                                        LucideIcons.banknote,
-                                        size: 16,
-                                      ),
-                                      label: const Text('Il me paie'),
-                                    ),
-                                    if (canPayConfreres)
-                                      TextButton.icon(
-                                        onPressed: () => _pay(context, ref, c),
-                                        icon: const Icon(
-                                          LucideIcons.handCoins,
-                                          size: 16,
-                                        ),
-                                        label: const Text('Je le paie'),
-                                      ),
-                                  ],
-                                ),
                               ],
                             ),
-                          ),
-                        ),
+                        ],
+                      ),
                     ],
                   ),
           ),

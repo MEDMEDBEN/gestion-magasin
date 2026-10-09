@@ -5,13 +5,17 @@ import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/quantity.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+
 import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../application/sales_controller.dart';
 import '../data/sales_api.dart';
 import '../data/sales_models.dart';
 import '../../../ui/widgets/period_filter.dart';
+import 'contact_card.dart';
 import 'sale_return_dialog.dart';
 import 'sales_screen.dart';
 
@@ -109,27 +113,38 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
                             'recherche.',
                           ),
                         ),
-                      for (final sale in page.data)
-                        Card(
-                          child: ListTile(
-                            title: Text(saleTitle(sale)),
-                            subtitle: Text(
-                              [
-                                formatDateTime(sale.soldAt),
-                                sale.customerName ?? 'Client de passage',
-                                if (widget.rights.canSeeAllCash &&
-                                    sale.sellerName.isNotEmpty)
-                                  sale.sellerName,
-                              ].join(' · '),
-                            ),
-                            trailing: _SaleBadge(sale: sale),
-                            onTap: () => showSaleDetail(
-                              context,
-                              sale: sale,
-                              rights: widget.rights,
+                      _summary(page.data),
+                      const SizedBox(height: 14),
+                      // Regroupées par jour, la plus récente d'abord.
+                      for (final (day, sales) in _byDay(page.data)) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(2, 6, 2, 8),
+                          child: Text(
+                            day,
+                            style: AmpereType.label.copyWith(
+                              color: AmpereColors.of(context).ink3,
+                              letterSpacing: 1.1,
                             ),
                           ),
                         ),
+                        for (final sale in sales)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _SaleTile(
+                              sale: sale,
+                              seller:
+                                  widget.rights.canSeeAllCash &&
+                                      sale.sellerName.isNotEmpty
+                                  ? sale.sellerName
+                                  : null,
+                              onTap: () => showSaleDetail(
+                                context,
+                                sale: sale,
+                                rights: widget.rights,
+                              ),
+                            ),
+                          ),
+                      ],
                     ],
                   ),
           ),
@@ -139,27 +154,174 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
   }
 }
 
+extension on _SalesHistorySectionState {
+  /// Les chiffres de la liste affichée (ventes annulées exclues).
+  Widget _summary(List<Sale> sales) {
+    final colors = AmpereColors.of(context);
+    final valid = sales.where((s) => s.status != 'ANNULEE').toList();
+    final remaining = valid.fold(0, (sum, s) => sum + s.remainingAmount);
+    return SummaryStrip(
+      items: [
+        ('Ventes', '${valid.length}', colors.accentHi),
+        (
+          'Chiffre d’affaires',
+          formatDA(valid.fold(0, (sum, s) => sum + s.totalTtc)),
+          colors.ok,
+        ),
+        if (remaining > 0)
+          ('Reste à encaisser', formatDA(remaining), colors.warn),
+      ],
+    );
+  }
+}
+
+/// « AUJOURD'HUI », « HIER » ou la date : les ventes d'un même jour ensemble
+/// (l'ordre reçu du serveur — plus récente d'abord — est gardé).
+List<(String, List<Sale>)> _byDay(List<Sale> sales) {
+  final now = DateTime.now();
+  String label(DateTime at) {
+    final d = DateUtils.dateOnly(at.toLocal());
+    final today = DateUtils.dateOnly(now);
+    if (d == today) return 'AUJOURD’HUI';
+    if (d == today.subtract(const Duration(days: 1))) return 'HIER';
+    return formatDate(d);
+  }
+
+  final groups = <(String, List<Sale>)>[];
+  for (final sale in sales) {
+    final day = label(sale.soldAt);
+    if (groups.isEmpty || groups.last.$1 != day) groups.add((day, []));
+    groups.last.$2.add(sale);
+  }
+  return groups;
+}
+
+/// Une vente en mini-ticket : nature (ticket, facture, annulée) en couleur,
+/// heure, client, montant et état du paiement.
+class _SaleTile extends StatelessWidget {
+  const _SaleTile({required this.sale, required this.onTap, this.seller});
+
+  final Sale sale;
+  final String? seller;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final cancelled = sale.status == 'ANNULEE';
+    final invoice = sale.invoiceNumber != null || sale.type == 'FACTURE';
+    final (IconData icon, Color tone, String state) = cancelled
+        ? (LucideIcons.ban, colors.error, 'Annulée')
+        : sale.remainingAmount > 0
+        ? (
+            invoice ? LucideIcons.fileText : LucideIcons.receipt,
+            colors.warn,
+            'Reste ${formatDA(sale.remainingAmount)}',
+          )
+        : (
+            invoice ? LucideIcons.fileText : LucideIcons.receipt,
+            colors.ok,
+            'Payée',
+          );
+    return Material(
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: colors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: tone.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 20, color: tone),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            saleTitle(sale),
+                            overflow: TextOverflow.ellipsis,
+                            style: AmpereType.rowTitle.copyWith(
+                              color: colors.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: invoice ? colors.accentBg : colors.surface3,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            invoice ? 'Facture' : 'Ticket',
+                            style: AmpereType.label.copyWith(
+                              color: invoice ? colors.accentHi : colors.ink2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        formatTime(sale.soldAt),
+                        sale.customerName ?? 'Client de passage',
+                        ?seller,
+                      ].join(' · '),
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: colors.ink2),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatDA(sale.totalTtc),
+                    style: AmpereType.bodyStrong.copyWith(
+                      color: cancelled ? colors.ink3 : colors.ink,
+                      fontFeatures: AmpereType.tabular,
+                      decoration: cancelled ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(state, style: AmpereType.label.copyWith(color: tone)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// « FA-2026-000012 (TK-2026-000042) » pour une vente facturée, sinon le
 /// numéro du ticket.
 String saleTitle(Sale sale) => sale.invoiceNumber == null
     ? sale.number
     : '${sale.invoiceNumber} (${sale.number})';
-
-class _SaleBadge extends StatelessWidget {
-  const _SaleBadge({required this.sale});
-
-  final Sale sale;
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, tone) = sale.status == 'ANNULEE'
-        ? ('Annulée', StatusTone.error)
-        : sale.remainingAmount > 0
-        ? ('Reste ${formatDA(sale.remainingAmount)}', StatusTone.warn)
-        : (formatDA(sale.totalTtc), StatusTone.ok);
-    return AmpereBadge(label: label, tone: tone);
-  }
-}
 
 /// Détail d'une vente : lignes, totaux, et les gestes permis.
 Future<void> showSaleDetail(

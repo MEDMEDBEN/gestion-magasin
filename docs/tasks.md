@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente v3 : Clients, Confrères, Historique en cartes — 2026-10-09 (MEDMEDBEN, Claude)
+
+- `contact_card.dart` (partagé) : carte contact (avatar à initiales teinté par l'état, téléphone, étiquettes,
+  statut en couleur, montants, jauge de crédit utilisé, gestes) + grille adaptative + bandeau de chiffres.
+- Clients : cartes (Vendre → panier avec ce client, Encaisser si dette, Fiche), bandeau (clients, avec dette,
+  total dû, en retard). Téléphone : « Nouveau client » en bouton icône (la recherche garde la place).
+  Choix du client à la caisse : initiales + dette en couleur.
+- Confrères : mêmes cartes (il me doit / je lui dois, net en couleur), bandeau des totaux.
+- Historique : ventes groupées par jour (AUJOURD'HUI, HIER, date), mini-tickets (Ticket/Facture, payée /
+  reste / annulée barrée), bandeau (ventes, CA, reste à encaisser).
+- Preuves : app analyze 0, **545 tests** ; captures 23, 23b, 23c, 23d vérifiées. À valider par MEDMEDBEN.
+
 ### Vente v2 : couleurs utiles, encaissement façon caisse — 2026-10-09 (MEDMEDBEN, Claude)
 
 - Tuiles : couleur = état du stock AU MAGASIN (vert en stock, orange ≤ seuil, rouge rupture) + quantité,

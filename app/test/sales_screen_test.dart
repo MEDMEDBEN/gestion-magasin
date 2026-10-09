@@ -974,7 +974,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.searches.last, 'TK-2026-000007');
 
-      await tester.tap(find.widgetWithText(ListTile, 'TK-2026-000007'));
+      await tester.tap(find.text('TK-2026-000007').last);
       await tester.pumpAndSettle();
       expect(find.text('Réimprimer le ticket'), findsOneWidget);
       expect(find.text('Émettre la facture'), findsOneWidget);
@@ -1039,7 +1039,7 @@ void main() {
     await _pumpScreen(tester, api, [], user: admin);
     await tester.tap(find.text('Historique'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('TK-2026-000007'));
+    await tester.tap(find.text('TK-2026-000007').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Annuler la vente'));
     await tester.pumpAndSettle();
@@ -1273,7 +1273,7 @@ void main() {
     await _pumpScreen(tester, api, [], user: admin);
     await tester.tap(find.text('Historique'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(ListTile, 'TK-2026-000007'));
+    await tester.tap(find.text('TK-2026-000007').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Retour d’articles'));
     await tester.pumpAndSettle();

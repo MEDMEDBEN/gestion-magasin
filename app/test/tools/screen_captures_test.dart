@@ -23,6 +23,7 @@ import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/sales/data/sales_api.dart';
+import 'package:gestion_magasin/features/sales/data/confrere.dart';
 import 'package:gestion_magasin/features/sales/data/sales_models.dart';
 import 'package:gestion_magasin/features/home/data/dashboard_api.dart';
 import 'package:gestion_magasin/features/home/data/dashboard_models.dart';
@@ -853,6 +854,96 @@ class _CaptureSalesApi extends SalesApi {
         ],
         meta: PageMeta(page: 1, limit: 50, total: 3),
       );
+
+  @override
+  Future<List<Confrere>> confreres() async => const [
+    Confrere(
+      id: 'cf1',
+      supplierId: 'sf1',
+      name: 'Électro Bouzid',
+      phone: '0770 11 22 33',
+      theyOwe: 450000,
+      weOwe: 1200000,
+      net: -750000,
+    ),
+    Confrere(
+      id: 'cf2',
+      supplierId: 'sf2',
+      name: 'Lumière Ouest',
+      phone: '0661 44 55 66',
+      theyOwe: 830000,
+      weOwe: 0,
+      net: 830000,
+    ),
+  ];
+
+  @override
+  Future<SalePage> sales({
+    int limit = 50,
+    int page = 1,
+    String? customerId,
+    String? q,
+    String? from,
+    String? to,
+  }) async {
+    Sale sale(
+      String n,
+      String? customer,
+      int ttc,
+      int paid,
+      DateTime at, {
+      String type = 'TICKET',
+      String status = 'VALIDEE',
+    }) => Sale(
+      id: n,
+      number: n,
+      type: type,
+      status: status,
+      customerName: customer,
+      totalHt: ttc,
+      totalTax: 0,
+      totalTtc: ttc,
+      paidAmount: paid,
+      remainingAmount: ttc - paid,
+      lines: const [],
+      soldAt: at,
+    );
+    return SalePage(
+      data: [
+        sale(
+          'TK-2026-000412',
+          null,
+          377500,
+          377500,
+          DateTime(2026, 10, 9, 10, 42),
+        ),
+        sale(
+          'TK-2026-000411',
+          'SARL Électricité Benali',
+          1284000,
+          500000,
+          DateTime(2026, 10, 9, 9, 15),
+          type: 'FACTURE',
+        ),
+        sale(
+          'TK-2026-000410',
+          'Mourad Hamdi',
+          89000,
+          89000,
+          DateTime(2026, 10, 8, 17, 3),
+        ),
+        sale(
+          'TK-2026-000409',
+          null,
+          14500,
+          14500,
+          DateTime(2026, 10, 8, 16, 20),
+          status: 'ANNULEE',
+        ),
+      ],
+      meta: PageMeta(page: 1, limit: limit, total: 4),
+    );
+  }
 }
 
 /// Vendeuse au comptoir : panier rempli à la douchette.
@@ -1521,6 +1612,30 @@ void main() {
       },
     ),
   );
+
+  for (final (tab, file) in [
+    ('Clients', '23b_clients_desktop'),
+    ('Confrères', '23c_confreres_desktop'),
+    ('Historique', '23d_historique_ventes_desktop'),
+  ]) {
+    testWidgets(
+      '$file vendeuse',
+      skip: skip,
+      (t) => _capture(
+        t,
+        name: file,
+        size: const Size(1440, 900),
+        home: const AdaptiveShell(),
+        user: _vendeuse,
+        products: _priced,
+        interact: (t) async {
+          await t.tap(find.text('Vente'));
+          await t.pumpAndSettle();
+          await t.tap(find.text(tab).last);
+        },
+      ),
+    );
+  }
 
   testWidgets(
     '24 fournisseurs desktop',

@@ -35,6 +35,7 @@ import '../../scan/presentation/scan_screen.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/contact_profile.dart';
 import 'confreres_section.dart';
+import 'contact_card.dart';
 import '../../stock/application/stock_controller.dart';
 import 'customer_form.dart';
 import 'payment_dialog.dart';
@@ -211,6 +212,10 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
             _Section.customers => _CustomersSection(
               margin: margin,
               rights: rights,
+              onSell: (customer) {
+                ref.read(cartProvider.notifier).setCustomer(customer);
+                setState(() => _section = _Section.sale);
+              },
             ),
             _Section.confreres => ConfreresSection(
               margin: margin,
@@ -2231,9 +2236,26 @@ class _CustomerSearchDialogState extends ConsumerState<_CustomerSearchDialog> {
                   children: [
                     for (final c in customers)
                       ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: AmpereColors.of(context).accentBg,
+                          child: Text(
+                            initialsOf(c.name),
+                            style: AmpereType.label.copyWith(
+                              color: AmpereColors.of(context).accentHi,
+                            ),
+                          ),
+                        ),
                         title: Text(c.name),
-                        subtitle: Text(
-                          '${c.phone ?? ''} · dette ${formatDA(c.balanceDue)}',
+                        subtitle: Text(c.phone ?? 'Sans téléphone'),
+                        trailing: AmpereBadge(
+                          label: c.balanceDue > 0
+                              ? 'Dette ${formatDA(c.balanceDue)}'
+                              : 'À jour',
+                          tone: c.overdueAmount > 0
+                              ? StatusTone.error
+                              : c.balanceDue > 0
+                              ? StatusTone.warn
+                              : StatusTone.ok,
                         ),
                         onTap: () => Navigator.of(context).pop(c),
                       ),
@@ -2358,10 +2380,17 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
 }
 
 class _CustomersSection extends ConsumerStatefulWidget {
-  const _CustomersSection({required this.margin, required this.rights});
+  const _CustomersSection({
+    required this.margin,
+    required this.rights,
+    required this.onSell,
+  });
 
   final double margin;
   final SalesRights rights;
+
+  /// Ouvre la vente avec ce client au panier.
+  final ValueChanged<Customer> onSell;
 
   @override
   ConsumerState<_CustomersSection> createState() => _CustomersSectionState();
@@ -2564,6 +2593,57 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
     );
   }
 
+  /// Les chiffres de la liste affichée : combien, combien doivent, combien.
+  Widget _customersSummary(AmpereColors colors, List<Customer> items) {
+    final debtors = items.where((c) => c.balanceDue > 0).toList();
+    final overdue = items.fold(0, (sum, c) => sum + c.overdueAmount);
+    return SummaryStrip(
+      items: [
+        ('Clients', '${items.length}', colors.accentHi),
+        ('Avec une dette', '${debtors.length}', colors.warn),
+        (
+          'Total dû',
+          formatDA(debtors.fold(0, (sum, c) => sum + c.balanceDue)),
+          colors.warn,
+        ),
+        if (overdue > 0) ('En retard', formatDA(overdue), colors.error),
+      ],
+    );
+  }
+
+  /// Fiche contact en carte : statut en couleur, crédit utilisé, gestes.
+  Widget _customerCard(AmpereColors colors, Customer c) {
+    final rights = widget.rights;
+    final (status, tone) = c.overdueAmount > 0
+        ? ('En retard ${formatDA(c.overdueAmount)}', colors.error)
+        : c.balanceDue > 0
+        ? ('Dette ${formatDA(c.balanceDue)}', colors.warn)
+        : ('À jour', colors.ok);
+    return ContactCard(
+      name: c.name,
+      phone: c.phone,
+      tags: [if (c.isConfrere) 'Confrère'],
+      status: status,
+      tone: tone,
+      gauge: c.creditLimit > 0 && !c.isConfrere
+          ? (
+              ratio: c.balanceDue / c.creditLimit,
+              label:
+                  'Crédit utilisé ${formatDA(c.balanceDue)} sur '
+                  '${formatDA(c.creditLimit)}',
+            )
+          : null,
+      actions: [
+        if (rights.canSell)
+          (LucideIcons.shoppingCart, 'Vendre', () => widget.onSell(c)),
+        if (rights.canTakePayments && c.balanceDue > 0)
+          (LucideIcons.banknote, 'Encaisser', () => _pay(c)),
+        (LucideIcons.idCard, 'Fiche', () => _openCustomer(c)),
+      ],
+      onTap: () => _openCustomer(c),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -2606,11 +2686,18 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
               ),
               if (widget.rights.canWriteCustomers) ...[
                 const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: _create,
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Nouveau client'),
-                ),
+                if (isDesktopWidth(MediaQuery.sizeOf(context).width))
+                  FilledButton.icon(
+                    onPressed: _create,
+                    icon: const Icon(LucideIcons.plus, size: 17),
+                    label: const Text('Nouveau client'),
+                  )
+                else
+                  IconButton.filled(
+                    tooltip: 'Nouveau client',
+                    onPressed: _create,
+                    icon: const Icon(LucideIcons.userPlus, size: 18),
+                  ),
               ],
             ],
           ),
@@ -2641,35 +2728,13 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
                       24,
                     ),
                     children: [
-                      for (final c in items)
-                        Card(
-                          child: ListTile(
-                            title: Text(c.name),
-                            subtitle: Text(
-                              '${c.phone ?? 'Sans téléphone'} · plafond '
-                              '${formatDA(c.creditLimit)}',
-                            ),
-                            trailing: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                AmpereBadge(
-                                  label: c.overdueAmount > 0
-                                      ? 'En retard ${formatDA(c.overdueAmount)}'
-                                      : c.balanceDue > 0
-                                      ? 'Dette ${formatDA(c.balanceDue)}'
-                                      : 'À jour',
-                                  tone: c.overdueAmount > 0
-                                      ? StatusTone.error
-                                      : c.balanceDue > 0
-                                      ? StatusTone.warn
-                                      : StatusTone.ok,
-                                ),
-                              ],
-                            ),
-                            onTap: () => _openCustomer(c),
-                          ),
-                        ),
+                      _customersSummary(colors, items),
+                      const SizedBox(height: 14),
+                      ContactGrid(
+                        children: [
+                          for (final c in items) _customerCard(colors, c),
+                        ],
+                      ),
                     ],
                   ),
           ),
