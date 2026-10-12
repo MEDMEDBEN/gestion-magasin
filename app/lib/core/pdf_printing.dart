@@ -7,6 +7,7 @@ import 'package:printing/printing.dart';
 
 import '../data/local/local_settings_store.dart';
 import 'providers.dart';
+import 'web_print.dart';
 
 /// Ce qu'on imprime, déduit du FORMAT du PDF (rendu par le serveur selon les
 /// Paramètres) : chaque sorte a son imprimante sur un poste de caisse.
@@ -77,6 +78,25 @@ Future<void> savePrinter(
 /// papier de l'imprimante sur ce format).
 Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
   final format = pdfFormatOf(bytes) ?? PdfPageFormat.a4;
+  if (kIsWeb) {
+    // Le plugin ignore `format` dans le navigateur : on imprime les pages en
+    // images dans une page HTML qui impose le papier. 203 dpi : la finesse
+    // d'une imprimante thermique.
+    try {
+      final pngs = [
+        await for (final page in Printing.raster(bytes, dpi: 203))
+          await page.toPng(),
+      ];
+      return await printPagesInBrowser(
+        pngs,
+        format.width / _mm,
+        format.height / _mm,
+        name,
+      );
+    } catch (_) {
+      // pdf.js injoignable… : la boîte d'impression du PDF, comme avant.
+    }
+  }
   if (desktopPrinting) {
     final url = await savedPrinter(
       ref.read(localSettingsStoreProvider),
