@@ -36,6 +36,7 @@ import '../data/sales_models.dart';
 import '../../scan/presentation/scan_screen.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/contact_profile.dart';
+import '../../../ui/widgets/discount_dialog.dart';
 import 'buyer_picker.dart';
 import 'confreres_section.dart';
 import 'contact_card.dart';
@@ -806,24 +807,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   /// au plus la marge au-dessus du prix d'achat — le serveur la répartit.
   Future<void> _globalDiscount(CartEstimate estimate) async {
     final cart = ref.read(cartProvider);
-    final amount = await askAmount(
+    // En DA ou en % du total avant remise (2026-10-12).
+    final amount = await askDiscount(
       context,
       title: 'Remise sur toute la facture',
-      label: 'Montant de la remise',
-      confirm: 'Appliquer',
-      initial: cart.discountHt > 0 ? cart.discountHt : null,
-      help:
-          'Au plus ${formatDA(estimate.maxDiscountHt)} (jamais sous le prix '
-          'd’achat). 0 : retirer.',
+      baseHt: estimate.totalHt + cart.discountHt,
+      maxHt: estimate.maxDiscountHt,
+      initialHt: cart.discountHt,
     );
     if (amount == null || !mounted) return;
-    if (amount > estimate.maxDiscountHt) {
-      _snack(
-        context,
-        'Remise trop forte : ${formatDA(estimate.maxDiscountHt)} au plus.',
-      );
-      return;
-    }
     ref.read(cartProvider.notifier).setGlobalDiscount(amount);
   }
 
@@ -2107,26 +2099,15 @@ class _CartLineRow extends ConsumerWidget {
     if (price == null) return;
     final gross = lineGrossHt(price, line.quantity);
     final maxDiscount = maxLineDiscountHt(line.product, price, line.quantity);
-    final value = await askAmount(
+    // En DA ou en % (2026-10-12) ; jamais sous le coût (bouton grisé).
+    final value = await askDiscount(
       context,
       title: 'Remise sur « ${line.product.name} »',
-      label: 'Remise HT sur la ligne',
-      confirm: 'Appliquer',
-      initial: line.discountHt,
-      help:
-          'Ligne ${formatDA(gross)} HT · remise maximale '
-          '${formatDA(maxDiscount)} (pas sous le coût)',
+      baseHt: gross,
+      maxHt: maxDiscount,
+      initialHt: line.discountHt,
     );
     if (value == null || !context.mounted) return;
-    // 0 retire la remise : toujours permis.
-    if (value > maxDiscount) {
-      _snack(
-        context,
-        'Remise trop forte : au plus ${formatDA(maxDiscount)} '
-        '— la ligne ne descend pas sous le coût',
-      );
-      return;
-    }
     ref.read(cartProvider.notifier).setDiscount(line.product.id, value);
   }
 

@@ -15,7 +15,7 @@ import 'support/fakes.dart';
 class _FakeSettingsApi extends SettingsApi {
   _FakeSettingsApi() : super(Dio());
 
-  final storeSaves = <Map<String, String?>>[];
+  final storeSaves = <Map<String, Object?>>[];
   final tierSaves = <(String?, Map<String, Object?>)>[];
 
   @override
@@ -30,7 +30,7 @@ class _FakeSettingsApi extends SettingsApi {
   });
 
   @override
-  Future<StoreSettings> saveStore(Map<String, String?> changed) async {
+  Future<StoreSettings> saveStore(Map<String, Object?> changed) async {
     storeSaves.add(changed);
     return store();
   }
@@ -79,11 +79,42 @@ void main() {
       find.widgetWithText(TextField, 'Magasin'),
       'Électricité El Nour',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+    // 1er « Enregistrer » : l'identité (le 2e : les formats d'impression).
+    await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer').first);
     await tester.pumpAndSettle();
     expect(api.storeSaves, [
       {'name': 'Électricité El Nour'},
     ]);
+  });
+
+  // Décision MEDMEDBEN du 2026-10-12 : formats des imprimantes du magasin.
+  testWidgets('impression : formats et taille d’étiquette enregistrés', (
+    tester,
+  ) async {
+    final api = await _pump(tester);
+    await tester.ensureVisible(find.text('Tickets de caisse'));
+    await tester.tap(find.text('Rouleau thermique 80 mm'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rouleau thermique 58 mm').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Étiquette : largeur'),
+      '60',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Étiquette : hauteur'),
+      '40',
+    );
+    final save = find.widgetWithText(FilledButton, 'Enregistrer').last;
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(api.storeSaves.last, {
+      'ticketPaper': 'TICKET_58',
+      'documentPaper': 'A4',
+      'labelWidthMm': 60,
+      'labelHeightMm': 40,
+    });
   });
 
   testWidgets('tarifs : désigner le défaut ; le défaut ne se désactive pas', (

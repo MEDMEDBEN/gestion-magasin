@@ -11,7 +11,11 @@ import { formatDA, formatDateTime } from '../common/pdf/pdf';
 import { formatQuantity, parseQuantity } from '../common/quantity';
 import { Prisma, SaleReturn, SaleReturnLine } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { storeIdentity, StoreIdentity } from '../settings/store-settings';
+import {
+  storeIdentity,
+  StoreIdentity,
+  withCurrentPrint,
+} from '../settings/store-settings';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import { CashSessionsService } from './cash-sessions.service';
 import { CreateSaleReturnDto, SaleReturnDto } from './dto/sale-return.dto';
@@ -408,15 +412,26 @@ export class SaleReturnsService {
     const pdf = await renderA4Document({
       title: credit ? 'FACTURE D’AVOIR' : 'BON DE RETOUR',
       pdfTitle: credit ? `Avoir ${credit}` : `Retour ${row.number}`,
-      info: [
-        `N° ${credit ?? row.number}`,
-        ...(credit ? [`Retour ${row.number}`] : []),
-        `Date : ${formatDateTime(row.createdAt)}`,
-        `Sur ${row.sale.invoiceNumber ? `facture ${row.sale.invoiceNumber}` : `vente ${row.sale.number}`}`,
+      number: credit ?? row.number,
+      meta: [
+        ...(credit ? ([['Retour', row.number]] as [string, string][]) : []),
+        ['Date', formatDateTime(row.createdAt)],
+        [
+          'Sur',
+          row.sale.invoiceNumber
+            ? `facture ${row.sale.invoiceNumber}`
+            : `vente ${row.sale.number}`,
+        ],
       ],
-      store:
+      // Identité FIGÉE à l'émission (règle 11) ; le format d'impression,
+      // lui, est celui d'aujourd'hui (l'imprimante a pu changer).
+      store: await withCurrentPrint(
+        this.prisma,
         (row.issuerSnapshot as unknown as StoreIdentity | null) ??
-        (await storeIdentity(this.prisma, this.config, false)),
+          (await storeIdentity(this.prisma, this.config, false)),
+      ),
+      wordsSubject: credit ? 'la présente facture d’avoir' : 'le présent bon',
+      signatures: ['Le client', 'Le magasin'],
       customer,
       products: new Map(products.map((p) => [p.id, p])),
       lines: row.lines.map((l) => {

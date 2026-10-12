@@ -84,4 +84,17 @@ describe('étiquettes', () => {
     expect(pages(await renderLabels(many.slice(0, 24), 'A4'))).toBe(1);
     expect(pages(await renderLabels(many.slice(0, 3), 'ROULEAU'))).toBe(3);
   });
+
+  /// Décision MEDMEDBEN du 2026-10-12 : la taille de SON rouleau.
+  it('rouleau à la taille réglée : 60 × 40 mm', async () => {
+    const label: Label = labelFor(cable, 145000);
+    const pdf = await renderLabels([label], 'ROULEAU', {
+      widthMm: 60,
+      heightMm: 40,
+    });
+    // 60 mm = 170,08 pt ; 40 mm = 113,39 pt.
+    expect(pdf.toString('latin1')).toMatch(
+      /MediaBox \[0 0 170\.07\d* 113\.38\d*/,
+    );
+  });
 });

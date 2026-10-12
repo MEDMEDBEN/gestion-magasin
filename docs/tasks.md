@@ -4,6 +4,26 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Impression : formats, bons industriels, étiquettes lisibles, remise en % — 2026-10-12 (MEDMEDBEN, Claude)
+
+- **Paramètres → Impression** (migration additive `20261012120000_store_print_settings`) : ticket (rouleau 80 mm,
+  58 mm, A5, A4), documents (A4, A5), étiquette en rouleau (largeur × hauteur en mm, 20-150), e-mail et pied de page
+  du magasin. Facture/avoir à identité FIGÉE : le format, lui, est celui du jour (`withCurrentPrint`).
+- **Bon industriel unique** `common/pdf/business-document.ts` : en-tête magasin (NIF, RC, NIS, AI), cartouche noir
+  (titre, N°, date, références), encadrés des parties, tableau quadrillé et numéroté (en-tête répété), totaux
+  encadrés, « Arrêté … à la somme de » en toutes lettres (`amount-in-words.ts`, testé), cases de signature, pied
+  « Page x / n ». Utilisé par facture, bon de vente (ticket A5/A4), devis, bon de commande, avoir/bon de retour,
+  retour fournisseur et **bordereau de transfert** (sans prix, 3 signatures).
+- **Ticket** 80 ou 58 mm, hauteur EXACTE (deux passes : plus de papier perdu), pied de page du magasin.
+- **Étiquettes** : barres seules étirées sur toute la largeur (zones de silence), code en clair DESSOUS, plus gros
+  et espacé (avant : chiffres collés et petits) ; mise en page proportionnelle (ex. 35 × 45 et 45 × 35 mm vérifiés).
+- **Remise en DA ou en %** (ligne et facture) : `ui/widgets/discount_dialog.dart`, aperçu du net, « Appliquer »
+  grisé sous le prix d'achat, montant relu au clic.
+- Outil : `backend/test/tools/print-samples.ts <dossier>` écrit des PDF d'exemple (relecture visuelle).
+- Preuves : backend tsc/lint OK, **188 unitaires**, **177 e2e** (documents, paramètres, étiquettes, ventes, devis,
+  achats, retours, transferts) ; app analyze 0, **550 tests** ; rendus PDF vérifiés à l'image (facture A4, bon de
+  vente A5, bordereau A5, ticket 58 mm, étiquettes 35×45, 45×35, A4).
+
 ### Vente v4 : acheteur obligatoire, remise facture, profit, mise en page — 2026-10-12 (MEDMEDBEN, Claude)
 
 - **Serveur** (migration additive `20261012090000_sale_discount_cost`) : `Sale.discountAmount` (remise sur toute

@@ -15,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { storeIdentity } from '../settings/store-settings';
 import { StorageService } from '../storage/storage.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
+import { printSettings } from '../settings/store-settings';
 import { labelFor, renderLabels } from './labels';
 import {
   CreateProductDto,
@@ -205,7 +206,14 @@ export class ProductsService {
         return Array<typeof label>(item.copies).fill(label);
       }),
       dto.format,
+      await this.rollSize(),
     );
+  }
+
+  /// Taille de l'étiquette en rouleau réglée dans Paramètres.
+  private async rollSize() {
+    const print = await printSettings(this.prisma);
+    return { widthMm: print.labelWidthMm, heightMm: print.labelHeightMm };
   }
 
   /// Pose ou remplace la photo d'un produit. Le type est vérifié sur les OCTETS

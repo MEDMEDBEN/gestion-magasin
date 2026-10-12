@@ -70,15 +70,17 @@ export function symbology(code: string): 'ean13' | 'code128' {
 /// Image PNG d'un code-barres, pour une étiquette imprimée (CONVENTIONS.md :
 /// `bwip-js`, centralisé ici). Un EAN-13 à clé juste — code interne ou code
 /// fabricant — s'imprime en EAN-13 ; tout autre code en Code128, qui encode
-/// n'importe quel code accepté par `normalizeBarcode`. Le code en clair est
-/// imprimé sous les barres : une douchette défaillante n'arrête pas la caisse.
+/// n'importe quel code accepté par `normalizeBarcode`. Les BARRES seules : le
+/// code en clair est écrit par l'étiquette, sous les barres, assez grand et
+/// séparé d'elles pour se lire (retour terrain du 2026-10-12 : chiffres collés
+/// aux barres et trop petits) — une douchette défaillante n'arrête pas la
+/// caisse.
 export async function barcodePng(code: string): Promise<Buffer> {
   return toBuffer({
     bcid: symbology(code),
     text: code,
     scale: 3,
-    height: 10,
-    includetext: true,
-    textxalign: 'center',
+    height: 12,
+    includetext: false,
   });
 }

@@ -28,10 +28,12 @@ const _storeLabels = {
   'name': 'Nom du magasin',
   'address': 'Adresse',
   'phone': 'Téléphone',
+  'email': 'E-mail',
   'nif': 'NIF',
   'rc': 'Registre du commerce (RC)',
   'nis': 'NIS',
   'ai': 'Article d’imposition (AI)',
+  'footer': 'Pied de page des bons et tickets (conditions, remerciement)',
 };
 
 /// Paramètres (P1 bis n°21h) : identité imprimée sur les documents, tarifs,
@@ -48,6 +50,7 @@ class SettingsScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(16),
       children: [
         if (rights.canManageStore) const _StoreCard(),
+        if (rights.canManageStore) const _PrintCard(),
         if (rights.canManagePrices) const _TiersCard(),
       ],
     );
@@ -189,6 +192,169 @@ class _StoreCardState extends ConsumerState<_StoreCard> {
                 enabled: !_saving,
                 decoration: InputDecoration(labelText: _storeLabels[f]),
               ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: _saving ? null : _save,
+                child: const Text('Enregistrer'),
+              ),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+}
+
+// ── Impression ───────────────────────────────────────────────────────────────
+
+const _ticketPapers = {
+  'TICKET_80': 'Rouleau thermique 80 mm',
+  'TICKET_58': 'Rouleau thermique 58 mm',
+  'A5': 'Feuille A5 (bon de vente)',
+  'A4': 'Feuille A4 (bon de vente)',
+};
+
+const _documentPapers = {'A4': 'Feuille A4', 'A5': 'Feuille A5'};
+
+/// Formats d'impression, selon les imprimantes du magasin (décision MEDMEDBEN
+/// du 2026-10-12) : ticket, documents (factures, devis, bons, bordereaux) et
+/// taille de l'étiquette en rouleau.
+class _PrintCard extends ConsumerStatefulWidget {
+  const _PrintCard();
+
+  @override
+  ConsumerState<_PrintCard> createState() => _PrintCardState();
+}
+
+class _PrintCardState extends ConsumerState<_PrintCard> {
+  final _width = TextEditingController();
+  final _height = TextEditingController();
+  StoreSettings? _loaded;
+  String _ticket = 'TICKET_80';
+  String _document = 'A4';
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _width.dispose();
+    _height.dispose();
+    super.dispose();
+  }
+
+  void _fill(StoreSettings store) {
+    if (identical(store, _loaded)) return;
+    _loaded = store;
+    _ticket = store.ticketPaper;
+    _document = store.documentPaper;
+    _width.text = '${store.labelWidthMm}';
+    _height.text = '${store.labelHeightMm}';
+  }
+
+  Future<void> _save() async {
+    final width = int.tryParse(_width.text.trim());
+    final height = int.tryParse(_height.text.trim());
+    if (width == null || width < 20 || width > 150) {
+      _snack(context, 'Largeur d’étiquette : de 20 à 150 mm.');
+      return;
+    }
+    if (height == null || height < 15 || height > 150) {
+      _snack(context, 'Hauteur d’étiquette : de 15 à 150 mm.');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await ref.read(settingsApiProvider).saveStore({
+        'ticketPaper': _ticket,
+        'documentPaper': _document,
+        'labelWidthMm': width,
+        'labelHeightMm': height,
+      });
+      ref.invalidate(storeSettingsProvider);
+      if (mounted) _snack(context, 'Formats d’impression enregistrés.');
+    } on ApiException catch (error) {
+      if (mounted) _snack(context, error.userMessage);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final store = ref.watch(storeSettingsProvider);
+    return _Section(
+      title: 'Impression',
+      child: _asyncBody(store, () => ref.invalidate(storeSettingsProvider), (
+        data,
+      ) {
+        _fill(data);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Choisissez les formats de VOS imprimantes : chaque ticket, bon '
+              'et étiquette sortira à la bonne taille.',
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _ticket,
+              decoration: const InputDecoration(labelText: 'Tickets de caisse'),
+              items: [
+                for (final e in _ticketPapers.entries)
+                  DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ],
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _ticket = v ?? _ticket),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _document,
+              decoration: const InputDecoration(
+                labelText: 'Factures, devis, bons et bordereaux',
+              ),
+              items: [
+                for (final e in _documentPapers.entries)
+                  DropdownMenuItem(value: e.key, child: Text(e.value)),
+              ],
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _document = v ?? _document),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _width,
+                    enabled: !_saving,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Étiquette : largeur',
+                      suffixText: 'mm',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _height,
+                    enabled: !_saving,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Étiquette : hauteur',
+                      suffixText: 'mm',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Taille de l’étiquette du rouleau (imprimante d’étiquettes). '
+              'La planche A4 reste en 24 étiquettes 70 × 37 mm.',
+            ),
             const SizedBox(height: 12),
             Align(
               alignment: Alignment.centerRight,

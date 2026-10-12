@@ -41,53 +41,53 @@ const transfer = (over: Partial<TransferDto> = {}): TransferDto =>
     ...over,
   }) as TransferDto;
 
-describe('bon de transfert', () => {
+const store = {
+  name: 'Magasin',
+  legal: [],
+  ticketPaper: 'TICKET_80' as const,
+  documentPaper: 'A4' as const,
+};
+
+describe('bordereau de transfert', () => {
   /// Il voyage avec la marchandise : jamais un prix, jamais un coût.
   it('aucune colonne d’argent', () => {
-    const doc = transferDocument(transfer(), names);
-    for (const s of doc.sections) {
-      for (const c of s.columns) {
-        expect(c.kind).not.toBe('money');
-        expect(c.header).not.toMatch(/prix|coût|montant|HT|TTC/i);
-      }
+    const doc = transferDocument(transfer(), names, store);
+    for (const c of doc.columns) {
+      expect(c.header).not.toMatch(/prix|coût|montant|HT|TTC/i);
     }
   });
 
-  it('étape non franchie : case vide, jamais « 0,000 »', () => {
-    const lines = transferDocument(transfer(), names).sections[0];
-    const row = lines.rows[0];
-    const cell = (header: string) =>
-      lines.columns.find((c) => c.header === header)!.value(row);
-    expect(cell('Expédié')).toBe('48.500');
-    expect(cell('Reçu')).toBeNull();
+  it('étape non franchie : case vide, jamais « 0 »', () => {
+    const doc = transferDocument(transfer(), names, store);
+    const cell = (header: string, row = doc.rows[0]) =>
+      row[doc.columns.findIndex((c) => c.header === header)];
+    expect(cell('Expédié')).toBe('48,5');
+    expect(cell('Reçu')).toBe('');
 
     const demande = transferDocument(
       transfer({ preparedAt: null, shippedAt: null, preparedById: null }),
       names,
-    ).sections[0];
-    const preparedCell = demande.columns
-      .find((c) => c.header === 'Préparé')!
-      .value(demande.rows[0]);
-    expect(preparedCell).toBeNull();
+      store,
+    );
+    expect(cell('Préparé', demande.rows[0])).toBe('');
   });
 
-  /// L'expédition réécrit `preparedById` : une seule ligne « Préparé /
+  /// L'expédition réécrit `preparedById` : une seule étape « Préparé /
   /// expédié », pour ne pas attribuer la préparation au mauvais membre.
-  it('signataires : préparation et expédition sur une seule ligne', () => {
-    const steps = transferDocument(transfer(), names).sections[1];
-    const rows = steps.rows as { step: string; who: string }[];
-    expect(rows.map((r) => r.step)).toEqual([
-      'Demandé',
-      'Préparé / expédié',
-      'Reçu',
+  it('signataires : demandeur, expéditeur, réceptionnaire', () => {
+    const doc = transferDocument(transfer(), names, store);
+    expect(doc.signatures).toEqual([
+      'Le demandeur',
+      'L’expéditeur (dépôt)',
+      'Le réceptionnaire',
     ]);
-    expect(rows[1].who).toBe('Magasinier');
+    expect(doc.parties[0].lines[0]).toContain('Préparé / expédié : Magasinier');
+    expect(doc.parties.map((p) => p.name)).toEqual(['Dépôt', 'Magasin']);
   });
 
-  it('sous-titre sans caractère hors des polices standard du PDF', () => {
-    const doc = transferDocument(transfer(), names);
-    expect(doc.subtitle).toBe('De Dépôt vers Magasin · En transit');
+  it('aucun caractère hors des polices standard du PDF', () => {
+    const doc = transferDocument(transfer(), names, store);
     // WinAnsi : Latin-1 plus quelques signes (·, —, …, ’) — pas de flèche.
-    expect(doc.subtitle).not.toMatch(/[←-⇿]/);
+    expect(JSON.stringify(doc)).not.toMatch(/[←-⇿]/);
   });
 });

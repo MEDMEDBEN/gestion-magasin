@@ -8,16 +8,46 @@ import '../../catalog/data/catalog_models.dart';
 /// Identité du magasin imprimée sur les documents (valeurs EFFECTIVES : base,
 /// sinon variables d'environnement du serveur).
 class StoreSettings {
-  const StoreSettings(this.values);
-
-  factory StoreSettings.fromJson(Map<String, dynamic> json) => StoreSettings({
-    for (final field in fields) field: json[field] as String?,
+  const StoreSettings(
+    this.values, {
+    this.ticketPaper = 'TICKET_80',
+    this.documentPaper = 'A4',
+    this.labelWidthMm = 50,
+    this.labelHeightMm = 30,
   });
 
-  /// Champs, dans l'ordre de l'écran.
-  static const fields = ['name', 'address', 'phone', 'nif', 'rc', 'nis', 'ai'];
+  factory StoreSettings.fromJson(Map<String, dynamic> json) => StoreSettings(
+    {for (final field in fields) field: json[field] as String?},
+    ticketPaper: json['ticketPaper'] as String? ?? 'TICKET_80',
+    documentPaper: json['documentPaper'] as String? ?? 'A4',
+    labelWidthMm: json['labelWidthMm'] as int? ?? 50,
+    labelHeightMm: json['labelHeightMm'] as int? ?? 30,
+  );
+
+  /// Champs texte, dans l'ordre de l'écran.
+  static const fields = [
+    'name',
+    'address',
+    'phone',
+    'email',
+    'nif',
+    'rc',
+    'nis',
+    'ai',
+    'footer',
+  ];
 
   final Map<String, String?> values;
+
+  /// Impression (2026-10-12) : TICKET_80, TICKET_58, A5 ou A4.
+  final String ticketPaper;
+
+  /// Factures, devis, bons, bordereaux : A4 ou A5.
+  final String documentPaper;
+
+  /// Étiquette en rouleau, en millimètres.
+  final int labelWidthMm;
+  final int labelHeightMm;
 }
 
 /// Paramètres (P1 bis n°21h) : tarifs, taux de TVA, identité du magasin.
@@ -33,7 +63,7 @@ class SettingsApi {
   });
 
   /// Champ vide : retour à la valeur du serveur (environnement).
-  Future<StoreSettings> saveStore(Map<String, String?> changed) =>
+  Future<StoreSettings> saveStore(Map<String, Object?> changed) =>
       guardApi(() async {
         final response = await _dio.patch<Map<String, dynamic>>(
           '/settings/store',

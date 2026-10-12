@@ -1203,9 +1203,14 @@ void main() {
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '500');
-    await tester.tap(find.text('Appliquer'));
+    await tester.pump();
+    expect(find.textContaining('Trop forte'), findsOneWidget);
+    final apply = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Appliquer'),
+    );
+    expect(apply.onPressed, isNull);
+    await tester.tap(find.text('Annuler'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Remise trop forte'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
@@ -1214,13 +1219,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Remise ${formatDA(10000)}'), findsOneWidget);
 
+    // En pourcentage (2026-10-12) : 20 % de 1 450,00 = 290,00 DA.
+    await tester.tap(find.byTooltip('Remise'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pourcentage (%)'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '20');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remise ${formatDA(29000)}'), findsOneWidget);
+
     await tester.tap(find.textContaining('Encaisser'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '4000');
     await tester.tap(find.text('Valider la vente'));
     await tester.pumpAndSettle();
     final line = (api.sent!['lines']! as List).single as Map;
-    expect(line['discountAmount'], 10000);
+    // La dernière remise saisie : 20 % de 1 450,00.
+    expect(line['discountAmount'], 29000);
   });
 
   testWidgets('le VENDEUR n’a pas de bouton de remise', (tester) async {
@@ -1280,6 +1296,7 @@ void main() {
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '0');
+    await tester.pump();
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
     expect(find.textContaining('trop forte'), findsNothing);

@@ -1,4 +1,5 @@
-import { ExportDocument, section } from '../common/export/export';
+import { BusinessDocument } from '../common/pdf/business-document';
+import { StoreIdentity } from '../settings/store-settings';
 import { label } from '../common/export/labels';
 import { formatDateTime } from '../common/pdf/pdf';
 import { TransferDto } from './dto/transfer.dto';
@@ -12,85 +13,81 @@ export interface TransferDocumentNames {
   user(id: string | null | undefined): string;
 }
 
-/// Bon de transfert / de livraison (spec §8quinquies) : ce qui part du dépôt et
-/// ce qui arrive au magasin, avec les signataires. AUCUN prix ni coût — le
-/// document voyage avec la marchandise. Rendu par le PDF des exports.
+/// Bordereau de transfert (spec §8quinquies) : ce qui part du dépôt et ce qui
+/// arrive au magasin, avec les signataires. AUCUN prix ni coût — le document
+/// voyage avec la marchandise. Rendu par le document industriel commun.
 export function transferDocument(
   transfer: TransferDto,
   names: TransferDocumentNames,
-): ExportDocument {
-  const when = (date: Date | null) => (date ? formatDateTime(date) : '');
-  // Une étape pas encore franchie reste VIDE : « Reçu 0,000 » sur un bon en
-  // route se lirait « rien reçu », alors que la réception n'a pas eu lieu.
+  store: StoreIdentity,
+): BusinessDocument {
+  const when = (date: Date | null) => (date ? formatDateTime(date) : '—');
+  // Une étape pas encore franchie reste VIDE : « Reçu 0 » sur un bon en route
+  // se lirait « rien reçu », alors que la réception n'a pas eu lieu.
   const once = (reached: Date | null, quantity: string) =>
-    reached ? quantity : null;
+    reached ? qty(quantity) : '';
+  const stage = (step: string, who: string, at: Date | null) =>
+    at ? `${step} : ${who || '—'} · ${when(at)}` : `${step} : en attente`;
   return {
-    title: `Bon de transfert ${transfer.number}`,
-    // Pas de flèche : absente des polices standard du PDF (WinAnsi).
-    subtitle:
-      `De ${names.location(transfer.fromLocationId)} vers ` +
-      `${names.location(transfer.toLocationId)} · ${label(transfer.status)}` +
-      (transfer.comment ? ` · ${transfer.comment}` : ''),
-    filename: transfer.number,
-    sections: [
-      section({
-        title: 'Marchandise',
-        columns: [
-          { header: 'Référence', value: (l) => names.sku(l.productId) },
-          { header: 'Produit', value: (l) => names.product(l.productId) },
-          { header: 'Unité', value: (l) => label(names.unit(l.productId)) },
-          {
-            header: 'Demandé',
-            kind: 'quantity',
-            value: (l) => l.requestedQuantity,
-          },
-          {
-            header: 'Préparé',
-            kind: 'quantity',
-            value: (l) => once(transfer.preparedAt, l.preparedQuantity),
-          },
-          {
-            header: 'Expédié',
-            kind: 'quantity',
-            value: (l) => once(transfer.shippedAt, l.shippedQuantity),
-          },
-          {
-            header: 'Reçu',
-            kind: 'quantity',
-            value: (l) => once(transfer.receivedAt, l.receivedQuantity),
-          },
-        ],
-        rows: transfer.lines,
-      }),
-      section({
-        title: 'Étapes et signatures',
-        columns: [
-          { header: 'Étape', value: (r) => r.step },
-          { header: 'Par', value: (r) => r.who },
-          { header: 'Le', value: (r) => r.when },
-          { header: 'Signature', value: () => '' },
-        ],
-        rows: [
-          {
-            step: 'Demandé',
-            who: names.user(transfer.requestedById),
-            when: when(transfer.requestedAt),
-          },
-          // Une seule ligne : l'expédition réécrit `preparedById` avec
-          // l'expéditeur — le modèle ne garde pas les deux personnes. Séparer
-          // les lignes attribuerait la préparation au mauvais membre.
-          {
-            step: 'Préparé / expédié',
-            who: names.user(transfer.preparedById),
-            when: when(transfer.shippedAt ?? transfer.preparedAt),
-          },
-          {
-            step: 'Reçu',
-            who: names.user(transfer.receivedById),
-            when: when(transfer.receivedAt),
-          },
-        ],
-      }),
+    title: 'BON DE TRANSFERT',
+    pdfTitle: `Bon de transfert ${transfer.number}`,
+    number: transfer.number,
+    meta: [
+      ['Date', formatDateTime(transfer.requestedAt)],
+      ['Statut', label(transfer.status)],
     ],
+    store,
+    parties: [
+      {
+        label: 'Expéditeur',
+        name: names.location(transfer.fromLocationId),
+        lines: [
+          stage(
+            'Préparé / expédié',
+            names.user(transfer.preparedById),
+            transfer.shippedAt ?? transfer.preparedAt,
+          ),
+        ],
+      },
+      {
+        label: 'Destination',
+        name: names.location(transfer.toLocationId),
+        lines: [
+          stage(
+            'Demandé',
+            names.user(transfer.requestedById),
+            transfer.requestedAt,
+          ),
+          stage('Reçu', names.user(transfer.receivedById), transfer.receivedAt),
+        ],
+      },
+    ],
+    columns: [
+      { header: 'Référence', width: 2 },
+      { header: 'Désignation', width: 5.5 },
+      { header: 'Unité', width: 1.2, align: 'center' },
+      { header: 'Demandé', width: 1.5, align: 'right' },
+      { header: 'Préparé', width: 1.5, align: 'right' },
+      { header: 'Expédié', width: 1.5, align: 'right' },
+      { header: 'Reçu', width: 1.5, align: 'right' },
+    ],
+    rows: transfer.lines.map((l) => [
+      names.sku(l.productId),
+      names.product(l.productId),
+      label(names.unit(l.productId)),
+      qty(l.requestedQuantity),
+      once(transfer.preparedAt, l.preparedQuantity),
+      once(transfer.shippedAt, l.shippedQuantity),
+      once(transfer.receivedAt, l.receivedQuantity),
+    ]),
+    totals: [['Lignes', String(transfer.lines.length), true]],
+    notes: transfer.comment ? [`Commentaire : ${transfer.comment}`] : [],
+    signatures: ['Le demandeur', 'L’expéditeur (dépôt)', 'Le réceptionnaire'],
+    paper: store.documentPaper,
   };
+}
+
+/// « 2.500 » → « 2,5 »
+function qty(value: string): string {
+  return value.replace(/\.?0+$/, '').replace('.', ',');
 }

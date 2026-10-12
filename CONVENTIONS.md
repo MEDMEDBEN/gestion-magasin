@@ -128,11 +128,16 @@ lib/features/<feature>/
 
 Pour éviter que deux agents utilisent des outils différents pour le même besoin :
 - **PDF** (ticket, facture, devis, bons, rapports) : générés **côté serveur** par UN moteur centralisé dans `backend/src/common/pdf/`. Ne pas mélanger deux moteurs. **Moteur retenu (2026-09-15) : `pdfkit`** (`common/pdf/pdf.ts` → `renderPdf`), polices standard — pas de Chromium dans l'image. Côté app, impression/partage d'un PDF reçu : paquet `printing` uniquement.
+  - **Tout document commercial** (facture, devis, bons, bordereaux, retours) passe par `common/pdf/business-document.ts`
+    (`renderBusinessDocument`, style industriel unique : en-tête magasin, cartouche, partie, tableau quadrillé, totaux,
+    somme en lettres, signatures, « Page x / n ») — au format A4/A5 des Paramètres. Ne pas redessiner un document à la main.
+  - Formats d'impression : `StoreSettings.ticketPaper` (TICKET_80 | TICKET_58 | A5 | A4), `documentPaper` (A4 | A5),
+    `labelWidthMm`/`labelHeightMm` (rouleau d'étiquettes). Montant en lettres : `common/pdf/amount-in-words.ts`.
 - **Excel / CSV** : `exceljs`, centralisé dans `common/export/`.
 - **Lecture de texte d'une image (OCR, factures — P2 n°24)** : `tesseract.js` avec le modèle français LIVRÉ (`@tesseract.js-data/fra`, aucun téléchargement), centralisé dans `backend/src/receptions/invoice-scan.ts`. Jamais une source de vérité : des lignes proposées, corrigées avant validation.
 - **Codes-barres** (image EAN-13 / Code128) : `bwip-js`, centralisé dans `common/barcode/`. La **génération du code interne** (si le produit n'en a pas) passe par un service unique qui garantit l'unicité (séquence + contrainte DB, retry sur collision).
 - **Graphiques (app)** : `fl_chart` uniquement (accueil, `features/home/presentation/dashboard_charts.dart`, ajouté le 2026-10-05) ; palette du design système, jamais les couleurs par défaut.
-- **Étiquettes** : composition (nom, prix, image code-barres) en PDF via le même moteur PDF ; deux gabarits — planche A4 et rouleau thermique.
+- **Étiquettes** : composition (nom, prix, code-barres) en PDF via le même moteur PDF ; deux gabarits — planche A4 (24 × 70×37 mm) et rouleau à la taille des Paramètres. Les barres (`barcodePng`, sans texte) sont étirées sur la largeur utile avec zones de silence ; le code en clair est écrit dessous, séparé des barres.
 - **Fichiers joints** (photos, documents archivés) : uniquement via `StorageService` (`backend/src/storage/`), qui écrit dans un dossier privé du serveur — jamais d'URL publique, jamais d'accès direct au disque ailleurs. Les documents non archivés sont générés à la demande.
 
 ## Git

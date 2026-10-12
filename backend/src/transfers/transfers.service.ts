@@ -1,3 +1,6 @@
+import { ConfigService } from '@nestjs/config';
+import { renderBusinessDocument } from '../common/pdf/business-document';
+import { storeIdentity } from '../settings/store-settings';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
@@ -5,7 +8,6 @@ import { BusinessException } from '../common/business.exception';
 import { nextDocumentNumber } from '../common/document-number';
 import { parseSort } from '../common/dto/pagination.dto';
 import { ErrorCode } from '../common/error-codes';
-import { renderExport } from '../common/export/export';
 import { loadExportNames } from '../common/export/export-names';
 import { assertSameMutation, runOnce } from '../common/idempotency';
 import { formatQuantity, parseQuantity } from '../common/quantity';
@@ -73,6 +75,7 @@ export class TransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,
+    private readonly config: ConfigService,
   ) {}
 
   async request(
@@ -519,8 +522,11 @@ export class TransfersService {
         transfer.receivedById,
       ],
     });
-    const file = await renderExport(transferDocument(transfer, names), 'pdf');
-    return { filename: file.filename, pdf: file.buffer };
+    const store = await storeIdentity(this.prisma, this.config, false);
+    const pdf = await renderBusinessDocument(
+      transferDocument(transfer, names, store),
+    );
+    return { filename: `${transfer.number}.pdf`, pdf };
   }
 
   async findOne(id: string): Promise<TransferDto> {

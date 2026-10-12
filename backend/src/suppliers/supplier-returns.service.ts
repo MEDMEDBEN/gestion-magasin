@@ -348,7 +348,10 @@ export class SupplierReturnsService {
     const pdf = await renderA4Document({
       title: 'BON DE RETOUR',
       pdfTitle: `Retour fournisseur ${row.number}`,
-      info: [`N° ${row.number}`, `Date : ${formatDateTime(row.createdAt)}`],
+      number: row.number,
+      meta: [['Date', formatDateTime(row.createdAt)]],
+      wordsSubject: 'le présent bon de retour',
+      signatures: ['Le magasinier', 'Le fournisseur'],
       store: await storeIdentity(this.prisma, this.config, false),
       partyLabel: 'Fournisseur',
       customer: {

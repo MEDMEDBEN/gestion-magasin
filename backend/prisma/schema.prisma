@@ -1424,15 +1424,26 @@ model Problem {
 /// Une seule ligne (id = 1). Un champ vide retombe sur la variable
 /// d'environnement STORE_* correspondante (déploiements existants inchangés).
 model StoreSettings {
-  id        Int      @id @default(1)
-  name      String?
-  address   String?
-  phone     String?
-  nif       String?
-  rc        String?
-  nis       String?
-  ai        String?
-  updatedAt DateTime @updatedAt
+  id            Int      @id @default(1)
+  name          String?
+  address       String?
+  phone         String?
+  nif           String?
+  rc            String?
+  nis           String?
+  ai            String?
+  email         String?
+  /// Pied de page imprimé sur les bons et tickets (conditions, remerciement).
+  footer        String?
+  /// Impression (décision MEDMEDBEN du 2026-10-12) : formats adaptés aux
+  /// imprimantes du magasin. Ticket : TICKET_80, TICKET_58, A5 ou A4.
+  ticketPaper   String   @default("TICKET_80")
+  /// Factures, devis, bons et bordereaux : A4 ou A5.
+  documentPaper String   @default("A4")
+  /// Étiquette en rouleau (imprimante d'étiquettes), en millimètres.
+  labelWidthMm  Int      @default(50)
+  labelHeightMm Int      @default(30)
+  updatedAt     DateTime @updatedAt
 }
 
 // ───────────────────────────────────────────────────────────

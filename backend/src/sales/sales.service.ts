@@ -32,7 +32,11 @@ import {
 } from './dto/sale.dto';
 import { CashSessionsService } from './cash-sessions.service';
 import { renderSaleDocument } from './sale-document';
-import { StoreIdentity, storeIdentity } from '../settings/store-settings';
+import {
+  StoreIdentity,
+  storeIdentity,
+  withCurrentPrint,
+} from '../settings/store-settings';
 import { saleListDocument } from './sales.export';
 
 type Db = Prisma.TransactionClient;
@@ -467,8 +471,10 @@ export class SalesService {
           })
         )?.issuerSnapshot
       : null;
+    // Le format d'impression est celui d'AUJOURD'HUI, même pour une facture
+    // à l'identité figée : l'imprimante a pu changer.
     const store = frozen
-      ? (frozen as unknown as StoreIdentity)
+      ? await withCurrentPrint(this.prisma, frozen as unknown as StoreIdentity)
       : await storeIdentity(this.prisma, this.config, !!sale.invoiceNumber);
     const pdf = await renderSaleDocument({
       sale,

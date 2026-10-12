@@ -509,13 +509,18 @@ export class QuotesService {
     const pdf = await renderA4Document({
       title: 'DEVIS',
       pdfTitle: `Devis ${quote.number}`,
-      info: [
-        `N° ${quote.number}`,
-        `Date : ${formatDateTime(quote.createdAt)}`,
-        quote.validUntil
-          ? `Valable jusqu’au ${quote.validUntil.split('-').reverse().join('/')}`
-          : 'Sans date de validité',
+      number: quote.number,
+      meta: [
+        ['Date', formatDateTime(quote.createdAt)],
+        [
+          'Validité',
+          quote.validUntil
+            ? quote.validUntil.split('-').reverse().join('/')
+            : 'sans date',
+        ],
       ],
+      wordsSubject: 'le présent devis',
+      signatures: ['Bon pour accord (client)', 'Le vendeur'],
       store: await storeIdentity(this.prisma, this.config, false),
       customer,
       products: new Map(products.map((p) => [p.id, p])),

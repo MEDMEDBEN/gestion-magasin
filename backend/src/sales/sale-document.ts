@@ -1,4 +1,9 @@
 import {
+  BusinessDocument,
+  DocumentColumn,
+  renderBusinessDocument,
+} from '../common/pdf/business-document';
+import {
   formatDA,
   formatDateTime,
   PdfDoc,
@@ -6,7 +11,7 @@ import {
   UNIT_LABEL,
 } from '../common/pdf/pdf';
 import { Prisma } from '../generated/prisma/client';
-import { StoreIdentity } from '../settings/store-settings';
+import { DocumentPaper, StoreIdentity } from '../settings/store-settings';
 import { SaleDto } from './dto/sale.dto';
 
 export interface SaleDocumentData {
@@ -39,12 +44,17 @@ function designation(
   };
 }
 
-/// Facture (numéro légal attribué) → A4 ; sinon ticket de caisse 80 mm.
+/// Facture (numéro légal attribué) → document A4/A5 ; sinon le ticket, au
+/// format choisi dans Paramètres : rouleau 80 ou 58 mm, ou bon de vente A5/A4
+/// pour qui imprime ses tickets sur une imprimante de bureau.
 export function renderSaleDocument(data: SaleDocumentData): Promise<Buffer> {
-  return data.sale.invoiceNumber ? renderInvoice(data) : renderTicket(data);
+  if (data.sale.invoiceNumber) return renderInvoice(data);
+  const paper = data.store.ticketPaper ?? 'TICKET_80';
+  if (paper === 'A4' || paper === 'A5') return renderSaleSlip(data, paper);
+  return renderTicket(data, paper === 'TICKET_58' ? 58 : 80);
 }
 
-/// Mention en rouge, centrée (vente annulée, devis refusé…).
+/// Mention en rouge, centrée (vente annulée…).
 function stamp(doc: PdfDoc, text: string, x: number, width: number) {
   doc
     .moveDown(0.5)
@@ -54,120 +64,134 @@ function stamp(doc: PdfDoc, text: string, x: number, width: number) {
     .fillColor('black');
 }
 
-const TICKET_WIDTH = 226.77; // 80 mm
-const TICKET_MARGIN = 10;
+const MM = 72 / 25.4;
 
-function renderTicket(data: SaleDocumentData): Promise<Buffer> {
+/// Ticket de caisse en rouleau thermique (80 ou 58 mm de large).
+async function renderTicket(
+  data: SaleDocumentData,
+  mm: 58 | 80,
+): Promise<Buffer> {
   const { sale, store } = data;
-  // Hauteur du rouleau : ~38 caractères par ligne de désignation à 80 mm.
-  const nameLines = sale.lines.reduce(
-    (n, l) =>
-      n +
-      Math.max(
-        1,
-        Math.ceil(designation(data.products, l.productId).name.length / 38),
-      ),
-    0,
-  );
-  const height =
-    240 + sale.lines.length * 34 + nameLines * 11 + store.legal.length * 10;
+  const narrow = mm === 58;
+  const width = mm * MM;
+  const margin = narrow ? 6 : 10;
+  const k = narrow ? 0.85 : 1;
+  const draw = (doc: PdfDoc) => {
+    const w = width - 2 * margin;
+    const x = margin;
+    const row = (left: string, right: string, bold = false) => {
+      const y = doc.y;
+      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
+      doc.text(left, x, y, { width: w * 0.55 });
+      const after = doc.y;
+      doc.text(right, x, y, { width: w, align: 'right' });
+      doc.y = Math.max(after, doc.y);
+    };
+    const rule = (strong = false) => {
+      doc.moveDown(0.3);
+      doc.moveTo(x, doc.y).lineTo(x + w, doc.y);
+      if (strong) doc.lineWidth(1.2).stroke().lineWidth(1);
+      else doc.dash(2, { space: 2 }).stroke().undash();
+      doc.moveDown(0.3);
+    };
+
+    doc.font('Helvetica-Bold').fontSize(12 * k);
+    doc.text(store.name.toUpperCase(), x, doc.y, {
+      width: w,
+      align: 'center',
+    });
+    doc.font('Helvetica').fontSize(7.5 * k);
+    for (const line of [
+      store.address,
+      store.phone ? `Tél : ${store.phone}` : undefined,
+      ...store.legal,
+    ]) {
+      if (line) doc.text(line, { width: w, align: 'center' });
+    }
+    rule(true);
+    doc.fontSize(8 * k);
+    row(`Ticket ${sale.number}`, formatDateTime(new Date(sale.soldAt)), true);
+    doc.font('Helvetica').text(`Vendeur : ${data.sellerName}`, x, doc.y, {
+      width: w,
+    });
+    if (data.customer) doc.text(`Client : ${data.customer.name}`, { width: w });
+    rule();
+
+    for (const line of sale.lines) {
+      const d = designation(data.products, line.productId);
+      doc.font('Helvetica-Bold').text(d.name, x, doc.y, { width: w });
+      // Prix unitaire TTC affiché (le total de ligne, lui, vient du serveur).
+      const unitTtc = new Prisma.Decimal(line.unitPriceHt)
+        .mul(new Prisma.Decimal(line.taxRate).add(100))
+        .div(100)
+        .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
+        .toNumber();
+      row(
+        `${qty(line.quantity)} ${d.unit} × ${formatDA(unitTtc)}`,
+        formatDA(line.lineTotalTtc),
+      );
+      if (line.discountAmount > 0) {
+        row('  dont remise', `-${formatDA(line.discountAmount)}`);
+      }
+    }
+    rule(true);
+    // Sans TVA (retirée le 2026-10-05) : un seul total. Un ticket d'avant
+    // garde sa ventilation HT / TVA / TTC.
+    const taxed = sale.totalTax > 0;
+    if (taxed) {
+      row('Total HT', formatDA(sale.totalHt));
+      row('TVA', formatDA(sale.totalTax));
+    }
+    if (sale.discountAmount > 0) {
+      row('Remise sur facture', `-${formatDA(sale.discountAmount)}`);
+    }
+    doc.fontSize(11 * k);
+    row(taxed ? 'TOTAL TTC' : 'TOTAL', formatDA(sale.totalTtc), true);
+    doc.fontSize(8 * k);
+    row('Payé (espèces)', formatDA(sale.paidAmount));
+    if (sale.remainingAmount > 0) {
+      row('Reste dû (crédit)', formatDA(sale.remainingAmount), true);
+    }
+    if (sale.status === 'ANNULEE') stamp(doc, 'VENTE ANNULÉE', x, w);
+    rule();
+    doc
+      .font('Helvetica')
+      .fontSize(7.5 * k)
+      .text(store.footer ?? 'Merci de votre visite', x, doc.y, {
+        width: w,
+        align: 'center',
+      });
+  };
+  // Hauteur EXACTE du rouleau : un premier rendu mesure où s'arrête le
+  // ticket, le second coupe juste après — pas de papier perdu, jamais coupé.
+  let end = 0;
+  await renderPdf({ size: [width, 200_000], margin }, (doc) => {
+    draw(doc);
+    end = doc.y;
+  });
   return renderPdf(
     {
-      size: [TICKET_WIDTH, height],
-      margin: TICKET_MARGIN,
+      size: [width, Math.ceil(end + margin + 4)],
+      margin,
       info: { Title: `Ticket ${sale.number}` },
     },
-    (doc) => {
-      const w = TICKET_WIDTH - 2 * TICKET_MARGIN;
-      const x = TICKET_MARGIN;
-      const row = (left: string, right: string, bold = false) => {
-        const y = doc.y;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
-        doc.text(left, x, y, { width: w * 0.55 });
-        const after = doc.y;
-        doc.text(right, x, y, { width: w, align: 'right' });
-        doc.y = Math.max(after, doc.y);
-      };
-      const rule = () => {
-        doc.moveDown(0.3);
-        doc
-          .moveTo(x, doc.y)
-          .lineTo(x + w, doc.y)
-          .dash(2, { space: 2 })
-          .stroke()
-          .undash();
-        doc.moveDown(0.3);
-      };
-
-      doc.font('Helvetica-Bold').fontSize(11);
-      doc.text(store.name, x, doc.y, { width: w, align: 'center' });
-      doc.font('Helvetica').fontSize(7.5);
-      for (const line of [store.address, store.phone, ...store.legal]) {
-        if (line) doc.text(line, { width: w, align: 'center' });
-      }
-      rule();
-      doc.fontSize(8);
-      row(`Ticket ${sale.number}`, formatDateTime(new Date(sale.soldAt)), true);
-      doc.font('Helvetica').text(`Vendeur : ${data.sellerName}`, x, doc.y, {
-        width: w,
-      });
-      if (data.customer)
-        doc.text(`Client : ${data.customer.name}`, { width: w });
-      rule();
-
-      for (const line of sale.lines) {
-        const d = designation(data.products, line.productId);
-        doc.font('Helvetica-Bold').text(d.name, x, doc.y, { width: w });
-        // Prix unitaire TTC affiché (le total de ligne, lui, vient du serveur).
-        const unitTtc = new Prisma.Decimal(line.unitPriceHt)
-          .mul(new Prisma.Decimal(line.taxRate).add(100))
-          .div(100)
-          .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
-          .toNumber();
-        row(
-          `${qty(line.quantity)} ${d.unit} × ${formatDA(unitTtc)}`,
-          formatDA(line.lineTotalTtc),
-        );
-        if (line.discountAmount > 0) {
-          row('  dont remise HT', `-${formatDA(line.discountAmount)}`);
-        }
-      }
-      rule();
-      // Sans TVA (retirée le 2026-10-05) : un seul total. Un ticket d'avant
-      // garde sa ventilation HT / TVA / TTC.
-      const taxed = sale.totalTax > 0;
-      if (taxed) {
-        row('Total HT', formatDA(sale.totalHt));
-        row('TVA', formatDA(sale.totalTax));
-      }
-      doc.fontSize(10);
-      row(taxed ? 'TOTAL TTC' : 'TOTAL', formatDA(sale.totalTtc), true);
-      doc.fontSize(8);
-      row('Payé (espèces)', formatDA(sale.paidAmount));
-      if (sale.remainingAmount > 0) {
-        row('Reste dû (crédit)', formatDA(sale.remainingAmount), true);
-      }
-      if (sale.status === 'ANNULEE') stamp(doc, 'VENTE ANNULÉE', x, w);
-      rule();
-      doc
-        .font('Helvetica')
-        .fontSize(7.5)
-        .text('Merci de votre visite', x, doc.y, { width: w, align: 'center' });
-    },
+    draw,
   );
 }
 
-const A4_MARGIN = 40;
-
-function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
+/// Ticket imprimé sur une imprimante de bureau : un BON DE VENTE A5/A4.
+function renderSaleSlip(
+  data: SaleDocumentData,
+  paper: DocumentPaper,
+): Promise<Buffer> {
   const { sale } = data;
   return renderA4Document({
-    title: 'FACTURE',
-    pdfTitle: `Facture ${sale.invoiceNumber}`,
-    info: [
-      `N° ${sale.invoiceNumber}`,
-      `Date : ${formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))}`,
-      `Ticket ${sale.number} du ${formatDateTime(new Date(sale.soldAt))}`,
+    title: 'BON DE VENTE',
+    pdfTitle: `Bon de vente ${sale.number}`,
+    number: sale.number,
+    meta: [
+      ['Date', formatDateTime(new Date(sale.soldAt))],
+      ['Vendeur', data.sellerName],
     ],
     store: data.store,
     customer: data.customer,
@@ -175,26 +199,62 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
     lines: sale.lines,
     totalHt: sale.totalHt,
     totalTtc: sale.totalTtc,
+    discount: sale.discountAmount,
+    after: [
+      ['Payé (espèces)', formatDA(sale.paidAmount)],
+      ...(sale.remainingAmount > 0
+        ? ([['Reste à payer', formatDA(sale.remainingAmount)]] as [
+            string,
+            string,
+          ][])
+        : []),
+    ],
+    stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
+    signatures: ['Le client', 'Le vendeur'],
+    paper,
+  });
+}
+
+function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
+  const { sale } = data;
+  return renderA4Document({
+    title: 'FACTURE',
+    pdfTitle: `Facture ${sale.invoiceNumber}`,
+    number: sale.invoiceNumber!,
+    meta: [
+      ['Date', formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))],
+      ['Ticket', sale.number],
+      ['Vendeur', data.sellerName],
+    ],
+    store: data.store,
+    customer: data.customer,
+    products: data.products,
+    lines: sale.lines,
+    totalHt: sale.totalHt,
+    totalTtc: sale.totalTtc,
+    discount: sale.discountAmount,
     after: [
       ['Payé (espèces)', formatDA(sale.paidAmount)],
       ['Reste à payer', formatDA(sale.remainingAmount)],
     ],
     stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
-    footer: `Vendeur : ${data.sellerName}`,
+    wordsSubject: 'la présente facture',
+    signatures: ['Le client', 'Cachet et signature du vendeur'],
   });
 }
 
-/// Document commercial A4 (facture, devis) : UN gabarit, pour que les deux
-/// documents remis au client aient la même tête, la même table et la même
-/// ventilation de TVA.
+/// Document commercial avec lignes de produits (facture, devis, bons de
+/// commande et de retour) : un seul gabarit, rendu par le document industriel
+/// commun (`renderBusinessDocument`), au format des Paramètres.
 export interface A4Document {
-  /// En gros, en haut à droite : « FACTURE », « DEVIS ».
+  /// Titre du cartouche : « FACTURE », « DEVIS »…
   title: string;
   pdfTitle: string;
-  /// Lignes sous le titre : numéro, dates.
-  info: string[];
+  number: string;
+  /// Références du cartouche : [« Date », « … »]…
+  meta: [string, string][];
   store: StoreIdentity;
-  /// En tête du bloc de la partie : « Client » (défaut), « Fournisseur ».
+  /// En tête de l'encadré de la partie : « Client » (défaut), « Fournisseur ».
   partyLabel?: string;
   customer: SaleDocumentData['customer'];
   products: SaleDocumentData['products'];
@@ -205,155 +265,108 @@ export interface A4Document {
     taxRate: string;
     lineTotalHt: number;
     lineTaxAmount: number;
+    discountAmount?: number;
   }[];
   totalHt: number;
   totalTtc: number;
-  /// Montants imprimés sous le Total TTC (payé, reste…).
+  /// Remise sur toute la facture (déjà comprise dans les lignes).
+  discount?: number;
+  /// Montants imprimés sous le total (payé, reste…).
   after: [string, string][];
-  /// Mention en rouge sous les totaux (annulation).
+  /// Mention en rouge (annulation).
   stamp?: string;
-  footer: string;
+  /// Ligne d'information sous les totaux (« Établi par… », motif…).
+  footer?: string;
+  /// « Arrêté … à la somme de » ; défaut : « le présent document ».
+  wordsSubject?: string;
+  signatures?: string[];
+  /// Format imposé (bon de vente) ; défaut : celui des Paramètres.
+  paper?: DocumentPaper;
 }
 
 export function renderA4Document(input: A4Document): Promise<Buffer> {
-  const { store } = input;
-  return renderPdf(
-    {
-      size: 'A4',
-      margin: A4_MARGIN,
-      info: { Title: input.pdfTitle },
-    },
-    (doc) => {
-      const left = A4_MARGIN;
-      const w = doc.page.width - 2 * A4_MARGIN;
+  // Sans TVA sur aucune ligne (retirée le 2026-10-05) : ni colonne TVA, ni
+  // « HT » ; un document d'avant garde la sienne.
+  const taxed = input.lines.some((l) => Number(l.taxRate) !== 0);
+  const discounted = input.lines.some((l) => (l.discountAmount ?? 0) > 0);
+  const columns: DocumentColumn[] = [
+    { header: 'Référence', width: 2 },
+    { header: 'Désignation', width: 6 },
+    { header: 'Qté', width: 1.6, align: 'right' },
+    { header: taxed ? 'PU HT' : 'Prix unitaire', width: 2.2, align: 'right' },
+    ...(discounted
+      ? [{ header: 'Remise', width: 1.8, align: 'right' as const }]
+      : []),
+    ...(taxed ? [{ header: 'TVA', width: 1.2, align: 'right' as const }] : []),
+    { header: taxed ? 'Total HT' : 'Montant', width: 2.4, align: 'right' },
+  ];
+  const rows = input.lines.map((line) => {
+    const d = designation(input.products, line.productId);
+    return [
+      d.sku,
+      d.name,
+      `${qty(line.quantity)} ${d.unit}`,
+      formatDA(line.unitPriceHt),
+      ...(discounted
+        ? [line.discountAmount ? `-${formatDA(line.discountAmount)}` : '']
+        : []),
+      ...(taxed ? [`${qty(line.taxRate)} %`] : []),
+      formatDA(line.lineTotalHt),
+    ];
+  });
 
-      // En-tête : vendeur à gauche, titre, n° et dates à droite.
-      const top = doc.y;
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(14)
-        .text(store.name, left, top, {
-          width: w / 2,
-        });
-      doc.font('Helvetica').fontSize(9);
-      for (const line of [store.address, store.phone, ...store.legal]) {
-        if (line) doc.text(line, { width: w / 2 });
-      }
-      const leftBottom = doc.y;
-      doc
-        .font('Helvetica-Bold')
-        .fontSize(16)
-        .text(input.title, left + w / 2, top, { width: w / 2, align: 'right' });
-      doc.font('Helvetica').fontSize(10);
-      for (const line of input.info) {
-        doc.text(line, { width: w / 2, align: 'right' });
-      }
-      doc.y = Math.max(leftBottom, doc.y) + 20;
-
-      // Client (facture, devis) ou fournisseur (bon de commande)
-      const party = input.partyLabel ?? 'Client';
-      doc.font('Helvetica-Bold').fontSize(10).text(party, left, doc.y);
-      doc.font('Helvetica').fontSize(9);
-      if (input.customer) {
-        doc.text(input.customer.name);
-        if (input.customer.address) doc.text(input.customer.address);
-        if (input.customer.phone) doc.text(input.customer.phone);
-      } else {
-        doc.text(`${party} comptoir`);
-      }
-      doc.moveDown(1.5);
-
-      // Lignes. Sans TVA sur aucune ligne (retirée le 2026-10-05) : ni colonne
-      // TVA, ni « HT » ; un document d'avant garde la sienne.
-      const taxed = input.lines.some((l) => Number(l.taxRate) !== 0);
-      const cols = taxed
-        ? [
-            { title: 'Désignation', width: w * 0.4, align: 'left' as const },
-            { title: 'Qté', width: w * 0.1, align: 'right' as const },
-            { title: 'PU HT', width: w * 0.16, align: 'right' as const },
-            { title: 'TVA', width: w * 0.1, align: 'right' as const },
-            { title: 'Total HT', width: w * 0.24, align: 'right' as const },
-          ]
-        : [
-            { title: 'Désignation', width: w * 0.5, align: 'left' as const },
-            { title: 'Qté', width: w * 0.1, align: 'right' as const },
-            {
-              title: 'Prix unitaire',
-              width: w * 0.16,
-              align: 'right' as const,
-            },
-            { title: 'Total', width: w * 0.24, align: 'right' as const },
-          ];
-      const tableRow = (cells: string[], bold = false) => {
-        if (doc.y > doc.page.height - A4_MARGIN - 120) doc.addPage();
-        const y = doc.y;
-        let x = left;
-        let bottom = y;
-        doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
-        cells.forEach((cell, i) => {
-          doc.text(cell, x + 2, y, {
-            width: cols[i].width - 4,
-            align: cols[i].align,
-          });
-          bottom = Math.max(bottom, doc.y);
-          x += cols[i].width;
-        });
-        doc.y = bottom + 4;
-        doc
-          .moveTo(left, doc.y - 2)
-          .lineTo(left + w, doc.y - 2)
-          .strokeColor('#cccccc')
-          .stroke()
-          .strokeColor('black');
-      };
-      tableRow(
-        cols.map((c) => c.title),
-        true,
+  const totals: [string, string, boolean?][] = [];
+  if (taxed) {
+    const byRate = new Map<string, number>();
+    for (const line of input.lines) {
+      byRate.set(
+        line.taxRate,
+        (byRate.get(line.taxRate) ?? 0) + line.lineTaxAmount,
       );
-      for (const line of input.lines) {
-        const d = designation(input.products, line.productId);
-        tableRow([
-          d.sku ? `${d.name}\n${d.sku}` : d.name,
-          `${qty(line.quantity)} ${d.unit}`,
-          formatDA(line.unitPriceHt),
-          ...(taxed ? [`${qty(line.taxRate)} %`] : []),
-          formatDA(line.lineTotalHt),
-        ]);
-      }
+    }
+    totals.push(['Total HT', formatDA(input.totalHt)]);
+    for (const [rate, amount] of byRate) {
+      totals.push([`TVA ${qty(rate)} %`, formatDA(amount)]);
+    }
+  }
+  if (input.discount) {
+    // Déjà RÉPARTIE dans les lignes : dite, pas soustraite une 2e fois.
+    totals.push(['Remise sur facture (incluse)', formatDA(input.discount)]);
+  }
+  totals.push([
+    taxed ? 'TOTAL TTC' : 'TOTAL À PAYER',
+    formatDA(input.totalTtc),
+    true,
+  ]);
+  for (const [label, amount] of input.after) totals.push([label, amount]);
 
-      // Totaux (TVA ventilée par taux)
-      doc.moveDown(1);
-      const byRate = new Map<string, number>();
-      for (const line of input.lines) {
-        byRate.set(
-          line.taxRate,
-          (byRate.get(line.taxRate) ?? 0) + line.lineTaxAmount,
-        );
-      }
-      const totalsX = left + w * 0.5;
-      const total = (label: string, amount: string, bold = false) => {
-        const y = doc.y;
-        doc
-          .font(bold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(bold ? 11 : 9.5);
-        doc.text(label, totalsX, y, { width: w * 0.25 });
-        doc.text(amount, totalsX, y, { width: w * 0.5, align: 'right' });
-        doc.moveDown(0.2);
-      };
-      if (taxed) {
-        total('Total HT', formatDA(input.totalHt));
-        for (const [rate, amount] of byRate) {
-          total(`TVA ${qty(rate)} %`, formatDA(amount));
-        }
-      }
-      total(taxed ? 'Total TTC' : 'Total', formatDA(input.totalTtc), true);
-      if (input.after.length > 0) doc.moveDown(0.5);
-      for (const [label, amount] of input.after) total(label, amount);
-      if (input.stamp) stamp(doc, input.stamp, left, w);
-      doc
-        .font('Helvetica')
-        .fontSize(8)
-        .text(input.footer, left, doc.y + 20, { width: w });
-    },
-  );
+  const party = input.partyLabel ?? 'Client';
+  const document: BusinessDocument = {
+    title: input.title,
+    pdfTitle: input.pdfTitle,
+    number: input.number,
+    meta: input.meta,
+    store: input.store,
+    parties: [
+      input.customer
+        ? {
+            label: party,
+            name: input.customer.name,
+            lines: [input.customer.address, input.customer.phone].filter(
+              (l): l is string => !!l,
+            ),
+          }
+        : { label: party, name: `${party} de passage`, lines: [] },
+    ],
+    columns,
+    rows,
+    totals,
+    amountInWords: input.totalTtc,
+    wordsSubject: input.wordsSubject,
+    notes: input.footer ? [input.footer] : [],
+    signatures: input.signatures,
+    stamp: input.stamp,
+    paper: input.paper ?? input.store.documentPaper ?? 'A4',
+  };
+  return renderBusinessDocument(document);
 }

@@ -320,13 +320,17 @@ export class PurchaseOrdersService {
     const pdf = await renderA4Document({
       title: 'BON DE COMMANDE',
       pdfTitle: `Bon de commande ${order.number}`,
-      info: [
-        `N° ${order.number}`,
-        `Date : ${formatDateTime(order.orderDate)}`,
+      number: order.number,
+      meta: [
+        ['Date', formatDateTime(order.orderDate)],
         ...(order.expectedDate
-          ? [`Livraison souhaitée : ${day(order.expectedDate)}`]
+          ? ([['Livraison souhaitée', day(order.expectedDate)]] as [
+              string,
+              string,
+            ][])
           : []),
       ],
+      signatures: ['Le responsable des achats', 'Le fournisseur'],
       store: await storeIdentity(this.prisma, this.config, false),
       partyLabel: 'Fournisseur',
       customer: supplier,
@@ -342,6 +346,7 @@ export class PurchaseOrdersService {
       totalHt: order.totalHt,
       totalTtc: order.totalTtc,
       after: [],
+      wordsSubject: 'le présent bon de commande',
       stamp: stamp[order.status],
       footer: `Établi par : ${author?.fullName ?? ''}`,
     });
