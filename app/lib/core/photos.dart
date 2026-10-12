@@ -15,11 +15,15 @@ final pickPhotoProvider = Provider<Future<Uint8List?> Function()>(
   (ref) => () async {
     // Taille et qualité demandées : sur téléphone, le système RÉENCODE la
     // photo en JPEG — une photo HEIC/HEIF (Samsung, iPhone) devient lisible.
+    // PAS dans le navigateur : son redimensionnement crée une image
+    // temporaire (blob) révoquée avant la lecture — « Could not load Blob
+    // from its URL » (retour terrain du 2026-10-12). `compressPhoto` réduit
+    // de toute façon la photo juste après.
     final file = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+      maxWidth: kIsWeb ? null : 1024,
+      maxHeight: kIsWeb ? null : 1024,
+      imageQuality: kIsWeb ? null : 85,
     );
     if (file == null) return null;
     final jpeg = await compute(compressPhoto, await file.readAsBytes());

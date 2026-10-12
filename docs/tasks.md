@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Photo produit sur le web — 2026-10-12 (MEDMEDBEN, Claude)
+
+- Cause trouvée (message terrain « Could not load Blob from its URL. Has it been revoked? ») : dans le
+  NAVIGATEUR, `image_picker` redimensionne via une image temporaire (blob) révoquée avant la lecture. Correctif
+  (`core/photos.dart`) : pas de redimensionnement demandé au sélecteur sur le web — `compressPhoto` réduit déjà la
+  photo (≤ 1024 px). Téléphone et Windows inchangés.
+- Preuves : app analyze 0, tests catalogue/signalements OK, `flutter build web` OK. Non reproduit en vrai
+  navigateur ici (sélecteur de fichier non automatisable) : à constater sur le VPS.
+
 ### Impression : formats, bons industriels, étiquettes lisibles, remise en % — 2026-10-12 (MEDMEDBEN, Claude)
 
 - **Paramètres → Impression** (migration additive `20261012120000_store_print_settings`) : ticket (rouleau 80 mm,
