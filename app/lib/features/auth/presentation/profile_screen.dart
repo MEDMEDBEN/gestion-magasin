@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/pdf_printing.dart';
 import '../../../core/providers.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -13,6 +14,7 @@ import '../../users/data/user_models.dart';
 import '../application/auth_controller.dart';
 import '../data/auth_models.dart';
 import 'change_password_screen.dart';
+import 'printers_card.dart';
 
 /// Profil de l'utilisateur connecté : son identité, ses rôles, ses actions de
 /// session. Accessible à TOUS les rôles — c'est son propre compte.
@@ -177,6 +179,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
             ),
+            // Poste de bureau : ses imprimantes (2026-10-12).
+            if (desktopPrinting) ...[
+              const SizedBox(height: 6),
+              const _SectionLabel('Imprimantes de ce poste'),
+              const PrintersCard(),
+            ],
             const SizedBox(height: 22),
 
             SizedBox(

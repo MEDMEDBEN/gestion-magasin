@@ -55,6 +55,7 @@ dependencies:
   mobile_scanner: ^7.4.2
   file_selector: ^1.1.0
   fl_chart: ^1.2.0
+  pdf: ^3.13.1
 
 dev_dependencies:
   flutter_test:

@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:decimal/decimal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
 
 import '../../../core/dates.dart';
 import '../../../core/error/error_codes.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/mutation_keys.dart';
+import '../../../core/pdf_printing.dart';
 import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
@@ -488,13 +488,13 @@ final cartEstimateProvider = Provider.autoDispose<CartEstimate>((ref) {
   );
 });
 
-/// Impression / partage d'un PDF (boîte système : imprimante, « Enregistrer en
-/// PDF », partage mobile). Remplaçable en test.
+/// Impression / partage d'un PDF, À SON FORMAT (ticket 80/58 mm, étiquette,
+/// A4/A5) et, au poste, sur l'imprimante choisie pour cette sorte de papier
+/// (`core/pdf_printing.dart`). Remplaçable en test.
 final printPdfProvider =
     Provider<Future<void> Function(Uint8List bytes, String name)>(
       (ref) =>
-          (bytes, name) =>
-              Printing.layoutPdf(onLayout: (_) async => bytes, name: name),
+          (bytes, name) => printPdf(ref, bytes, name),
     );
 
 /// Toutes les caisses (ADMIN), les plus récentes d'abord.

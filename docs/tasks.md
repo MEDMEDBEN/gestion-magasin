@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Impression au bon format (desktop et web) — 2026-10-12 (MEDMEDBEN, Claude)
+
+- Cause des tickets sur A4 au poste : `Printing.layoutPdf` sans `format` → le plugin Windows règle le papier de
+  l'imprimante en A4 par défaut. Désormais `core/pdf_printing.dart` lit le format du PDF (MediaBox) et le passe
+  (`dynamicLayout: false`) : Windows règle le papier à la taille exacte (ticket 80/58 mm, étiquette, A5/A4).
+- Poste de bureau : « Mon profil → Imprimantes de ce poste » — une imprimante par sorte de papier (tickets,
+  étiquettes, documents ; sorte déduite du format : largeur 80/58 mm = ticket). Choisie : impression DIRECTE
+  (`directPrintPdf`), sans dialogue. Réglage local au poste.
+- Web : un navigateur ne laisse pas un site choisir l'imprimante ni le papier → réglage à faire dans le pilote de
+  l'imprimante + boîte d'impression du navigateur (mémorisée par imprimante) ; option Chrome `--kiosk-printing`.
+- Preuves : app analyze 0, **551 tests** (test `pdf_printing_test.dart`). Impression réelle à constater sur le poste.
+
 ### Photo produit sur le web — 2026-10-12 (MEDMEDBEN, Claude)
 
 - Cause trouvée (message terrain « Could not load Blob from its URL. Has it been revoked? ») : dans le
