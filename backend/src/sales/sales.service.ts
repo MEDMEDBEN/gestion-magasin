@@ -110,7 +110,11 @@ export class SalesService {
       price: number | null,
     ) => `${productId}|${quantity}|${discount}|${price}`;
     const sorted = (keys: string[]) => [...keys].sort().join(';');
+    // Remise sur facture : déjà RÉPARTIE dans les lignes enregistrées — on
+    // compare alors la remise globale, pas celle de chaque ligne.
+    const global = existing.discountAmount > 0;
     const sameCart =
+      existing.discountAmount === (dto.discountAmount ?? 0) &&
       existing.paidAmount === dto.paidAmount &&
       existing.customerId === (dto.customerId ?? null) &&
       sorted(
@@ -118,7 +122,7 @@ export class SalesService {
           key(
             l.productId,
             formatQuantity(l.quantity),
-            l.discountAmount,
+            global ? 0 : l.discountAmount,
             l.unitPriceHt,
           ),
         ),
@@ -128,7 +132,7 @@ export class SalesService {
             key(
               l.productId,
               formatQuantity(parseQuantity(l.quantity, 'lines.quantity')),
-              l.discountAmount ?? 0,
+              global ? 0 : (l.discountAmount ?? 0),
               l.unitPriceHt ??
                 existing.lines.find((e) => e.productId === l.productId)
                   ?.tariffPriceHt ??
@@ -197,6 +201,7 @@ export class SalesService {
       dto.lines,
       user.permissions.includes(PERMISSIONS.SALE_DISCOUNT) || !!fromQuote,
       trustDevicePrice,
+      dto.discountAmount ?? 0,
     );
 
     if (
@@ -308,6 +313,7 @@ export class SalesService {
         totalTax,
         totalTtc,
         paidAmount: dto.paidAmount,
+        discountAmount: dto.discountAmount ?? 0,
         paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
         soldAt,
         dueDate,
@@ -812,6 +818,8 @@ export class SalesService {
     cart: CreateSaleDto['lines'],
     canDiscount: boolean,
     trustDevicePrice = false,
+    /// Remise sur toute la facture (centimes HT), répartie sur les lignes.
+    globalDiscount = 0,
   ) {
     const customerTier = customer?.priceTierId
       ? await tx.priceTier.findFirst({
@@ -830,9 +838,9 @@ export class SalesService {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
-    const lines = [];
+    const priced = [];
     for (const line of cart) {
-      lines.push(
+      priced.push(
         await SalesService.priceLine(
           tx,
           line,
@@ -842,6 +850,9 @@ export class SalesService {
         ),
       );
     }
+    if (globalDiscount > 0) SalesService.spreadDiscount(priced, globalDiscount);
+    // Le plancher ne sert qu'au calcul : il n'est pas une colonne.
+    const lines = priced.map(({ floorHt: _floor, ...line }) => line);
     const totalHt = lines.reduce((sum, l) => sum + l.lineTotalHt, 0);
     const totalTax = lines.reduce((sum, l) => sum + l.lineTaxAmount, 0);
     const totalTtc = totalHt + totalTax;
@@ -854,6 +865,75 @@ export class SalesService {
       );
     }
     return { lines, totalHt, totalTax, totalTtc };
+  }
+
+  /// Répartit une remise sur toute la facture entre les lignes, au prorata de
+  /// ce que chacune peut perdre AVANT son plancher (coût d'achat × quantité) :
+  /// aucune ligne ne passe sous le coût (règle 13). Centimes entiers, le reste
+  /// va aux lignes qui ont le plus de marge.
+  static spreadDiscount(
+    lines: {
+      discountAmount: number;
+      lineTotalHt: number;
+      lineTaxAmount: number;
+      lineTotalTtc: number;
+      taxRate: Prisma.Decimal;
+      floorHt: number;
+    }[],
+    discount: number,
+  ): void {
+    const room = lines.map((l) => Math.max(0, l.lineTotalHt - l.floorHt));
+    const totalRoom = room.reduce((sum, r) => sum + r, 0);
+    if (discount > totalRoom) {
+      throw new BusinessException(
+        ErrorCode.PRICE_BELOW_COST,
+        `Remise trop forte : ${formatDA(totalRoom)} au plus sans vendre sous ` +
+          'le prix d’achat',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const shares = room.map((r) =>
+      Number((BigInt(discount) * BigInt(r)) / BigInt(totalRoom)),
+    );
+    let rest = discount - shares.reduce((sum, s) => sum + s, 0);
+    const byRoom = room
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => b.r - a.r || a.i - b.i);
+    while (rest > 0) {
+      for (const { i } of byRoom) {
+        if (rest === 0) break;
+        if (shares[i] < room[i]) {
+          shares[i] += 1;
+          rest -= 1;
+        }
+      }
+    }
+    lines.forEach((line, i) => {
+      line.discountAmount += shares[i];
+      line.lineTotalHt -= shares[i];
+      line.lineTaxAmount = taxAmount(line.lineTotalHt, line.taxRate);
+      line.lineTotalTtc = line.lineTotalHt + line.lineTaxAmount;
+    });
+  }
+
+  /// Profit HT d'une vente : Σ (net HT − coût figé × quantité) des lignes au
+  /// coût connu ; `null` si aucune n'en a (ventes d'avant le 2026-10-12).
+  static profitOf(
+    lines: {
+      lineTotalHt: number;
+      costHt: number | null;
+      quantity: Prisma.Decimal;
+    }[],
+  ): number | null {
+    const known = lines.filter((l) => l.costHt !== null);
+    if (known.length === 0) return null;
+    return known.reduce(
+      (sum, l) =>
+        sum +
+        l.lineTotalHt -
+        roundMoney(new Prisma.Decimal(l.costHt!).mul(l.quantity)),
+      0,
+    );
   }
 
   private static async priceLine(
@@ -972,6 +1052,9 @@ export class SalesService {
       lineTotalHt,
       lineTaxAmount,
       lineTotalTtc: lineTotalHt + lineTaxAmount,
+      // Coût figé à la vente : le profit reste juste si le prix d'achat change.
+      costHt: cost,
+      floorHt: roundMoney(new Prisma.Decimal(floor).mul(quantity)),
     };
   }
 
@@ -1041,6 +1124,8 @@ export class SalesService {
       totalTax: sale.totalTax,
       totalTtc: sale.totalTtc,
       paidAmount: sale.paidAmount,
+      discountAmount: sale.discountAmount,
+      profitHt: SalesService.profitOf(sale.lines),
       remainingAmount:
         sale.status === 'ANNULEE'
           ? 0
@@ -1057,6 +1142,7 @@ export class SalesService {
         lineTotalHt: line.lineTotalHt,
         lineTaxAmount: line.lineTaxAmount,
         lineTotalTtc: line.lineTotalTtc,
+        costHt: line.costHt,
       })),
       soldAt: sale.soldAt,
       dueDate: sale.dueDate,

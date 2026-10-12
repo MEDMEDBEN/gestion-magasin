@@ -252,12 +252,11 @@ describe('Gestion des comptes (e2e)', () => {
       );
 
       expect((await login(target.email, PASSWORD)).status).toBe(401);
-      // Son access token encore valide (≤ 15 min) n'écrit plus rien : la
-      // synchro (ventes hors ligne) est refusée, droits relus en base.
+      // Sessions coupées : son access token encore valide ne passe plus.
       await as(target.token)
         .post('/api/sync')
-        .send({ deviceId: 'poste-suppr', mutations: [] })
-        .expect(403);
+        .send({ deviceId: 'poste-reset', mutations: [] })
+        .expect(401);
       const withTemporary = await login(target.email, 'NouveauTemporaire1!');
       expect(withTemporary.status).toBe(200);
       expect(withTemporary.body.user.mustChangePassword).toBe(true);
@@ -540,6 +539,12 @@ describe('Gestion des comptes (e2e)', () => {
         }),
       ).toBe(0);
       expect((await login(target.email, PASSWORD)).status).toBe(401);
+      // Son access token encore valide (≤ 15 min) n'écrit plus rien : la
+      // synchro (ventes hors ligne) est refusée.
+      const sync = await as(target.token)
+        .post('/api/sync')
+        .send({ deviceId: 'poste-suppr', mutations: [] });
+      expect([401, 403]).toContain(sync.status);
 
       expect(await listedIds()).not.toContain(target.id);
 

@@ -1339,7 +1339,8 @@ void main() {
       name: '07_tablette_rail',
       size: const Size(1024, 768),
       home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.byTooltip('Utilisateurs')),
+      // Menu réduit = caché (2026-10-12) : la poignée à gauche le rouvre.
+      interact: (t) async {},
     ),
   );
   testWidgets(

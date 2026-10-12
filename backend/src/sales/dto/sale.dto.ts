@@ -141,6 +141,19 @@ export class CreateSaleDto {
   paidAmount!: number;
 
   @ApiPropertyOptional({
+    example: 50000,
+    description:
+      'Remise sur TOUTE la facture (centimes HT), admin ou vendeur (décision ' +
+      'MEDMEDBEN du 2026-10-12). Répartie sur les lignes, jamais sous le coût ' +
+      'd’achat (`PRICE_BELOW_COST`).',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MONEY)
+  @IsOptional()
+  discountAmount?: number;
+
+  @ApiPropertyOptional({
     description:
       'Total TTC annoncé au client par l’app (centimes). S’il diffère du total serveur ' +
       '(catalogue local en retard sur un prix), la vente est refusée en 409 : rien ne ' +
@@ -191,6 +204,11 @@ export class SaleLineDto {
   @ApiProperty() lineTotalHt!: number;
   @ApiProperty() lineTaxAmount!: number;
   @ApiProperty() lineTotalTtc!: number;
+  @ApiProperty({
+    nullable: true,
+    description: 'Coût unitaire HT figé à la vente ; `null` : inconnu.',
+  })
+  costHt!: number | null;
 }
 
 export class SaleDto {
@@ -220,6 +238,15 @@ export class SaleDto {
   @ApiProperty() totalTax!: number;
   @ApiProperty() totalTtc!: number;
   @ApiProperty() paidAmount!: number;
+  @ApiProperty({ description: 'Remise sur toute la facture (centimes HT).' })
+  discountAmount!: number;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Profit HT = Σ (net HT − coût figé × quantité) des lignes au coût connu ; ' +
+      '`null` si aucune ligne n’a de coût.',
+  })
+  profitHt!: number | null;
   @ApiProperty({
     description:
       'totalTtc − encaissé − paiements ultérieurs. TOUJOURS recalculé.',

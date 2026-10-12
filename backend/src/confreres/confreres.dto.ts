@@ -88,3 +88,16 @@ export class ConfrereDealDto {
   @ApiProperty({ nullable: true }) saleNumber!: string | null;
   @ApiProperty({ type: ConfrereDto }) confrere!: ConfrereDto;
 }
+
+/// Fournisseur proposé comme ACHETEUR (décision MEDMEDBEN du 2026-10-12) :
+/// juste de quoi le choisir — ni dette ni conditions d'achat.
+export class SupplierBuyerDto {
+  @ApiProperty() id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ nullable: true }) phone!: string | null;
+}
+
+export class BuyerCustomerDto {
+  @ApiProperty({ description: 'Fiche client liée au fournisseur.' })
+  customerId!: string;
+}

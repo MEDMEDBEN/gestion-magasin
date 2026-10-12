@@ -265,6 +265,18 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             prices: _changedPrices(),
           );
       if (mounted) Navigator.of(context).pop(saved);
+    } on PhotoNotSaved catch (partial) {
+      // Le produit est enregistré : on ferme sur lui, et on dit que la photo
+      // n'est pas passée (la rajouter depuis sa fiche).
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(partial.product);
+      messenger.showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: 8),
+          content: Text(partial.message),
+        ),
+      );
     } on ApiException catch (error) {
       _fail(error.userMessage);
     }
@@ -476,17 +488,13 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final Uint8List? photo;
     try {
       photo = await ref.read(pickPhotoProvider)();
-    } on Exception {
-      // Format illisible, accès aux photos refusé : on le DIT.
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Photo illisible : choisissez une photo JPEG ou PNG.',
-            ),
-          ),
-        );
-      }
+    } on FormatException {
+      _photoProblem('Photo illisible : choisissez une photo JPEG ou PNG.');
+      return;
+    } catch (error) {
+      // Accès aux photos refusé, sélecteur indisponible… : on le DIT
+      // toujours — jamais un bouton qui ne fait rien.
+      _photoProblem('Impossible d’ouvrir la photo ($error).');
       return;
     }
     if (!mounted) return;
@@ -495,6 +503,13 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _newPhoto = photo;
       _removePhoto = false;
     });
+  }
+
+  void _photoProblem(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _photoSection(AmpereColors colors) {

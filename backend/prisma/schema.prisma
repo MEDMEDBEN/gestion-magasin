@@ -694,6 +694,10 @@ model Sale {
   totalTtc         Int
   /// Montant encaissé au moment de la vente (centimes). Les règlements ultérieurs = CustomerPayment.
   paidAmount       Int            @default(0)
+  /// Remise sur TOUTE la facture (centimes HT), demandée au comptoir
+  /// (décision MEDMEDBEN du 2026-10-12) ; déjà RÉPARTIE dans la remise des
+  /// lignes — gardée ici pour l'affichage et les renvois.
+  discountAmount   Int            @default(0)
   paymentMethod    PaymentMethod?
   dueDate          DateTime?
   soldAt           DateTime       @default(now())
@@ -741,6 +745,10 @@ model SaleLine {
   lineTotalHt    Int
   lineTaxAmount  Int
   lineTotalTtc   Int
+  /// Coût unitaire HT FIGÉ à la vente (dernier prix d'achat, règle 5) : le
+  /// profit de la vente ne bouge plus si le prix d'achat change ensuite.
+  /// `null` : coût inconnu (ventes d'avant le 2026-10-12, ou jamais acheté).
+  costHt         Int?
 
   sale      Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
   product   Product    @relation(fields: [productId], references: [id])

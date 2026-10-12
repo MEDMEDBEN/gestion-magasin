@@ -79,6 +79,12 @@ class CatalogApi {
     });
   }
 
+  /// Fiche d'un produit telle que le serveur la connaît.
+  Future<Product> product(String id) => guardApi(() async {
+    final response = await _dio.get<Map<String, dynamic>>('/products/$id');
+    return Product.fromJson(response.data!);
+  });
+
   /// Photo déjà compressée par l'app (JPEG ≤ 1024 px). Le serveur vérifie le
   /// type sur le contenu et renvoie le produit avec sa nouvelle `imageKey`.
   Future<Product> uploadImage(String productId, Uint8List jpeg) {

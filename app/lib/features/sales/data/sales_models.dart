@@ -65,6 +65,9 @@ abstract class SaleLine with _$SaleLine {
     required int lineTotalHt,
     required int lineTaxAmount,
     required int lineTotalTtc,
+
+    /// Coût unitaire HT figé à la vente (`null` : inconnu).
+    int? costHt,
   }) = _SaleLine;
 
   factory SaleLine.fromJson(Map<String, dynamic> json) =>
@@ -89,6 +92,12 @@ abstract class Sale with _$Sale {
     required int totalTax,
     required int totalTtc,
     required int paidAmount,
+
+    /// Remise sur toute la facture (2026-10-12).
+    @Default(0) int discountAmount,
+
+    /// Profit HT (net − coût figé) ; `null` : aucun coût connu.
+    int? profitHt,
     required int remainingAmount,
     required List<SaleLine> lines,
     required DateTime soldAt,

@@ -12,6 +12,8 @@ import { CreateSaleDto } from '../sales/dto/sale.dto';
 import { SalesService } from '../sales/sales.service';
 import { SuppliersService } from '../suppliers/suppliers.service';
 import {
+  BuyerCustomerDto,
+  SupplierBuyerDto,
   ConfrereDealDto,
   ConfrereDto,
   CreateConfrereDealDto,
@@ -178,6 +180,61 @@ export class ConfreresService {
         await ConfreresService.withBalances(this.prisma, [confrere])
       )[0],
     };
+  }
+
+  /// Fournisseurs actifs, proposés comme acheteurs au comptoir.
+  async suppliers(): Promise<SupplierBuyerDto[]> {
+    return this.prisma.supplier.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, phone: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /// Vendre à un fournisseur = le traiter comme un confrère : sa fiche client
+  /// LIÉE (créée à la première vente) porte la dette, sans plafond.
+  async customerForSupplier(
+    supplierId: string,
+    actor: ActorContext,
+  ): Promise<BuyerCustomerDto> {
+    return this.prisma.$transaction(async (tx) => {
+      // Verrou : deux premières ventes simultanées ne créent qu'une fiche.
+      await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${supplierId}::uuid FOR UPDATE`;
+      const supplier = await tx.supplier.findFirst({
+        where: { id: supplierId, isActive: true },
+        include: { confrere: true },
+      });
+      if (!supplier) {
+        throw new BusinessException(
+          ErrorCode.NOT_FOUND,
+          'Fournisseur introuvable',
+          HttpStatus.NOT_FOUND,
+        );
+      }
+      if (supplier.confrere) {
+        if (!supplier.confrere.isActive) {
+          await tx.customer.update({
+            where: { id: supplier.confrere.id },
+            data: { isActive: true },
+          });
+        }
+        return { customerId: supplier.confrere.id };
+      }
+      const customer = await tx.customer.create({
+        data: {
+          name: supplier.name,
+          phone: supplier.phone,
+          supplierId: supplier.id,
+        },
+      });
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'Customer',
+        entityId: customer.id,
+        newValue: { name: customer.name, linkedSupplierId: supplier.id },
+      });
+      return { customerId: customer.id };
+    });
   }
 
   /// Soldes des deux côtés, par les MÊMES règles que les fiches client et

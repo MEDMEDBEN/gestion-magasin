@@ -184,6 +184,18 @@ int? priceFloor(Product product) {
   return tariffs.isEmpty ? null : tariffs.reduce((a, b) => a < b ? a : b);
 }
 
+/// À QUI l'on vend (décision MEDMEDBEN du 2026-10-12) : choisi à CHAQUE
+/// vente avant d'encaisser — vide par défaut.
+enum BuyerKind {
+  passager('Passager'),
+  client('Client'),
+  confrere('Confrère'),
+  fournisseur('Fournisseur');
+
+  const BuyerKind(this.label);
+  final String label;
+}
+
 /// Panier en cours. Il vit côté client jusqu'à la validation (pas de brouillon
 /// serveur, docs/plan.md). `saleId` est généré avec le panier : un renvoi après
 /// coupure réutilise le même id et le serveur ne crée pas de seconde vente.
@@ -194,11 +206,19 @@ class CartState {
     this.lines = const [],
     this.customer,
     this.quote,
+    this.buyer,
+    this.discountHt = 0,
   });
 
   final String saleId;
   final List<CartLine> lines;
   final Customer? customer;
+
+  /// Acheteur choisi ; `null` : pas encore choisi (encaissement impossible).
+  final BuyerKind? buyer;
+
+  /// Remise HT sur TOUTE la facture (centimes), répartie par le serveur.
+  final int discountHt;
 
   /// Devis BROUILLON en cours de modification (P1 bis n°21m) : le panier le
   /// met à jour au lieu d'encaisser ou d'en créer un nouveau.
@@ -209,11 +229,15 @@ class CartState {
   CartState copyWith({
     List<CartLine>? lines,
     ValueGetter<Customer?>? customer,
+    ValueGetter<BuyerKind?>? buyer,
+    int? discountHt,
   }) => CartState(
     saleId: saleId,
     lines: lines ?? this.lines,
     customer: customer != null ? customer() : this.customer,
     quote: quote,
+    buyer: buyer != null ? buyer() : this.buyer,
+    discountHt: discountHt ?? this.discountHt,
   );
 }
 
@@ -276,8 +300,26 @@ class CartController extends Notifier<CartState> {
     );
   }
 
-  void setCustomer(Customer? customer) =>
-      state = state.copyWith(customer: () => customer);
+  /// Client choisi : l'acheteur suit (confrère s'il est lié à un
+  /// fournisseur, client sinon). `null` : plus personne de choisi.
+  void setCustomer(Customer? customer, {BuyerKind? as}) =>
+      state = state.copyWith(
+        customer: () => customer,
+        buyer: () => customer == null
+            ? null
+            : as ??
+                  (customer.isConfrere ? BuyerKind.confrere : BuyerKind.client),
+      );
+
+  /// Vente à un client de passage (aucune fiche, doit être soldée).
+  void setPassager() => state = state.copyWith(
+    customer: () => null,
+    buyer: () => BuyerKind.passager,
+  );
+
+  /// Remise sur toute la facture (0 : retirée).
+  void setGlobalDiscount(int discountHt) =>
+      state = state.copyWith(discountHt: discountHt < 0 ? 0 : discountHt);
 
   /// Nouveau panier, nouvel identifiant de vente.
   void clear() => state = CartState(saleId: ref.read(uuidProvider).v7());
@@ -292,6 +334,7 @@ class CartController extends Notifier<CartState> {
     lines: lines,
     customer: customer,
     quote: quote,
+    buyer: customer == null ? null : BuyerKind.client,
   );
 }
 
@@ -312,9 +355,25 @@ class CartEstimate {
     this.lineTotalsHt = const {},
     this.unitPricesHt = const {},
     this.tariffPricesHt = const {},
+    this.discountHt = 0,
+    this.maxDiscountHt = 0,
+    this.profitHt,
   });
 
+  /// Total APRÈS la remise sur facture.
   final int totalHt;
+
+  /// Remise sur facture demandée, et le maximum permis (marge au-dessus du
+  /// prix d'achat de chaque ligne — MÊME borne que le serveur).
+  final int discountHt;
+  final int maxDiscountHt;
+
+  /// Profit HT estimé (net − dernier prix d'achat) ; `null` si aucun coût
+  /// connu. Le serveur le fige à l'encaissement.
+  final int? profitHt;
+
+  /// Remise sur facture au-delà de la marge : le serveur refuserait.
+  bool get invalidGlobalDiscount => discountHt > maxDiscountHt;
 
   /// Sans TVA, le total payé est le total des lignes.
   int get totalTtc => totalHt;
@@ -327,7 +386,10 @@ class CartEstimate {
   final List<Product> invalidDiscounts;
 
   /// Encaissement ou devis impossible tant qu'une ligne est dans ce cas.
-  bool get blocked => missingPrices.isNotEmpty || invalidDiscounts.isNotEmpty;
+  bool get blocked =>
+      missingPrices.isNotEmpty ||
+      invalidDiscounts.isNotEmpty ||
+      invalidGlobalDiscount;
 
   /// Total HT estimé par produit (affiché sur chaque ligne du panier).
   final Map<String, int> lineTotalsHt;
@@ -363,6 +425,9 @@ CartEstimate estimateCart(
   final lineTotals = <String, int>{};
   final unitPrices = <String, int>{};
   final tariffs = <String, int>{};
+  var room = 0;
+  int? cost;
+  var costedHt = 0;
   for (final line in cart.lines) {
     final tariff = line.product.prices
         .where((p) => p.priceTierId == tierId)
@@ -382,9 +447,30 @@ CartEstimate estimateCart(
     final lineHt = lineGrossHt(price, line.quantity) - line.discountHt;
     lineTotals[line.product.id] = lineHt;
     ht += lineHt;
+    final floor = priceFloor(line.product);
+    if (floor != null) {
+      final r = lineHt - lineGrossHt(floor, line.quantity);
+      if (r > 0) room += r;
+    }
+    final unitCost = line.product.lastPurchasePriceHt;
+    if (unitCost != null && unitCost > 0) {
+      cost = (cost ?? 0) + lineGrossHt(unitCost, line.quantity);
+      costedHt += lineHt;
+    }
   }
+  final discount = cart.discountHt;
+  // Profit des lignes au coût connu, moins LEUR part de la remise sur facture.
+  final costTotal = cost;
+  final profit = costTotal == null
+      ? null
+      : costedHt -
+            costTotal -
+            (ht == 0 ? 0 : (discount * costedHt / ht).round());
   return CartEstimate(
-    totalHt: ht,
+    totalHt: ht - discount,
+    discountHt: discount,
+    maxDiscountHt: room,
+    profitHt: profit,
     missingPrices: missing,
     invalidDiscounts: invalid,
     lineTotalsHt: lineTotals,
@@ -589,6 +675,7 @@ class SalesActions {
         paidAmount: paidAmount,
         expectedTotalTtc: expectedTotalTtc,
         dueDate: dueDate == null ? null : isoDay(dueDate),
+        discountAmount: cart.discountHt,
       ),
       online: _api.createSale,
       // Caisse encore en file : la vente doit passer APRÈS son ouverture.

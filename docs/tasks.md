@@ -4,6 +4,29 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente v4 : acheteur obligatoire, remise facture, profit, mise en page — 2026-10-12 (MEDMEDBEN, Claude)
+
+- **Serveur** (migration additive `20261012090000_sale_discount_cost`) : `Sale.discountAmount` (remise sur toute
+  la facture, admin ET vendeur, répartie sur les lignes au prorata de leur marge, jamais sous le coût) ;
+  `SaleLine.costHt` (coût FIGÉ à la vente) ; `SaleDto.profitHt`. Vente à un fournisseur :
+  `GET /confreres/suppliers`, `POST /confreres/suppliers/:id/customer` (fiche client liée, comme un confrère).
+  Renvoi idempotent : la remise répartie est comparée à la remise globale.
+- **App** : acheteur OBLIGATOIRE à chaque vente (`buyer_picker.dart` : Passager / Client / Confrère /
+  Fournisseur, liste + recherche) — Encaisser et F9 demandent d'abord l'acheteur ; quantité saisie au clavier
+  (toucher la quantité) ; « Remise sur la facture » (max affiché) ; profit estimé dans le ticket, profit
+  serveur dans l'historique (tuile, détail, bandeau) — admin et vendeur.
+- **Mise en page** : ticket collé à droite sur toute la hauteur (38 %, 440-620 px), marges réduites, tuiles
+  plus grandes avec photo, onglets plus grands ; en-tête 44 px (poste) / 48 px (téléphone) ; menu latéral
+  réduit = CACHÉ, poignée « › » au milieu du bord gauche pour le rouvrir.
+- **Photo produit** : toute erreur de choix est dite ; si l'envoi de la photo échoue, le produit reste
+  enregistré et un message dit que seule la photo manque (avant : un nouvel essai le recréait) ; vignette
+  « photo indisponible » si elle ne se charge pas. Cause du bug terrain NON reproduite : à re-tester.
+- **e2e enfin lancés** (Docker relancé) : **670 tests passent** — dont confrères, caisse du jour, magasinier,
+  remise/profit/fournisseur. Corrigé : `users-audit` avait l'assertion « token d'un compte supprimé » dans le
+  test de réinitialisation (déplacée ; réinitialisation → 401, suppression → refusé).
+- Preuves : backend tsc/lint OK, 166 unitaires, **670 e2e** ; app analyze 0, **549 tests** ; `flutter build web`
+  OK ; captures 07, 21, 22 vérifiées. Build Windows non vérifiable sur ce PC (`atlstr.h` manquant).
+
 ### Hors ligne : tarifs mémorisés ; magasinier crée les produits — 2026-10-12 (MEDMEDBEN, Claude)
 
 - **Vente hors ligne** : les tarifs n'étaient lus qu'en ligne → hors ligne, aucun tarif par défaut, tout

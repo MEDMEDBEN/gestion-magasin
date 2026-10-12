@@ -129,6 +129,17 @@ aucune migration destructive sans confirmation).
 - Les lectures de réceptions (`GET /receptions`) portent la permission `reception.create` : la matrice
   n'accorde « Réceptionner » qu'à l'admin et au magasinier et ne prévoit pas de droit de lecture distinct.
 
+## Vente — décisions MEDMEDBEN du 2026-10-12
+| Action | Admin | Vendeur/Caissier | Magasinier |
+|---|---|---|---|
+| Remise sur TOUTE la facture (`discountAmount` de `POST /sales`, répartie sur les lignes, jamais sous le coût d'achat → 422 `PRICE_BELOW_COST`) | ✅ | ✅ (`sale.create`) | ❌ |
+| Voir le profit d'une vente (`SaleDto.profitHt`, coût figé par ligne `costHt`) | ✅ | ✅ (`cost.read`) | ❌ (pas d'accès aux ventes) |
+| Choisir un fournisseur comme acheteur (`GET /confreres/suppliers` : nom et téléphone seulement ; `POST /confreres/suppliers/:id/customer` : fiche client liée, comme un confrère) | ✅ | ✅ (`sale.create` + `customer.write`) | ❌ (403) |
+
+La remise PAR LIGNE reste réservée à l'admin (`sale.discount`). L'acheteur (passager, client, confrère,
+fournisseur) se choisit à chaque vente avant d'encaisser (règle d'écran, l'API ne l'impose pas : une vente sans
+client reste une vente comptant).
+
 ## Confrères (ajouté le 2026-10-08)
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|

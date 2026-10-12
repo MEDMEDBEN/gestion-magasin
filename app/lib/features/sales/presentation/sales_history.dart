@@ -132,6 +132,9 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
                             padding: const EdgeInsets.only(bottom: 8),
                             child: _SaleTile(
                               sale: sale,
+                              profit: widget.rights.canSeeProfit
+                                  ? sale.profitHt
+                                  : null,
                               seller:
                                   widget.rights.canSeeAllCash &&
                                       sale.sellerName.isNotEmpty
@@ -170,6 +173,12 @@ extension on _SalesHistorySectionState {
         ),
         if (remaining > 0)
           ('Reste à encaisser', formatDA(remaining), colors.warn),
+        if (widget.rights.canSeeProfit && valid.any((s) => s.profitHt != null))
+          (
+            'Profit',
+            formatDA(valid.fold(0, (sum, s) => sum + (s.profitHt ?? 0))),
+            colors.ok,
+          ),
       ],
     );
   }
@@ -199,10 +208,18 @@ List<(String, List<Sale>)> _byDay(List<Sale> sales) {
 /// Une vente en mini-ticket : nature (ticket, facture, annulée) en couleur,
 /// heure, client, montant et état du paiement.
 class _SaleTile extends StatelessWidget {
-  const _SaleTile({required this.sale, required this.onTap, this.seller});
+  const _SaleTile({
+    required this.sale,
+    required this.onTap,
+    this.seller,
+    this.profit,
+  });
 
   final Sale sale;
   final String? seller;
+
+  /// Profit de la vente ; `null` : inconnu ou non autorisé.
+  final int? profit;
   final VoidCallback onTap;
 
   @override
@@ -307,6 +324,13 @@ class _SaleTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(state, style: AmpereType.label.copyWith(color: tone)),
+                  if (profit case final p? when !cancelled)
+                    Text(
+                      'profit ${formatDA(p)}',
+                      style: AmpereType.meta.copyWith(
+                        color: p >= 0 ? colors.ok : colors.error,
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -508,6 +532,20 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
                   'Reste dû : ${formatDA(sale.remainingAmount)}'
                   '${sale.dueDate == null ? '' : ' · échéance ${formatDate(sale.dueDate!)}'}',
                 ),
+              if (sale.discountAmount > 0)
+                Text('Remise sur facture : ${formatDA(sale.discountAmount)}'),
+              // Profit (net − coût figé à la vente), admin et vendeur.
+              if (widget.rights.canSeeProfit)
+                if (sale.profitHt case final profit?)
+                  Text(
+                    'Profit : ${formatDA(profit)}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: profit >= 0
+                          ? AmpereColors.of(context).ok
+                          : AmpereColors.of(context).error,
+                    ),
+                  ),
               FutureBuilder<List<SaleReturn>>(
                 future: _returns,
                 builder: (context, snapshot) {

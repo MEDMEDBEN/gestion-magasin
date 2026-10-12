@@ -46,7 +46,10 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final overflow = tabs.length > _maxTabs;
 
     return Scaffold(
+      // En-tête fin (2026-10-12) : la place va au contenu.
       appBar: AppBar(
+        toolbarHeight: 48,
+        titleTextStyle: AmpereType.h4.copyWith(color: colors.ink),
         title: Text(current.label),
         actions: [
           // Assistant (2026-10-05) : actions préparées, en mots simples.

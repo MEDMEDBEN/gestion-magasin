@@ -50,7 +50,7 @@ class PillTabs<T> extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(10),
               gradient: on
@@ -69,9 +69,15 @@ class PillTabs<T> extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 16, color: ink),
+                Icon(icon, size: 18, color: ink),
                 const SizedBox(width: 7),
-                Text(label, style: AmpereType.bodyStrong.copyWith(color: ink)),
+                Text(
+                  label,
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: ink,
+                    fontSize: 15,
+                  ),
+                ),
               ],
             ),
           ),

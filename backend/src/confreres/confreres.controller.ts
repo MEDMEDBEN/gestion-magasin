@@ -16,6 +16,8 @@ import {
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
 import { PERMISSIONS } from '../common/permissions';
 import {
+  BuyerCustomerDto,
+  SupplierBuyerDto,
   ConfrereDealDto,
   ConfrereDto,
   CreateConfrereDealDto,
@@ -51,6 +53,35 @@ export class ConfreresController {
     @Ip() ip: string,
   ): Promise<ConfrereDto> {
     return this.confreres.create(dto, { userId: user.id, ipAddress: ip });
+  }
+
+  // Vente à un fournisseur (2026-10-12) : la liste pour le CHOISIR — nom et
+  // téléphone seulement, jamais sa dette (le vendeur n'a pas `supplier.read`).
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE)
+  @Get('suppliers')
+  @ApiOperation({ summary: 'Fournisseurs proposés comme acheteurs' })
+  @ApiOkResponse({ type: [SupplierBuyerDto] })
+  suppliers(): Promise<SupplierBuyerDto[]> {
+    return this.confreres.suppliers();
+  }
+
+  @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)
+  @RequirePermissions(PERMISSIONS.SALE_CREATE, PERMISSIONS.CUSTOMER_WRITE)
+  @Post('suppliers/:supplierId/customer')
+  @ApiOperation({
+    summary: 'Fiche client liée à un fournisseur (créée à la 1re vente)',
+  })
+  @ApiCreatedResponse({ type: BuyerCustomerDto })
+  customerForSupplier(
+    @Param('supplierId', CanonicalUuidPipe) supplierId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<BuyerCustomerDto> {
+    return this.confreres.customerForSupplier(supplierId, {
+      userId: user.id,
+      ipAddress: ip,
+    });
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.VENDEUR)

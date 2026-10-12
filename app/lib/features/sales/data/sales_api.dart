@@ -69,6 +69,7 @@ class SalesApi {
     required int paidAmount,
     required int expectedTotalTtc,
     String? dueDate,
+    int discountAmount = 0,
   }) => {
     'clientMutationId': clientMutationId,
     'id': id,
@@ -85,6 +86,7 @@ class SalesApi {
         },
     ],
     'paidAmount': paidAmount,
+    if (discountAmount > 0) 'discountAmount': discountAmount,
     'expectedTotalTtc': expectedTotalTtc,
     'dueDate': ?dueDate,
   };
@@ -251,6 +253,27 @@ class SalesApi {
     String id,
     Map<String, Object?> body,
   ) => _post('/confreres/$id/deals', body, (json) => json);
+
+  /// Fournisseurs proposés comme acheteurs (nom et téléphone seulement).
+  Future<List<({String id, String name, String? phone})>> saleSuppliers() =>
+      guardApi(() async {
+        final response = await _dio.get<List<dynamic>>('/confreres/suppliers');
+        return [
+          for (final row in response.data!.cast<Map<String, dynamic>>())
+            (
+              id: row['id'] as String,
+              name: row['name'] as String,
+              phone: row['phone'] as String?,
+            ),
+        ];
+      });
+
+  /// Fiche client liée à un fournisseur (créée à la première vente).
+  Future<String> customerForSupplier(String supplierId) => _post(
+    '/confreres/suppliers/$supplierId/customer',
+    null,
+    (json) => json['customerId'] as String,
+  );
 
   Future<Customer> customer(String id) => guardApi(() async {
     final response = await _dio.get<Map<String, dynamic>>('/customers/$id');

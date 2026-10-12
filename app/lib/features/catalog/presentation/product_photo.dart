@@ -19,13 +19,15 @@ class ProductThumbnail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final key = product.imageKey;
-    final bytes = key == null
+    final photo = key == null
         ? null
-        : ref
-              .watch(
-                productImageProvider((productId: product.id, imageKey: key)),
-              )
-              .value;
+        : ref.watch(
+            productImageProvider((productId: product.id, imageKey: key)),
+          );
+    final bytes = photo?.value;
+    // Photo attendue mais illisible (réseau, fichier perdu au serveur) : on
+    // le MONTRE, au lieu d'une vignette vide qui laisse croire à un oubli.
+    final failed = photo != null && photo.hasError && bytes == null;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
@@ -33,9 +35,18 @@ class ProductThumbnail extends ConsumerWidget {
         width: size,
         height: size,
         color: colors.surface2,
-        child: bytes == null
-            ? Icon(LucideIcons.package, size: size * 0.45, color: colors.ink3)
-            : Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true),
+        child: bytes != null
+            ? Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+            : failed
+            ? Tooltip(
+                message: 'Photo indisponible',
+                child: Icon(
+                  LucideIcons.imageOff,
+                  size: size * 0.45,
+                  color: colors.warn,
+                ),
+              )
+            : Icon(LucideIcons.package, size: size * 0.45, color: colors.ink3),
       ),
     );
   }

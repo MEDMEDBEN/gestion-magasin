@@ -25,6 +25,7 @@ import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
+import '../../catalog/presentation/product_photo.dart';
 import '../../scan/presentation/scanned_product_sheet.dart';
 import '../../catalog/data/catalog_repository.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
@@ -35,6 +36,7 @@ import '../data/sales_models.dart';
 import '../../scan/presentation/scan_screen.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/contact_profile.dart';
+import 'buyer_picker.dart';
 import 'confreres_section.dart';
 import 'contact_card.dart';
 import '../../stock/application/stock_controller.dart';
@@ -70,6 +72,11 @@ class SalesRights {
           user.hasRole('ADMIN') && user.can('price.manage'),
       // Relevé de compte : ADMIN + customer.read (tout le CA d'un client).
       canReadStatements = user.hasRole('ADMIN') && user.can('customer.read'),
+      // Profit d'une vente (décision MEDMEDBEN du 2026-10-12) : admin et
+      // vendeur, qui voient déjà le prix d'achat (`cost.read`).
+      canSeeProfit =
+          (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
+          user.can('cost.read'),
       // `/confreres` : ADMIN|VENDEUR + customer.read (2026-10-08).
       canSeeConfreres =
           (user.hasRole('ADMIN') || user.hasRole('VENDEUR')) &&
@@ -101,6 +108,7 @@ class SalesRights {
   final bool canDiscount;
   final bool canManageCustomerTerms;
   final bool canReadStatements;
+  final bool canSeeProfit;
 }
 
 enum _Section { sale, history, customers, confreres, cashSessions }
@@ -148,15 +156,14 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
   Widget build(BuildContext context) {
     final rights = SalesRights(widget.user);
     final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
-    final margin = isDesktop
-        ? AmpereGeometry.screenMarginDesktop
-        : AmpereGeometry.screenMarginMobile;
+    // Marges réduites (2026-10-12) : la place va aux produits et au ticket.
+    final margin = isDesktop ? 16.0 : AmpereGeometry.screenMarginMobile;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
+          padding: EdgeInsets.fromLTRB(margin, 8, margin, 8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -787,6 +794,39 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     if (mounted) ScaffoldMessenger.of(context).hideCurrentSnackBar();
   }
 
+  Future<void> _chooseBuyer() => chooseBuyer(
+    context,
+    ref,
+    withConfreres: widget.rights.canSeeConfreres,
+    withSuppliers:
+        widget.rights.canSeeConfreres && widget.rights.canWriteCustomers,
+  );
+
+  /// Remise sur TOUTE la facture (admin et vendeur, décision du 2026-10-12) :
+  /// au plus la marge au-dessus du prix d'achat — le serveur la répartit.
+  Future<void> _globalDiscount(CartEstimate estimate) async {
+    final cart = ref.read(cartProvider);
+    final amount = await askAmount(
+      context,
+      title: 'Remise sur toute la facture',
+      label: 'Montant de la remise',
+      confirm: 'Appliquer',
+      initial: cart.discountHt > 0 ? cart.discountHt : null,
+      help:
+          'Au plus ${formatDA(estimate.maxDiscountHt)} (jamais sous le prix '
+          'd’achat). 0 : retirer.',
+    );
+    if (amount == null || !mounted) return;
+    if (amount > estimate.maxDiscountHt) {
+      _snack(
+        context,
+        'Remise trop forte : ${formatDA(estimate.maxDiscountHt)} au plus.',
+      );
+      return;
+    }
+    ref.read(cartProvider.notifier).setGlobalDiscount(amount);
+  }
+
   /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
   /// panier est vidé, rien ne sort du stock. En ligne uniquement.
   Future<void> _makeQuote() async {
@@ -1037,6 +1077,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         _shortages(cart).isNotEmpty) {
       return;
     }
+    if (cart.buyer == null) {
+      _chooseBuyer();
+      return;
+    }
     final cash = ref.read(currentCashSessionProvider);
     if (cash.hasValue && cash.value == null && cart.customer == null) {
       if (widget.rights.canManageCash) _openCashFlow(context, ref);
@@ -1046,12 +1090,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   }
 
   Widget _wideBody(List<Product> products, Widget? catalogAlert, double m) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(m, 14, m, m),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
+    final colors = AmpereColors.of(context);
+    // Caisse en grand (2026-10-12) : le catalogue à gauche, le TICKET occupe
+    // toute la hauteur à droite, collé au bord — rien ne se perd en cadres.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(m, 10, m, m),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1092,34 +1139,34 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               ],
             ),
           ),
-          SizedBox(width: m),
-          SizedBox(
-            width: (MediaQuery.sizeOf(context).width * 0.34).clamp(
-              420.0,
-              520.0,
+        ),
+        SizedBox(
+          width: (MediaQuery.sizeOf(context).width * 0.38).clamp(440.0, 620.0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              border: Border(left: BorderSide(color: colors.line)),
             ),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AmpereColors.of(context).surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AmpereColors.of(context).line),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: _ticketBody(),
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    children: _ticketBody(),
                   ),
-                  _payPanel(),
-                ],
-              ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.line)),
+                  ),
+                  child: _payPanel(),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1238,7 +1285,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       const SizedBox(height: 8),
       _DashedLine(color: colors.line),
       const SizedBox(height: 10),
-      _CustomerPicker(customer: cart.customer),
+      BuyerBar(
+        withConfreres: widget.rights.canSeeConfreres,
+        withSuppliers:
+            widget.rights.canSeeConfreres && widget.rights.canWriteCustomers,
+      ),
       if (cart.quote case final quote?) ...[
         const SizedBox(height: 10),
         AmpereInlineAlert(
@@ -1293,6 +1344,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final noCash = cashState.hasValue && cashState.value == null;
     final blocked = _busy || estimate.blocked || cart.isEmpty;
     final shortages = _shortages(cart);
+    // Acheteur à choisir à CHAQUE vente (décision du 2026-10-12).
+    final noBuyer = cart.buyer == null && cart.quote == null;
     return Padding(
       padding: EdgeInsets.all(compact ? 12 : 16),
       child: Column(
@@ -1304,6 +1357,53 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             articles: cart.lines.length,
             compact: compact,
           ),
+          if (!cart.isEmpty && cart.quote == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  TextButton.icon(
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: _busy ? null : () => _globalDiscount(estimate),
+                    icon: const Icon(LucideIcons.percent, size: 16),
+                    label: Text(
+                      cart.discountHt > 0
+                          ? 'Remise facture −${formatDA(cart.discountHt)}'
+                          : 'Remise sur la facture',
+                    ),
+                  ),
+                  if (cart.discountHt > 0)
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Retirer la remise',
+                      icon: const Icon(LucideIcons.x, size: 15),
+                      onPressed: () =>
+                          ref.read(cartProvider.notifier).setGlobalDiscount(0),
+                    ),
+                  const Spacer(),
+                  if (widget.rights.canSeeProfit)
+                    if (estimate.profitHt case final profit?)
+                      Text(
+                        'Profit ${formatDA(profit)}',
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: profit >= 0
+                              ? AmpereColors.of(context).ok
+                              : AmpereColors.of(context).error,
+                        ),
+                      ),
+                ],
+              ),
+            ),
+          if (estimate.invalidGlobalDiscount) ...[
+            const SizedBox(height: 6),
+            AmpereInlineAlert(
+              message:
+                  'La remise sur facture dépasse la marge '
+                  '(${formatDA(estimate.maxDiscountHt)} au plus) : réduisez-la.',
+            ),
+          ],
           if (estimate.missingPrices.isNotEmpty) ...[
             const SizedBox(height: 10),
             const AmpereInlineAlert(
@@ -1337,7 +1437,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           Row(
             children: [
               Expanded(
-                child: (noCash && cart.customer == null && cart.quote == null)
+                child: noBuyer
+                    ? _PayButton(
+                        icon: LucideIcons.userRoundSearch,
+                        label: 'Choisir l’acheteur',
+                        height: 52,
+                        tone: AmpereColors.of(context).accent,
+                        onPressed: cart.isEmpty ? null : _chooseBuyer,
+                      )
+                    : (noCash && cart.customer == null && cart.quote == null)
                     ?
                       // Une caisse ne vit qu'un jour : avant la première vente
                       // espèces, on compte le tiroir (décision du 2026-10-08).
@@ -1738,8 +1846,9 @@ class _ProductGrid extends ConsumerWidget {
         Expanded(
           child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 210,
-              mainAxisExtent: 126,
+              // Tuiles plus grandes, avec photo (2026-10-12).
+              maxCrossAxisExtent: 240,
+              mainAxisExtent: 168,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
             ),
@@ -1815,28 +1924,25 @@ class _ProductTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Container(
+          // Liseré d'état du stock en haut de la tuile.
+          decoration: BoxDecoration(
+            border: Border(top: BorderSide(color: tone, width: 3)),
+          ),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 28,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 7),
-                decoration: BoxDecoration(
-                  color: tone,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
               Expanded(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    ProductThumbnail(product: product, size: 54),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         product.name,
-                        maxLines: 2,
+                        maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: AmpereType.rowTitle.copyWith(color: colors.ink),
                       ),
@@ -1873,7 +1979,10 @@ class _ProductTile extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: price == null
                       ? colors.error.withValues(alpha: 0.14)
@@ -1884,7 +1993,8 @@ class _ProductTile extends StatelessWidget {
                   price == null
                       ? 'Prix non fixé'
                       : '${formatDA(price!)} / ${product.unit.short}',
-                  style: AmpereType.bodyStrong.copyWith(
+                  style: AmpereType.sectionTitle.copyWith(
+                    fontSize: 16,
                     color: price == null ? colors.error : colors.ink,
                     fontFeatures: AmpereType.tabular,
                   ),
@@ -1926,6 +2036,31 @@ class _CartLineRow extends ConsumerWidget {
   final int? totalHt;
   final int? unitPriceHt;
   final int? tariffPriceHt;
+
+  /// Quantité saisie au clavier (décimale, ex. 12,5 m). 0 retire la ligne.
+  Future<void> _editQuantity(BuildContext context, WidgetRef ref) async {
+    final unit = line.product.unit.short;
+    final values = await askFields(
+      context,
+      title: 'Quantité — ${line.product.name}',
+      confirm: 'Valider',
+      fields: [
+        (
+          key: 'quantity',
+          label: 'Quantité ($unit)',
+          initial: formatQuantity(line.quantity),
+        ),
+      ],
+    );
+    final raw = values?['quantity'];
+    if (raw == null || !context.mounted) return;
+    final quantity = parseQuantity(raw);
+    if (quantity == null || quantity < Quantity.zero) {
+      _snack(context, 'Quantité invalide : un nombre, ex. 12,5');
+      return;
+    }
+    ref.read(cartProvider.notifier).setQuantity(line.product.id, quantity);
+  }
 
   /// Prix modifiable en vente (décision MEDMEDBEN 2026-09-22), jamais sous le
   /// plancher : dernier prix d'achat, sinon tarif. Le serveur revérifie.
@@ -2075,14 +2210,31 @@ class _CartLineRow extends ConsumerWidget {
                         line.quantity - Quantity.one,
                       ),
                     ),
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 56),
-                      child: Text(
-                        '${formatQuantity(line.quantity)} ${line.product.unit.short}',
-                        textAlign: TextAlign.center,
-                        style: AmpereType.bodyStrong.copyWith(
-                          color: colors.ink,
-                          fontFeatures: AmpereType.tabular,
+                    // Toucher la quantité la SAISIT (2026-10-12) : 12,5 m
+                    // sans taper 12 fois sur « + ».
+                    InkWell(
+                      borderRadius: BorderRadius.circular(8),
+                      onTap: () => _editQuantity(context, ref),
+                      child: Tooltip(
+                        message: 'Saisir la quantité',
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 64),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
+                            child: Text(
+                              '${formatQuantity(line.quantity)} ${line.product.unit.short}',
+                              textAlign: TextAlign.center,
+                              style: AmpereType.bodyStrong.copyWith(
+                                color: colors.accentHi,
+                                fontFeatures: AmpereType.tabular,
+                                decoration: TextDecoration.underline,
+                                decorationStyle: TextDecorationStyle.dotted,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2120,159 +2272,6 @@ class _CartLineRow extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _CustomerPicker extends ConsumerWidget {
-  const _CustomerPicker({required this.customer});
-
-  final Customer? customer;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final chosen = customer;
-    if (chosen != null) {
-      return AmpereInlineAlert(
-        tone: StatusTone.info,
-        icon: LucideIcons.user,
-        message:
-            '${chosen.name} · dette ${formatDA(chosen.balanceDue)} · '
-            '${chosen.isConfrere ? 'confrère, sans plafond' : 'plafond ${formatDA(chosen.creditLimit)}'}',
-        action: TextButton(
-          onPressed: () => ref.read(cartProvider.notifier).setCustomer(null),
-          child: const Text('Retirer'),
-        ),
-      );
-    }
-    final colors = AmpereColors.of(context);
-    return Material(
-      color: colors.surface2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colors.line),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () async {
-          final picked = await showDialog<Customer>(
-            context: context,
-            builder: (_) => const _CustomerSearchDialog(),
-          );
-          if (picked != null) {
-            ref.read(cartProvider.notifier).setCustomer(picked);
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              Icon(LucideIcons.userPlus, size: 18, color: colors.accent),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: 'Client (facultatif)',
-                        style: AmpereType.bodyStrong.copyWith(
-                          color: colors.ink,
-                        ),
-                      ),
-                      TextSpan(
-                        text: '  · crédit, facture, tarif',
-                        style: AmpereType.meta.copyWith(color: colors.ink3),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              Icon(LucideIcons.chevronRight, size: 18, color: colors.ink3),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CustomerSearchDialog extends ConsumerStatefulWidget {
-  const _CustomerSearchDialog();
-
-  @override
-  ConsumerState<_CustomerSearchDialog> createState() =>
-      _CustomerSearchDialogState();
-}
-
-class _CustomerSearchDialogState extends ConsumerState<_CustomerSearchDialog> {
-  String _query = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final results = ref.watch(customerSearchProvider(_query));
-    return AlertDialog(
-      title: const Text('Choisir un client'),
-      content: SizedBox(
-        width: 420,
-        height: 360,
-        child: Column(
-          children: [
-            TextField(
-              autofocus: true,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(LucideIcons.search, size: 17),
-                hintText: 'Nom ou téléphone',
-              ),
-              onChanged: (v) => setState(() => _query = v.trim()),
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: results.when(
-                loading: () => const AmpereSkeletonList(rows: 4),
-                error: (error, _) =>
-                    AmpereInlineAlert(message: _errorText(error)),
-                data: (customers) => ListView(
-                  children: [
-                    for (final c in customers)
-                      ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: AmpereColors.of(context).accentBg,
-                          child: Text(
-                            initialsOf(c.name),
-                            style: AmpereType.label.copyWith(
-                              color: AmpereColors.of(context).accentHi,
-                            ),
-                          ),
-                        ),
-                        title: Text(c.name),
-                        subtitle: Text(c.phone ?? 'Sans téléphone'),
-                        trailing: AmpereBadge(
-                          label: c.balanceDue > 0
-                              ? 'Dette ${formatDA(c.balanceDue)}'
-                              : 'À jour',
-                          tone: c.overdueAmount > 0
-                              ? StatusTone.error
-                              : c.balanceDue > 0
-                              ? StatusTone.warn
-                              : StatusTone.ok,
-                        ),
-                        onTap: () => Navigator.of(context).pop(c),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Annuler'),
-        ),
-      ],
     );
   }
 }

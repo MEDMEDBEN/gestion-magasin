@@ -232,15 +232,16 @@ void main() {
       expect(find.byType(NavigationBar), findsOneWidget);
     });
 
-    testWidgets('768-1180 : desktop avec sidebar en rail de 64 px', (
+    testWidgets('768-1180 : desktop, menu caché derrière une poignée', (
       tester,
     ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1000, 800));
 
       final shell = tester.widget<DesktopShell>(find.byType(DesktopShell));
       expect(shell.compact, isTrue);
-      // En rail, les libellés passent en infobulle.
-      expect(find.byTooltip('Utilisateurs'), findsOneWidget);
+      // Menu réduit = CACHÉ (2026-10-12) : seule la poignée reste.
+      expect(find.text('Utilisateurs'), findsNothing);
+      expect(find.byTooltip('Agrandir le menu'), findsOneWidget);
     });
 
     testWidgets(
@@ -289,9 +290,9 @@ void main() {
 
       await tester.tap(find.byTooltip('Réduire le menu'));
       await tester.pumpAndSettle();
-      // Rail : plus de titre, les libellés passent en infobulle.
+      // Menu caché : ni titre ni rubriques, une poignée pour le rouvrir.
       expect(find.text('Gestion magasin'), findsNothing);
-      expect(find.byTooltip('Utilisateurs'), findsOneWidget);
+      expect(find.text('Utilisateurs'), findsNothing);
       expect(tester.takeException(), isNull);
 
       await tester.tap(find.byTooltip('Agrandir le menu'));

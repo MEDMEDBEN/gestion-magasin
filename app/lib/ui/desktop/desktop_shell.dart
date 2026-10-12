@@ -98,27 +98,49 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
       child: Scaffold(
         body: Row(
           children: [
-            _Sidebar(
-              user: widget.user,
-              entries: entries,
-              selectedIndex: index,
-              compact: compact,
-              unread: ref.watch(unreadNotificationsProvider).value ?? 0,
-              onSelect: (i) => setState(() => _index = i),
-              onToggle: () => ref
-                  .read(sidebarCollapsedProvider.notifier)
-                  .set(collapsed: !compact),
-              onProfile: profile < 0
-                  ? null
-                  : () => setState(() => _index = profile),
-            ),
-            VerticalDivider(width: 1, color: colors.line),
+            // Réduit (demande MEDMEDBEN du 2026-10-12) : le menu DISPARAÎT,
+            // tout l'écran va au contenu ; une flèche au bord le rouvre.
+            if (!compact) ...[
+              _Sidebar(
+                user: widget.user,
+                entries: entries,
+                selectedIndex: index,
+                unread: ref.watch(unreadNotificationsProvider).value ?? 0,
+                onSelect: (i) => setState(() => _index = i),
+                onToggle: () => ref
+                    .read(sidebarCollapsedProvider.notifier)
+                    .set(collapsed: true),
+                onProfile: profile < 0
+                    ? null
+                    : () => setState(() => _index = profile),
+              ),
+              VerticalDivider(width: 1, color: colors.line),
+            ],
             Expanded(
-              child: Column(
+              child: Stack(
                 children: [
-                  _TopBar(title: entries[index].label, user: widget.user),
-                  Divider(height: 1, color: colors.line),
-                  Expanded(child: entries[index].builder(context, widget.user)),
+                  Column(
+                    children: [
+                      _TopBar(title: entries[index].label, user: widget.user),
+                      Divider(height: 1, color: colors.line),
+                      Expanded(
+                        child: entries[index].builder(context, widget.user),
+                      ),
+                    ],
+                  ),
+                  if (compact)
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      child: Center(
+                        child: _MenuHandle(
+                          onTap: () => ref
+                              .read(sidebarCollapsedProvider.notifier)
+                              .set(collapsed: false),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -147,7 +169,6 @@ class _Sidebar extends StatelessWidget {
     required this.user,
     required this.entries,
     required this.selectedIndex,
-    required this.compact,
     required this.onSelect,
     required this.onToggle,
     this.onProfile,
@@ -157,10 +178,9 @@ class _Sidebar extends StatelessWidget {
   final AuthUser user;
   final List<AppDestination> entries;
   final int selectedIndex;
-  final bool compact;
   final ValueChanged<int> onSelect;
 
-  /// Réduit le menu en rail d'icônes, ou l'agrandit.
+  /// Cache le menu (une poignée au bord le rouvre).
   final VoidCallback onToggle;
 
   /// Ouvre « Mon profil » depuis le bloc utilisateur du bas.
@@ -175,7 +195,7 @@ class _Sidebar extends StatelessWidget {
     final colors = AmpereColors.of(context);
 
     return Container(
-      width: compact ? 64 : 246,
+      width: 246,
       color: colors.bgAlt,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -184,44 +204,32 @@ class _Sidebar extends StatelessWidget {
             height: 56,
             // Réduit, l'en-tête ne garde que le bouton pour agrandir : un rail
             // de 64 px n'a la place que d'une icône.
-            child: compact
-                ? Center(
-                    child: IconButton(
-                      tooltip: 'Agrandir le menu',
-                      onPressed: onToggle,
-                      icon: Icon(
-                        LucideIcons.panelLeftOpen,
-                        size: 18,
-                        color: colors.ink2,
-                      ),
-                    ),
-                  )
-                : Row(
-                    children: [
-                      const SizedBox(width: 18),
-                      // `zap` est le SEUL éclair du système (§5).
-                      Icon(LucideIcons.zap, size: 20, color: colors.accent),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Gestion magasin',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AmpereType.h4.copyWith(color: colors.ink),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Réduire le menu',
-                        onPressed: onToggle,
-                        icon: Icon(
-                          LucideIcons.panelLeftClose,
-                          size: 18,
-                          color: colors.ink2,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                    ],
+            child: Row(
+              children: [
+                const SizedBox(width: 18),
+                // `zap` est le SEUL éclair du système (§5).
+                Icon(LucideIcons.zap, size: 20, color: colors.accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Gestion magasin',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.h4.copyWith(color: colors.ink),
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Réduire le menu',
+                  onPressed: onToggle,
+                  icon: Icon(
+                    LucideIcons.chevronsLeft,
+                    size: 18,
+                    color: colors.ink2,
+                  ),
+                ),
+                const SizedBox(width: 6),
+              ],
+            ),
           ),
           Divider(height: 1, color: colors.line),
           // Plus de rubriques que de hauteur (admin, petit écran) : la liste
@@ -234,7 +242,6 @@ class _Sidebar extends StatelessWidget {
                   _NavItem(
                     entry: entries[i],
                     selected: i == selectedIndex,
-                    compact: compact,
                     unread: entries[i].label == 'Notifications' ? unread : 0,
                     onTap: () => onSelect(i),
                   ),
@@ -248,17 +255,7 @@ class _Sidebar extends StatelessWidget {
           AmpereTappable(
             onTap: onProfile,
             borderRadius: 0,
-            child: compact
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Tooltip(
-                      message: '${user.fullName} — ${formatRoles(user.roles)}',
-                      child: const Center(
-                        child: AmpereIconChip(icon: LucideIcons.user, size: 34),
-                      ),
-                    ),
-                  )
-                : _ProfileBlock(user: user),
+            child: _ProfileBlock(user: user),
           ),
         ],
       ),
@@ -339,14 +336,12 @@ class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.entry,
     required this.selected,
-    required this.compact,
     required this.onTap,
     this.unread = 0,
   });
 
   final AppDestination entry;
   final bool selected;
-  final bool compact;
   final VoidCallback onTap;
   final int unread;
 
@@ -355,7 +350,7 @@ class _NavItem extends StatelessWidget {
     final colors = AmpereColors.of(context);
 
     final item = Padding(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
       child: Semantics(
         selected: selected,
         button: true,
@@ -365,7 +360,7 @@ class _NavItem extends StatelessWidget {
           borderRadius: AmpereGeometry.fieldRadiusDesktop,
           child: Container(
             height: 36,
-            padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
               // Actif : voile d'accent + trait de 2 px à gauche (§6).
               color: selected ? colors.accentBg : Colors.transparent,
@@ -377,9 +372,6 @@ class _NavItem extends StatelessWidget {
                   : null,
             ),
             child: Row(
-              mainAxisAlignment: compact
-                  ? MainAxisAlignment.center
-                  : MainAxisAlignment.start,
               children: [
                 Badge.count(
                   count: unread,
@@ -390,7 +382,7 @@ class _NavItem extends StatelessWidget {
                     color: selected ? colors.accentHi : colors.ink2,
                   ),
                 ),
-                if (!compact) ...[
+                ...[
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -413,12 +405,50 @@ class _NavItem extends StatelessWidget {
       ),
     );
 
-    // En rail, le libellé reste accessible au survol et aux lecteurs d'écran.
-    return compact ? Tooltip(message: entry.label, child: item) : item;
+    return item;
   }
 }
 
-/// Barre supérieure 56 px (§6) : titre, indicateur de sync, bascule de thème.
+/// Poignée du menu caché : une languette au milieu du bord gauche.
+class _MenuHandle extends StatelessWidget {
+  const _MenuHandle({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Tooltip(
+      message: 'Agrandir le menu',
+      child: Material(
+        color: colors.surface2,
+        elevation: 3,
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.horizontal(
+            right: Radius.circular(12),
+          ),
+          side: BorderSide(color: colors.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            width: 18,
+            height: 64,
+            child: Icon(
+              LucideIcons.chevronRight,
+              size: 16,
+              color: colors.accentHi,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Barre supérieure fine (44 px, 2026-10-12) : titre, indicateur de sync,
+/// bascule de thème — la place va au contenu.
 class _TopBar extends ConsumerWidget {
   const _TopBar({required this.title, required this.user});
 
@@ -434,11 +464,9 @@ class _TopBar extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return Container(
-      height: 56,
+      height: 44,
       color: colors.bg,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AmpereGeometry.screenMarginDesktop,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Expanded(
@@ -446,11 +474,12 @@ class _TopBar extends ConsumerWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AmpereType.h4.copyWith(color: colors.ink),
+              style: AmpereType.bodyStrong.copyWith(color: colors.ink2),
             ),
           ),
           // Assistant (2026-10-05) : actions préparées, Ctrl+K au clavier.
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Assistant (Ctrl+K)',
             onPressed: () => showAssistant(context, ref, user),
             icon: const Icon(LucideIcons.sparkles, size: 17),
@@ -464,6 +493,7 @@ class _TopBar extends ConsumerWidget {
           ),
           const SizedBox(width: 10),
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: themeMode == ThemeMode.dark
                 ? 'Thème clair'
                 : 'Thème sombre',

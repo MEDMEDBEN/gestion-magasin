@@ -377,6 +377,7 @@ Future<void> _pumpScreen(
   Product? product,
   AuthUser? user,
   Map<String, ProductStock>? stock,
+  bool passager = true,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -434,6 +435,19 @@ Future<void> _pumpScreen(
     ),
   );
   await tester.pumpAndSettle();
+  // Acheteur obligatoire à chaque vente (2026-10-12) : « Passager » par
+  // défaut, sauf pour les tests qui vérifient ce choix.
+  if (passager) await _choosePassager(tester);
+}
+
+/// Choisit « Passager » si aucun acheteur ne l'est encore.
+Future<void> _choosePassager(WidgetTester tester) async {
+  if (find.text('Choisir').evaluate().isNotEmpty) {
+    await tester.tap(find.text('Choisir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Passager'));
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> _scanTwiceAndPay(WidgetTester tester) async {
@@ -442,6 +456,7 @@ Future<void> _scanTwiceAndPay(WidgetTester tester) async {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
   }
+  await _choosePassager(tester);
   await tester.tap(find.textContaining('Encaisser 2'));
   await tester.pumpAndSettle();
   await tester.enterText(find.byType(TextField).last, '4000');
@@ -966,6 +981,57 @@ void main() {
     },
   );
 
+  /// Demandes MEDMEDBEN du 2026-10-12 : acheteur choisi à CHAQUE vente,
+  /// quantité saisie au clavier, remise sur toute la facture.
+  testWidgets('acheteur obligatoire, quantité saisie, remise sur facture', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(500, 1400));
+    final api = _FakeSalesApi(cash: _openCash);
+    // Acheté 1 000,00 : la remise sur facture a de la marge.
+    await _pumpScreen(
+      tester,
+      api,
+      [],
+      passager: false,
+      product: _cable().copyWith(lastPurchasePriceHt: 100000),
+    );
+    await tester.enterText(find.byType(TextField).first, '3245060123458');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    // Sans acheteur, pas d'encaissement : le bouton fait choisir.
+    expect(find.textContaining('Encaisser'), findsNothing);
+    await tester.tap(find.text('Choisir l’acheteur'));
+    await tester.pumpAndSettle();
+    expect(find.text('À qui vendez-vous ?'), findsOneWidget);
+    await tester.tap(find.text('Passager'));
+    await tester.pumpAndSettle();
+
+    // Quantité tapée au clavier : 2,5.
+    await tester.tap(find.text('1 pce'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '2,5');
+    await tester.tap(find.text('Valider'));
+    await tester.pumpAndSettle();
+    expect(find.text('2,5 pce'), findsOneWidget);
+
+    // Remise sur facture : 2,5 × 1 450,00 = 3 625,00 − 25,00.
+    await tester.tap(find.text('Remise sur la facture'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '25');
+    await tester.tap(find.text('Appliquer'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Remise facture'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Encaisser'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Valider la vente'));
+    await tester.pumpAndSettle();
+    expect(api.sent!['discountAmount'], 2500);
+    expect(api.sent!['expectedTotalTtc'], 362500 - 2500);
+  });
+
   /// Demande MEDMEDBEN du 2026-10-08 : les confrères, depuis l'écran Vente.
   testWidgets(
     'confrères : soldes, « Lui vendre » ouvre la vente sans plafond',
@@ -983,7 +1049,7 @@ void main() {
 
       await tester.tap(find.text('Lui vendre'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('confrère, sans plafond'), findsOneWidget);
+      expect(find.textContaining('sans plafond'), findsOneWidget);
     },
   );
 

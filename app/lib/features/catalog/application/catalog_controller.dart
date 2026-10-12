@@ -141,6 +141,19 @@ class ProductSelection extends Notifier<Map<String, Product>?> {
       state = {...?state, for (final p in products) p.id: p};
 }
 
+/// Produit enregistré, mais pas sa photo : le formulaire se ferme sur le
+/// produit et le DIT (message du serveur ou du réseau).
+class PhotoNotSaved implements Exception {
+  const PhotoNotSaved(this.product, this.cause);
+
+  final Product product;
+  final ApiException cause;
+
+  String get message =>
+      '${product.name} enregistré, mais la photo n’a pas pu être envoyée : '
+      '${cause.userMessage}';
+}
+
 final productSelectionProvider =
     NotifierProvider.autoDispose<ProductSelection, Map<String, Product>?>(
       ProductSelection.new,
@@ -244,19 +257,29 @@ class CatalogActions {
         ? null
         : await _api.updateProduct(id, fields);
     final productId = product?.id ?? id!;
-    if (photo != null) {
-      product = await _api.uploadImage(productId, photo);
-    } else if (removePhoto) {
-      product = await _api.removeImage(productId);
+    // La photo part APRÈS le produit : si elle échoue, le produit est déjà
+    // créé — on l'enregistre quand même et on DIT que seule la photo manque
+    // (sinon un nouvel essai recréerait le produit en double).
+    ApiException? photoError;
+    try {
+      if (photo != null) {
+        product = await _api.uploadImage(productId, photo);
+      } else if (removePhoto) {
+        product = await _api.removeImage(productId);
+      }
+    } on ApiException catch (error) {
+      photoError = error;
     }
     // Prix modifiés, un tarif à la fois (chaque changement est tracé serveur).
     for (final entry in prices.entries) {
       product = await _api.setPrice(productId, entry.key, entry.value);
     }
+    product ??= photoError != null ? await _api.product(productId) : null;
     if (product == null) {
       throw StateError('saveProduct appelé sans aucun changement');
     }
     await _repository.saveAll(products: [product]);
+    if (photoError != null) throw PhotoNotSaved(product, photoError);
     return product;
   }
 
