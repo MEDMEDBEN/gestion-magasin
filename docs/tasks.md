@@ -4,6 +4,20 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Hors ligne : tarifs mémorisés ; magasinier crée les produits — 2026-10-12 (MEDMEDBEN, Claude)
+
+- **Vente hors ligne** : les tarifs n'étaient lus qu'en ligne → hors ligne, aucun tarif par défaut, tout
+  produit « sans prix » et Encaisser bloqué. Désormais `loadPriceTiers` les mémorise (réglages locaux) à
+  chaque connexion (avec la synchro du catalogue) et à chaque lecture ; hors ligne, la mémoire est rendue.
+  Test `price_tiers_offline_test.dart`.
+- **Décision MEDMEDBEN du 2026-10-11** : le MAGASINIER crée et modifie les produits, prix compris
+  (`product.write` + `price.manage` ajoutés au rôle ; routes produit, photo et prix ouvertes à MAGASINIER).
+  Restent ADMIN : désactiver (`product.disable`), catégories, tarifs (Paramètres), imports. Vendeur inchangé.
+  App : `CatalogRights` (catégories → `canManageCategories`, ADMIN). `docs/permissions.md` à jour.
+- Preuves : backend tsc/lint OK, 166 unitaires ; app analyze 0, **548 tests**.
+  ⚠️ e2e NON lancés (données Docker de ce PC supprimées pour libérer le disque, à la demande de MEDMEDBEN) :
+  `catalog.e2e-spec.ts` mis à jour (magasinier crée/modifie/photo/prix, ne désactive pas ; vendeur 403).
+
 ### Vente : ticket aéré — 2026-10-09 (MEDMEDBEN, Claude)
 
 - Le ticket ne montrait qu'un produit : caisse en UNE ligne (détail en infobulle), client sur une ligne

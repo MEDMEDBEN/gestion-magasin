@@ -21,7 +21,7 @@
 
 | Règle | Permission | Rôles porteurs |
 |---|---|---|
-| Prix & tarifs admin only (dont le prix d'achat INITIAL d'un produit, P1 bis n°21f) | `price.manage` | ADMIN |
+| Prix des produits (dont le prix d'achat INITIAL, P1 bis n°21f) ; tarifs eux-mêmes (Paramètres) ADMIN seul par leur garde de rôle | `price.manage` | ADMIN, MAGASINIER (depuis le 2026-10-11) |
 | Pas de remise libre | `sale.discount` | ADMIN |
 | Vente à crédit plafonnée | `sale.credit` | ADMIN, VENDEUR |
 | Commande fournisseur | `purchase.create` | ADMIN, MAGASINIER |
@@ -44,7 +44,7 @@ aucune migration destructive sans confirmation).
 | Action | Admin | Vendeur/Caissier | Magasinier |
 |---|---|---|---|
 | Consulter | ✅ | ✅ | ✅ |
-| Créer / modifier produit | ✅ | ❌ | ❌ |
+| Créer / modifier produit (prix de vente et prix d'achat initial compris — décision MEDMEDBEN du 2026-10-11) | ✅ | ❌ | ✅ (`product.write` + `price.manage`) |
 | Désactiver produit | ✅ | ❌ | ❌ |
 | Modifier prix / tarifs | ✅ | ❌ | ❌ |
 | Voir les prix / tarifs | ✅ | ✅ (lecture directe) | 👁️ |

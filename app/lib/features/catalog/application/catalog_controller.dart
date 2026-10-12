@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error/api_exception.dart';
 import '../../../core/providers.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
@@ -21,6 +24,9 @@ class CatalogSyncController extends AsyncNotifier<void> {
   Future<void> build() {
     final userId = ref.watch(currentUserIdProvider);
     if (userId == null) return Future.value();
+    // Les tarifs descendent avec le catalogue : la vente hors ligne en a
+    // besoin, même si l'écran Vente n'a jamais été ouvert en ligne.
+    loadPriceTiers(ref).ignore();
     return ref.read(catalogRepositoryProvider).pull();
   }
 
@@ -168,10 +174,34 @@ final productImageProvider = FutureProvider.autoDispose
       return ref.watch(catalogApiProvider).imageBytes(photo.productId);
     });
 
-/// Tarifs actifs (DETAIL, GROS…), lus en ligne pour le formulaire produit.
+/// Tarifs actifs (DETAIL, GROS…). Lus en ligne, et MÉMORISÉS sur l'appareil :
+/// hors ligne, la vente en a besoin (tarif par défaut → prix des tuiles et du
+/// ticket) — sans eux, tout produit passait « sans prix » et l'encaissement
+/// était bloqué (retour terrain du 2026-10-11). Jamais lu : l'erreur remonte.
 final priceTiersProvider = FutureProvider.autoDispose<List<PriceTier>>(
-  (ref) => ref.watch(catalogApiProvider).priceTiers(),
+  loadPriceTiers,
 );
+
+/// Lit les tarifs en ligne et les mémorise ; hors ligne, rend la mémoire.
+Future<List<PriceTier>> loadPriceTiers(Ref ref) async {
+  final settings = ref.read(localSettingsStoreProvider);
+  const memoryKey = 'price-tiers';
+  try {
+    final tiers = await ref.read(catalogApiProvider).priceTiers();
+    await settings.write(
+      memoryKey,
+      jsonEncode([for (final t in tiers) t.toJson()]),
+    );
+    return tiers;
+  } on ApiException catch (error) {
+    final known = error.isOffline ? await settings.read(memoryKey) : null;
+    if (known == null) rethrow;
+    return [
+      for (final row in jsonDecode(known) as List<dynamic>)
+        PriceTier.fromJson(row as Map<String, dynamic>),
+    ];
+  }
+}
 
 final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
   final filter = ref.watch(productFilterProvider);

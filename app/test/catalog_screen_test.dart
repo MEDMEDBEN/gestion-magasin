@@ -73,7 +73,13 @@ AuthUser _vendeur() => authUser(
 AuthUser _magasinier() => authUser(
   id: 'm',
   roles: const ['MAGASINIER'],
-  permissions: const ['product.read', 'location.manage'],
+  // Droits du rôle depuis le 2026-10-11 : il crée et modifie les produits.
+  permissions: const [
+    'product.read',
+    'product.write',
+    'price.manage',
+    'location.manage',
+  ],
 );
 
 void main() {
@@ -477,17 +483,19 @@ void main() {
     },
   );
 
-  testWidgets('le MAGASINIER gère les emplacements, pas les catégories', (
-    tester,
-  ) async {
-    useScreenSize(tester, const Size(400, 800));
-    await tester.pumpWidget(wrap(_magasinier()));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'le MAGASINIER crée des produits et gère les emplacements, pas les catégories',
+    (tester) async {
+      useScreenSize(tester, const Size(400, 800));
+      await tester.pumpWidget(wrap(_magasinier()));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Emplacements'), findsOneWidget);
-    expect(find.text('Catégories'), findsNothing);
-    expect(find.text('Nouveau'), findsNothing);
-  });
+      expect(find.text('Emplacements'), findsOneWidget);
+      expect(find.text('Catégories'), findsNothing);
+      // Décision MEDMEDBEN du 2026-10-11 : il crée et modifie les produits.
+      expect(find.text('Nouveau'), findsOneWidget);
+    },
+  );
 
   testWidgets(
     'ADMIN : créer un produit n’envoie que les champs saisis (code-barres généré serveur)',

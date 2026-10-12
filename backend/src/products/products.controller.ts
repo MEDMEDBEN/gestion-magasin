@@ -177,7 +177,8 @@ export class ProductsController {
     return this.productsService.findOne(id, user);
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Magasinier : décision MEDMEDBEN du 2026-10-11.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
   @Post()
   @ApiOperation({
@@ -202,7 +203,8 @@ export class ProductsController {
     );
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Magasinier : décision MEDMEDBEN du 2026-10-11.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
   @Patch(':id')
   @ApiOperation({
@@ -222,7 +224,8 @@ export class ProductsController {
     );
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Magasinier : décision MEDMEDBEN du 2026-10-11.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
   @Post(':id/image')
   @UseInterceptors(
@@ -254,7 +257,8 @@ export class ProductsController {
     );
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Magasinier : décision MEDMEDBEN du 2026-10-11.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
   @Delete(':id/image')
   @ApiOperation({ summary: 'Retire la photo du produit (admin)' })
@@ -332,7 +336,8 @@ export class ProductsController {
     stream.pipe(res);
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Magasinier : décision MEDMEDBEN du 2026-10-11.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
   // Route sensible (prix) : accès relu en base (CONVENTIONS.md § Sécurité, audit M5).
   @Post(':id/prices')

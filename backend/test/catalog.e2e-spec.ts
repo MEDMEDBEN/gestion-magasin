@@ -643,18 +643,17 @@ describe('Catalogue (e2e)', () => {
       await download(tokens.admin, product.id).expect(404);
     });
 
-    it('plus de 2 Mo → 413 ; VENDEUR et MAGASINIER ne posent pas de photo', async () => {
+    it('plus de 2 Mo → 413 ; le VENDEUR ne pose pas de photo, le MAGASINIER si (2026-10-11)', async () => {
       const product = await createProduct();
       const huge = Buffer.concat([JPEG, Buffer.alloc(2 * 1024 * 1024)]);
       await upload(tokens.admin, product.id, huge, 'huge.jpg').expect(413);
-      for (const token of [tokens.vendeur, tokens.magasinier]) {
-        await upload(token, product.id, PNG).expect(403);
-      }
+      await upload(tokens.vendeur, product.id, PNG).expect(403);
+      await upload(tokens.magasinier, product.id, PNG).expect(201);
     });
   });
 
   describe('matrice des rôles (docs/permissions.md)', () => {
-    it('vendeur et magasinier consultent, ne créent ni ne modifient un produit', async () => {
+    it('vendeur et magasinier consultent ; le VENDEUR ne crée ni ne modifie un produit', async () => {
       const product = await createProduct();
       for (const token of [tokens.vendeur, tokens.magasinier]) {
         await as(token).get(`/api/products/${product.id}`).expect(200);
@@ -663,18 +662,51 @@ describe('Catalogue (e2e)', () => {
         await as(token).get('/api/pricing/tiers').expect(200);
         await as(token).get('/api/catalog/changes?limit=1').expect(200);
         await as(token)
-          .post('/api/products')
-          .send({ sku: uid('X'), name: 'Interdit', unit: 'PIECE' })
-          .expect(403);
-        await as(token)
-          .patch(`/api/products/${product.id}`)
-          .send({ name: 'Interdit' })
-          .expect(403);
-        await as(token)
           .post('/api/categories')
           .send({ name: uid('Interdit') })
           .expect(403);
+        await as(token)
+          .post('/api/pricing/tiers')
+          .send({ code: uid('T'), name: 'Interdit' })
+          .expect(403);
       }
+      await as(tokens.vendeur)
+        .post('/api/products')
+        .send({ sku: uid('X'), name: 'Interdit', unit: 'PIECE' })
+        .expect(403);
+      await as(tokens.vendeur)
+        .patch(`/api/products/${product.id}`)
+        .send({ name: 'Interdit' })
+        .expect(403);
+    });
+
+    // Décision MEDMEDBEN du 2026-10-11 : le magasinier crée et modifie les
+    // produits, prix compris ; désactiver reste à l'admin.
+    it('MAGASINIER : crée, modifie, fixe un prix ; ne désactive pas', async () => {
+      const created = await as(tokens.magasinier)
+        .post('/api/products')
+        .send({
+          sku: uid('MAG'),
+          name: 'Créé par le magasinier',
+          unit: 'PIECE',
+        })
+        .expect(201);
+      productIds.push(created.body.id);
+      await as(tokens.magasinier)
+        .patch(`/api/products/${created.body.id}`)
+        .send({ name: 'Renommé par le magasinier' })
+        .expect(200);
+      const detail = await prisma.priceTier.findFirstOrThrow({
+        where: { code: 'DETAIL' },
+      });
+      await as(tokens.magasinier)
+        .post(`/api/products/${created.body.id}/prices`)
+        .send({ priceTierId: detail.id, priceHt: 99000 })
+        .expect(200);
+      await as(tokens.magasinier)
+        .patch(`/api/products/${created.body.id}`)
+        .send({ isActive: false })
+        .expect(403);
     });
 
     it('emplacements : ADMIN et MAGASINIER gèrent, VENDEUR non', async () => {
@@ -800,7 +832,7 @@ describe('Catalogue (e2e)', () => {
         await prisma.productPrice.count({ where: { productId: product.id } }),
       ).toBe(2);
 
-      for (const token of [tokens.vendeur, tokens.magasinier]) {
+      for (const token of [tokens.vendeur]) {
         await setPrice(token, { priceTierId: detail.id, priceHt: 1 }).expect(
           403,
         );

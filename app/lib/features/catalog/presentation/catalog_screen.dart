@@ -34,7 +34,13 @@ import 'requested_search.dart';
 /// Droits du catalogue, MIROIRS des guards serveur (`docs/permissions.md`).
 class CatalogRights {
   CatalogRights(AuthUser user)
-    : canWriteProducts = user.hasRole('ADMIN') && user.can('product.write'),
+    : // `POST/PATCH /products` : ADMIN|MAGASINIER + product.write (décision
+      // MEDMEDBEN du 2026-10-11 : le magasinier crée et modifie les produits).
+      canWriteProducts =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('product.write'),
+      // `/categories` en écriture : ADMIN + product.write (inchangé).
+      canManageCategories = user.hasRole('ADMIN') && user.can('product.write'),
       // `PATCH /products/:id` avec isActive : product.write ET product.disable.
       canDisableProducts =
           user.hasRole('ADMIN') &&
@@ -44,7 +50,10 @@ class CatalogRights {
       canReadSuppliers =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
-      canSetPrices = user.hasRole('ADMIN') && user.can('price.manage'),
+      // `POST /products/:id/prices` : ADMIN|MAGASINIER + price.manage.
+      canSetPrices =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('price.manage'),
       // `GET /products/:id/prospects` (P2 n°23) : ADMIN + customer.read.
       canContactCustomers =
           user.hasRole('ADMIN') &&
@@ -62,6 +71,7 @@ class CatalogRights {
           user.can('location.manage');
 
   final bool canWriteProducts;
+  final bool canManageCategories;
   final bool canDisableProducts;
   final bool canManageLocations;
   final bool canReadStock;
@@ -232,7 +242,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
         : AmpereGeometry.screenMarginMobile;
     final sections = [
       _Section.products,
-      if (rights.canWriteProducts) _Section.categories,
+      if (rights.canManageCategories) _Section.categories,
       if (rights.canManageLocations) _Section.locations,
     ];
     final section = sections.contains(_section) ? _section : sections.first;

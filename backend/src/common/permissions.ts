@@ -102,6 +102,12 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
 
   [RoleCode.MAGASINIER]: [
     P.PRODUCT_READ,
+    // Décision MEDMEDBEN du 2026-10-11 : le magasinier crée et modifie les
+    // produits, prix compris (fiche produit). Tarifs (Paramètres), imports et
+    // conditions des clients restent fermés par leur garde de RÔLE (ADMIN) ;
+    // désactiver un produit reste `product.disable` (ADMIN).
+    P.PRODUCT_WRITE,
+    P.PRICE_MANAGE,
     P.PRICE_READ,
     P.COST_READ,
     P.LOCATION_MANAGE,
@@ -130,7 +136,8 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [P.PRODUCT_READ]: 'Consulter les produits, catégories et emplacements',
   [P.PRODUCT_WRITE]: 'Créer et modifier un produit',
   [P.PRODUCT_DISABLE]: 'Désactiver un produit',
-  [P.PRICE_MANAGE]: 'Modifier les prix et les tarifs (admin uniquement)',
+  [P.PRICE_MANAGE]:
+    'Modifier les prix des produits (tarifs : admin uniquement)',
   [P.PRICE_READ]: 'Voir les prix et les tarifs',
   [P.COST_READ]: 'Voir le coût d’achat et la marge',
   [P.LOCATION_MANAGE]: 'Gérer les emplacements du dépôt',
