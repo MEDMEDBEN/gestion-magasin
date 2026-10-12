@@ -79,22 +79,10 @@ Future<void> savePrinter(
 Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
   final format = pdfFormatOf(bytes) ?? PdfPageFormat.a4;
   if (kIsWeb) {
-    // Le plugin ignore `format` dans le navigateur : on imprime les pages en
-    // images dans une page HTML qui impose le papier. 203 dpi : la finesse
-    // d'une imprimante thermique.
     try {
-      final pngs = [
-        await for (final page in Printing.raster(bytes, dpi: 203))
-          await page.toPng(),
-      ];
-      return await printPagesInBrowser(
-        pngs,
-        format.width / _mm,
-        format.height / _mm,
-        name,
-      );
+      return await printPdfInBrowser(bytes, name);
     } catch (_) {
-      // pdf.js injoignable… : la boîte d'impression du PDF, comme avant.
+      // pdf.js indisponible… : le PDF s'ouvre, comme avant.
     }
   }
   if (desktopPrinting) {

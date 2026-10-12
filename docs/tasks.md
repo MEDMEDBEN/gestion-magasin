@@ -12,11 +12,15 @@
 - Poste de bureau : « Mon profil → Imprimantes de ce poste » — une imprimante par sorte de papier (tickets,
   étiquettes, documents ; sorte déduite du format : largeur 80/58 mm = ticket). Choisie : impression DIRECTE
   (`directPrintPdf`), sans dialogue. Réglage local au poste.
-- Web (retour terrain : toujours A4) : le plugin ignore `format` dans le navigateur et la visionneuse PDF suit
-  le papier par défaut. Désormais `core/web_print*.dart` : pages du PDF en images (pdf.js, 203 dpi) dans une page
-  HTML avec `@page { size: L×H mm; margin: 0 }` → Chrome/Edge règlent le papier sur le format du document
-  (vérifié : Edge headless sort une page unique 80 × 210 mm). Repli : ancienne boîte PDF si pdf.js est injoignable.
-  Le navigateur ne choisit toujours pas l'imprimante seul (sauf Chrome `--kiosk-printing`).
+- Web (retours terrain des 12-13/10 : toujours A4, puis l'ordre ne part pas et il faut rafraîchir) : le plugin
+  ignore `format` dans le navigateur, et son pdf.js (CDN unpkg + `eval`) est REFUSÉ par la CSP de
+  `web.nginx.conf` — son verrou interne restait pris → plus aucune impression avant rechargement. Désormais
+  pdf.js 5.7.284 est servi par le site (`app/web/pdfjs/`, Apache-2.0, sans eval) et `web/pdf_print.js`
+  (`printPdfAtSize`, appelé par `core/web_print_web.dart`) dessine les pages (203 dpi) dans une iframe HTML
+  `@page { size: L×H mm; margin: 0 }`. Vérifié sous la CSP de prod (Chrome headless) : ticket 58 → page
+  58 × 83,6 mm, facture → A4, 2e impression sans rechargement, aucune violation CSP.
+- Photo web « Could not load Blob » : la CSP n'autorisait pas `blob:` dans `connect-src` (le sélecteur relit la
+  photo par une URL blob:) → ajouté. nginx : `.mjs` servi en `text/javascript` (nosniff).
 - Preuves : app analyze 0, **551 tests** (test `pdf_printing_test.dart`). Impression réelle à constater sur le poste.
 
 ### Photo produit sur le web — 2026-10-12 (MEDMEDBEN, Claude)

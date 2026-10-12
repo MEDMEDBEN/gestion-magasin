@@ -1,9 +1,5 @@
 import 'dart:typed_data';
 
 /// Hors navigateur : jamais appelé (`printPdf` passe par le plugin).
-Future<void> printPagesInBrowser(
-  List<Uint8List> pngs,
-  double widthMm,
-  double heightMm,
-  String name,
-) => throw UnsupportedError('Navigateur uniquement');
+Future<void> printPdfInBrowser(Uint8List bytes, String name) =>
+    throw UnsupportedError('Navigateur uniquement');
