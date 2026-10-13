@@ -116,8 +116,6 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                       : () => setState(() => _index = profile),
                 ),
               ),
-              if (Theme.of(context).brightness == Brightness.dark)
-                VerticalDivider(width: 1, color: colors.line),
             ],
             Expanded(
               child: Column(
@@ -190,7 +188,9 @@ class _Sidebar extends StatelessWidget {
 
     return Container(
       width: 246,
-      color: colors.bgAlt,
+      // Carte flottante (2026-10-14) : la couleur des cartes, pour se
+      // détacher du fond dans les deux thèmes.
+      color: colors.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -335,17 +335,20 @@ class _Floating extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (Theme.of(context).brightness == Brightness.dark) return child;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final colors = AmpereColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
+          // Sombre : un filet suffit à détacher la carte du fond.
+          border: dark ? Border.all(color: colors.line) : null,
+          boxShadow: [
             BoxShadow(
-              color: Color(0x14000000),
+              color: Color(dark ? 0x40000000 : 0x14000000),
               blurRadius: 24,
-              offset: Offset(0, 8),
+              offset: const Offset(0, 8),
             ),
           ],
         ),
@@ -372,7 +375,6 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     // Clair : l'actif est une PILULE NOIRE, texte blanc (maquette 2026-10-13).
-    final pill = Theme.of(context).brightness == Brightness.light;
 
     final item = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
@@ -382,22 +384,15 @@ class _NavItem extends StatelessWidget {
         label: entry.label,
         child: AmpereTappable(
           onTap: onTap,
-          borderRadius: AmpereGeometry.fieldRadiusDesktop,
+          borderRadius: 999,
           child: Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              // Actif : voile d'accent + trait de 2 px à gauche (§6) ; en
-              // clair, pilule noire.
-              color: selected
-                  ? (pill ? colors.accent : colors.accentBg)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(
-                pill ? 999 : AmpereGeometry.fieldRadiusDesktop,
-              ),
-              border: selected && !pill
-                  ? Border(left: BorderSide(color: colors.accent, width: 2))
-                  : null,
+              // Actif : pilule pleine (maquette du 2026-10-13), dans les
+              // deux thèmes — noire en clair, couleur d'accent en sombre.
+              color: selected ? colors.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
               children: [
@@ -407,9 +402,7 @@ class _NavItem extends StatelessWidget {
                   child: Icon(
                     entry.icon,
                     size: 17,
-                    color: selected
-                        ? (pill ? colors.onAccent : colors.accentHi)
-                        : colors.ink2,
+                    color: selected ? colors.onAccent : colors.ink2,
                   ),
                 ),
                 ...[
@@ -420,9 +413,7 @@ class _NavItem extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AmpereType.bodyDesktop.copyWith(
-                        color: selected
-                            ? (pill ? colors.onAccent : colors.ink)
-                            : colors.ink2,
+                        color: selected ? colors.onAccent : colors.ink2,
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w400,

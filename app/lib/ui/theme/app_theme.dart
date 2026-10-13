@@ -37,17 +37,11 @@ class AppTheme {
     required double fieldHeight,
     required TextStyle bodyStyle,
   }) {
-    // Clair : formes de la maquette (2026-10-13) — cartes très arrondies,
-    // champs doux, boutons en pilule.
-    if (!dark) {
-      cardRadius = 20;
-      fieldRadius = 14;
-    }
-    final OutlinedBorder buttonShape = dark
-        ? RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(fieldRadius),
-          )
-        : const StadiumBorder();
+    // Formes de la maquette (2026-10-13), les MÊMES en clair et en sombre
+    // (2026-10-14) : cartes très arrondies, champs doux, boutons en pilule.
+    cardRadius = 20;
+    fieldRadius = 14;
+    const OutlinedBorder buttonShape = StadiumBorder();
     final scheme = ColorScheme(
       brightness: dark ? Brightness.dark : Brightness.light,
       primary: colors.accent,

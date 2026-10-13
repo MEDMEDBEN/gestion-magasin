@@ -1029,8 +1029,6 @@ class _Metric extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final colors = AmpereColors.of(context);
-    final tone = _tone(colors, meaning);
     final target = destination;
     final evolution = switch (trend) {
       (today: final t, before: final b) when b > 0 =>
@@ -1134,8 +1132,8 @@ class _Metric extends ConsumerWidget {
       width: width,
       child: Card(
         clipBehavior: Clip.antiAlias,
-        elevation: 6,
-        shadowColor: tone.withValues(alpha: 0.45),
+        // Pas d'ombre : en sombre, elle dessinait un halo comme une bordure.
+        elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: target == null
             ? card
