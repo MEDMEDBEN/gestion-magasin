@@ -230,12 +230,19 @@ Future<void> quickAddProduct(
 /// orange = à surveiller ; rouge = urgent.
 enum _Meaning { good, work, watch, urgent }
 
-Color _tone(AmpereColors colors, _Meaning meaning) => switch (meaning) {
-  _Meaning.good => colors.ok,
-  _Meaning.work => colors.accent,
-  _Meaning.watch => colors.warn,
-  _Meaning.urgent => colors.error,
-};
+/// Tons du tableau de bord (2026-10-13, retour MEDMEDBEN : le vert et le
+/// jaune « pas beaux ») : une famille accordée — sarcelle (bon), abricot (à
+/// surveiller), corail (urgent) — réglée pour le clair et pour le sombre.
+Color _tone(AmpereColors colors, _Meaning meaning) {
+  final light = colors.bg.computeLuminance() > 0.4;
+  return switch (meaning) {
+    _Meaning.good => light ? const Color(0xFF0E9F8E) : const Color(0xFF3CD3C0),
+    _Meaning.work => colors.accent,
+    _Meaning.watch => light ? const Color(0xFFE0813A) : const Color(0xFFF6AE78),
+    _Meaning.urgent =>
+      light ? const Color(0xFFE5484D) : const Color(0xFFF6798C),
+  };
+}
 
 /// « 1 tâche » / « 3 tâches » : accorder plutôt que d'écrire « tâche(s) ».
 String _n(int n, String one, String many) => '$n ${n > 1 ? many : one}';
@@ -1033,7 +1040,7 @@ class _Metric extends ConsumerWidget {
             : LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [tone.withValues(alpha: 0.13), colors.surface],
+                colors: [tone.withValues(alpha: 0.10), colors.surface],
               ),
       ),
       padding: const EdgeInsets.all(14),
