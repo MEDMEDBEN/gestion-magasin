@@ -1517,7 +1517,7 @@ void main() {
       interact: (t) async {
         await _viaMore(t, 'Stock');
         await t.pumpAndSettle();
-        await t.tap(find.text('Pertes'));
+        await t.tap(find.textContaining('Pertes'));
       },
     ),
   );
@@ -1544,7 +1544,7 @@ void main() {
       interact: (t) async {
         await t.tap(find.text('Stock'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Pertes'));
+        await t.tap(find.textContaining('Pertes'));
         await t.pumpAndSettle();
         await t.tap(find.text('Déclarer une perte'));
       },
@@ -1841,7 +1841,7 @@ void main() {
       interact: (t) async {
         await _viaMore(t, 'Inventaire');
         await t.pumpAndSettle();
-        await t.tap(find.text('INV-2026-00003'));
+        await t.tap(find.text('Reprendre INV-2026-00003'));
       },
     ),
   );

@@ -27,13 +27,17 @@ import '../../../ui/widgets/ampere_controls.dart';
 import 'supplier_return_dialog.dart';
 
 /// Droits fournisseurs, MIROIRS des guards serveur (`docs/permissions.md`) :
-/// le vendeur n'a AUCUN accès, seul l'admin écrit et paie.
+/// le vendeur n'a AUCUN accès ; le magasinier écrit les fiches (2026-10-13),
+/// l'admin seul paie, saisit une reprise de dette et supprime.
 class SupplierRights {
   SupplierRights(AuthUser user)
     : canRead =
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('supplier.read'),
-      canWrite = user.hasRole('ADMIN') && user.can('supplier.write'),
+      canWrite =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('supplier.write'),
+      isAdmin = user.hasRole('ADMIN') && user.can('supplier.write'),
       canPay = user.hasRole('ADMIN') && user.can('supplier.payment.create'),
       // Garde de la liste des commandes (`GET /purchase-orders`).
       canSeePurchases =
@@ -48,6 +52,9 @@ class SupplierRights {
 
   final bool canRead;
   final bool canWrite;
+
+  /// Reprise de dette et suppression (`isActive`) : admin seul.
+  final bool isAdmin;
   final bool canPay;
   final bool canSeePurchases;
   final bool canReturn;
@@ -301,8 +308,8 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
         if (rights.canWrite)
           (icon: LucideIcons.pencil, label: 'Modifier la fiche', value: 'edit'),
       ],
-      // `PATCH /suppliers/:id` : ADMIN + supplier.write (comme la fiche).
-      canDelete: rights.canWrite,
+      // `PATCH /suppliers/:id` avec `isActive` : ADMIN seul.
+      canDelete: rights.isAdmin,
     );
     if (!mounted) return;
     if (action == contactDeleteAction) return _delete(supplier);
@@ -458,8 +465,13 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
       );
   }
 
-  Future<void> _openForm(Supplier? existing) =>
-      openFormPanel<void>(context, _SupplierForm(existing: existing));
+  Future<void> _openForm(Supplier? existing) => openFormPanel<void>(
+    context,
+    _SupplierForm(
+      existing: existing,
+      canSetDebt: SupplierRights(widget.user).isAdmin,
+    ),
+  );
 
   Future<void> _pay(Supplier supplier) async {
     final result = await showDialog<({int amount, bool fromCash})>(
@@ -575,9 +587,12 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
 }
 
 class _SupplierForm extends ConsumerStatefulWidget {
-  const _SupplierForm({this.existing});
+  const _SupplierForm({this.existing, required this.canSetDebt});
 
   final Supplier? existing;
+
+  /// Reprise de dette : admin seul (refusée au magasinier par le serveur).
+  final bool canSetDebt;
 
   @override
   ConsumerState<_SupplierForm> createState() => _SupplierFormState();
@@ -626,7 +641,9 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
                 : _contact.text.trim(),
             email: _email.text.trim().isEmpty ? null : _email.text.trim(),
             address: _address.text.trim().isEmpty ? null : _address.text.trim(),
-            openingBalance: parseDA(_opening.text) ?? 0,
+            openingBalance: widget.canSetDebt
+                ? parseDA(_opening.text) ?? 0
+                : null,
           );
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (error) {
@@ -696,27 +713,29 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
           },
         ),
         field('Adresse', _address),
-        field(
-          'Dette déjà due (reprise)',
-          _opening,
-          keyboard: const TextInputType.numberWithOptions(decimal: true),
-          suffix: 'DA',
-          validator: (v) {
-            final raw = (v ?? '').trim();
-            if (raw.isEmpty) return null;
-            final amount = parseDA(raw);
-            if (amount == null || amount < 0) return 'Montant invalide';
-            final paid = widget.existing?.paidAmount ?? 0;
-            return amount < paid
-                ? 'Déjà payé ${formatDA(paid)} : reprise trop basse'
-                : null;
-          },
-        ),
-        Text(
-          'Ce que vous deviez à ce fournisseur avant le logiciel. Les achats '
-          's’y ajouteront (feature Achats).',
-          style: AmpereType.meta.copyWith(color: colors.ink3),
-        ),
+        if (widget.canSetDebt) ...[
+          field(
+            'Dette déjà due (reprise)',
+            _opening,
+            keyboard: const TextInputType.numberWithOptions(decimal: true),
+            suffix: 'DA',
+            validator: (v) {
+              final raw = (v ?? '').trim();
+              if (raw.isEmpty) return null;
+              final amount = parseDA(raw);
+              if (amount == null || amount < 0) return 'Montant invalide';
+              final paid = widget.existing?.paidAmount ?? 0;
+              return amount < paid
+                  ? 'Déjà payé ${formatDA(paid)} : reprise trop basse'
+                  : null;
+            },
+          ),
+          Text(
+            'Ce que vous deviez à ce fournisseur avant le logiciel. Les achats '
+            's’y ajouteront (feature Achats).',
+            style: AmpereType.meta.copyWith(color: colors.ink3),
+          ),
+        ],
       ],
     );
   }

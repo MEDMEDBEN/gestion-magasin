@@ -364,6 +364,30 @@ void main() {
     expect(find.text('Supprimer'), findsNothing);
   });
 
+  /// Décision MEDMEDBEN du 2026-10-13 : le magasinier écrit les fiches, mais
+  /// ni la reprise de dette (argent) ni la suppression.
+  testWidgets('MAGASINIER avec supplier.write : crée et modifie, sans dette', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      authUser(
+        id: 'm',
+        roles: const ['MAGASINIER'],
+        permissions: const ['supplier.read', 'supplier.write'],
+      ),
+    );
+
+    await tester.tap(find.text('Sonelec'));
+    await tester.pumpAndSettle();
+    expect(find.text('Modifier la fiche'), findsOneWidget);
+    expect(find.text('Supprimer'), findsNothing);
+    await tester.tap(find.text('Modifier la fiche'));
+    await tester.pumpAndSettle();
+    expect(find.text('ADRESSE'), findsOneWidget);
+    expect(find.text('DETTE DÉJÀ DUE (REPRISE)'), findsNothing);
+  });
+
   /// Fiche contact (2026-10-06) : coordonnées copiables, compte, supprimer.
   testWidgets('fiche contact : coordonnées, compte, puis supprimer', (
     tester,

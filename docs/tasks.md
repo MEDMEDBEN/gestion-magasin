@@ -4,6 +4,29 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### UI/UX Stock, Inventaire, Vente + droits du magasinier — 2026-10-13 (MEDMEDBEN, Claude)
+
+- Demande : pages Stock et Inventaire jamais « vides sans sens », actions en boutons clairs, couleur qui
+  indique, et rendre au rôle principal ce qui était réservé à l'admin.
+- `ui/widgets/page_kit.dart` (NOUVEAU, à réutiliser sur les autres écrans) : `StatTile`/`StatGrid` (chiffre clé
+  coloré qui filtre), `ActionTile`/`ActionGrid` (action expliquée), `GuideSteps` (« comment ça marche »).
+  Code couleur : rouge = à traiter, ambre = à surveiller, vert = en ordre, bleu = en cours / info.
+- Stock : tuiles Produits / Rupture / Faible / En stock (filtres), actions Déclarer une perte · Compter ·
+  Transférer · À racheter · Réceptionner (selon le menu du compte), liste triée rupture d'abord, bordure
+  colorée ; fiche produit avec état, seuil et « Déclarer une perte sur ce produit » ; onglet Pertes avec
+  compteur et guide ; « Valider » en vert. Guide en 3 étapes si le catalogue est vide.
+- Inventaire : déroulé en 4 étapes toujours visible (étape courante en surbrillance), « Reprendre INV-… »,
+  « Comptage tournant » / « Inventaire complet » (type présélectionné), alerte admin « N à valider »,
+  tuiles-filtres, cartes colorées avec barre d'avancement.
+- Vente : Remise (ambre) · Devis (bleu) · Vider (rouge) en boutons étiquetés au-dessus d'Encaisser, poste
+  ET téléphone ; remise appliquée en pastille retirable.
+- Droits : MAGASINIER + `supplier.write` (créer/modifier un fournisseur) ; reprise de dette et suppression
+  restent ADMIN (403 serveur, champ masqué dans l'app). Seuil minimum : déjà ouvert (doc corrigée).
+- Preuves : backend tsc + eslint OK, e2e suppliers 16/16 ; app analyze 0, **552 tests** ; captures 18, 19,
+  21, 22, 36, 37 vérifiées.
+- **Prochaine étape** : appliquer `page_kit` aux autres écrans (Transferts, Achats, Réappro, Tâches,
+  Signalements…) — même logique : chiffres clés, actions claires, guide quand c'est vide.
+
 ### Impression au bon format (desktop et web) — 2026-10-12 (MEDMEDBEN, Claude)
 
 - Cause des tickets sur A4 au poste : `Printing.layoutPdf` sans `format` → le plugin Windows règle le papier de

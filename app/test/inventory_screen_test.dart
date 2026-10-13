@@ -183,7 +183,7 @@ void main() {
     'nouvel inventaire : lieu déjà choisi, la saisie s’ouvre aussitôt',
     (tester) async {
       final api = await _pump(tester, _magasinier());
-      await tester.tap(find.text('Nouvel inventaire'));
+      await tester.tap(find.text('Inventaire complet'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Commencer le comptage'));
       await tester.pumpAndSettle();
@@ -200,7 +200,7 @@ void main() {
     tester,
   ) async {
     final api = await _pump(tester, _magasinier());
-    await tester.tap(find.text('Nouvel inventaire'));
+    await tester.tap(find.text('Inventaire complet'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
@@ -484,8 +484,11 @@ void main() {
     tester,
   ) async {
     await _pump(tester, _magasinier());
-    expect(find.text('Aucun inventaire'), findsOneWidget);
-    expect(find.textContaining('faites valider les écarts'), findsOneWidget);
+    expect(find.textContaining('Aucun inventaire'), findsOneWidget);
+    expect(find.textContaining('seule façon de corriger'), findsOneWidget);
+    // Le déroulé et les deux façons de compter restent visibles (2026-10-13).
+    expect(find.text('COMMENT SE PASSE UN INVENTAIRE'), findsOneWidget);
+    expect(find.text('Comptage tournant'), findsOneWidget);
   });
 
   testWidgets(

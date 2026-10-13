@@ -1017,12 +1017,12 @@ void main() {
     expect(find.text('2,5 pce'), findsOneWidget);
 
     // Remise sur facture : 2,5 × 1 450,00 = 3 625,00 − 25,00.
-    await tester.tap(find.text('Remise sur la facture'));
+    await tester.tap(find.text('Remise'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '25');
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Remise facture'), findsOneWidget);
+    expect(find.textContaining('Remise −'), findsOneWidget);
 
     await tester.tap(find.textContaining('Encaisser'));
     await tester.pumpAndSettle();

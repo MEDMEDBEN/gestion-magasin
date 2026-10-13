@@ -1349,29 +1349,29 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             articles: cart.lines.length,
             compact: compact,
           ),
-          if (!cart.isEmpty && cart.quote == null)
+          if (!cart.isEmpty &&
+              cart.quote == null &&
+              (cart.discountHt > 0 || widget.rights.canSeeProfit))
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(
                 children: [
-                  TextButton.icon(
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    onPressed: _busy ? null : () => _globalDiscount(estimate),
-                    icon: const Icon(LucideIcons.percent, size: 16),
-                    label: Text(
-                      cart.discountHt > 0
-                          ? 'Remise facture −${formatDA(cart.discountHt)}'
-                          : 'Remise sur la facture',
-                    ),
-                  ),
                   if (cart.discountHt > 0)
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Retirer la remise',
-                      icon: const Icon(LucideIcons.x, size: 15),
-                      onPressed: () =>
+                    InputChip(
+                      avatar: Icon(
+                        LucideIcons.percent,
+                        size: 14,
+                        color: AmpereColors.of(context).warn,
+                      ),
+                      label: Text(
+                        'Remise −${formatDA(cart.discountHt)}',
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: AmpereColors.of(context).warn,
+                        ),
+                      ),
+                      deleteButtonTooltipMessage: 'Retirer la remise',
+                      onPressed: _busy ? null : () => _globalDiscount(estimate),
+                      onDeleted: () =>
                           ref.read(cartProvider.notifier).setGlobalDiscount(0),
                     ),
                   const Spacer(),
@@ -1424,8 +1424,45 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             ),
           ],
           SizedBox(height: compact ? 8 : 12),
-          // Téléphone : devis et vider en icônes À CÔTÉ du bouton principal —
-          // une ligne de plus pour les produits du ticket.
+          // Les gestes du panier en boutons étiquetés et colorés (demande
+          // MEDMEDBEN du 2026-10-13 : « remise, devis… dans un bouton clair »).
+          if (!cart.isEmpty) ...[
+            Row(
+              children: [
+                if (cart.quote == null) ...[
+                  Expanded(
+                    child: _CartAction(
+                      icon: LucideIcons.percent,
+                      label: cart.discountHt > 0 ? 'Changer remise' : 'Remise',
+                      color: AmpereColors.of(context).warn,
+                      onPressed: _busy ? null : () => _globalDiscount(estimate),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _CartAction(
+                      icon: LucideIcons.fileText,
+                      label: 'Devis',
+                      color: AmpereColors.of(context).info,
+                      onPressed: blocked ? null : _makeQuote,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Expanded(
+                  child: _CartAction(
+                    icon: LucideIcons.trash2,
+                    label: 'Vider',
+                    color: AmpereColors.of(context).error,
+                    onPressed: _busy
+                        ? null
+                        : () => ref.read(cartProvider.notifier).clear(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
           Row(
             children: [
               Expanded(
@@ -1470,52 +1507,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                             : () => _checkout(estimate),
                       ),
               ),
-              if (compact && !cart.isEmpty) ...[
-                if (cart.quote == null) ...[
-                  const SizedBox(width: 8),
-                  IconButton.outlined(
-                    tooltip: 'Faire un devis',
-                    onPressed: blocked ? null : _makeQuote,
-                    icon: const Icon(LucideIcons.fileText, size: 18),
-                  ),
-                ],
-                const SizedBox(width: 4),
-                IconButton.outlined(
-                  tooltip: 'Vider le panier',
-                  onPressed: _busy
-                      ? null
-                      : () => ref.read(cartProvider.notifier).clear(),
-                  icon: const Icon(LucideIcons.x, size: 18),
-                ),
-              ],
             ],
           ),
-          if (!compact && !cart.isEmpty) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                if (cart.quote == null)
-                  Expanded(
-                    // Même panier, aucun encaissement, aucun mouvement de stock.
-                    child: TextButton.icon(
-                      onPressed: blocked ? null : _makeQuote,
-                      icon: const Icon(LucideIcons.fileText, size: 17),
-                      label: const Text('Faire un devis'),
-                    ),
-                  ),
-                if (cart.quote == null) const SizedBox(width: 8),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () => ref.read(cartProvider.notifier).clear(),
-                    icon: const Icon(LucideIcons.x, size: 17),
-                    label: const Text('Vider le panier'),
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -2723,4 +2716,35 @@ class _CustomersSectionState extends ConsumerState<_CustomersSection> {
       ],
     );
   }
+}
+
+/// Geste du panier : contour et texte dans sa couleur (ambre remise, bleu
+/// devis, rouge vider) — lisible d'un coup d'œil, jamais une icône seule.
+class _CartAction extends StatelessWidget {
+  const _CartAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+    style: OutlinedButton.styleFrom(
+      foregroundColor: color,
+      backgroundColor: color.withValues(alpha: 0.08),
+      side: BorderSide(color: color.withValues(alpha: 0.55)),
+      minimumSize: const Size(0, 42),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+    onPressed: onPressed,
+    icon: Icon(icon, size: 16),
+    label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+  );
 }

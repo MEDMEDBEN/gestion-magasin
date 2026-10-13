@@ -176,7 +176,7 @@ describe('Fournisseurs et dettes (e2e)', () => {
   });
 
   describe('fiches', () => {
-    it('admin crée avec une reprise de dette ; magasinier lit, ne modifie pas', async () => {
+    it('admin crée avec une reprise de dette ; magasinier écrit la fiche, sans argent ni suppression', async () => {
       const supplier = await createSupplier({
         phone: '0550 00 11 22',
         openingBalance: 500000,
@@ -194,13 +194,27 @@ describe('Fournisseurs et dettes (e2e)', () => {
         .expect(200);
       expect(seen.body.balanceDue).toBe(500000);
 
+      // Décision MEDMEDBEN du 2026-10-13 : le magasinier gère les fiches…
       await as(tokens.magasinier)
         .patch(`/api/suppliers/${supplier.id}`)
-        .send({ name: 'Renommé' })
-        .expect(403);
+        .send({ name: `Renommé ${suffix}` })
+        .expect(200);
       await as(tokens.magasinier)
         .post('/api/suppliers')
-        .send({ name: `Interdit ${suffix}` })
+        .send({ name: `Magasinier ${suffix}` })
+        .expect(201);
+      // … mais ni l'argent (reprise de dette) ni la suppression.
+      await as(tokens.magasinier)
+        .post('/api/suppliers')
+        .send({ name: `Dette ${suffix}`, openingBalance: 100 })
+        .expect(403);
+      await as(tokens.magasinier)
+        .patch(`/api/suppliers/${supplier.id}`)
+        .send({ openingBalance: 0 })
+        .expect(403);
+      await as(tokens.magasinier)
+        .patch(`/api/suppliers/${supplier.id}`)
+        .send({ isActive: false })
         .expect(403);
     });
 

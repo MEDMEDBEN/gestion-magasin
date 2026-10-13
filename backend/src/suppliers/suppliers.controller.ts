@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpStatus,
   Ip,
   Param,
   Patch,
@@ -27,7 +28,9 @@ import {
   RoleCode,
   Roles,
 } from '../common/auth.decorators';
+import { BusinessException } from '../common/business.exception';
 import { CanonicalUuidPipe } from '../common/canonical-uuid.pipe';
+import { ErrorCode } from '../common/error-codes';
 import { ErrorResponseDto } from '../common/dto/error-response.dto';
 import {
   PaymentHistoryDto,
@@ -158,13 +161,16 @@ export class SuppliersController {
     return this.suppliers.findOne(id);
   }
 
-  @Roles(RoleCode.ADMIN)
+  // Décision MEDMEDBEN du 2026-10-13 : le magasinier, qui commande et
+  // réceptionne, crée et modifie les fiches. L'argent (reprise de dette) et la
+  // suppression (`isActive`) restent à l'admin — `adminOnlyFields`.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.SUPPLIER_WRITE)
   @Post()
   @ApiOperation({
-    summary: 'Crée un fournisseur (admin uniquement)',
+    summary: 'Crée un fournisseur (admin, magasinier)',
     description:
-      '`openingBalance` = dette déjà due avant le logiciel (reprise de l’existant).',
+      '`openingBalance` = dette déjà due avant le logiciel (reprise de l’existant) : admin seul.',
   })
   @ApiCreatedResponse({ type: SupplierDto })
   create(
@@ -172,13 +178,17 @@ export class SuppliersController {
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<SupplierDto> {
+    adminOnlyFields(dto, user);
     return this.suppliers.create(dto, { userId: user.id, ipAddress: ip });
   }
 
-  @Roles(RoleCode.ADMIN)
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.SUPPLIER_WRITE)
   @Patch(':id')
-  @ApiOperation({ summary: 'Modifie un fournisseur (admin uniquement)' })
+  @ApiOperation({
+    summary: 'Modifie un fournisseur (admin, magasinier)',
+    description: '`openingBalance` et `isActive` : admin seul.',
+  })
   @ApiOkResponse({ type: SupplierDto })
   update(
     @Param('id', CanonicalUuidPipe) id: string,
@@ -186,6 +196,7 @@ export class SuppliersController {
     @CurrentUser() user: AuthenticatedUser,
     @Ip() ip: string,
   ): Promise<SupplierDto> {
+    adminOnlyFields(dto, user);
     return this.suppliers.update(id, dto, { userId: user.id, ipAddress: ip });
   }
 }
@@ -237,5 +248,21 @@ export class SupplierPaymentsController {
       userId: user.id,
       ipAddress: ip,
     });
+  }
+}
+
+/// Reprise de dette (argent) et suppression (`isActive`) : admin seul, même
+/// quand le magasinier écrit la fiche.
+function adminOnlyFields(
+  dto: { openingBalance?: number; isActive?: boolean },
+  user: AuthenticatedUser,
+): void {
+  if (user.roles.includes(RoleCode.ADMIN)) return;
+  if (dto.openingBalance !== undefined || dto.isActive !== undefined) {
+    throw new BusinessException(
+      ErrorCode.FORBIDDEN_ROLE,
+      'Seul l’administrateur saisit une reprise de dette ou supprime un fournisseur',
+      HttpStatus.FORBIDDEN,
+    );
   }
 }

@@ -192,7 +192,7 @@ void main() {
     expect(find.text('70 pce'), findsNWidgets(2)); // total + disponible
     // 70 < seuil 100 : signalé par un LIBELLÉ, pas seulement une couleur.
     expect(find.text('Stock faible · 70 pce'), findsOneWidget);
-    expect(find.text('Pertes'), findsNothing);
+    expect(find.textContaining('Pertes'), findsNothing);
   });
 
   testWidgets(
@@ -202,7 +202,7 @@ void main() {
       await tester.pumpWidget(wrap(_magasinier()));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Pertes'));
+      await tester.tap(find.textContaining('Pertes'));
       await tester.pumpAndSettle();
       expect(find.text('Carton écrasé'), findsOneWidget);
       expect(find.text('Valider'), findsNothing);
@@ -237,7 +237,7 @@ void main() {
     useScreenSize(tester, const Size(400, 900));
     await tester.pumpWidget(wrap(_admin()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Pertes'));
+    await tester.tap(find.textContaining('Pertes'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Valider'));

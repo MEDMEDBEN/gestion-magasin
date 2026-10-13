@@ -6,9 +6,11 @@ import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/offline_documents_notice.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -69,99 +71,254 @@ String _summary(Inventory inventory) {
       : '$gaps écart(s) sur $total produit(s) · $scope';
 }
 
+/// Filtre de la liste, porté par les tuiles colorées.
+enum _Filter { all, inProgress, toValidate, adjusted }
+
+bool _matches(Inventory i, _Filter f) => switch (f) {
+  _Filter.all => true,
+  _Filter.inProgress => i.status == InventoryStatus.inProgress,
+  _Filter.toValidate => i.awaitsValidation,
+  _Filter.adjusted => i.validatedAt != null,
+};
+
 /// Inventaire (spec §22) : comparer théorique ↔ physique, puis faire valider
 /// l'ajustement par l'administrateur — seule étape qui touche le stock.
-class InventoryScreen extends ConsumerWidget {
+///
+/// Refonte du 2026-10-13 (MEDMEDBEN) : le déroulé est toujours affiché, les
+/// deux façons de compter sont des boutons expliqués, un comptage en cours se
+/// reprend d'un geste, et la couleur dit où en est chaque inventaire.
+class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key, required this.user});
 
   final AuthUser user;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rights = InventoryRights(user);
+  ConsumerState<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+class _InventoryScreenState extends ConsumerState<InventoryScreen> {
+  _Filter _filter = _Filter.all;
+
+  @override
+  Widget build(BuildContext context) {
+    final rights = InventoryRights(widget.user);
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
     final inventories = ref.watch(inventoriesProvider);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              // Même garde que la liste affichée ici (`inventory.create`).
-              if (rights.canCount) ...[
-                ExportButton(
-                  targets: [
-                    ExportTarget(
-                      'Inventaires et lignes comptées',
-                      ref.read(inventoryApiProvider).exportInventories,
-                    ),
-                  ],
+    return inventories.when(
+      loading: () => const AmpereSkeletonList(rows: 5),
+      error: (error, _) => ScreenStateView(
+        status: error is ApiException && error.isOffline
+            ? ScreenStatus.offline
+            : ScreenStatus.error,
+        message: error is ApiException ? error.userMessage : '$error',
+        onRetry: () => ref.invalidate(inventoriesProvider),
+      ),
+      data: (list) {
+        final items = list.items;
+        int count(_Filter f) => items.where((i) => _matches(i, f)).length;
+        final running = items
+            .where((i) => i.status == InventoryStatus.inProgress)
+            .toList();
+        final toValidate = count(_Filter.toValidate);
+        final shown = items.where((i) => _matches(i, _filter)).toList();
+        final step = running.isNotEmpty
+            ? 1
+            : toValidate > 0
+            ? 3
+            : 0;
+
+        StatTile tile(
+          _Filter f,
+          IconData icon,
+          String label,
+          StatusTone tone,
+        ) => StatTile(
+          icon: icon,
+          label: label,
+          value: '${count(f)}',
+          tone: tone,
+          selected: _filter == f,
+          onTap: () => setState(() => _filter = _filter == f ? _Filter.all : f),
+        );
+
+        return ListView(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          children: [
+            GuideSteps(
+              title: 'COMMENT SE PASSE UN INVENTAIRE',
+              current: step,
+              steps: [
+                (
+                  'Lancer',
+                  'Tournant : quelques produits, une étagère. Complet : tout '
+                      'un lieu. Le stock théorique est noté à cet instant.',
                 ),
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: () => _start(context, rights),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Nouvel inventaire'),
+                (
+                  'Compter',
+                  'Scannez ou cherchez chaque produit, saisissez la quantité '
+                      'réelle. Tout est gardé au fur et à mesure.',
+                ),
+                (
+                  'Terminer',
+                  'Les écarts apparaissent en couleur : vérifiez-les, puis '
+                      'terminez le comptage.',
+                ),
+                (
+                  'Valider les écarts',
+                  rights.canValidate
+                      ? 'Vous validez : le stock prend les quantités comptées.'
+                      : 'L’administrateur valide : le stock prend les '
+                            'quantités comptées.',
                 ),
               ],
-            ],
-          ),
-        ),
-        Expanded(
-          child: inventories.when(
-            loading: () => const AmpereSkeletonList(rows: 5),
-            error: (error, _) => ScreenStateView(
-              status: error is ApiException && error.isOffline
-                  ? ScreenStatus.offline
-                  : ScreenStatus.error,
-              message: error is ApiException ? error.userMessage : '$error',
-              onRetry: () => ref.invalidate(inventoriesProvider),
             ),
-            data: (list) => list.items.isEmpty
-                ? const ScreenStateView(
-                    status: ScreenStatus.empty,
-                    title: 'Aucun inventaire',
-                    message:
-                        'Comptez le stock réel et faites valider les écarts : '
-                        'c’est la seule façon de corriger une quantité.',
-                  )
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                    children: [
-                      OfflineDocumentsNotice(
-                        cachedAt: list.cachedAt,
-                        actionsQueue: false,
-                      ),
-                      for (final i in list.items)
-                        Card(
-                          child: ListTile(
-                            title: Text(i.number),
-                            subtitle: Text(_summary(i)),
-                            trailing: AmpereBadge(
-                              label: _badge(i),
-                              tone: _tone(i),
-                            ),
-                            onTap: () => _open(context, ref, i, rights),
-                          ),
-                        ),
-                    ],
+            const SizedBox(height: 12),
+            if (rights.canValidate && toValidate > 0) ...[
+              AmpereInlineAlert(
+                tone: StatusTone.warn,
+                icon: LucideIcons.clipboardList,
+                message:
+                    '$toValidate comptage(s) terminé(s) attendent votre '
+                    'validation pour corriger le stock.',
+                action: TextButton(
+                  onPressed: () => setState(() => _filter = _Filter.toValidate),
+                  child: const Text('Voir'),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (rights.canCount) ...[
+              ActionGrid(
+                children: [
+                  for (final i in running.take(2))
+                    ActionTile(
+                      icon: LucideIcons.play,
+                      title: 'Reprendre ${i.number}',
+                      subtitle:
+                          '${i.lines.length - i.countedCount} produit(s) '
+                          'restent à compter',
+                      tone: StatusTone.warn,
+                      prominent: true,
+                      onTap: () => _count(context, i, rights),
+                    ),
+                  ActionTile(
+                    icon: LucideIcons.listChecks,
+                    title: 'Comptage tournant',
+                    subtitle: 'Quelques produits ou une étagère : 5 minutes.',
+                    tone: StatusTone.info,
+                    prominent: running.isEmpty,
+                    onTap: () => _start(context, rights, InventoryType.cycle),
                   ),
-          ),
-        ),
-      ],
+                  ActionTile(
+                    icon: LucideIcons.clipboardCheck,
+                    title: 'Inventaire complet',
+                    subtitle: 'Tous les produits d’un lieu (magasin ou dépôt).',
+                    tone: StatusTone.neutral,
+                    onTap: () => _start(context, rights, InventoryType.full),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            if (items.isEmpty)
+              const AmpereInlineAlert(
+                tone: StatusTone.info,
+                icon: LucideIcons.info,
+                message:
+                    'Aucun inventaire pour l’instant. Conseil : commencez par '
+                    'un comptage tournant des produits les plus vendus — '
+                    'c’est la seule façon de corriger une quantité.',
+              )
+            else ...[
+              StatGrid(
+                children: [
+                  tile(
+                    _Filter.all,
+                    LucideIcons.clipboardList,
+                    'Tous',
+                    StatusTone.neutral,
+                  ),
+                  tile(
+                    _Filter.inProgress,
+                    LucideIcons.timer,
+                    'En cours',
+                    StatusTone.info,
+                  ),
+                  tile(
+                    _Filter.toValidate,
+                    LucideIcons.triangleAlert,
+                    'Attendent validation',
+                    StatusTone.warn,
+                  ),
+                  tile(
+                    _Filter.adjusted,
+                    LucideIcons.circleCheck,
+                    'Stock ajusté',
+                    StatusTone.ok,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'HISTORIQUE DES INVENTAIRES',
+                      style: AmpereType.label.copyWith(
+                        color: AmpereColors.of(context).ink3,
+                      ),
+                    ),
+                  ),
+                  // Même garde que la liste affichée ici (`inventory.create`).
+                  if (rights.canCount)
+                    ExportButton(
+                      targets: [
+                        ExportTarget(
+                          'Inventaires et lignes comptées',
+                          ref.read(inventoryApiProvider).exportInventories,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              OfflineDocumentsNotice(
+                cachedAt: list.cachedAt,
+                actionsQueue: false,
+              ),
+              if (shown.isEmpty)
+                const ScreenStateView(
+                  status: ScreenStatus.empty,
+                  title: 'Rien dans cette catégorie',
+                )
+              else
+                for (final i in shown)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _InventoryCard(
+                      inventory: i,
+                      onTap: () => _open(context, i, rights),
+                    ),
+                  ),
+            ],
+          ],
+        );
+      },
     );
   }
 
   /// Lancement puis, AUSSITÔT, la saisie : pas de retour à la liste.
-  Future<void> _start(BuildContext context, InventoryRights rights) async {
+  Future<void> _start(
+    BuildContext context,
+    InventoryRights rights,
+    InventoryType type,
+  ) async {
     final inventory = await openFormPanel<Inventory>(
       context,
-      const InventoryStartForm(),
+      InventoryStartForm(initialType: type),
     );
     if (inventory == null || !context.mounted) return;
     await _count(context, inventory, rights);
@@ -184,7 +341,6 @@ class InventoryScreen extends ConsumerWidget {
   /// le serveur accepterait à cet instant).
   Future<void> _open(
     BuildContext context,
-    WidgetRef ref,
     Inventory inventory,
     InventoryRights rights,
   ) async {
@@ -209,6 +365,94 @@ class InventoryScreen extends ConsumerWidget {
       case 'delete':
         await deleteInventory(context, ref, inventory);
     }
+  }
+}
+
+/// Un inventaire de la liste : état en couleur, avancement du comptage.
+class _InventoryCard extends StatelessWidget {
+  const _InventoryCard({required this.inventory, required this.onTap});
+
+  final Inventory inventory;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final tone = _tone(inventory);
+    final total = inventory.lines.length;
+    final progress = total == 0 ? 0.0 : inventory.countedCount / total;
+    final gaps = inventory.gaps.length;
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: tone.foreground(colors).withValues(alpha: 0.45),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    inventory.type == InventoryType.cycle
+                        ? LucideIcons.listChecks
+                        : LucideIcons.clipboardCheck,
+                    size: 18,
+                    color: tone.foreground(colors),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    inventory.number,
+                    style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                  ),
+                  Expanded(
+                    child: Text(
+                      ' · ${inventory.type.label}'
+                      '${inventory.zone == null ? '' : ' · ${inventory.zone}'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: colors.ink3),
+                    ),
+                  ),
+                  AmpereBadge(label: _badge(inventory), tone: tone),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _summary(inventory),
+                style: AmpereType.meta.copyWith(color: colors.ink2),
+              ),
+              if (inventory.status == InventoryStatus.inProgress) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    color: colors.info,
+                    backgroundColor: colors.infoBg,
+                  ),
+                ),
+              ] else if (gaps > 0 && inventory.validatedAt == null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '$gaps écart(s) à faire valider',
+                  style: AmpereType.bodyStrong.copyWith(color: colors.warn),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

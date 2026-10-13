@@ -16,7 +16,10 @@ import '../data/inventory_models.dart';
 /// Lancement d'un inventaire (spec §22). Le théorique est figé à cet instant :
 /// c'est la feuille de comptage. Aucun stock ne bouge avant la validation.
 class InventoryStartForm extends ConsumerStatefulWidget {
-  const InventoryStartForm({super.key});
+  const InventoryStartForm({super.key, this.initialType = InventoryType.full});
+
+  /// Choisi d'avance par le bouton de l'écran (complet / tournant).
+  final InventoryType initialType;
 
   @override
   ConsumerState<InventoryStartForm> createState() => _InventoryStartFormState();
@@ -32,7 +35,7 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
 
   /// Filtre de la liste à cocher : sur 1 000 produits, on cherche le sien.
   String _filter = '';
-  InventoryType _type = InventoryType.full;
+  late InventoryType _type = widget.initialType;
   String? _locationId;
   bool _saving = false;
   String? _error;

@@ -117,6 +117,9 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     P.STOCK_LOSS,
     P.CUSTOMER_READ,
     P.SUPPLIER_READ,
+    // 2026-10-13 : crée et modifie les fiches (reprise de dette et suppression :
+    // admin seul, `suppliers.controller.ts`).
+    P.SUPPLIER_WRITE,
     P.PURCHASE_CREATE,
     P.RECEPTION_CREATE,
     P.TRANSFER_PREPARE,

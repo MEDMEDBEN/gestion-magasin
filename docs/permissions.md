@@ -100,7 +100,7 @@ aucune migration destructive sans confirmation).
 | Contre-passer un règlement client | ✅ | ❌ | ❌ |
 | Relevé de compte client PDF/Excel/CSV (`GET /customers/:id/statement`, P1 bis n°21n) | ✅ (`customer.read`, droits relus) | ❌ (tout le CA du client) | ❌ |
 | Consulter fournisseurs | ✅ | ❌ | 👁️ (`supplier.read`) |
-| Gérer fournisseurs | ✅ | ❌ | ❌ |
+| Gérer fournisseurs (créer, modifier la fiche — décision du 2026-10-13 ; reprise de dette `openingBalance` et suppression `isActive` : ADMIN seul, 403) | ✅ | ❌ | ✅ |
 | Supprimer un fournisseur (= désactiver, historique gardé ; refusé 409 tant qu'il reste à payer, un trop-payé ou une commande en cours) | ✅ | ❌ | ❌ (403) |
 | Enregistrer paiement fournisseur | ✅ | ❌ | ❌ |
 | Consulter l'historique des paiements fournisseur | ✅ | ❌ | 👁️ (`supplier.read`) |
@@ -373,7 +373,7 @@ aussitôt de lire coûts et CA au lieu d'attendre l'expiration de son jeton.
 | Lire la liste « à racheter » | ✅ | ❌ | ✅ |
 | Recevoir les alertes STOCK_FAIBLE / RUPTURE | ✅ | ❌ | ✅ |
 | Commander (depuis la liste ou ailleurs) | ✅ | ❌ | ✅ |
-| Régler le seuil minimum d'un produit | ✅ | ❌ | ❌ |
+| Régler le seuil minimum d'un produit (fiche produit, `product.write` depuis le 2026-10-11) | ✅ | ❌ | ✅ |
 
 **Gardé par `purchase.create`, pas par le rôle seul** : ceux qui peuvent AGIR. Le vendeur est exclu pour deux
 raisons qui vont ensemble — il ne peut pas passer de commande, et la liste porte le **fournisseur principal** et

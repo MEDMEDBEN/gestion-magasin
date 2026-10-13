@@ -19,9 +19,12 @@ import '../data/stock_models.dart';
 /// tout de suite ; sinon (MAGASINIER) la déclaration attend sa validation —
 /// c'est le serveur qui en décide, l'écran ne fait que l'annoncer.
 class LossForm extends ConsumerStatefulWidget {
-  const LossForm({super.key, required this.appliesImmediately});
+  const LossForm({super.key, required this.appliesImmediately, this.product});
 
   final bool appliesImmediately;
+
+  /// Produit déjà choisi (depuis sa fiche de stock).
+  final Product? product;
 
   @override
   ConsumerState<LossForm> createState() => _LossFormState();
@@ -32,7 +35,7 @@ class _LossFormState extends ConsumerState<LossForm> {
   final _quantity = TextEditingController();
   final _comment = TextEditingController();
   late final String _declarationId = ref.read(uuidProvider).v7();
-  Product? _product;
+  late Product? _product = widget.product;
   String? _locationId;
   String? _productError;
   bool _saving = false;
@@ -123,6 +126,11 @@ class _LossFormState extends ConsumerState<LossForm> {
         const SizedBox(height: 16),
         const AmpereFieldLabel('Produit'),
         Autocomplete<Product>(
+          initialValue: widget.product == null
+              ? null
+              : TextEditingValue(
+                  text: '${widget.product!.name} — ${widget.product!.sku}',
+                ),
           displayStringForOption: (p) => '${p.name} — ${p.sku}',
           optionsBuilder: (value) {
             final term = foldForSearch(value.text);

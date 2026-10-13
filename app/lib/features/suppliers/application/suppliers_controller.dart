@@ -38,7 +38,9 @@ class SuppliersActions {
     String? contactName,
     String? email,
     String? address,
-    required int openingBalance,
+
+    /// `null` : non envoyée (magasinier — reprise de dette : admin seul).
+    int? openingBalance,
   }) async {
     final fields = <String, Object?>{
       'name': name,
@@ -46,7 +48,7 @@ class SuppliersActions {
       'contactName': contactName,
       'email': email,
       'address': address,
-      'openingBalance': openingBalance,
+      'openingBalance': ?openingBalance,
     };
     final supplier = id == null
         ? await _api.create(fields)
