@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/dates.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
@@ -11,6 +12,7 @@ import 'package:gestion_magasin/features/product_reports/data/product_reports_ap
 import 'package:gestion_magasin/features/product_reports/presentation/product_reports_screen.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
+import 'package:gestion_magasin/ui/widgets/period_filter.dart';
 
 import 'support/fakes.dart';
 
@@ -23,6 +25,7 @@ class _FakeApi extends ProductReportsApi {
   ProductDemand? demandData;
   final dormantDays = <int>[];
   final demandDays = <int>[];
+  final demandFrom = <String?>[];
 
   @override
   Future<DormantProductPage> dormant({int days = 120, int limit = 50}) async {
@@ -41,8 +44,13 @@ class _FakeApi extends ProductReportsApi {
   }
 
   @override
-  Future<ProductDemand> demand({int days = 30}) async {
+  Future<ProductDemand> demand({
+    int days = 30,
+    String? from,
+    String? to,
+  }) async {
     demandDays.add(days);
+    demandFrom.add(from);
     return (demandData ?? const ProductDemand()).copyWith(days: days);
   }
 }
@@ -61,7 +69,8 @@ class _TruncatedApi extends ProductReportsApi {
   }
 
   @override
-  Future<ProductDemand> demand({int days = 30}) => _inner.demand(days: days);
+  Future<ProductDemand> demand({int days = 30, String? from, String? to}) =>
+      _inner.demand(days: days);
 }
 
 DormantProduct _dormant({
@@ -231,6 +240,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.demandDays, [30, 90]);
+
+    // Dates précises (2026-10-13) : la période part au serveur.
+    await tester.tap(find.byType(PeriodFilter));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hier'));
+    await tester.pumpAndSettle();
+    expect(
+      api.demandFrom.last,
+      isoDay(
+        DateUtils.dateOnly(DateTime.now()).subtract(const Duration(days: 1)),
+      ),
+    );
   });
 
   /// Les valeurs proposées doivent tenir dans les bornes du serveur (7 à 730),

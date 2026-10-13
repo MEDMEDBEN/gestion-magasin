@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
 import '../../../data/models/page_meta.dart';
+import '../../../ui/widgets/period_filter.dart';
 import '../data/product_report_models.dart';
 import '../data/product_reports_api.dart';
 
@@ -29,6 +30,20 @@ final dormantDaysProvider = NotifierProvider<DaysController, int>(
 final demandDaysProvider = NotifierProvider<DaysController, int>(
   () => DaysController(30),
 );
+
+/// Période PRÉCISE de la demande (du … au …, 2026-10-13) ; `null` : les
+/// N derniers jours de `demandDaysProvider`.
+class DemandPeriodController extends Notifier<HistoryPeriod?> {
+  @override
+  HistoryPeriod? build() => null;
+
+  void set(HistoryPeriod? period) => state = period;
+}
+
+final demandPeriodProvider =
+    NotifierProvider<DemandPeriodController, HistoryPeriod?>(
+      DemandPeriodController.new,
+    );
 
 /// Produits dormants. Lu EN LIGNE : un rapport est une photo de l'instant, le
 /// garder sur l'appareil ferait décider sur des chiffres périmés.
@@ -59,5 +74,9 @@ final productDemandProvider = FutureProvider.autoDispose<ProductDemand>((
   ref.watch(serverReachableProvider);
   return ref
       .watch(productReportsApiProvider)
-      .demand(days: ref.watch(demandDaysProvider));
+      .demand(
+        days: ref.watch(demandDaysProvider),
+        from: ref.watch(demandPeriodProvider)?.from,
+        to: ref.watch(demandPeriodProvider)?.to,
+      );
 });

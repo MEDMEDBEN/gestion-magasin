@@ -64,6 +64,26 @@ class _FakeConversationsApi extends ConversationsApi {
     return updated;
   }
 
+  final created = <(String, List<String>, String)>[];
+
+  @override
+  Future<List<ConversationRecipient>> recipients() async => const [
+    ConversationRecipient(id: 'moi', fullName: 'Nadia Kaci'),
+    ConversationRecipient(id: 'samir', fullName: 'Samir Haddad'),
+  ];
+
+  @override
+  Future<Conversation> create({
+    required String subject,
+    required List<String> participantIds,
+    required String body,
+  }) async {
+    created.add((subject, participantIds, body));
+    final thread = _thread(id: 'c-new', subject: subject);
+    threads = [...threads, thread];
+    return thread;
+  }
+
   @override
   Future<Conversation> close(String id) async {
     closeCalls++;
@@ -168,13 +188,32 @@ void main() {
     },
   );
 
+  /// Demande MEDMEDBEN du 2026-10-13 : l'équipe visible, comme une vraie
+  /// messagerie — un geste pour écrire à quelqu'un.
+  testWidgets('équipe : toucher un membre ouvre une discussion avec lui', (
+    tester,
+  ) async {
+    final api = await _pumpList(tester, threads: const []);
+    // Soi-même n'est pas proposé.
+    expect(find.text('Samir'), findsOneWidget);
+    expect(find.text('Nadia'), findsNothing);
+
+    await tester.tap(find.text('Samir'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Tu passes au dépôt ?');
+    await tester.tap(find.text('Envoyer'));
+    await tester.pumpAndSettle();
+    expect(api.created.single.$2, ['samir']);
+    expect(api.created.single.$3, 'Tu passes au dépôt ?');
+  });
+
   testWidgets('un fil avec du neuf se distingue par son compteur', (
     tester,
   ) async {
     await _pumpList(tester, threads: [_thread(unread: 2)]);
 
     expect(find.text('Rupture câbles 2,5 mm²'), findsOneWidget);
-    expect(find.text('2 non lu(s)'), findsOneWidget);
+    expect(find.byTooltip('2 non lu(s)'), findsOneWidget);
   });
 
   testWidgets(

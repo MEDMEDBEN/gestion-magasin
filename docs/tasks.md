@@ -4,6 +4,27 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Menu, filtres compacts, thème clair, Transferts, Messages, Fournisseurs, dates des Rapports — 2026-10-13 (MEDMEDBEN, Claude)
+
+- Menu caché : la MÊME double flèche (chevronsRight) que pour réduire, en haut à gauche de la barre de titre
+  (`_TopBar.onExpand`) ; la languette du bord est supprimée.
+- Filtres trop grands : `StatTile` devient une pastille compacte d'une ligne (rangée `Wrap`) ; `chipTheme`
+  global compact (toutes les `ChoiceChip`/`FilterChip` de l'app).
+- Thème clair « papier » (`mobileLight`/`desktopLight`) : fond gris doux, cartes blanc cassé (plus de blanc
+  pur), encre adoucie, couleurs d'état plus profondes.
+- Transferts : circuit en 4 étapes, pastilles-filtres (À traiter, En préparation, En route, Reçus, Avec écart,
+  Refusés/annulés), cartes avec produits, frise Demandé → Préparé → Expédié → Reçu, bouton de la prochaine
+  étape selon le compte (`_nextStep` → `_perform`).
+- Messages : rangée « Équipe » (avatars) — toucher un membre ouvre sa discussion privée ou en crée une ;
+  liste façon messagerie (avatar, nom, sujet, heure, pastille de non-lus) ; fil en bulles avec avatar,
+  séparateurs de jour, heure dans la bulle.
+- Fournisseurs : présentés comme les confrères (bandeau de totaux + cartes contact : Commander, Je le paie,
+  Fiche).
+- Rapports : « On me réclame » accepte une période du … au … (`GET /reports/product-demand?from&to`, jours
+  d'Alger inclus, remplace `days`) ; « Ne part plus » : « Depuis le … » au calendrier.
+- Preuves : backend tsc + eslint OK, e2e product-reports 24/24 ; app analyze 0, **555 tests** ; captures
+  Stock, Transferts, Fournisseurs, Utilisateurs (clair), Catalogue mobile (clair) vérifiées.
+
 ### Stock sans achat + Achats, Historique, Activité lisibles — 2026-10-13 (MEDMEDBEN, Claude)
 
 - Stock initial à la création d'un produit : existait déjà (Catalogue → nouveau produit, champs magasin /

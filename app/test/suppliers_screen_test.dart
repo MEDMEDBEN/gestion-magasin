@@ -396,11 +396,15 @@ void main() {
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Fournisseur'), findsOneWidget);
-    expect(find.text('S'), findsOneWidget); // initiales (un seul mot)
-    expect(find.text('M. Rahmani'), findsOneWidget);
-    expect(find.text('0550 11 22 33'), findsOneWidget);
-    expect(find.text('Reste dû'), findsOneWidget);
+    // Dans la FICHE ouverte (la carte de la liste, derrière, montre aussi
+    // nom, initiales et téléphone depuis le 2026-10-13).
+    Finder inProfile(String text) =>
+        find.descendant(of: find.byType(Dialog), matching: find.text(text));
+    expect(inProfile('Fournisseur'), findsOneWidget);
+    expect(inProfile('S'), findsOneWidget); // initiales (un seul mot)
+    expect(inProfile('M. Rahmani'), findsOneWidget);
+    expect(inProfile('0550 11 22 33'), findsOneWidget);
+    expect(inProfile('Reste dû'), findsOneWidget);
 
     await tester.tap(find.text('Supprimer'));
     await tester.pumpAndSettle();

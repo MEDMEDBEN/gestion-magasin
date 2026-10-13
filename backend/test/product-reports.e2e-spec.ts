@@ -441,6 +441,29 @@ describe('Rapports produits (e2e)', () => {
       expect(largeIds).not.toContain(annulee);
     });
 
+    /// Période précise (2026-10-13) : du … au …, bornes incluses.
+    it('période de dates : seules les ventes du … au … comptent', async () => {
+      const id = await product({ quantity: '100.000' });
+      await sell(id, '4.000', 4_000, { daysAgo: 200 });
+      const day = (n: number) =>
+        new Date(Date.now() - n * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .slice(0, 10);
+      const inside = await demand(`?from=${day(205)}&to=${day(195)}`);
+      expect(
+        inside.bestSellers.some((r: { productId: string }) => r.productId === id),
+      ).toBe(true);
+      const outside = await demand(`?from=${day(30)}&to=${day(0)}`);
+      expect(
+        outside.bestSellers.some(
+          (r: { productId: string }) => r.productId === id,
+        ),
+      ).toBe(false);
+      await as(tokens.admin)
+        .get('/api/reports/product-demand?from=13-10-2026')
+        .expect(400);
+    });
+
     /// Le tableau de bord (n°15) ne montre à un vendeur que SES ventes : ce
     /// rapport ne doit pas lui donner le CA global du magasin par produit. Les
     /// QUANTITÉS restent visibles — c'est une information de rayon.

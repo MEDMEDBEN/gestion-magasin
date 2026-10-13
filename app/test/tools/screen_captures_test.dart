@@ -1784,7 +1784,7 @@ void main() {
       name: '32_transferts_desktop',
       size: const Size(1440, 900),
       home: const AdaptiveShell(),
-      interact: (t) async => t.tap(find.text('Transferts')),
+      interact: (t) async => t.tap(find.text('Transferts').first),
     ),
   );
   testWidgets(

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, Matches, Max, Min } from 'class-validator';
+import { DAY_MESSAGE, DAY_PATTERN } from '../../common/dto/day-period.dto';
 import { PaginationMetaDto } from '../../common/dto/pagination.dto';
 
 /// Fenêtre d'analyse, en jours. Bornée des deux côtés : en dessous d'une
@@ -44,6 +45,18 @@ export class DemandQueryDto {
   @Max(730)
   @IsOptional()
   days = 30;
+
+  // Période précise (demande MEDMEDBEN du 2026-10-13) : jours d'Alger, bornes
+  // INCLUSES. Présente, elle remplace `days`.
+  @ApiPropertyOptional({ description: 'Du (AAAA-MM-JJ), inclus.' })
+  @Matches(DAY_PATTERN, { message: DAY_MESSAGE })
+  @IsOptional()
+  from?: string;
+
+  @ApiPropertyOptional({ description: 'Au (AAAA-MM-JJ), INCLUS.' })
+  @Matches(DAY_PATTERN, { message: DAY_MESSAGE })
+  @IsOptional()
+  to?: string;
 }
 
 export class DormantProductDto {

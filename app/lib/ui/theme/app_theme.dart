@@ -218,6 +218,27 @@ class AppTheme {
         ),
       ),
 
+      // Filtres en pastilles COMPACTES (demande MEDMEDBEN du 2026-10-13 : les
+      // boutons de filtre étaient trop grands) — un seul réglage pour tous les
+      // écrans.
+      chipTheme: ChipThemeData(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+        labelStyle: AmpereType.meta.copyWith(
+          color: colors.ink2,
+          fontWeight: FontWeight.w600,
+        ),
+        secondaryLabelStyle: AmpereType.meta.copyWith(
+          color: colors.accent,
+          fontWeight: FontWeight.w700,
+        ),
+        backgroundColor: colors.surface,
+        selectedColor: colors.accentBg,
+        checkmarkColor: colors.accent,
+        side: BorderSide(color: colors.line),
+        shape: const StadiumBorder(),
+        iconTheme: IconThemeData(size: 15, color: colors.ink2),
+      ),
       iconTheme: IconThemeData(color: colors.ink2, size: 19),
       textTheme: _textTheme(colors, bodyStyle),
       textSelectionTheme: TextSelectionThemeData(cursorColor: colors.accent),

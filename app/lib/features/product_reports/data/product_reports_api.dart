@@ -27,11 +27,12 @@ class ProductReportsApi {
     });
   }
 
-  Future<ProductDemand> demand({int days = 30}) {
+  /// `from`/`to` (jours inclus) : une période précise, qui remplace `days`.
+  Future<ProductDemand> demand({int days = 30, String? from, String? to}) {
     return guardApi(() async {
       final response = await _dio.get<Map<String, dynamic>>(
         '/reports/product-demand',
-        queryParameters: {'days': days},
+        queryParameters: {'days': days, 'from': ?from, 'to': ?to},
       );
       return ProductDemand.fromJson(response.data!);
     });

@@ -11,6 +11,7 @@ import '../../auth/data/auth_models.dart';
 import '../application/conversations_controller.dart';
 import '../data/conversation_models.dart';
 import '../data/conversations_api.dart';
+import 'conversations_screen.dart' show PersonAvatar, avatarColor;
 
 /// Ouvre un fil en plein écran. L'ouvrir vaut LECTURE côté serveur.
 Future<void> openConversationThread(
@@ -56,7 +57,21 @@ class _ConversationThreadScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(thread.value?.subject ?? 'Conversation'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(thread.value?.subject ?? 'Conversation'),
+            if (thread.value case final value?)
+              Text(
+                value.participants.map((p) => p.fullName).join(', '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.meta.copyWith(
+                  color: AmpereColors.of(context).ink3,
+                ),
+              ),
+          ],
+        ),
         actions: [
           // Clore : l'auteur du fil ou un admin. Le serveur revérifie.
           if (thread.value case final value?)
@@ -87,8 +102,26 @@ class _ConversationThreadScreenState
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 children: [
-                  for (final message in value.messages)
-                    _Bubble(message: message, me: widget.user.id),
+                  for (var i = 0; i < value.messages.length; i++) ...[
+                    // Séparateur de jour, comme une vraie messagerie.
+                    if (i == 0 ||
+                        DateUtils.dateOnly(
+                              value.messages[i].createdAt.toLocal(),
+                            ) !=
+                            DateUtils.dateOnly(
+                              value.messages[i - 1].createdAt.toLocal(),
+                            ))
+                      _DaySeparator(at: value.messages[i].createdAt),
+                    _Bubble(
+                      message: value.messages[i],
+                      me: widget.user.id,
+                      // Avatar et nom au premier message d'une série.
+                      first:
+                          i == 0 ||
+                          value.messages[i - 1].authorId !=
+                              value.messages[i].authorId,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -142,41 +175,114 @@ class _ConversationThreadScreenState
   }
 }
 
-/// Un message. Le mien est aligné à droite et coloré : on repère d'un coup
-/// d'œil qui parle, sans lire les noms.
+/// « Aujourd'hui », « Hier » ou la date, centré entre deux traits.
+class _DaySeparator extends StatelessWidget {
+  const _DaySeparator({required this.at});
+
+  final DateTime at;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final day = DateUtils.dateOnly(at.toLocal());
+    final today = DateUtils.dateOnly(DateTime.now());
+    final label = day == today
+        ? 'Aujourd’hui'
+        : day == today.subtract(const Duration(days: 1))
+        ? 'Hier'
+        : formatDate(day);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: colors.lineSoft)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label,
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+          ),
+          Expanded(child: Divider(color: colors.lineSoft)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un message. Le mien à droite, plein dans la couleur d'accent ; celui des
+/// autres à gauche, avec son avatar : on voit qui parle sans lire.
 class _Bubble extends StatelessWidget {
-  const _Bubble({required this.message, required this.me});
+  const _Bubble({required this.message, required this.me, this.first = true});
 
   final ConversationMessage message;
   final String me;
+  final bool first;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final mine = message.authorId == me;
-
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: mine ? colors.accentBg : colors.surface2,
-          borderRadius: BorderRadius.circular(AmpereGeometry.cardRadiusMobile),
+    const r = Radius.circular(16);
+    final bubble = Container(
+      constraints: const BoxConstraints(maxWidth: 520),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      decoration: BoxDecoration(
+        color: mine ? colors.accent : colors.surface2,
+        borderRadius: BorderRadius.only(
+          topLeft: r,
+          topRight: r,
+          bottomLeft: mine ? r : const Radius.circular(4),
+          bottomRight: mine ? const Radius.circular(4) : r,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!mine && first)
             Text(
-              '${mine ? 'Moi' : message.authorName} · '
-              '${formatDateTime(message.createdAt)}',
-              style: AmpereType.meta.copyWith(color: colors.ink3),
+              message.authorName,
+              style: AmpereType.label.copyWith(
+                color: avatarColor(colors, message.authorName),
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(message.body, style: AmpereType.body),
+          Text(
+            message.body,
+            style: AmpereType.body.copyWith(
+              color: mine ? colors.onAccent : colors.ink,
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Text(
+              formatTime(message.createdAt.toLocal()),
+              style: AmpereType.meta.copyWith(
+                fontSize: 11,
+                color: mine
+                    ? colors.onAccent.withValues(alpha: 0.75)
+                    : colors.ink3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6, top: first ? 6 : 0),
+      child: Row(
+        mainAxisAlignment: mine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!mine) ...[
+            first
+                ? PersonAvatar(name: message.authorName, size: 30)
+                : const SizedBox(width: 30),
+            const SizedBox(width: 8),
           ],
-        ),
+          Flexible(child: bubble),
+        ],
       ),
     );
   }
@@ -216,7 +322,10 @@ class _ReplyBar extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: controller,
-                  decoration: const InputDecoration(hintText: 'Votre réponse'),
+                  decoration: const InputDecoration(
+                    hintText: 'Écrire un message…',
+                    counterText: '',
+                  ),
                   minLines: 1,
                   maxLines: 4,
                   maxLength: 2000,

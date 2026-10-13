@@ -8,6 +8,9 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/offline_documents_notice.dart';
+import '../../../ui/navigation.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -99,93 +102,243 @@ String _progress(Transfer transfer) {
   };
 }
 
+/// Filtre de la liste, porté par les pastilles colorées.
+enum _Filter { all, todo, preparing, onTheWay, received, shortfall, stopped }
+
+bool _matches(Transfer t, _Filter f) => switch (f) {
+  _Filter.all => true,
+  _Filter.todo =>
+    t.status == TransferStatus.requested || t.status == TransferStatus.accepted,
+  _Filter.preparing =>
+    t.status == TransferStatus.preparing || t.status == TransferStatus.prepared,
+  _Filter.onTheWay => t.status == TransferStatus.inTransit,
+  _Filter.received => t.status == TransferStatus.received && !_hasShortfall(t),
+  _Filter.shortfall => _hasShortfall(t),
+  _Filter.stopped =>
+    t.status == TransferStatus.refused || t.status == TransferStatus.cancelled,
+};
+
 /// Transferts magasin ↔ dépôt (spec §16 et §17). Le stock affiché vient du
 /// serveur : une demande n'a rien déplacé, seule la réception rend vendable.
-class TransfersScreen extends ConsumerWidget {
+///
+/// Refonte du 2026-10-13 (MEDMEDBEN) : le circuit est affiché, les pastilles
+/// filtrent, chaque transfert montre ses produits, son avancement en étapes et
+/// le bouton de SA prochaine étape pour ce compte.
+class TransfersScreen extends ConsumerStatefulWidget {
   const TransfersScreen({super.key, required this.user});
 
   final AuthUser user;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rights = TransferRights(user);
+  ConsumerState<TransfersScreen> createState() => _TransfersScreenState();
+}
+
+class _TransfersScreenState extends ConsumerState<TransfersScreen> {
+  _Filter _filter = _Filter.all;
+
+  @override
+  Widget build(BuildContext context) {
+    final rights = TransferRights(widget.user);
+    final colors = AmpereColors.of(context);
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
     final transfers = ref.watch(transfersProvider);
+    final products = {
+      for (final p
+          in ref.watch(activeProductsProvider).value ?? const <Product>[])
+        p.id: p,
+    };
+    final menu = {for (final d in destinationsFor(widget.user)) d.label};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              PeriodFilter(
-                value: ref.watch(transferPeriodProvider),
-                onChanged: ref.read(transferPeriodProvider.notifier).set,
-              ),
-              if (rights.canRequest)
-                FilledButton.icon(
-                  onPressed: () =>
-                      openFormPanel<void>(context, const TransferRequestForm()),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Nouvelle demande'),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: transfers.when(
-            loading: () => const AmpereSkeletonList(rows: 5),
-            error: (error, _) => ScreenStateView(
-              status: error is ApiException && error.isOffline
-                  ? ScreenStatus.offline
-                  : ScreenStatus.error,
-              message: error is ApiException ? error.userMessage : '$error',
-              onRetry: () => ref.invalidate(transfersProvider),
+    return transfers.when(
+      loading: () => const AmpereSkeletonList(rows: 5),
+      error: (error, _) => ScreenStateView(
+        status: error is ApiException && error.isOffline
+            ? ScreenStatus.offline
+            : ScreenStatus.error,
+        message: error is ApiException ? error.userMessage : '$error',
+        onRetry: () => ref.invalidate(transfersProvider),
+      ),
+      data: (list) {
+        final items = list.items;
+        int count(_Filter f) => items.where((t) => _matches(t, f)).length;
+        final shown = items.where((t) => _matches(t, _filter)).toList();
+        StatTile tile(
+          _Filter f,
+          IconData icon,
+          String label,
+          StatusTone tone,
+        ) => StatTile(
+          icon: icon,
+          label: label,
+          value: '${count(f)}',
+          tone: tone,
+          selected: _filter == f,
+          onTap: () => setState(() => _filter = _filter == f ? _Filter.all : f),
+        );
+        final actions = [
+          if (rights.canRequest)
+            ActionTile(
+              icon: LucideIcons.plus,
+              title: 'Nouvelle demande',
+              subtitle: 'Demander au dépôt ce qui manque au magasin.',
+              tone: StatusTone.info,
+              prominent: true,
+              onTap: () =>
+                  openFormPanel<void>(context, const TransferRequestForm()),
             ),
-            data: (list) => list.items.isEmpty
-                ? const ScreenStateView(
-                    status: ScreenStatus.empty,
-                    title: 'Aucun transfert',
-                    message:
-                        'Le magasin demande ce qui lui manque ; le dépôt '
-                        'prépare, expédie, et le magasin réceptionne.',
-                  )
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                    children: [
-                      OfflineDocumentsNotice(cachedAt: list.cachedAt),
-                      for (final t in list.items)
-                        Card(
-                          child: ListTile(
-                            title: Text(
-                              '${t.number} · ${t.lines.length} ligne(s)',
-                            ),
-                            subtitle: Text(
-                              '${_progress(t)}'
-                              '${t.priority == TransferPriority.normal ? '' : ' · priorité ${t.priority.label.toLowerCase()}'}',
-                            ),
-                            trailing: AmpereBadge(
-                              label: _hasShortfall(t)
-                                  ? 'Reçue · écart'
-                                  : t.status.label,
-                              tone: _tone(t),
-                            ),
-                            onTap: () => _openActions(context, ref, t, rights),
-                          ),
-                        ),
-                    ],
+          if (menu.contains('Stock'))
+            ActionTile(
+              icon: LucideIcons.warehouse,
+              title: 'Voir le stock',
+              subtitle: 'Ce qu’il reste au dépôt avant de demander.',
+              tone: StatusTone.neutral,
+              onTap: () => goToDestination(ref, 'Stock'),
+            ),
+        ];
+
+        return ListView(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          children: [
+            GuideSteps(
+              title: 'LE CIRCUIT D’UN TRANSFERT',
+              current: items.isEmpty ? 0 : null,
+              steps: const [
+                ('Demande', 'Le magasin dit ce qui lui manque, et l’urgence.'),
+                (
+                  'Préparation',
+                  'Le dépôt accepte, rassemble et compte ce qu’il envoie.',
+                ),
+                ('Expédition', 'La marchandise part : elle est « en transit ».'),
+                (
+                  'Réception',
+                  'Le magasin compte ce qui arrive : c’est vendable. Un '
+                      'manquant revient au dépôt.',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (actions.isNotEmpty) ...[
+              ActionGrid(children: actions),
+              const SizedBox(height: 12),
+            ],
+            if (items.isNotEmpty) ...[
+              StatGrid(
+                children: [
+                  tile(
+                    _Filter.todo,
+                    LucideIcons.inbox,
+                    'À traiter',
+                    StatusTone.info,
                   ),
-          ),
-        ),
-      ],
+                  tile(
+                    _Filter.preparing,
+                    LucideIcons.packageOpen,
+                    'En préparation',
+                    StatusTone.warn,
+                  ),
+                  tile(
+                    _Filter.onTheWay,
+                    LucideIcons.truck,
+                    'En route',
+                    StatusTone.warn,
+                  ),
+                  tile(
+                    _Filter.received,
+                    LucideIcons.circleCheck,
+                    'Reçus',
+                    StatusTone.ok,
+                  ),
+                  tile(
+                    _Filter.shortfall,
+                    LucideIcons.triangleAlert,
+                    'Avec écart',
+                    StatusTone.error,
+                  ),
+                  tile(
+                    _Filter.stopped,
+                    LucideIcons.ban,
+                    'Refusés / annulés',
+                    StatusTone.neutral,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'TRANSFERTS',
+                    style: AmpereType.label.copyWith(color: colors.ink3),
+                  ),
+                ),
+                PeriodFilter(
+                  value: ref.watch(transferPeriodProvider),
+                  onChanged: ref.read(transferPeriodProvider.notifier).set,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            OfflineDocumentsNotice(cachedAt: list.cachedAt),
+            if (items.isEmpty)
+              const AmpereInlineAlert(
+                tone: StatusTone.info,
+                icon: LucideIcons.info,
+                message:
+                    'Aucun transfert sur la période. Le magasin demande ce qui '
+                    'lui manque ; le dépôt prépare, expédie, et le magasin '
+                    'réceptionne.',
+              )
+            else if (shown.isEmpty)
+              const ScreenStateView(
+                status: ScreenStatus.empty,
+                title: 'Rien dans cette catégorie',
+              )
+            else
+              for (final t in shown)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _TransferCard(
+                    transfer: t,
+                    products: products,
+                    next: _nextStep(t, rights),
+                    onTap: () => _openActions(context, ref, t, rights),
+                    onNext: (action) => _perform(context, ref, t, action),
+                  ),
+                ),
+          ],
+        );
+      },
     );
   }
+
+  /// La prochaine étape que CE compte peut faire, en bouton sur la carte.
+  (String action, String label, IconData icon)? _nextStep(
+    Transfer t,
+    TransferRights rights,
+  ) => switch (t.status) {
+    TransferStatus.requested when rights.canPrepare => (
+      'accept',
+      'Accepter',
+      LucideIcons.check,
+    ),
+    TransferStatus.accepted || TransferStatus.preparing
+        when rights.canPrepare =>
+      ('prepare', 'Préparer', LucideIcons.packageOpen),
+    TransferStatus.prepared when rights.canPrepare => (
+      'ship',
+      'Envoyer au magasin',
+      LucideIcons.truck,
+    ),
+    TransferStatus.inTransit when rights.canReceive => (
+      'receive',
+      'Réceptionner',
+      LucideIcons.packageCheck,
+    ),
+    _ => null,
+  };
 
   /// Actions proposées = celles que le serveur accepterait à cet instant.
   Future<void> _openActions(
@@ -246,7 +399,15 @@ class TransfersScreen extends ConsumerWidget {
       ),
     );
     if (action == null || !context.mounted) return;
+    await _perform(context, ref, transfer, action);
+  }
 
+  Future<void> _perform(
+    BuildContext context,
+    WidgetRef ref,
+    Transfer transfer,
+    String action,
+  ) async {
     if (action == 'prepare' || action == 'receive') {
       await openFormPanel<void>(
         context,
@@ -388,6 +549,183 @@ class TransfersScreen extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Un transfert : ses produits, ses étapes en pastilles, l'écart en rouge et
+/// le bouton de la prochaine étape.
+class _TransferCard extends StatelessWidget {
+  const _TransferCard({
+    required this.transfer,
+    required this.products,
+    required this.next,
+    required this.onTap,
+    required this.onNext,
+  });
+
+  final Transfer transfer;
+  final Map<String, Product> products;
+  final (String, String, IconData)? next;
+  final VoidCallback onTap;
+  final ValueChanged<String> onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final t = transfer;
+    final tone = _tone(t);
+    final shortfall = _hasShortfall(t);
+    final stopped =
+        t.status == TransferStatus.refused ||
+        t.status == TransferStatus.cancelled;
+    // 0 demandé, 1 préparé, 2 expédié, 3 reçu.
+    final reached = switch (t.status) {
+      TransferStatus.requested || TransferStatus.accepted => 0,
+      TransferStatus.preparing || TransferStatus.prepared => 1,
+      TransferStatus.inTransit => 2,
+      TransferStatus.received => 3,
+      _ => -1,
+    };
+    final names = [
+      for (final l in t.lines.take(3))
+        '${products[l.productId]?.name ?? 'Produit'} ×'
+            '${formatQuantity(l.requestedQuantity)}',
+      if (t.lines.length > 3) '+${t.lines.length - 3}',
+    ].join(' · ');
+    final urgent = t.priority != TransferPriority.normal;
+
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: shortfall
+                  ? colors.error.withValues(alpha: 0.6)
+                  : urgent && !stopped && reached < 3
+                  ? colors.warn.withValues(alpha: 0.6)
+                  : colors.line,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    LucideIcons.arrowLeftRight,
+                    size: 18,
+                    color: tone.foreground(colors),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${t.number} · ${t.lines.length} ligne(s)',
+                      style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                    ),
+                  ),
+                  AmpereBadge(
+                    label: shortfall ? 'Reçue · écart' : t.status.label,
+                    tone: tone,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                names,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.body.copyWith(color: colors.ink2),
+              ),
+              Text(
+                '${_progress(t)}'
+                '${urgent ? ' · priorité ${t.priority.label.toLowerCase()}' : ''}',
+                style: AmpereType.meta.copyWith(
+                  color: shortfall ? colors.error : colors.ink3,
+                ),
+              ),
+              if (!stopped) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    for (final (i, step) in const [
+                      'Demandé',
+                      'Préparé',
+                      'Expédié',
+                      'Reçu',
+                    ].indexed) ...[
+                      if (i > 0)
+                        Expanded(
+                          child: Container(
+                            height: 2,
+                            color: i <= reached ? colors.ok : colors.line,
+                          ),
+                        ),
+                      _Step(
+                        label: step,
+                        done: i <= reached,
+                        current: i == reached && reached < 3,
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+              if (next case (final action, final label, final icon)?) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: colors.ok,
+                      foregroundColor: colors.bg,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: () => onNext(action),
+                    icon: Icon(icon, size: 16),
+                    label: Text(label),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Step extends StatelessWidget {
+  const _Step({required this.label, required this.done, required this.current});
+
+  final String label;
+  final bool done;
+  final bool current;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final color = current
+        ? colors.warn
+        : done
+        ? colors.ok
+        : colors.ink3;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          done ? LucideIcons.circleCheck : LucideIcons.circle,
+          size: 14,
+          color: color,
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: AmpereType.meta.copyWith(color: color)),
+      ],
     );
   }
 }

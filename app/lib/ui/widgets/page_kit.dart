@@ -10,6 +10,8 @@ import '../theme/ampere_typography.dart';
 /// surveiller, vert = en ordre, bleu = en cours / information.
 
 /// Un chiffre clé coloré, cliquable comme filtre (« 3 en rupture »).
+/// Pastille compacte sur une ligne (2026-10-13 : les tuiles étaient trop
+/// grandes) ; choisie, elle prend la couleur de son état.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -34,50 +36,31 @@ class StatTile extends StatelessWidget {
     final fg = tone.foreground(colors);
     return Material(
       color: selected ? tone.background(colors) : colors.surface,
-      borderRadius: BorderRadius.circular(12),
+      shape: StadiumBorder(
+        side: BorderSide(color: selected ? fg : colors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? fg : colors.line,
-              width: selected ? 1.6 : 1,
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: tone.background(colors),
-                  borderRadius: BorderRadius.circular(10),
+              Icon(icon, size: 15, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                value,
+                style: AmpereType.bodyStrong.copyWith(
+                  color: fg,
+                  fontFeatures: AmpereType.tabular,
                 ),
-                child: Icon(icon, size: 18, color: fg),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      value,
-                      style: AmpereType.numeric.copyWith(
-                        color: fg,
-                        fontFeatures: AmpereType.tabular,
-                      ),
-                    ),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.meta.copyWith(color: colors.ink2),
-                    ),
-                  ],
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: AmpereType.meta.copyWith(
+                  color: selected ? colors.ink : colors.ink2,
                 ),
               ),
             ],
@@ -88,27 +71,15 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// Grille de [StatTile] : 4 par ligne au poste, 2 sur téléphone.
+/// Rangée de [StatTile] : à la suite, à la ligne si besoin.
 class StatGrid extends StatelessWidget {
   const StatGrid({super.key, required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final perRow = constraints.maxWidth >= 720 ? children.length : 2;
-      const gap = 8.0;
-      final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
-      return Wrap(
-        spacing: gap,
-        runSpacing: gap,
-        children: [
-          for (final child in children) SizedBox(width: width, child: child),
-        ],
-      );
-    },
-  );
+  Widget build(BuildContext context) =>
+      Wrap(spacing: 6, runSpacing: 6, children: children);
 }
 
 /// Une action expliquée : icône colorée, titre, une ligne de « pourquoi ».

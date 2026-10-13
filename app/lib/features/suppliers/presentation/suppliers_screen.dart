@@ -16,6 +16,8 @@ import '../../../core/file_import.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/screen_state.dart';
+import '../../purchases/presentation/purchase_order_form.dart';
+import '../../sales/presentation/contact_card.dart';
 import '../../auth/data/auth_models.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
 import '../data/suppliers_api.dart';
@@ -174,31 +176,80 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                         : null,
                     searchTerm: _query.isEmpty ? null : _query,
                   )
+                // Cartes contact, comme les confrères de la Vente (demande
+                // MEDMEDBEN du 2026-10-13) : qui, ce que je lui dois, et les
+                // gestes courants sans ouvrir la fiche.
                 : ListView(
                     padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
                     children: [
-                      for (final s in items)
-                        Card(
-                          child: ListTile(
-                            title: Text(s.name),
-                            subtitle: Text(
-                              [
-                                s.phone ?? 'Sans téléphone',
-                                if (s.contactName != null) s.contactName!,
-                                'payé ${formatDA(s.paidAmount)}',
-                              ].join(' · '),
+                      SummaryStrip(
+                        items: [
+                          ('Fournisseurs', '${items.length}', colors.accentHi),
+                          (
+                            'Je leur dois',
+                            formatDA(items.fold(0, (t, s) => t + s.balanceDue)),
+                            colors.warn,
+                          ),
+                          (
+                            'Marchandise reçue',
+                            formatDA(
+                              items.fold(0, (t, s) => t + s.receivedAmount),
                             ),
-                            trailing: AmpereBadge(
-                              label: s.balanceDue > 0
+                            colors.ok,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      ContactGrid(
+                        children: [
+                          for (final s in items)
+                            ContactCard(
+                              name: s.name,
+                              phone: s.phone,
+                              tags: [?s.contactName],
+                              status: s.balanceDue > 0
                                   ? 'Dette ${formatDA(s.balanceDue)}'
                                   : 'À jour',
-                              tone: s.balanceDue > 0
-                                  ? StatusTone.warn
-                                  : StatusTone.ok,
+                              tone: s.balanceDue > 0 ? colors.warn : colors.ok,
+                              amounts: [
+                                (
+                                  'Reçu',
+                                  formatDA(s.receivedAmount),
+                                  colors.accent,
+                                ),
+                                ('Payé', formatDA(s.paidAmount), colors.ok),
+                                (
+                                  'Je lui dois',
+                                  formatDA(s.balanceDue),
+                                  colors.warn,
+                                ),
+                              ],
+                              onTap: () => _openActions(s, rights),
+                              actions: [
+                                if (rights.canSeePurchases)
+                                  (
+                                    LucideIcons.packagePlus,
+                                    'Commander',
+                                    () => openFormPanel<void>(
+                                      context,
+                                      const PurchaseOrderForm(),
+                                    ),
+                                  ),
+                                if (rights.canPay && s.balanceDue > 0)
+                                  (
+                                    LucideIcons.handCoins,
+                                    'Je le paie',
+                                    () => _pay(s),
+                                  ),
+                                (
+                                  LucideIcons.idCard,
+                                  'Fiche',
+                                  () => _openActions(s, rights),
+                                ),
+                              ],
                             ),
-                            onTap: () => _openActions(s, rights),
-                          ),
-                        ),
+                        ],
+                      ),
                     ],
                   ),
           ),

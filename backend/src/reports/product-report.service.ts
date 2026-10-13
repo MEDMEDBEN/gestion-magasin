@@ -1,3 +1,4 @@
+import { localDayRange } from '../common/document-number';
 import { Injectable } from '@nestjs/common';
 import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
 import { formatQuantity } from '../common/quantity';
@@ -167,12 +168,21 @@ export class ProductReportService {
     user: AuthenticatedUser,
   ): Promise<ProductDemandDto> {
     const seesRevenue = user.roles.includes(RoleCode.ADMIN);
-    const since = daysAgo(query.days);
+    // Période précise (du … au …, inclus) ou les N derniers jours.
+    const range = localDayRange(query.from, query.to);
+    const since = range?.gte ?? daysAgo(query.days);
+    const until = range?.lt ?? new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const days = Math.max(
+      1,
+      Math.round((until.getTime() - since.getTime()) / (24 * 60 * 60 * 1000)),
+    );
 
     const [sold, requested, unmet] = await Promise.all([
       this.prisma.saleLine.groupBy({
         by: ['productId'],
-        where: { sale: { status: 'VALIDEE', soldAt: { gte: since } } },
+        where: {
+          sale: { status: 'VALIDEE', soldAt: { gte: since, lt: until } },
+        },
         _sum: { quantity: true, lineTotalHt: true },
         orderBy: { _sum: { quantity: 'desc' } },
         take: TOP,
@@ -181,7 +191,7 @@ export class ProductReportService {
         by: ['productId'],
         where: {
           transfer: {
-            createdAt: { gte: since },
+            createdAt: { gte: since, lt: until },
             // Une demande refusée ou annulée n'est pas une demande servie ni à
             // servir : elle ne dit rien de ce que le magasin réclame vraiment.
             status: { notIn: ['REFUSEE', 'ANNULEE'] },
@@ -206,6 +216,7 @@ export class ProductReportService {
         FROM "TransferLine" tl
         JOIN "Transfer" t ON t."id" = tl."transferId"
         WHERE t."createdAt" >= ${since}
+          AND t."createdAt" < ${until}
           AND t."status"::text IN ('PREPAREE', 'EN_TRANSIT', 'RECUE')
           AND tl."requestedQuantity" > tl."preparedQuantity"
         GROUP BY tl."productId"
@@ -222,7 +233,7 @@ export class ProductReportService {
     ]);
 
     return {
-      days: query.days,
+      days: range ? days : query.days,
       bestSellers: sold.flatMap((row) =>
         ProductReportService.line(
           names,

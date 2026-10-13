@@ -117,30 +117,23 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               VerticalDivider(width: 1, color: colors.line),
             ],
             Expanded(
-              child: Stack(
+              child: Column(
                 children: [
-                  Column(
-                    children: [
-                      _TopBar(title: entries[index].label, user: widget.user),
-                      Divider(height: 1, color: colors.line),
-                      Expanded(
-                        child: entries[index].builder(context, widget.user),
-                      ),
-                    ],
-                  ),
-                  if (compact)
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: _MenuHandle(
-                          onTap: () => ref
+                  _TopBar(
+                    title: entries[index].label,
+                    user: widget.user,
+                    // Menu caché : la MÊME double flèche que pour le réduire,
+                    // en haut à gauche (demande MEDMEDBEN du 2026-10-13).
+                    onExpand: compact
+                        ? () => ref
                               .read(sidebarCollapsedProvider.notifier)
-                              .set(collapsed: false),
-                        ),
-                      ),
-                    ),
+                              .set(collapsed: false)
+                        : null,
+                  ),
+                  Divider(height: 1, color: colors.line),
+                  Expanded(
+                    child: entries[index].builder(context, widget.user),
+                  ),
                 ],
               ),
             ),
@@ -409,51 +402,16 @@ class _NavItem extends StatelessWidget {
   }
 }
 
-/// Poignée du menu caché : une languette au milieu du bord gauche.
-class _MenuHandle extends StatelessWidget {
-  const _MenuHandle({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Tooltip(
-      message: 'Agrandir le menu',
-      child: Material(
-        color: colors.surface2,
-        elevation: 3,
-        shape: RoundedRectangleBorder(
-          borderRadius: const BorderRadius.horizontal(
-            right: Radius.circular(12),
-          ),
-          side: BorderSide(color: colors.line),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: SizedBox(
-            width: 18,
-            height: 64,
-            child: Icon(
-              LucideIcons.chevronRight,
-              size: 16,
-              color: colors.accentHi,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// Barre supérieure fine (44 px, 2026-10-12) : titre, indicateur de sync,
 /// bascule de thème — la place va au contenu.
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.title, required this.user});
+  const _TopBar({required this.title, required this.user, this.onExpand});
 
   final String title;
   final AuthUser user;
+
+  /// Menu caché : rouvre le menu (`null` quand il est affiché).
+  final VoidCallback? onExpand;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -469,6 +427,18 @@ class _TopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
+          if (onExpand != null) ...[
+            IconButton(
+              tooltip: 'Agrandir le menu',
+              onPressed: onExpand,
+              icon: Icon(
+                LucideIcons.chevronsRight,
+                size: 18,
+                color: colors.ink2,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           Expanded(
             child: Text(
               title,

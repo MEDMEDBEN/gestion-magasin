@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
@@ -8,6 +9,7 @@ import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/period_filter.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/data/catalog_models.dart' show productUnitShort;
 import '../application/product_reports_controller.dart';
@@ -98,11 +100,41 @@ class _DormantTab extends ConsumerWidget {
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  child: _DaysChips(
-                    value: days,
-                    choices: const [30, 60, 120, 365],
-                    onChanged: (value) =>
-                        ref.read(dormantDaysProvider.notifier).set(value),
+                  child: Row(
+                    children: [
+                      _DaysChips(
+                        value: days,
+                        choices: const [30, 60, 120, 365],
+                        onChanged: (value) =>
+                            ref.read(dormantDaysProvider.notifier).set(value),
+                      ),
+                      // Date précise : « rien vendu depuis le … » (2026-10-13),
+                      // dans les bornes du serveur (7 à 730 jours).
+                      ActionChip(
+                        avatar: const Icon(LucideIcons.calendarDays, size: 15),
+                        label: Text(
+                          const [30, 60, 120, 365].contains(days)
+                              ? 'Depuis le…'
+                              : 'Depuis le ${formatDate(DateTime.now().subtract(Duration(days: days)))}',
+                        ),
+                        onPressed: () async {
+                          final today = DateUtils.dateOnly(DateTime.now());
+                          final picked = await showDatePicker(
+                            context: context,
+                            helpText: 'Rien vendu depuis le',
+                            initialDate: today.subtract(Duration(days: days)),
+                            firstDate: today.subtract(
+                              const Duration(days: 730),
+                            ),
+                            lastDate: today.subtract(const Duration(days: 7)),
+                          );
+                          if (picked == null) return;
+                          ref
+                              .read(dormantDaysProvider.notifier)
+                              .set(today.difference(picked).inDays);
+                        },
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -214,6 +246,7 @@ class _DemandTab extends ConsumerWidget {
         ? 24.0
         : 16.0;
     final days = ref.watch(demandDaysProvider);
+    final period = ref.watch(demandPeriodProvider);
     final demand = ref.watch(productDemandProvider);
 
     return Column(
@@ -221,14 +254,27 @@ class _DemandTab extends ConsumerWidget {
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(margin, 12, margin, 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: _DaysChips(
-              value: days,
-              choices: const [7, 30, 90, 365],
-              onChanged: (value) =>
-                  ref.read(demandDaysProvider.notifier).set(value),
-            ),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _DaysChips(
+                // Une période précise choisie : aucune puce n'est active.
+                value: period == null ? days : -1,
+                choices: const [7, 30, 90, 365],
+                onChanged: (value) {
+                  ref.read(demandPeriodProvider.notifier).set(null);
+                  ref.read(demandDaysProvider.notifier).set(value);
+                },
+              ),
+              // Dates précises (demande MEDMEDBEN du 2026-10-13).
+              PeriodFilter(
+                value: period ?? lastDays(days),
+                allowAll: false,
+                onChanged: ref.read(demandPeriodProvider.notifier).set,
+              ),
+            ],
           ),
         ),
         Expanded(
