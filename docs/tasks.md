@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Couleurs vives et cohérentes dans toute l'app — 2026-10-14 (MEDMEDBEN, Claude)
+
+- Accueil : tuiles et bandeau du jour en DÉGRADÉS vifs pleins, texte blanc (`_gradients` dans
+  `home_screen.dart`) : cyan→émeraude (bon), indigo→bleu (en cours), ambre→orange (à surveiller),
+  rose→magenta (urgent).
+- Toutes les pages : couleurs d'état du thème (`ok`/`warn`/`error`/`info` + fonds) passées sur la même famille,
+  en clair et en sombre ; `StatusTone.gradient()` ajouté ; l'action principale (`ActionTile.prominent`) et le
+  filtre choisi (`StatTile.selected`) en dégradé plein, texte blanc.
+- Preuves : app analyze 0, 555 tests ; captures Stock (clair) et Transferts (sombre) vérifiées.
+
 ### Thème clair monochrome (maquette MEDMEDBEN) — 2026-10-13 (MEDMEDBEN, Claude)
 
 - Palette claire (desktop + mobile) : fond gris perle #E9E9EC, cartes et menu BLANCS, accent NOIR #111113

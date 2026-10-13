@@ -33,37 +33,41 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final fg = tone.foreground(colors);
+    const white = Color(0xFFFFFFFF);
+    final fg = selected ? white : tone.foreground(colors);
     return Material(
-      color: selected ? tone.background(colors) : colors.surface,
+      color: colors.surface,
       shape: StadiumBorder(
-        side: BorderSide(color: selected ? fg : colors.line),
+        side: BorderSide(color: selected ? Colors.transparent : colors.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                value,
-                style: AmpereType.bodyStrong.copyWith(
-                  color: fg,
-                  fontFeatures: AmpereType.tabular,
+      child: Ink(
+        decoration: BoxDecoration(gradient: selected ? tone.gradient() : null),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 15, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  value,
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: fg,
+                    fontFeatures: AmpereType.tabular,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: AmpereType.meta.copyWith(
-                  color: selected ? colors.ink : colors.ink2,
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: AmpereType.meta.copyWith(
+                    color: selected ? white : colors.ink2,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -108,49 +112,67 @@ class ActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final fg = tone.foreground(colors);
+    const white = Color(0xFFFFFFFF);
     return Material(
-      color: prominent ? tone.background(colors) : colors.surface,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: prominent ? fg : colors.line),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: prominent ? fg : tone.background(colors),
-                  borderRadius: BorderRadius.circular(11),
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(14),
+      elevation: prominent ? 4 : 0,
+      shadowColor: fg.withValues(alpha: 0.4),
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: BoxDecoration(gradient: prominent ? tone.gradient() : null),
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: prominent ? null : Border.all(color: colors.line),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: prominent
+                        ? white.withValues(alpha: 0.2)
+                        : tone.background(colors),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: Icon(icon, size: 20, color: prominent ? white : fg),
                 ),
-                child: Icon(icon, size: 20, color: prominent ? colors.bg : fg),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AmpereType.rowTitle.copyWith(color: colors.ink),
-                    ),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.meta.copyWith(color: colors.ink3),
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AmpereType.rowTitle.copyWith(
+                          color: prominent ? white : colors.ink,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.meta.copyWith(
+                          color: prominent
+                              ? white.withValues(alpha: 0.85)
+                              : colors.ink3,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Icon(LucideIcons.chevronRight, size: 18, color: colors.ink3),
-            ],
+                Icon(
+                  LucideIcons.chevronRight,
+                  size: 18,
+                  color: prominent ? white : colors.ink3,
+                ),
+              ],
+            ),
           ),
         ),
       ),
