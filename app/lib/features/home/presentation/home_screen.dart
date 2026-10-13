@@ -230,19 +230,27 @@ Future<void> quickAddProduct(
 /// orange = à surveiller ; rouge = urgent.
 enum _Meaning { good, work, watch, urgent }
 
-/// Tons du tableau de bord (2026-10-13, retour MEDMEDBEN : le vert et le
-/// jaune « pas beaux ») : une famille accordée — sarcelle (bon), abricot (à
-/// surveiller), corail (urgent) — réglée pour le clair et pour le sombre.
-Color _tone(AmpereColors colors, _Meaning meaning) {
-  final light = colors.bg.computeLuminance() > 0.4;
-  return switch (meaning) {
-    _Meaning.good => light ? const Color(0xFF0E9F8E) : const Color(0xFF3CD3C0),
-    _Meaning.work => colors.accent,
-    _Meaning.watch => light ? const Color(0xFFE0813A) : const Color(0xFFF6AE78),
-    _Meaning.urgent =>
-      light ? const Color(0xFFE5484D) : const Color(0xFFF6798C),
-  };
-}
+/// Couleurs du tableau de bord (retour MEDMEDBEN du 2026-10-13 : « des
+/// couleurs vives, fluides et cohérentes ») : chaque sens a un DÉGRADÉ vif —
+/// cyan → émeraude (bon), indigo → bleu (en cours), ambre → orange (à
+/// surveiller), rose → magenta (urgent) —, identique en clair et en sombre,
+/// texte blanc dessus.
+const _gradients = {
+  _Meaning.good: [Color(0xFF06B6D4), Color(0xFF10B981)],
+  _Meaning.work: [Color(0xFF6366F1), Color(0xFF3B82F6)],
+  _Meaning.watch: [Color(0xFFF59E0B), Color(0xFFF97316)],
+  _Meaning.urgent: [Color(0xFFF43F5E), Color(0xFFD946EF)],
+};
+
+LinearGradient _gradient(_Meaning meaning) => LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: _gradients[meaning]!,
+);
+
+/// Couleur pleine d'un sens (pastilles, traits, icônes sur fond neutre).
+Color _tone(AmpereColors colors, _Meaning meaning) =>
+    _gradients[meaning]!.first;
 
 /// « 1 tâche » / « 3 tâches » : accorder plutôt que d'écrire « tâche(s) ».
 String _n(int n, String one, String many) => '$n ${n > 1 ? many : one}';
@@ -634,21 +642,23 @@ class _Verdict extends StatelessWidget {
             '${_n(watch, 'point', 'points')} à surveiller',
           )
         : (_Meaning.good, LucideIcons.circleCheck, 'Tout est en ordre');
-    final tone = _tone(colors, meaning);
+    const white = Color(0xFFFFFFFF);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tone.withValues(alpha: 0.45)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [tone.withValues(alpha: 0.18), tone.withValues(alpha: 0.03)],
-        ),
+        borderRadius: BorderRadius.circular(18),
+        gradient: _gradient(meaning),
+        boxShadow: [
+          BoxShadow(
+            color: _tone(colors, meaning).withValues(alpha: 0.35),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(icon, color: tone, size: 26),
+          Icon(icon, color: white, size: 26),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -656,11 +666,13 @@ class _Verdict extends StatelessWidget {
               children: [
                 Text(
                   text,
-                  style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+                  style: AmpereType.sectionTitle.copyWith(color: white),
                 ),
                 Text(
                   'Résumé du ${formatDate(DateTime.now())}',
-                  style: AmpereType.meta.copyWith(color: colors.ink2),
+                  style: AmpereType.meta.copyWith(
+                    color: white.withValues(alpha: 0.85),
+                  ),
                 ),
               ],
             ),
@@ -1027,21 +1039,12 @@ class _Metric extends ConsumerWidget {
     };
     // Clair (maquette du 2026-10-13) : le « travail en cours » est une carte
     // NOIRE pleine, texte blanc — l'accent du thème monochrome.
-    final solid =
-        meaning == _Meaning.work &&
-        Theme.of(context).brightness == Brightness.light;
-    final ink = solid ? colors.onAccent : colors.ink;
+    // Toutes les tuiles : dégradé VIF de leur sens, texte blanc (2026-10-13).
+    const ink = Color(0xFFFFFFFF);
     final card = Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: solid ? colors.accent : null,
-        gradient: solid
-            ? null
-            : LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [tone.withValues(alpha: 0.10), colors.surface],
-              ),
+        borderRadius: BorderRadius.circular(18),
+        gradient: _gradient(meaning),
       ),
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -1054,12 +1057,10 @@ class _Metric extends ConsumerWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: solid
-                      ? ink.withValues(alpha: 0.14)
-                      : tone.withValues(alpha: 0.18),
+                  color: ink.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: Icon(icon, size: 16, color: solid ? ink : tone),
+                child: Icon(icon, size: 16, color: ink),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1067,7 +1068,7 @@ class _Metric extends ConsumerWidget {
                   label,
                   maxLines: 2,
                   style: AmpereType.label.copyWith(
-                    color: solid ? ink.withValues(alpha: 0.75) : colors.ink2,
+                    color: ink.withValues(alpha: 0.85),
                   ),
                 ),
               ),
@@ -1089,11 +1090,7 @@ class _Metric extends ConsumerWidget {
             Text(
               hint,
               style: AmpereType.meta.copyWith(
-                color: solid
-                    ? ink.withValues(alpha: 0.65)
-                    : meaning == _Meaning.work
-                    ? colors.ink3
-                    : tone,
+                color: ink.withValues(alpha: 0.85),
               ),
             ),
           ],
@@ -1104,13 +1101,13 @@ class _Metric extends ConsumerWidget {
                 Icon(
                   e >= 0 ? LucideIcons.trendingUp : LucideIcons.trendingDown,
                   size: 15,
-                  color: e >= 0 ? colors.ok : colors.error,
+                  color: ink,
                 ),
                 const SizedBox(width: 5),
                 Text(
                   '${e >= 0 ? '+' : ''}$e % par rapport à hier',
                   style: AmpereType.meta.copyWith(
-                    color: e >= 0 ? colors.ok : colors.error,
+                    color: ink,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1124,8 +1121,8 @@ class _Metric extends ConsumerWidget {
               child: LinearProgressIndicator(
                 value: s.clamp(0, 1),
                 minHeight: 6,
-                color: colors.error,
-                backgroundColor: colors.warn.withValues(alpha: 0.35),
+                color: ink,
+                backgroundColor: ink.withValues(alpha: 0.3),
               ),
             ),
           ],
@@ -1137,10 +1134,9 @@ class _Metric extends ConsumerWidget {
       width: width,
       child: Card(
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: tone.withValues(alpha: 0.35)),
-        ),
+        elevation: 6,
+        shadowColor: tone.withValues(alpha: 0.45),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: target == null
             ? card
             : InkWell(onTap: () => goToDestination(ref, target), child: card),
