@@ -10,8 +10,8 @@
   (`_TopBar.onExpand`) ; la languette du bord est supprimée.
 - Filtres trop grands : `StatTile` devient une pastille compacte d'une ligne (rangée `Wrap`) ; `chipTheme`
   global compact (toutes les `ChoiceChip`/`FilterChip` de l'app).
-- Thème clair « papier » (`mobileLight`/`desktopLight`) : fond gris doux, cartes blanc cassé (plus de blanc
-  pur), encre adoucie, couleurs d'état plus profondes.
+- Thème clair « ardoise » (choix MEDMEDBEN parmi 4 palettes, 2026-10-13 ; remplace le « papier » du même
+  jour, refusé) : fond #D5DBE3, cartes gris perle #EEF1F5, bordures #B9C2CE, texte bleu nuit, accent #1A5FB4.
 - Transferts : circuit en 4 étapes, pastilles-filtres (À traiter, En préparation, En route, Reçus, Avec écart,
   Refusés/annulés), cartes avec produits, frise Demandé → Préparé → Expédié → Reçu, bouton de la prochaine
   étape selon le compte (`_nextStep` → `_perform`).
