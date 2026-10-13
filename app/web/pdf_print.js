@@ -58,13 +58,22 @@
     }
     var w = width.toFixed(2);
     var h = height.toFixed(2);
+    // Ticket de caisse (rouleau 80 / 58 mm) : AUCUN format imposé — beaucoup
+    // de pilotes thermiques refusent un papier sur mesure et laissent la tâche
+    // « en erreur » dans la file (retour terrain du 2026-10-13). Le ticket part
+    // sur le papier réglé dans l'imprimante (rouleau), à sa largeur exacte.
+    var roll = Math.abs(width - 80) <= 1 || Math.abs(width - 58) <= 1;
     var html =
       '<!doctype html><html><head><meta charset="utf-8"><title>' +
       escapeHtml(name) +
-      '</title><style>@page{size:' + w + 'mm ' + h + 'mm;margin:0}' +
+      '</title><style>' +
+      (roll
+        ? '@page{margin:0}'
+        : '@page{size:' + w + 'mm ' + h + 'mm;margin:0}') +
       'html,body{margin:0;padding:0}' +
       // Un rien sous la hauteur : pas de page blanche ajoutée par l'arrondi.
-      'img{display:block;width:' + w + 'mm;height:calc(' + h + 'mm - 0.3mm);' +
+      'img{display:block;width:' + w + 'mm;' +
+      (roll ? 'height:auto;' : 'height:calc(' + h + 'mm - 0.3mm);') +
       'break-after:page}img:last-child{break-after:auto}' +
       '</style></head><body>' + images.join('') + '</body></html>';
 

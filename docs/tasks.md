@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Tickets en rouleau bloqués « en erreur » — 2026-10-13 (MEDMEDBEN, Claude)
+
+- Terrain : la tâche d'un ticket (rouleau) restait en ERREUR dans la file Windows, les autres formats passaient.
+  Cause : format de papier SUR MESURE (80 × hauteur exacte) refusé par des pilotes thermiques.
+- Correctif : pour un ticket (largeur 80/58 mm), on n'impose plus de papier — web : `@page{margin:0}` sans
+  `size` (image à la largeur exacte) ; poste : `usePrinterSettings: true` (papier du pilote, réglé sur le
+  rouleau). Documents A4/A5 et étiquettes : format exact inchangé.
+- Preuves : app analyze 0, 555 tests ; impression réelle à constater sur le poste.
+
 ### Menu, filtres compacts, thème clair, Transferts, Messages, Fournisseurs, dates des Rapports — 2026-10-13 (MEDMEDBEN, Claude)
 
 - Menu caché : la MÊME double flèche (chevronsRight) que pour réduire, en haut à gauche de la barre de titre

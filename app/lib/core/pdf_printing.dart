@@ -85,6 +85,10 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
       // pdf.js indisponible… : le PDF s'ouvre, comme avant.
     }
   }
+  // Ticket : le papier RÉGLÉ dans l'imprimante (rouleau), jamais un format
+  // sur mesure — beaucoup de pilotes thermiques le refusent et la tâche reste
+  // « en erreur » dans la file (retour terrain du 2026-10-13).
+  final roll = kindOf(format) == PaperKind.ticket;
   if (desktopPrinting) {
     final url = await savedPrinter(
       ref.read(localSettingsStoreProvider),
@@ -96,6 +100,7 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
         onLayout: (_) async => bytes,
         name: name,
         format: format,
+        usePrinterSettings: roll,
       );
       if (done) return;
     }
@@ -104,6 +109,7 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
     onLayout: (_) async => bytes,
     name: name,
     format: format,
+    usePrinterSettings: roll,
     // Le PDF est déjà à sa taille : pas de remise en page par le dialogue.
     dynamicLayout: false,
   );
