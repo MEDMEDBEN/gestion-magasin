@@ -18,10 +18,22 @@ import '../data/stock_models.dart';
 /// Déclaration d'une perte / casse. `appliesImmediately` : l'ADMIN applique
 /// tout de suite ; sinon (MAGASINIER) la déclaration attend sa validation —
 /// c'est le serveur qui en décide, l'écran ne fait que l'annoncer.
+///
+/// `LossForm.entry` : le même formulaire pour AJOUTER du stock sans achat
+/// (décision du 2026-10-13) — motif obligatoire, auteur tracé ; rend le
+/// mouvement créé.
 class LossForm extends ConsumerStatefulWidget {
-  const LossForm({super.key, required this.appliesImmediately, this.product});
+  const LossForm({super.key, required this.appliesImmediately, this.product})
+    : entry = false;
+
+  const LossForm.entry({super.key, this.product})
+    : appliesImmediately = true,
+      entry = true;
 
   final bool appliesImmediately;
+
+  /// Entrée de stock (ajout) au lieu d'une perte (retrait).
+  final bool entry;
 
   /// Produit déjà choisi (depuis sa fiche de stock).
   final Product? product;
@@ -61,6 +73,19 @@ class _LossFormState extends ConsumerState<LossForm> {
     });
     try {
       final comment = _comment.text.trim();
+      if (widget.entry) {
+        final movement = await ref
+            .read(stockActionsProvider)
+            .addEntry(
+              id: _declarationId,
+              productId: _product!.id,
+              locationId: _locationId!,
+              quantity: parseQuantity(_quantity.text)!,
+              comment: comment,
+            );
+        if (mounted) Navigator.of(context).pop<StockMovementEntry>(movement);
+        return;
+      }
       final loss = await ref
           .read(stockActionsProvider)
           .declareLoss(
@@ -107,8 +132,10 @@ class _LossFormState extends ConsumerState<LossForm> {
 
     return FormPanelFrame(
       formKey: _formKey,
-      title: 'Déclarer une perte',
-      submitLabel: widget.appliesImmediately
+      title: widget.entry ? 'Ajouter du stock' : 'Déclarer une perte',
+      submitLabel: widget.entry
+          ? 'Ajouter au stock'
+          : widget.appliesImmediately
           ? 'Déclarer et retirer du stock'
           : 'Envoyer pour validation',
       onSubmit: _submit,
@@ -116,9 +143,13 @@ class _LossFormState extends ConsumerState<LossForm> {
       error: _error,
       children: [
         AmpereInlineAlert(
-          tone: StatusTone.info,
+          tone: widget.entry ? StatusTone.ok : StatusTone.info,
           icon: LucideIcons.info,
-          message: widget.appliesImmediately
+          message: widget.entry
+              ? 'Pour du stock déjà là (sans achat) : la quantité est ajoutée '
+                    'tout de suite, à votre nom, avec le motif. Une livraison '
+                    'fournisseur passe plutôt par Achats (coût d’achat).'
+              : widget.appliesImmediately
               ? 'La quantité est retirée du stock dès l’enregistrement.'
               : 'L’administrateur valide la déclaration avant que le stock '
                     'ne soit modifié.',
@@ -182,7 +213,7 @@ class _LossFormState extends ConsumerState<LossForm> {
           onChanged: _saving ? null : (v) => setState(() => _locationId = v),
         ),
         formFieldGap,
-        const AmpereFieldLabel('Quantité perdue'),
+        AmpereFieldLabel(widget.entry ? 'Quantité ajoutée' : 'Quantité perdue'),
         TextFormField(
           controller: _quantity,
           enabled: !_saving,
@@ -192,7 +223,7 @@ class _LossFormState extends ConsumerState<LossForm> {
           validator: _validateQuantity,
         ),
         formFieldGap,
-        const AmpereFieldLabel('Constat'),
+        AmpereFieldLabel(widget.entry ? 'Motif (obligatoire)' : 'Constat'),
         TextFormField(
           controller: _comment,
           enabled: !_saving,
@@ -200,9 +231,16 @@ class _LossFormState extends ConsumerState<LossForm> {
           minLines: 2,
           maxLines: 4,
           style: inputStyle,
-          decoration: const InputDecoration(
-            hintText: 'Ex. carton écrasé à la réception',
+          decoration: InputDecoration(
+            hintText: widget.entry
+                ? 'Ex. stock déjà en rayon, retrouvé au dépôt'
+                : 'Ex. carton écrasé à la réception',
           ),
+          validator: widget.entry
+              ? (v) => (v ?? '').trim().length < 3
+                    ? 'Dites pourquoi ce stock entre'
+                    : null
+              : null,
         ),
       ],
     );

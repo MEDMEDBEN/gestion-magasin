@@ -16,6 +16,7 @@ const LABELS: Record<string, string> = {
   TRANSFERT_ENTREE: 'Transfert (entrée)',
   AJUSTEMENT_INVENTAIRE: 'Ajustement d’inventaire',
   PERTE_CASSE: 'Perte / casse',
+  ENTREE_MANUELLE: 'Entrée manuelle',
   // Opérations à l'origine d'un mouvement
   SALE: 'Vente',
   TRANSFER: 'Transfert',

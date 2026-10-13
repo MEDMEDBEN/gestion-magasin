@@ -4,6 +4,29 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Stock sans achat + Achats, Historique, Activité lisibles — 2026-10-13 (MEDMEDBEN, Claude)
+
+- Stock initial à la création d'un produit : existait déjà (Catalogue → nouveau produit, champs magasin /
+  dépôt, à l'auteur) ; texte d'aide complété.
+- NOUVEAU : **entrée de stock manuelle** pour un produit existant, sans achat. Migration additive
+  `20261013090000_stock_manual_entry` (`StockMovementType.ENTREE_MANUELLE`). `POST /stock/entries`
+  (ADMIN|MAGASINIER + `stock.adjust`, `@RequireFreshAccess`) : quantité > 0, motif obligatoire (≥ 3), magasin
+  ou dépôt, idempotente par `id` client, mouvement au journal (userId) + audit. Le journal
+  (`GET /stock/movements`) porte désormais `userName` (« par … »), masqué au vendeur pour une perte.
+  App : `LossForm.entry` (même formulaire), bouton vert « Ajouter du stock » (écran Stock et fiche produit),
+  journal du produit avec auteur et motif.
+- Achats : guide 4 étapes, actions (Nouvelle commande, Que racheter ?, Fournisseurs, Stock sans achat),
+  tuiles-filtres (Brouillons, À recevoir, Partiellement reçues, En retard, Terminées), cartes avec
+  prochaine étape et bouton « Réceptionner » direct ; menu d'une commande avec icônes colorées.
+- Historique (audit) : bandeau d'explication, filtres d'action en pastilles colorées, lignes rangées par
+  jour, icône colorée et aperçu du changement principal sans ouvrir la fiche.
+- Activité (rapports) : bandeau d'explication, cartes avec icône + rôle, chiffres en pavés colorés (marge
+  verte/rouge, ruptures rouges → Stock), barres par catégorie et par fournisseur (part reçue).
+- Preuves : backend tsc + eslint OK, e2e stock 20/20, unitaires stock 2/2 ; app analyze 0, **554 tests** ;
+  captures Achats, Historique, Stock vérifiées.
+- **Prochaine étape** : même traitement pour Transferts, Réappro, Tâches, Signalements, Devis ; libellés
+  lisibles des champs bruts de l'historique (`adjustedLines`, statuts `VALIDEE`…).
+
 ### UI/UX Stock, Inventaire, Vente + droits du magasinier — 2026-10-13 (MEDMEDBEN, Claude)
 
 - Demande : pages Stock et Inventaire jamais « vides sans sens », actions en boutons clairs, couleur qui

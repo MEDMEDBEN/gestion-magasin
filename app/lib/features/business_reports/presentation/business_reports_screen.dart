@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/file_export.dart';
@@ -9,6 +10,7 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/export_button.dart';
+import '../../../ui/navigation.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../application/business_reports_controller.dart';
 import '../data/business_report_models.dart';
@@ -33,6 +35,15 @@ class BusinessReportsScreen extends ConsumerWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(margin, 12, margin, 24),
       children: [
+        const AmpereInlineAlert(
+          tone: StatusTone.info,
+          icon: LucideIcons.chartLine,
+          message:
+              'Le point sur l’activité du magasin : ce qui s’est vendu et '
+              'rapporté, ce qui dort en stock, ce qui a été acheté. Choisissez '
+              'la période ; chaque carte s’exporte (Excel, CSV, PDF).',
+        ),
+        const SizedBox(height: 12),
         Align(
           alignment: Alignment.centerLeft,
           child: PeriodFilter(
@@ -61,6 +72,9 @@ class BusinessReportsScreen extends ConsumerWidget {
 /// Coquille commune : titre, état de chargement, erreur, et le contenu.
 class _ReportCard<T> extends StatelessWidget {
   const _ReportCard({
+    required this.icon,
+    required this.tone,
+    required this.explain,
     required this.title,
     required this.value,
     required this.onRetry,
@@ -68,6 +82,11 @@ class _ReportCard<T> extends StatelessWidget {
     required this.onExport,
   });
 
+  final IconData icon;
+  final StatusTone tone;
+
+  /// À quoi sert la carte, en une ligne.
+  final String explain;
   final String title;
   final Future<ExportedFile> Function(ExportFormat format) onExport;
   final AsyncValue<T> value;
@@ -76,6 +95,7 @@ class _ReportCard<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
@@ -84,11 +104,32 @@ class _ReportCard<T> extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text(title, style: AmpereType.rowTitle)),
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: tone.background(colors),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 18, color: tone.foreground(colors)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: AmpereType.rowTitle),
+                      Text(
+                        explain,
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                ),
                 ExportButton(targets: [ExportTarget(title, onExport)]),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 10),
             value.when(
               loading: () => const _CardSkeleton(),
               error: (error, _) => ScreenStateView(
@@ -139,11 +180,84 @@ class _CardSkeleton extends StatelessWidget {
 /// Une grandeur et son libellé. `null` s'affiche « — » et jamais « 0 DA » : un
 /// zéro se lirait comme un fait, alors que c'est une inconnue.
 class _Figure extends StatelessWidget {
-  const _Figure({required this.label, required this.value, this.hint});
+  const _Figure({
+    required this.label,
+    required this.value,
+    this.hint,
+    this.tone = StatusTone.neutral,
+    this.onTap,
+  });
 
   final String label;
   final String value;
   final String? hint;
+
+  /// Vert = bon signe, ambre = à surveiller, rouge = à traiter, bleu = volume.
+  final StatusTone tone;
+
+  /// Ouvre l'écran où l'on agit (ex. les ruptures → Stock).
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final fg = tone == StatusTone.neutral
+        ? colors.ink
+        : tone.foreground(colors);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: tone.background(colors),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 150),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: AmpereType.meta.copyWith(color: colors.ink2),
+                ),
+                Text(
+                  value,
+                  style: AmpereType.numeric.copyWith(
+                    color: fg,
+                    fontFeatures: AmpereType.tabular,
+                  ),
+                ),
+                if (hint case final text?)
+                  Text(
+                    text,
+                    style: AmpereType.meta.copyWith(color: colors.ink3),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Une ligne avec sa part en barre : on voit d'un coup d'œil ce qui pèse.
+class _BarRow extends StatelessWidget {
+  const _BarRow({
+    required this.label,
+    required this.value,
+    required this.share,
+    required this.color,
+    this.detail,
+  });
+
+  final String label;
+  final String value;
+  final double share;
+  final Color color;
+  final String? detail;
 
   @override
   Widget build(BuildContext context) {
@@ -151,12 +265,28 @@ class _Figure extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: AmpereType.meta.copyWith(color: colors.ink3)),
-          Text(value, style: AmpereType.rowTitle),
-          if (hint case final text?)
-            Text(text, style: AmpereType.meta.copyWith(color: colors.ink3)),
+          Row(
+            children: [
+              Expanded(child: Text(label)),
+              if (detail case final text?) ...[
+                Text(text, style: AmpereType.meta.copyWith(color: colors.ink3)),
+                const SizedBox(width: 12),
+              ],
+              Text(value, style: AmpereType.meta),
+            ],
+          ),
+          const SizedBox(height: 3),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: share.clamp(0, 1).toDouble(),
+              minHeight: 5,
+              color: color,
+              backgroundColor: colors.surface2,
+            ),
+          ),
         ],
       ),
     );
@@ -185,6 +315,9 @@ class _SalesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     return _ReportCard<SalesReport>(
+      icon: LucideIcons.shoppingCart,
+      tone: StatusTone.info,
+      explain: 'Ce qui s’est vendu et ce que ça a rapporté.',
       title: 'Ventes',
       value: ref.watch(salesReportProvider),
       onRetry: () => ref.invalidate(salesReportProvider),
@@ -202,14 +335,24 @@ class _SalesCard extends ConsumerWidget {
           Wrap(
             spacing: 24,
             children: [
-              _Figure(label: 'Ventes', value: '${data.totals.count}'),
               _Figure(
+                label: 'Ventes',
+                value: '${data.totals.count}',
+                tone: StatusTone.info,
+              ),
+              _Figure(
+                tone: StatusTone.info,
                 label: 'Chiffre d’affaires HT',
                 value: formatDA(data.totals.revenueHt),
                 hint: '${formatDA(data.totals.revenueTtc)} TTC',
               ),
               _Figure(
                 label: 'Marge HT',
+                tone: switch (data.totals.marginHt) {
+                  null => StatusTone.neutral,
+                  final m when m < 0 => StatusTone.error,
+                  _ => StatusTone.ok,
+                },
                 value: _moneyOrDash(data.totals.marginHt),
                 // Dire POURQUOI c'est vide : sans ça on croit à une panne.
                 hint: data.totals.marginHt == null
@@ -225,6 +368,7 @@ class _SalesCard extends ConsumerWidget {
                 ),
               if (data.totals.discountAmount > 0)
                 _Figure(
+                  tone: StatusTone.warn,
                   label: 'Remises',
                   value: formatDA(data.totals.discountAmount),
                 ),
@@ -246,19 +390,14 @@ class _SalesCard extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             for (final row in data.byCategory.take(6))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(row.categoryName)),
-                    Text(
-                      formatQuantity(quantityFromJson(row.quantity)),
-                      style: AmpereType.meta.copyWith(color: colors.ink3),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(formatDA(row.revenueHt), style: AmpereType.meta),
-                  ],
-                ),
+              _BarRow(
+                label: row.categoryName,
+                detail: formatQuantity(quantityFromJson(row.quantity)),
+                value: formatDA(row.revenueHt),
+                share: data.byCategory.first.revenueHt <= 0
+                    ? 0
+                    : row.revenueHt / data.byCategory.first.revenueHt,
+                color: colors.info,
               ),
           ],
         ],
@@ -273,7 +412,11 @@ class _StockCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
+    void toStock() => goToDestination(ref, 'Stock');
     return _ReportCard<StockReport>(
+      icon: LucideIcons.warehouse,
+      tone: StatusTone.warn,
+      explain: 'Ce que vaut le stock, et ce qui manque (touchez pour agir).',
       title: 'Stock',
       value: ref.watch(stockReportProvider),
       onRetry: () => ref.invalidate(stockReportProvider),
@@ -286,6 +429,7 @@ class _StockCard extends ConsumerWidget {
             spacing: 24,
             children: [
               _Figure(
+                tone: StatusTone.info,
                 label: 'Valeur au dernier prix d’achat',
                 value: _moneyOrDash(data.valueHt),
                 hint: data.withoutCostCount == 0
@@ -297,8 +441,20 @@ class _StockCard extends ConsumerWidget {
                 label: 'Références en stock',
                 value: '${data.referenceCount}',
               ),
-              _Figure(label: 'Stock faible', value: '${data.lowCount}'),
-              _Figure(label: 'Ruptures', value: '${data.outOfStockCount}'),
+              _Figure(
+                label: 'Stock faible',
+                value: '${data.lowCount}',
+                tone: data.lowCount > 0 ? StatusTone.warn : StatusTone.ok,
+                onTap: toStock,
+              ),
+              _Figure(
+                label: 'Ruptures',
+                value: '${data.outOfStockCount}',
+                tone: data.outOfStockCount > 0
+                    ? StatusTone.error
+                    : StatusTone.ok,
+                onTap: toStock,
+              ),
             ],
           ),
           for (final row in data.byLocation)
@@ -329,6 +485,9 @@ class _PurchasesCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     return _ReportCard<PurchasesReport>(
+      icon: LucideIcons.truck,
+      tone: StatusTone.ok,
+      explain: 'Ce qui a été commandé aux fournisseurs, et ce qui est arrivé.',
       title: 'Achats',
       value: ref.watch(purchasesReportProvider),
       onRetry: () => ref.invalidate(purchasesReportProvider),
@@ -340,11 +499,13 @@ class _PurchasesCard extends ConsumerWidget {
             spacing: 24,
             children: [
               _Figure(
+                tone: StatusTone.info,
                 label: 'Commandé HT',
                 value: formatDA(data.orderedHt),
                 hint: '${data.orderCount} commande(s)',
               ),
               _Figure(
+                tone: StatusTone.ok,
                 label: 'Réceptionné HT',
                 value: formatDA(data.receivedHt),
                 hint: '${data.receptionCount} réception(s)',
@@ -360,20 +521,14 @@ class _PurchasesCard extends ConsumerWidget {
           ),
           if (data.bySupplier.isNotEmpty) ...[
             const SizedBox(height: 8),
+            // Barre : part déjà reçue de ce qui a été commandé.
             for (final row in data.bySupplier.take(6))
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(row.supplierName)),
-                    Text(formatDA(row.orderedHt), style: AmpereType.meta),
-                    const SizedBox(width: 12),
-                    Text(
-                      'reçu ${formatDA(row.receivedHt)}',
-                      style: AmpereType.meta.copyWith(color: colors.ink3),
-                    ),
-                  ],
-                ),
+              _BarRow(
+                label: row.supplierName,
+                value: formatDA(row.orderedHt),
+                detail: 'reçu ${formatDA(row.receivedHt)}',
+                share: row.orderedHt <= 0 ? 1 : row.receivedHt / row.orderedHt,
+                color: colors.ok,
               ),
           ],
         ],

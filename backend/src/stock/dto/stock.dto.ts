@@ -11,6 +11,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  MinLength,
 } from 'class-validator';
 import {
   PaginationMetaDto,
@@ -28,6 +29,7 @@ export enum StockMovementTypeDto {
   TRANSFERT_ENTREE = 'TRANSFERT_ENTREE',
   AJUSTEMENT_INVENTAIRE = 'AJUSTEMENT_INVENTAIRE',
   PERTE_CASSE = 'PERTE_CASSE',
+  ENTREE_MANUELLE = 'ENTREE_MANUELLE',
 }
 
 export enum StockLossStatusDto {
@@ -105,6 +107,11 @@ export class StockMovementDto {
   @ApiProperty() operationType!: string;
   @ApiProperty({ nullable: true }) operationId!: string | null;
   @ApiProperty({ nullable: true }) userId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Nom de l’auteur (journal : « qui l’a fait »).',
+  })
+  userName?: string | null;
   @ApiProperty({ nullable: true }) comment!: string | null;
   @ApiProperty() createdAt!: Date;
 }
@@ -139,6 +146,35 @@ export class DeclareLossDto {
   @MaxLength(500)
   @IsOptional()
   comment?: string | null;
+}
+
+/// Entrée de stock manuelle : ajoute une quantité SANS achat (stock déjà en
+/// rayon, retour sans ticket, erreur…). Motif obligatoire, auteur tracé.
+export class ManualEntryDto {
+  @ApiPropertyOptional({
+    description:
+      'UUID généré par le client : un renvoi du même formulaire ne rajoute rien.',
+  })
+  @ClientGeneratedId()
+  id?: string;
+
+  @ApiProperty() @IsCanonicalUuid() productId!: string;
+  @ApiProperty() @IsCanonicalUuid() locationId!: string;
+
+  @ApiProperty({
+    example: '12.000',
+    description: 'Quantité ajoutée, POSITIVE, décimale en chaîne.',
+  })
+  @IsString()
+  @MaxLength(20)
+  quantity!: string;
+
+  @ApiProperty({ description: 'Pourquoi ce stock entre (obligatoire).' })
+  @Transform(trimOrNull)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  comment!: string;
 }
 
 export class RejectLossDto {

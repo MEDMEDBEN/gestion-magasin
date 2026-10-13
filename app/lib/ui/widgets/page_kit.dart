@@ -249,7 +249,12 @@ class GuideSteps extends StatelessWidget {
             children: [
               Icon(LucideIcons.lightbulb, size: 16, color: colors.info),
               const SizedBox(width: 6),
-              Text(title, style: AmpereType.label.copyWith(color: colors.info)),
+              Expanded(
+                child: Text(
+                  title,
+                  style: AmpereType.label.copyWith(color: colors.info),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),

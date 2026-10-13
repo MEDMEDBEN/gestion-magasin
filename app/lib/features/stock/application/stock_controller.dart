@@ -104,6 +104,29 @@ class StockActions {
     return loss;
   }
 
+  /// Entrée de stock sans achat (décision du 2026-10-13) : auteur et motif
+  /// tracés côté serveur.
+  Future<StockMovementEntry> addEntry({
+    required String id,
+    required String productId,
+    required String locationId,
+    required Quantity quantity,
+    required String comment,
+  }) async {
+    final movement = await _ref
+        .read(stockApiProvider)
+        .addEntry(
+          id: id,
+          productId: productId,
+          locationId: locationId,
+          quantity: quantityToJson(quantity),
+          comment: comment,
+        );
+    _refresh();
+    _ref.invalidate(productMovementsProvider(productId));
+    return movement;
+  }
+
   Future<StockLoss> validate(String id) async {
     final loss = await _ref.read(stockApiProvider).validateLoss(id);
     _refresh();

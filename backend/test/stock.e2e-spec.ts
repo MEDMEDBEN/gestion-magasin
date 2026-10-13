@@ -112,6 +112,59 @@ describe('Stock (e2e)', () => {
     await e2e.app.close();
   });
 
+  /// Décision MEDMEDBEN du 2026-10-13 : ajouter du stock sans achat, tracé.
+  describe('entrée manuelle', () => {
+    const entry = (token: string, productId: string, body = {}) =>
+      as(token)
+        .post('/api/stock/entries')
+        .send({
+          productId,
+          locationId: depotId,
+          quantity: '4.500',
+          comment: 'Stock déjà en rayon',
+          ...body,
+        });
+
+    it('MAGASINIER : le stock monte, auteur et motif au journal, audit', async () => {
+      const productId = await productWithStock('2.000');
+      const res = await entry(tokens.magasinier, productId).expect(201);
+      expect(res.body).toMatchObject({
+        type: 'ENTREE_MANUELLE',
+        quantity: '4.500',
+        comment: 'Stock déjà en rayon',
+      });
+      expect(await stockOf(productId)).toBe('6.500');
+      const journal = await as(tokens.admin)
+        .get(`/api/stock/movements?productId=${productId}`)
+        .expect(200);
+      expect(journal.body.data[0]).toMatchObject({
+        type: 'ENTREE_MANUELLE',
+        userName: expect.any(String),
+      });
+      const audit = await prisma.auditLog.findFirst({
+        where: { entityId: res.body.id, entityType: 'StockMovement' },
+      });
+      expect(audit).not.toBeNull();
+    });
+
+    it('renvoi du même formulaire (même id) : ajouté UNE fois', async () => {
+      const productId = await productWithStock('0.000');
+      const id = randomUUID();
+      await entry(tokens.admin, productId, { id }).expect(201);
+      await entry(tokens.admin, productId, { id }).expect(201);
+      expect(await stockOf(productId)).toBe('4.500');
+    });
+
+    it('motif obligatoire, quantité positive ; le VENDEUR ne peut pas', async () => {
+      const productId = await productWithStock('1.000');
+      await entry(tokens.admin, productId, { comment: '' }).expect(400);
+      await entry(tokens.admin, productId, { quantity: '0' }).expect(422);
+      await entry(tokens.admin, productId, { quantity: '-1' }).expect(422);
+      await entry(tokens.vendeur, productId).expect(403);
+      expect(await stockOf(productId)).toBe('1.000');
+    });
+  });
+
   describe('pertes / casse', () => {
     it('ADMIN : appliquée tout de suite — mouvement négatif, projection, audit', async () => {
       const productId = await productWithStock('10.000');

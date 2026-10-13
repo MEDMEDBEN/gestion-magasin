@@ -57,6 +57,9 @@ enum StockMovementType {
   TRANSFERT_ENTREE
   AJUSTEMENT_INVENTAIRE
   PERTE_CASSE
+  /// Ajout direct (stock déjà en rayon, don, erreur de saisie) : auteur et motif
+  /// obligatoires, sans achat (décision du 2026-10-13).
+  ENTREE_MANUELLE
 }
 
 /// Type d'opération à l'origine d'un mouvement / d'une notification / d'un log d'audit.

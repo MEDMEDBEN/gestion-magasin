@@ -36,12 +36,14 @@ import { PERMISSIONS } from '../common/permissions';
 import {
   DeclareLossDto,
   LossQueryDto,
+  ManualEntryDto,
   MovementExportQueryDto,
   MovementQueryDto,
   RejectLossDto,
   StockListDto,
   StockLossDto,
   StockLossListDto,
+  StockMovementDto,
   StockMovementListDto,
   StockExportQueryDto,
   StockQueryDto,
@@ -142,6 +144,28 @@ export class StockController {
         query.format,
       ),
     );
+  }
+
+  // Décision MEDMEDBEN du 2026-10-13 : ajouter du stock sans passer par un
+  // achat (stock déjà en rayon…), auteur et motif tracés. Crée du stock :
+  // droits relus en base.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.STOCK_ADJUST)
+  @RequireFreshAccess()
+  @Post('entries')
+  @ApiOperation({
+    summary: 'Entrée de stock manuelle (sans achat)',
+    description:
+      'Mouvement ENTREE_MANUELLE au magasin ou au dépôt : quantité positive, motif ' +
+      'obligatoire, auteur et audit gardés. Idempotente par `id`.',
+  })
+  @ApiCreatedResponse({ type: StockMovementDto })
+  addEntry(
+    @Body() dto: ManualEntryDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<StockMovementDto> {
+    return this.stockService.addManualEntry(dto, user, actorOf(user, ip));
   }
 
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)

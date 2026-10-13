@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
 import { AuthenticatedUser } from '../common/auth.decorators';
@@ -17,6 +18,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   DeclareLossDto,
   LossQueryDto,
+  ManualEntryDto,
   MovementExportQueryDto,
   MovementQueryDto,
   RejectLossDto,
@@ -188,6 +190,7 @@ export class StockService {
     const [rows, total] = await Promise.all([
       this.prisma.stockMovement.findMany({
         where,
+        include: { user: { select: { fullName: true } } },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         orderBy: [
@@ -202,10 +205,19 @@ export class StockService {
     const seesLossDetail = viewer.permissions.includes(PERMISSIONS.STOCK_LOSS);
     return {
       data: rows.map((row) => {
-        const movement = StockService.movementToDto(row);
+        const movement = {
+          ...StockService.movementToDto(row),
+          userName: row.user?.fullName ?? null,
+        };
         return movement.type === StockMovementTypeDto.PERTE_CASSE &&
           !seesLossDetail
-          ? { ...movement, comment: null, userId: null, operationId: null }
+          ? {
+              ...movement,
+              comment: null,
+              userId: null,
+              userName: null,
+              operationId: null,
+            }
           : movement;
       }),
       meta: { page: query.page, limit: query.limit, total },
@@ -235,6 +247,87 @@ export class StockService {
   }
 
   /// Déclaration en ligne : sa propre transaction, audit compris.
+  /// Entrée de stock manuelle (décision MEDMEDBEN du 2026-10-13) : un
+  /// mouvement ENTREE_MANUELLE, auteur et motif gardés, audité — sans achat.
+  /// Idempotente : renvoyée avec le même `id`, elle rend le premier mouvement.
+  async addManualEntry(
+    dto: ManualEntryDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<StockMovementDto> {
+    const quantity = parseQuantity(dto.quantity);
+    if (quantity.lessThanOrEqualTo(0)) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'La quantité ajoutée doit être strictement positive',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return this.prisma.$transaction(async (tx) => {
+      if (dto.id) {
+        const done = await tx.stockMovement.findFirst({
+          where: {
+            operationType: 'MANUAL',
+            operationId: dto.id,
+            type: 'ENTREE_MANUELLE',
+          },
+        });
+        if (done) {
+          if (done.userId !== user.id) {
+            throw new BusinessException(
+              ErrorCode.CONFLICT,
+              'Identifiant déjà utilisé',
+              HttpStatus.CONFLICT,
+            );
+          }
+          return StockService.movementToDto(done);
+        }
+      }
+      const location = await tx.location.findUnique({
+        where: { id: dto.locationId },
+        select: { isActive: true, type: true },
+      });
+      if (
+        !location?.isActive ||
+        (location.type !== 'MAGASIN' && location.type !== 'DEPOT')
+      ) {
+        throw new BusinessException(
+          ErrorCode.VALIDATION_FAILED,
+          'Une entrée de stock se fait au magasin ou au dépôt',
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      const operationId = dto.id ?? randomUUID();
+      const applied = await this.ledger.applyMovement(tx, {
+        productId: dto.productId,
+        locationId: dto.locationId,
+        quantity,
+        type: 'ENTREE_MANUELLE',
+        operationType: 'MANUAL',
+        operationId,
+        userId: user.id,
+        comment: dto.comment,
+      });
+      await writeAudit(tx, actor, {
+        action: 'CREATE',
+        entityType: 'StockMovement',
+        entityId: applied.movementId,
+        newValue: {
+          type: 'ENTREE_MANUELLE',
+          productId: dto.productId,
+          locationId: dto.locationId,
+          quantity: formatQuantity(quantity),
+          quantityAfter: applied.quantityAfter,
+          comment: dto.comment,
+        },
+      });
+      const movement = await tx.stockMovement.findUniqueOrThrow({
+        where: { id: applied.movementId },
+      });
+      return StockService.movementToDto(movement);
+    });
+  }
+
   async declareLoss(
     dto: DeclareLossDto,
     user: AuthenticatedUser,

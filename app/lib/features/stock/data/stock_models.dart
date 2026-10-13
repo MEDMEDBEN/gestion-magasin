@@ -50,6 +50,9 @@ abstract class StockMovementEntry with _$StockMovementEntry {
     required Quantity quantity,
     required String type,
     String? userId,
+
+    /// Auteur (« qui l'a fait ») ; masqué au vendeur pour une perte.
+    String? userName,
     String? comment,
     required DateTime createdAt,
   }) = _StockMovementEntry;

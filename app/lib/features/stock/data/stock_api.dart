@@ -56,6 +56,30 @@ class StockApi {
     });
   }
 
+  /// Entrée de stock manuelle (sans achat) : quantité POSITIVE, motif
+  /// obligatoire. `id` stable par formulaire : un renvoi n'ajoute rien.
+  Future<StockMovementEntry> addEntry({
+    required String id,
+    required String productId,
+    required String locationId,
+    required String quantity,
+    required String comment,
+  }) {
+    return guardApi(() async {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/stock/entries',
+        data: {
+          'id': id,
+          'productId': productId,
+          'locationId': locationId,
+          'quantity': quantity,
+          'comment': comment,
+        },
+      );
+      return StockMovementEntry.fromJson(response.data!);
+    });
+  }
+
   /// Quantité POSITIVE, en chaîne décimale — le serveur applique le delta négatif.
   Future<StockLoss> declareLoss({
     required String id,

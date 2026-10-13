@@ -22,6 +22,26 @@ StatusTone _tone(AuditAction action) => switch (action) {
   AuditAction.reject => StatusTone.error,
 };
 
+/// Libellé des filtres rapides (pluriel) et icône de chaque action.
+(String, IconData) _actionLook(AuditAction action) => switch (action) {
+  AuditAction.create => ('Créations', LucideIcons.circlePlus),
+  AuditAction.update => ('Modifications', LucideIcons.pencil),
+  AuditAction.cancel => ('Annulations', LucideIcons.ban),
+  AuditAction.validate => ('Validations', LucideIcons.badgeCheck),
+  AuditAction.adjust => ('Ajustements', LucideIcons.slidersHorizontal),
+  AuditAction.close => ('Clôtures', LucideIcons.archive),
+  AuditAction.reject => ('Refus', LucideIcons.circleX),
+};
+
+/// « Aujourd'hui », « Hier » ou la date : les lignes sont rangées par jour.
+String _dayLabel(DateTime at) {
+  final day = DateUtils.dateOnly(at.toLocal());
+  final today = DateUtils.dateOnly(DateTime.now());
+  if (day == today) return 'Aujourd’hui';
+  if (day == today.subtract(const Duration(days: 1))) return 'Hier';
+  return formatDate(day);
+}
+
 /// Historique global (spec §24) — ADMIN seul, lecture seule. Qui a fait quoi,
 /// sur quel objet, et ce qui a changé. Les ventes courantes n'y sont pas : elles
 /// vivent dans le module Ventes.
@@ -36,12 +56,64 @@ class AuditScreen extends ConsumerWidget {
     final filter = ref.watch(auditFilterProvider);
     final setFilter = ref.read(auditFilterProvider.notifier).set;
     final journal = ref.watch(auditProvider);
+    final colors = AmpereColors.of(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
+          child: const AmpereInlineAlert(
+            tone: StatusTone.info,
+            icon: LucideIcons.shieldCheck,
+            message:
+                'Qui a fait quoi, et quand : prix, stock, validations, '
+                'annulations, comptes. Rien ne s’efface. Touchez une ligne pour '
+                'voir exactement ce qui a changé.',
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 10, margin, 0),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              ChoiceChip(
+                label: const Text('Toutes les actions'),
+                selected: filter.action == null,
+                onSelected: (_) => setFilter((
+                  entityType: filter.entityType,
+                  action: null,
+                  period: filter.period,
+                )),
+              ),
+              for (final a in AuditAction.values)
+                ChoiceChip(
+                  avatar: Icon(
+                    _actionLook(a).$2,
+                    size: 15,
+                    color: _tone(a).foreground(colors),
+                  ),
+                  label: Text(_actionLook(a).$1),
+                  selected: filter.action == a,
+                  selectedColor: _tone(a).background(colors),
+                  side: BorderSide(
+                    color: filter.action == a
+                        ? _tone(a).foreground(colors)
+                        : colors.line,
+                  ),
+                  showCheckmark: false,
+                  onSelected: (_) => setFilter((
+                    entityType: filter.entityType,
+                    action: filter.action == a ? null : a,
+                    period: filter.period,
+                  )),
+                ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 10, margin, 10),
           child: Wrap(
             spacing: 12,
             runSpacing: 8,
@@ -68,31 +140,6 @@ class AuditScreen extends ConsumerWidget {
                   onChanged: (v) => setFilter((
                     entityType: v,
                     action: filter.action,
-                    period: filter.period,
-                  )),
-                ),
-              ),
-              SizedBox(
-                width: 200,
-                child: DropdownButtonFormField<AuditAction?>(
-                  icon: const Icon(LucideIcons.chevronDown, size: 17),
-                  initialValue: filter.action,
-                  isExpanded: true,
-                  decoration: const InputDecoration(labelText: 'Action'),
-                  items: [
-                    const DropdownMenuItem<AuditAction?>(
-                      value: null,
-                      child: Text('Toutes'),
-                    ),
-                    for (final a in AuditAction.values)
-                      DropdownMenuItem<AuditAction?>(
-                        value: a,
-                        child: Text(a.label),
-                      ),
-                  ],
-                  onChanged: (v) => setFilter((
-                    entityType: filter.entityType,
-                    action: v,
                     period: filter.period,
                   )),
                 ),
@@ -124,12 +171,27 @@ class AuditScreen extends ConsumerWidget {
                     title: 'Aucune action sur la période',
                     message:
                         'Prix, ajustements, validations, annulations et droits '
-                        'des membres apparaissent ici.',
+                        'des membres apparaissent ici. Élargissez la période '
+                        '(« Tout ») pour remonter plus loin.',
                   )
                 : ListView(
                     padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
                     children: [
-                      for (final e in state.items) _EntryTile(entry: e),
+                      for (var k = 0; k < state.items.length; k++) ...[
+                        if (k == 0 ||
+                            _dayLabel(state.items[k].createdAt) !=
+                                _dayLabel(state.items[k - 1].createdAt))
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(2, 10, 0, 6),
+                            child: Text(
+                              _dayLabel(state.items[k].createdAt).toUpperCase(),
+                              style: AmpereType.label.copyWith(
+                                color: colors.ink3,
+                              ),
+                            ),
+                          ),
+                        _EntryTile(entry: state.items[k]),
+                      ],
                       if (state.hasMore)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -179,14 +241,45 @@ class _EntryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final changes = auditChanges(entry.oldValue, entry.newValue);
+    final colors = AmpereColors.of(context);
+    final tone = _tone(entry.action);
+    final first = changes.isEmpty ? null : changes.first;
     return Card(
       child: ListTile(
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: tone.background(colors),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            _actionLook(entry.action).$2,
+            size: 18,
+            color: tone.foreground(colors),
+          ),
+        ),
         title: Text(
           '${auditEntityLabel(entry.entityType)} · ${entry.action.label}',
         ),
-        subtitle: Text(
-          '${entry.userName ?? 'Système'} · ${formatDateTime(entry.createdAt)}'
-          '${changes.isEmpty ? '' : ' · ${changes.length} champ(s)'}',
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${entry.userName ?? 'Système'} · ${formatDateTime(entry.createdAt)}'
+              '${changes.isEmpty ? '' : ' · ${changes.length} champ(s)'}',
+            ),
+            // Le changement principal sans ouvrir la fiche.
+            if (first != null)
+              Text(
+                first.before.isEmpty || first.after.isEmpty
+                    ? '${first.field} : ${first.after.isEmpty ? first.before : first.after}'
+                    : '${first.field} : ${first.before} → ${first.after}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.meta.copyWith(color: colors.ink2),
+              ),
+          ],
         ),
         trailing: AmpereBadge(
           label: entry.action.label,

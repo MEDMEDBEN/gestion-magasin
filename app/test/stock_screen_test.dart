@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/quantity.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
@@ -58,6 +59,32 @@ class _RecordingStockApi extends StockApi {
 
   final List<String> calls = [];
   Map<String, Object?>? declared;
+  Map<String, Object?>? entered;
+
+  @override
+  Future<StockMovementEntry> addEntry({
+    required String id,
+    required String productId,
+    required String locationId,
+    required String quantity,
+    required String comment,
+  }) async {
+    entered = {
+      'productId': productId,
+      'locationId': locationId,
+      'quantity': quantity,
+      'comment': comment,
+    };
+    return StockMovementEntry(
+      id: 'mv1',
+      productId: productId,
+      locationId: locationId,
+      quantity: parseQuantity(quantity.replaceAll('.', ','))!,
+      type: 'ENTREE_MANUELLE',
+      comment: comment,
+      createdAt: DateTime(2026, 10, 13),
+    );
+  }
 
   @override
   Future<StockLossPage> losses({
@@ -232,6 +259,67 @@ void main() {
       });
     },
   );
+
+  /// Décision MEDMEDBEN du 2026-10-13 : ajouter du stock sans passer par un
+  /// achat — motif obligatoire, auteur tracé par le serveur.
+  testWidgets('MAGASINIER (stock.adjust) : ajoute du stock, motif exigé', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 1400));
+    await tester.pumpWidget(
+      wrap(
+        authUser(
+          id: 'm',
+          roles: const ['MAGASINIER'],
+          permissions: const [
+            'product.read',
+            'stock.read.store',
+            'stock.adjust',
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Ajouter du stock'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'câble');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Câble 3G2,5 — DIS-16A').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dépôt').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).at(0), '12');
+
+    // Sans motif : refusé avant le serveur.
+    await tester.tap(find.text('Ajouter au stock'));
+    await tester.pumpAndSettle();
+    expect(find.text('Dites pourquoi ce stock entre'), findsOneWidget);
+    expect(api.entered, isNull);
+
+    await tester.enterText(
+      find.byType(TextFormField).at(1),
+      'Stock déjà en rayon',
+    );
+    await tester.tap(find.text('Ajouter au stock'));
+    await tester.pumpAndSettle();
+    expect(api.entered, {
+      'productId': 'p1',
+      'locationId': 'depot',
+      'quantity': '12.000',
+      'comment': 'Stock déjà en rayon',
+    });
+  });
+
+  testWidgets('sans stock.adjust : pas d’ajout de stock', (tester) async {
+    useScreenSize(tester, const Size(400, 1400));
+    await tester.pumpWidget(wrap(_magasinier()));
+    await tester.pumpAndSettle();
+    // `_magasinier()` n'a pas `stock.adjust` : le bouton n'est pas proposé.
+    expect(find.text('Ajouter du stock'), findsNothing);
+  });
 
   testWidgets('ADMIN : valide, et refuse après confirmation', (tester) async {
     useScreenSize(tester, const Size(400, 900));

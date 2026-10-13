@@ -753,8 +753,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(
-              'Quantités présentes aujourd’hui. Ensuite, le stock ne change que par '
-              'une opération (vente, réception, perte, inventaire).',
+              'Quantités présentes aujourd’hui, enregistrées à votre nom. '
+              'Ensuite : Stock → « Ajouter du stock » (sans achat), ou une '
+              'vente, une réception, une perte, un inventaire.',
               style: AmpereType.meta.copyWith(color: colors.ink3),
             ),
           ),

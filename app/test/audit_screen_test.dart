@@ -291,11 +291,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls.last.entityType, 'Transfer');
 
-    await tester.tap(
-      find.widgetWithText(DropdownButtonFormField<AuditAction?>, 'Toutes'),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Annulation').last);
+    // Action : pastilles colorées (2026-10-13), plus de liste déroulante.
+    await tester.tap(find.text('Annulations'));
     await tester.pumpAndSettle();
     expect(api.calls.last.action, AuditAction.cancel);
 

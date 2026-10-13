@@ -10,6 +10,9 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/export_button.dart';
+import '../../../ui/navigation.dart';
+import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
@@ -62,14 +65,42 @@ StatusTone _tone(PurchaseStatus status) => switch (status) {
   PurchaseStatus.cancelled => StatusTone.error,
 };
 
-class PurchasesScreen extends ConsumerWidget {
+/// Filtre de la liste, porté par les tuiles colorées.
+enum _Filter { all, draft, waiting, partial, late, done }
+
+bool _matches(PurchaseOrder o, _Filter f) => switch (f) {
+  _Filter.all => true,
+  _Filter.draft => o.status == PurchaseStatus.draft,
+  _Filter.waiting =>
+    o.status == PurchaseStatus.ordered || o.status == PurchaseStatus.confirmed,
+  _Filter.partial => o.status == PurchaseStatus.partiallyReceived,
+  _Filter.late => _late(o),
+  _Filter.done =>
+    o.status == PurchaseStatus.received || o.status == PurchaseStatus.closed,
+};
+
+/// Achats : commandes fournisseurs, de la préparation à la réception.
+///
+/// Refonte du 2026-10-13 (MEDMEDBEN) : le déroulé est affiché, les chiffres
+/// clés filtrent, chaque commande dit sa prochaine étape, et la réception se
+/// lance d'un geste depuis la carte.
+class PurchasesScreen extends ConsumerStatefulWidget {
   const PurchasesScreen({super.key, required this.user});
 
   final AuthUser user;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<PurchasesScreen> createState() => _PurchasesScreenState();
+}
+
+class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
+  _Filter _filter = _Filter.all;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = widget.user;
     final rights = PurchaseRights(user);
+    final colors = AmpereColors.of(context);
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
@@ -78,101 +109,216 @@ class PurchasesScreen extends ConsumerWidget {
       for (final s in ref.watch(supplierSearchProvider('')).value ?? const [])
         s.id: s.name,
     };
+    final menu = {for (final d in destinationsFor(user)) d.label};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final toolbar = Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              PeriodFilter(
-                value: ref.watch(purchasePeriodProvider),
-                onChanged: ref.read(purchasePeriodProvider.notifier).set,
-              ),
-              // Miroirs des gardes serveur de `GET /purchase-orders/export` et
-              // `GET /receptions/export`.
-              if (rights.canWrite || rights.canReceive)
-                ExportButton(
-                  targets: [
-                    if (rights.canWrite)
-                      ExportTarget(
-                        'Commandes (12 mois)',
-                        ref.read(purchasesApiProvider).exportOrders,
-                      ),
-                    if (rights.canReceive)
-                      ExportTarget(
-                        'Réceptions (12 mois)',
-                        ref.read(receptionsApiProvider).exportReceptions,
-                      ),
-                  ],
+        PeriodFilter(
+          value: ref.watch(purchasePeriodProvider),
+          onChanged: ref.read(purchasePeriodProvider.notifier).set,
+        ),
+        // Miroirs des gardes serveur de `GET /purchase-orders/export` et
+        // `GET /receptions/export`.
+        if (rights.canWrite || rights.canReceive)
+          ExportButton(
+            targets: [
+              if (rights.canWrite)
+                ExportTarget(
+                  'Commandes (12 mois)',
+                  ref.read(purchasesApiProvider).exportOrders,
                 ),
-              if (rights.canWrite) ...[
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: () =>
-                      openFormPanel<void>(context, const PurchaseOrderForm()),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Nouvelle commande'),
+              if (rights.canReceive)
+                ExportTarget(
+                  'Réceptions (12 mois)',
+                  ref.read(receptionsApiProvider).exportReceptions,
                 ),
-              ],
             ],
           ),
-        ),
-        Expanded(
-          child: orders.when(
-            loading: () => const AmpereSkeletonList(rows: 5),
-            error: (error, _) => ScreenStateView(
-              status: error is ApiException && error.isOffline
-                  ? ScreenStatus.offline
-                  : ScreenStatus.error,
-              message: error is ApiException ? error.userMessage : '$error',
-              onRetry: () => ref.invalidate(purchaseOrdersProvider),
-            ),
-            data: (items) => items.isEmpty
-                ? const ScreenStateView(
-                    status: ScreenStatus.empty,
-                    title: 'Aucune commande',
-                    message:
-                        'Préparez une commande fournisseur : elle sera '
-                        'réceptionnée au dépôt.',
-                  )
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                    children: [
-                      for (final o in items)
-                        Card(
-                          child: ListTile(
-                            title: Text(
-                              '${o.number} · ${suppliers[o.supplierId] ?? 'Fournisseur'}',
-                            ),
-                            subtitle: Text(
-                              [
-                                '${o.lines.length} ligne(s)',
-                                '${formatDA(o.totalTtc)} TTC',
-                                if (o.expectedDate != null)
-                                  _late(o)
-                                      ? 'EN RETARD (prévue le ${formatDate(o.expectedDate!.toLocal())})'
-                                      : 'livraison ${formatDate(o.expectedDate!.toLocal())}',
-                                if (o.dueDate != null)
-                                  'échéance ${formatDate(o.dueDate!.toLocal())}',
-                              ].join(' · '),
-                            ),
-                            trailing: AmpereBadge(
-                              label: o.status.label,
-                              tone: _tone(o.status),
-                            ),
-                            onTap: () => _openActions(context, ref, o, rights),
-                          ),
-                        ),
-                    ],
-                  ),
-          ),
-        ),
       ],
+    );
+
+    final actions = [
+      if (rights.canWrite)
+        ActionTile(
+          icon: LucideIcons.plus,
+          title: 'Nouvelle commande',
+          subtitle: 'Choisir le fournisseur et les produits à commander.',
+          tone: StatusTone.info,
+          prominent: true,
+          onTap: () => openFormPanel<void>(context, const PurchaseOrderForm()),
+        ),
+      if (menu.contains('Réappro'))
+        ActionTile(
+          icon: LucideIcons.shoppingBasket,
+          title: 'Que racheter ?',
+          subtitle: 'Les produits sous leur seuil, prêts à commander.',
+          tone: StatusTone.warn,
+          onTap: () => goToDestination(ref, 'Réappro'),
+        ),
+      if (menu.contains('Fournisseurs'))
+        ActionTile(
+          icon: LucideIcons.truck,
+          title: 'Fournisseurs',
+          subtitle: 'Fiches, dettes, paiements et retours.',
+          tone: StatusTone.neutral,
+          onTap: () => goToDestination(ref, 'Fournisseurs'),
+        ),
+      if (menu.contains('Stock'))
+        ActionTile(
+          icon: LucideIcons.packagePlus,
+          title: 'Stock sans achat',
+          subtitle: 'Déjà en rayon ? Stock → « Ajouter du stock ».',
+          tone: StatusTone.ok,
+          onTap: () => goToDestination(ref, 'Stock'),
+        ),
+    ];
+
+    return orders.when(
+      loading: () => const AmpereSkeletonList(rows: 5),
+      error: (error, _) => ScreenStateView(
+        status: error is ApiException && error.isOffline
+            ? ScreenStatus.offline
+            : ScreenStatus.error,
+        message: error is ApiException ? error.userMessage : '$error',
+        onRetry: () => ref.invalidate(purchaseOrdersProvider),
+      ),
+      data: (items) {
+        int count(_Filter f) => items.where((o) => _matches(o, f)).length;
+        final shown = items.where((o) => _matches(o, _filter)).toList();
+        StatTile tile(
+          _Filter f,
+          IconData icon,
+          String label,
+          StatusTone tone,
+        ) => StatTile(
+          icon: icon,
+          label: label,
+          value: '${count(f)}',
+          tone: tone,
+          selected: _filter == f,
+          onTap: () => setState(() => _filter = _filter == f ? _Filter.all : f),
+        );
+
+        return ListView(
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          children: [
+            GuideSteps(
+              title: 'D’UNE COMMANDE À LA MARCHANDISE EN STOCK',
+              current: items.isEmpty ? 0 : null,
+              steps: const [
+                (
+                  'Préparer',
+                  'Fournisseur, produits, quantités, prix d’achat : un '
+                      'brouillon modifiable.',
+                ),
+                (
+                  'Envoyer',
+                  'Imprimez le bon ou copiez le message pour le fournisseur.',
+                ),
+                (
+                  'Confirmer',
+                  'L’administrateur engage la commande (et la dette).',
+                ),
+                (
+                  'Réceptionner',
+                  'Ce qui arrive vraiment entre en stock, même en plusieurs '
+                      'fois ; le coût d’achat est mis à jour.',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (actions.isNotEmpty) ...[
+              ActionGrid(children: actions),
+              const SizedBox(height: 14),
+            ],
+            if (items.isNotEmpty) ...[
+              StatGrid(
+                children: [
+                  tile(
+                    _Filter.draft,
+                    LucideIcons.filePen,
+                    'Brouillons',
+                    StatusTone.neutral,
+                  ),
+                  tile(
+                    _Filter.waiting,
+                    LucideIcons.hourglass,
+                    'À recevoir',
+                    StatusTone.info,
+                  ),
+                  tile(
+                    _Filter.partial,
+                    LucideIcons.packageOpen,
+                    'Partiellement reçues',
+                    StatusTone.warn,
+                  ),
+                  tile(
+                    _Filter.late,
+                    LucideIcons.alarmClock,
+                    'En retard',
+                    StatusTone.error,
+                  ),
+                  tile(
+                    _Filter.done,
+                    LucideIcons.circleCheck,
+                    'Terminées',
+                    StatusTone.ok,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'COMMANDES',
+                    style: AmpereType.label.copyWith(color: colors.ink3),
+                  ),
+                ),
+                if (_filter != _Filter.all)
+                  TextButton.icon(
+                    onPressed: () => setState(() => _filter = _Filter.all),
+                    icon: const Icon(LucideIcons.x, size: 15),
+                    label: const Text('Tout afficher'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            toolbar,
+            const SizedBox(height: 10),
+            if (items.isEmpty)
+              const AmpereInlineAlert(
+                tone: StatusTone.info,
+                icon: LucideIcons.info,
+                message:
+                    'Aucune commande sur la période. Préparez une commande '
+                    'fournisseur : elle sera réceptionnée au dépôt.',
+              )
+            else if (shown.isEmpty)
+              const ScreenStateView(
+                status: ScreenStatus.empty,
+                title: 'Rien dans cette catégorie',
+              )
+            else
+              for (final o in shown)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _OrderCard(
+                    order: o,
+                    supplier: suppliers[o.supplierId] ?? 'Fournisseur',
+                    rights: rights,
+                    onTap: () => _openActions(context, ref, o, rights),
+                    onReceive: () =>
+                        openFormPanel<void>(context, ReceptionForm(order: o)),
+                  ),
+                ),
+          ],
+        );
+      },
     );
   }
 
@@ -249,70 +395,104 @@ class PurchasesScreen extends ConsumerWidget {
     final receivable =
         order.status == PurchaseStatus.confirmed ||
         order.status == PurchaseStatus.partiallyReceived;
+    final colors = AmpereColors.of(context);
     final action = await showDialog<String>(
       context: context,
       builder: (context) => SimpleDialog(
         title: Text('${order.number} — ${order.status.label}'),
         children: [
           if (editable && rights.canWrite)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('edit'),
-              child: const Text('Modifier les lignes'),
+            _option(
+              context,
+              'edit',
+              LucideIcons.pencil,
+              colors.ink2,
+              'Modifier les lignes',
             ),
           if (order.status == PurchaseStatus.draft && rights.canWrite)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('ordered'),
-              child: const Text('Marquer comme envoyée au fournisseur'),
+            _option(
+              context,
+              'ordered',
+              LucideIcons.send,
+              colors.info,
+              'Marquer comme envoyée au fournisseur',
             ),
           if (editable && rights.canConfirm)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('confirm'),
-              child: const Text('Confirmer la commande'),
+            _option(
+              context,
+              'confirm',
+              LucideIcons.badgeCheck,
+              colors.ok,
+              'Confirmer la commande',
             ),
           // Refusée par le serveur dès qu'une réception existe.
           if ((editable || order.status == PurchaseStatus.confirmed) &&
               rights.canConfirm)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('cancel'),
-              child: const Text('Annuler la commande'),
+            _option(
+              context,
+              'cancel',
+              LucideIcons.ban,
+              colors.error,
+              'Annuler la commande',
             ),
           if (order.status == PurchaseStatus.partiallyReceived &&
               rights.canConfirm)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('close'),
-              child: const Text('Clôturer le reliquat'),
+            _option(
+              context,
+              'close',
+              LucideIcons.archiveX,
+              colors.warn,
+              'Clôturer le reliquat',
             ),
           if (receivable && rights.canReceive)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('receive'),
-              child: const Text('Réceptionner la marchandise'),
+            _option(
+              context,
+              'receive',
+              LucideIcons.packageCheck,
+              colors.ok,
+              'Réceptionner la marchandise',
             ),
           if (!editable && rights.canReceive)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('receptions'),
-              child: const Text('Réceptions enregistrées'),
+            _option(
+              context,
+              'receptions',
+              LucideIcons.history,
+              colors.ink2,
+              'Réceptions enregistrées',
             ),
           if (!editable)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('view'),
-              child: const Text('Voir les lignes'),
+            _option(
+              context,
+              'view',
+              LucideIcons.eye,
+              colors.ink2,
+              'Voir les lignes',
             ),
           // Commande engagée : seules ses dates changent (nouveau délai).
           if (!editable &&
               order.status != PurchaseStatus.cancelled &&
               rights.canWrite)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('dates'),
-              child: const Text('Changer les dates'),
+            _option(
+              context,
+              'dates',
+              LucideIcons.calendarClock,
+              colors.ink2,
+              'Changer les dates',
             ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop('print'),
-            child: const Text('Imprimer le bon de commande'),
+          _option(
+            context,
+            'print',
+            LucideIcons.printer,
+            colors.ink2,
+            'Imprimer le bon de commande',
           ),
           if (order.status != PurchaseStatus.cancelled)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop('message'),
-              child: const Text('Message au fournisseur'),
+            _option(
+              context,
+              'message',
+              LucideIcons.messageSquareText,
+              colors.info,
+              'Message au fournisseur',
             ),
         ],
       ),
@@ -510,6 +690,27 @@ class PurchasesScreen extends ConsumerWidget {
   }
 }
 
+/// Un geste du menu d'une commande : icône colorée + libellé.
+Widget _option(
+  BuildContext context,
+  String value,
+  IconData icon,
+  Color color,
+  String label,
+) => SimpleDialogOption(
+  onPressed: () => Navigator.of(context).pop(value),
+  child: Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+      ],
+    ),
+  ),
+);
+
 /// Clôture du reliquat : motif obligatoire. Dialogue à état pour que le
 /// contrôleur de texte vive jusqu'à la fin de l'animation de fermeture.
 class _CloseRemainderDialog extends StatefulWidget {
@@ -588,4 +789,152 @@ bool _late(PurchaseOrder o) {
       DateUtils.dateOnly(
         expected.toLocal(),
       ).isBefore(DateUtils.dateOnly(DateTime.now()));
+}
+
+/// Une commande : fournisseur, montant, état en couleur, et sa PROCHAINE
+/// étape — la réception se lance d'ici.
+class _OrderCard extends StatelessWidget {
+  const _OrderCard({
+    required this.order,
+    required this.supplier,
+    required this.rights,
+    required this.onTap,
+    required this.onReceive,
+  });
+
+  final PurchaseOrder order;
+  final String supplier;
+  final PurchaseRights rights;
+  final VoidCallback onTap;
+  final VoidCallback onReceive;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final o = order;
+    final late = _late(o);
+    final tone = late ? StatusTone.error : _tone(o.status);
+    final receivable =
+        (o.status == PurchaseStatus.confirmed ||
+            o.status == PurchaseStatus.partiallyReceived) &&
+        rights.canReceive;
+    final next = switch (o.status) {
+      PurchaseStatus.draft => 'Prochaine étape : envoyer au fournisseur',
+      PurchaseStatus.ordered => 'Prochaine étape : confirmer (administrateur)',
+      PurchaseStatus.confirmed => 'Prochaine étape : réceptionner',
+      PurchaseStatus.partiallyReceived =>
+        'Reste à recevoir — ou clôturer le reliquat',
+      _ => null,
+    };
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: tone == StatusTone.neutral
+                  ? colors.line
+                  : tone.foreground(colors).withValues(alpha: 0.45),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: tone.background(colors),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(
+                      LucideIcons.truck,
+                      size: 18,
+                      color: tone.foreground(colors),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${o.number} · $supplier',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.rowTitle.copyWith(
+                            color: colors.ink,
+                          ),
+                        ),
+                        Text(
+                          [
+                            '${o.lines.length} ligne(s)',
+                            if (o.expectedDate != null && !late)
+                              'livraison ${formatDate(o.expectedDate!.toLocal())}',
+                            if (o.dueDate != null)
+                              'échéance ${formatDate(o.dueDate!.toLocal())}',
+                          ].join(' · '),
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${formatDA(o.totalTtc)} TTC',
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                          fontFeatures: AmpereType.tabular,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      AmpereBadge(label: o.status.label, tone: _tone(o.status)),
+                    ],
+                  ),
+                ],
+              ),
+              if (late || next != null || receivable) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        late
+                            ? 'EN RETARD (prévue le ${formatDate(o.expectedDate!.toLocal())})'
+                            : next ?? '',
+                        style: AmpereType.meta.copyWith(
+                          color: late ? colors.error : colors.ink2,
+                          fontWeight: late ? FontWeight.w700 : null,
+                        ),
+                      ),
+                    ),
+                    if (receivable)
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: colors.ok,
+                          foregroundColor: colors.bg,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: onReceive,
+                        icon: const Icon(LucideIcons.packageCheck, size: 16),
+                        label: const Text('Réceptionner'),
+                      ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

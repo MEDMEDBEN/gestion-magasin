@@ -181,6 +181,7 @@ ordinaire (plafond). Limite connue : sans coût connu, le premier prix saisi fix
 |---|---|---|---|
 | Lancer un inventaire / comptage | ✅ | ❌ | ✅ |
 | Valider un ajustement d'inventaire | ✅ | ❌ | ❌ |
+| Entrée de stock manuelle sans achat (`POST /stock/entries`, `stock.adjust`, droits relus ; mouvement `ENTREE_MANUELLE`, motif obligatoire, auteur + audit — décision du 2026-10-13) | ✅ | ❌ | ✅ |
 | Modifier un comptage EN COURS | ✅ | ❌ | ✅ |
 | Corriger un comptage TERMINÉ non ajusté (reste terminé, date de clôture d'origine) | ✅ | ❌ | ❌ (403 : le compteur ne réécrit pas ses écarts) |
 | Supprimer un inventaire EN COURS (`DELETE /inventories/:id`, aucun stock ne bouge, état gardé à l'audit) | ✅ | ❌ | ✅ |

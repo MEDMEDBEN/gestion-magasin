@@ -33,9 +33,14 @@ class StockRights {
           (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
           user.can('stock.loss'),
       canValidateLoss =
-          user.hasRole('ADMIN') && user.can('stock.adjust.validate');
+          user.hasRole('ADMIN') && user.can('stock.adjust.validate'),
+      // `POST /stock/entries` : ADMIN|MAGASINIER + stock.adjust.
+      canAddStock =
+          (user.hasRole('ADMIN') || user.hasRole('MAGASINIER')) &&
+          user.can('stock.adjust');
 
   final bool canDeclareLoss;
+  final bool canAddStock;
   final bool canValidateLoss;
 }
 
@@ -143,6 +148,19 @@ Map<String, String> _stockLocationIds(List<StorageLocation> locations) => {
     if (!l.isBin) l.type: l.id,
 };
 
+/// Entrée de stock sans achat (depuis l'écran ou la fiche d'un produit).
+Future<void> _addStock(BuildContext context, [Product? product]) async {
+  final movement = await openFormPanel<StockMovementEntry>(
+    context,
+    LossForm.entry(product: product),
+  );
+  if (movement == null || !context.mounted) return;
+  _snack(
+    context,
+    'Stock ajouté : +${formatQuantity(movement.quantity)}, à votre nom.',
+  );
+}
+
 /// Déclaration d'une perte (depuis l'écran ou la fiche d'un produit).
 Future<void> _declareLoss(
   BuildContext context,
@@ -196,6 +214,15 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
   /// Les actions du stock, chacune vers l'écran qui la fait — seulement
   /// celles que le menu de ce compte propose (mêmes droits).
   List<Widget> _actions(Set<String> menu) => [
+    if (widget.rights.canAddStock)
+      ActionTile(
+        icon: LucideIcons.packagePlus,
+        title: 'Ajouter du stock',
+        subtitle: 'Stock déjà là, sans achat : à votre nom, avec un motif.',
+        tone: StatusTone.ok,
+        prominent: true,
+        onTap: () => _addStock(context),
+      ),
     if (widget.rights.canDeclareLoss)
       ActionTile(
         icon: LucideIcons.triangleAlert,
@@ -448,6 +475,9 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                           onDeclareLoss: widget.rights.canDeclareLoss
                               ? () => _declareLoss(context, widget.rights, p)
                               : null,
+                          onAddStock: widget.rights.canAddStock
+                              ? () => _addStock(context, p)
+                              : null,
                         ),
                       ),
                     ),
@@ -588,9 +618,16 @@ class _LevelRow extends StatelessWidget {
 
 /// Fiche de stock d'un produit : niveaux par emplacement + journal récent.
 class _ProductStockPanel extends ConsumerWidget {
-  const _ProductStockPanel({required this.product, this.onDeclareLoss});
+  const _ProductStockPanel({
+    required this.product,
+    this.onDeclareLoss,
+    this.onAddStock,
+  });
 
   final Product product;
+
+  /// `null` : ce compte n'ajoute pas de stock à la main.
+  final VoidCallback? onAddStock;
 
   /// `null` : ce compte ne déclare pas de perte.
   final VoidCallback? onDeclareLoss;
@@ -604,6 +641,7 @@ class _ProductStockPanel extends ConsumerWidget {
     'TRANSFERT_ENTREE': 'Transfert (entrée)',
     'AJUSTEMENT_INVENTAIRE': 'Ajustement d’inventaire',
     'PERTE_CASSE': 'Perte / casse',
+    'ENTREE_MANUELLE': 'Entrée manuelle',
   };
 
   @override
@@ -633,8 +671,23 @@ class _ProductStockPanel extends ConsumerWidget {
             ),
           ],
         ),
-        if (onDeclareLoss != null) ...[
+        if (onAddStock != null) ...[
           const SizedBox(height: 12),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.ok,
+              foregroundColor: colors.bg,
+            ),
+            onPressed: () {
+              Navigator.of(context).pop();
+              onAddStock!();
+            },
+            icon: const Icon(LucideIcons.packagePlus, size: 16),
+            label: const Text('Ajouter du stock'),
+          ),
+        ],
+        if (onDeclareLoss != null) ...[
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: colors.error,
@@ -711,9 +764,18 @@ class _ProductStockPanel extends ConsumerWidget {
                                       color: colors.ink,
                                     ),
                                   ),
+                                  if (m.comment != null)
+                                    Text(
+                                      m.comment!,
+                                      style: AmpereType.meta.copyWith(
+                                        color: colors.ink2,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
                                   Text(
                                     '${formatDateTime(m.createdAt)} · '
-                                    '${locationNames[m.locationId] ?? ''}',
+                                    '${locationNames[m.locationId] ?? ''}'
+                                    '${m.userName == null ? '' : ' · par ${m.userName}'}',
                                     style: AmpereType.meta.copyWith(
                                       color: colors.ink3,
                                     ),
