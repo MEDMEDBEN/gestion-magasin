@@ -160,6 +160,32 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     // Marges réduites (2026-10-12) : la place va aux produits et au ticket.
     final margin = isDesktop ? 16.0 : AmpereGeometry.screenMarginMobile;
 
+    final tabs = Align(
+      alignment: Alignment.centerLeft,
+      child: PillTabs<_Section>(
+        selected: _section,
+        onSelect: (section) => setState(() => _section = section),
+        items: [
+          (_Section.sale, LucideIcons.shoppingCart, 'Vente'),
+          // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
+          if (rights.canSell)
+            (_Section.history, LucideIcons.history, 'Historique'),
+          (_Section.customers, LucideIcons.users, 'Clients'),
+          if (rights.canSeeConfreres)
+            (_Section.confreres, LucideIcons.handshake, 'Confrères'),
+          if (rights.canSeeAllCash)
+            (_Section.cashSessions, LucideIcons.landmark, 'Caisses'),
+        ],
+      ),
+    );
+
+    // Vente (demande MEDMEDBEN du 2026-10-14) : pas de bandeau au-dessus — les
+    // onglets vont en tête de la colonne des produits, et le PANIER monte
+    // jusqu'à la barre du haut.
+    if (_section == _Section.sale) {
+      return _SaleSection(margin: margin, rights: rights, tabs: tabs);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -168,38 +194,12 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: PillTabs<_Section>(
-                    selected: _section,
-                    onSelect: (section) => setState(() => _section = section),
-                    items: [
-                      (_Section.sale, LucideIcons.shoppingCart, 'Vente'),
-                      // Miroir de `GET /sales` : ADMIN|VENDEUR + sale.create.
-                      if (rights.canSell)
-                        (_Section.history, LucideIcons.history, 'Historique'),
-                      (_Section.customers, LucideIcons.users, 'Clients'),
-                      if (rights.canSeeConfreres)
-                        (
-                          _Section.confreres,
-                          LucideIcons.handshake,
-                          'Confrères',
-                        ),
-                      if (rights.canSeeAllCash)
-                        (
-                          _Section.cashSessions,
-                          LucideIcons.landmark,
-                          'Caisses',
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Miroir de `GET /sales/export` : ADMIN|VENDEUR + `sale.create`.
-              // Le vendeur n'y trouve que SES ventes (le serveur filtre).
-              if (rights.canSell)
+              Expanded(child: tabs),
+              // L'export des ventes ne sert qu'à l'historique : il n'est
+              // proposé que là. Miroir de `GET /sales/export` : ADMIN|VENDEUR
+              // + `sale.create` ; le vendeur n'y trouve que SES ventes.
+              if (_section == _Section.history && rights.canSell) ...[
+                const SizedBox(width: 8),
                 ExportButton(
                   targets: [
                     ExportTarget(
@@ -208,12 +208,13 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
                     ),
                   ],
                 ),
+              ],
             ],
           ),
         ),
         Expanded(
           child: switch (_section) {
-            _Section.sale => _SaleSection(margin: margin, rights: rights),
+            _Section.sale => const SizedBox.shrink(),
             _Section.history => SalesHistorySection(
               margin: margin,
               rights: rights,
@@ -662,10 +663,17 @@ class _CashSessionsSection extends ConsumerWidget {
 }
 
 class _SaleSection extends ConsumerStatefulWidget {
-  const _SaleSection({required this.margin, required this.rights});
+  const _SaleSection({
+    required this.margin,
+    required this.rights,
+    required this.tabs,
+  });
 
   final double margin;
   final SalesRights rights;
+
+  /// Onglets de l'écran, posés en tête de la colonne des produits.
+  final Widget tabs;
 
   @override
   ConsumerState<_SaleSection> createState() => _SaleSectionState();
@@ -1010,9 +1018,20 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // Stock du magasin gardé chargé : il juge les ajouts et l'encaissement.
     ref.watch(stockByProductProvider);
     if (!widget.rights.canSell) {
-      return const ScreenStateView(
-        status: ScreenStatus.empty,
-        title: 'Vente réservée aux vendeurs',
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(widget.margin, 8, widget.margin, 8),
+            child: widget.tabs,
+          ),
+          const Expanded(
+            child: ScreenStateView(
+              status: ScreenStatus.empty,
+              title: 'Vente réservée aux vendeurs',
+            ),
+          ),
+        ],
       );
     }
     final sync = ref.watch(catalogSyncProvider);
@@ -1090,10 +1109,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       children: [
         Expanded(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(m, 10, m, m),
+            padding: EdgeInsets.fromLTRB(m, 8, m, m),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                widget.tabs,
+                const SizedBox(height: 10),
                 ?catalogAlert,
                 if (catalogAlert != null) const SizedBox(height: 12),
                 TextField(
@@ -1169,8 +1190,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       children: [
         Expanded(
           child: ListView(
-            padding: EdgeInsets.fromLTRB(m, 14, m, 16),
+            padding: EdgeInsets.fromLTRB(m, 8, m, 16),
             children: [
+              widget.tabs,
+              const SizedBox(height: 12),
               ?catalogAlert,
               if (catalogAlert != null) const SizedBox(height: 12),
               Autocomplete<Product>(
