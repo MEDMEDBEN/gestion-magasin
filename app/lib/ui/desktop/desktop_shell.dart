@@ -101,20 +101,23 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             // Réduit (demande MEDMEDBEN du 2026-10-12) : le menu DISPARAÎT,
             // tout l'écran va au contenu ; une flèche au bord le rouvre.
             if (!compact) ...[
-              _Sidebar(
-                user: widget.user,
-                entries: entries,
-                selectedIndex: index,
-                unread: ref.watch(unreadNotificationsProvider).value ?? 0,
-                onSelect: (i) => setState(() => _index = i),
-                onToggle: () => ref
-                    .read(sidebarCollapsedProvider.notifier)
-                    .set(collapsed: true),
-                onProfile: profile < 0
-                    ? null
-                    : () => setState(() => _index = profile),
+              _Floating(
+                child: _Sidebar(
+                  user: widget.user,
+                  entries: entries,
+                  selectedIndex: index,
+                  unread: ref.watch(unreadNotificationsProvider).value ?? 0,
+                  onSelect: (i) => setState(() => _index = i),
+                  onToggle: () => ref
+                      .read(sidebarCollapsedProvider.notifier)
+                      .set(collapsed: true),
+                  onProfile: profile < 0
+                      ? null
+                      : () => setState(() => _index = profile),
+                ),
               ),
-              VerticalDivider(width: 1, color: colors.line),
+              if (Theme.of(context).brightness == Brightness.dark)
+                VerticalDivider(width: 1, color: colors.line),
             ],
             Expanded(
               child: Column(
@@ -131,9 +134,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                         : null,
                   ),
                   Divider(height: 1, color: colors.line),
-                  Expanded(
-                    child: entries[index].builder(context, widget.user),
-                  ),
+                  Expanded(child: entries[index].builder(context, widget.user)),
                 ],
               ),
             ),
@@ -325,6 +326,35 @@ class _NavListState extends State<_NavList> {
   }
 }
 
+/// Clair (maquette du 2026-10-13) : le menu est une carte blanche flottante,
+/// arrondie, posée sur le fond gris. Sombre : collé au bord, comme avant.
+class _Floating extends StatelessWidget {
+  const _Floating({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (Theme.of(context).brightness == Brightness.dark) return child;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 24,
+              offset: Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(borderRadius: BorderRadius.circular(24), child: child),
+      ),
+    );
+  }
+}
+
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.entry,
@@ -341,6 +371,8 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    // Clair : l'actif est une PILULE NOIRE, texte blanc (maquette 2026-10-13).
+    final pill = Theme.of(context).brightness == Brightness.light;
 
     final item = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
@@ -355,12 +387,15 @@ class _NavItem extends StatelessWidget {
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              // Actif : voile d'accent + trait de 2 px à gauche (§6).
-              color: selected ? colors.accentBg : Colors.transparent,
+              // Actif : voile d'accent + trait de 2 px à gauche (§6) ; en
+              // clair, pilule noire.
+              color: selected
+                  ? (pill ? colors.accent : colors.accentBg)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(
-                AmpereGeometry.fieldRadiusDesktop,
+                pill ? 999 : AmpereGeometry.fieldRadiusDesktop,
               ),
-              border: selected
+              border: selected && !pill
                   ? Border(left: BorderSide(color: colors.accent, width: 2))
                   : null,
             ),
@@ -372,7 +407,9 @@ class _NavItem extends StatelessWidget {
                   child: Icon(
                     entry.icon,
                     size: 17,
-                    color: selected ? colors.accentHi : colors.ink2,
+                    color: selected
+                        ? (pill ? colors.onAccent : colors.accentHi)
+                        : colors.ink2,
                   ),
                 ),
                 ...[
@@ -383,7 +420,9 @@ class _NavItem extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AmpereType.bodyDesktop.copyWith(
-                        color: selected ? colors.ink : colors.ink2,
+                        color: selected
+                            ? (pill ? colors.onAccent : colors.ink)
+                            : colors.ink2,
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w400,

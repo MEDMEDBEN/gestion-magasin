@@ -1018,14 +1018,23 @@ class _Metric extends ConsumerWidget {
         ((t - b) * 100 / b).round(),
       _ => null,
     };
+    // Clair (maquette du 2026-10-13) : le « travail en cours » est une carte
+    // NOIRE pleine, texte blanc — l'accent du thème monochrome.
+    final solid =
+        meaning == _Meaning.work &&
+        Theme.of(context).brightness == Brightness.light;
+    final ink = solid ? colors.onAccent : colors.ink;
     final card = Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [tone.withValues(alpha: 0.13), colors.surface],
-        ),
+        color: solid ? colors.accent : null,
+        gradient: solid
+            ? null
+            : LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [tone.withValues(alpha: 0.13), colors.surface],
+              ),
       ),
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -1038,17 +1047,21 @@ class _Metric extends ConsumerWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: tone.withValues(alpha: 0.18),
+                  color: solid
+                      ? ink.withValues(alpha: 0.14)
+                      : tone.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: Icon(icon, size: 16, color: tone),
+                child: Icon(icon, size: 16, color: solid ? ink : tone),
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   maxLines: 2,
-                  style: AmpereType.label.copyWith(color: colors.ink2),
+                  style: AmpereType.label.copyWith(
+                    color: solid ? ink.withValues(alpha: 0.75) : colors.ink2,
+                  ),
                 ),
               ),
             ],
@@ -1061,7 +1074,7 @@ class _Metric extends ConsumerWidget {
             child: Text(
               value,
               maxLines: 1,
-              style: AmpereType.numericHero.copyWith(color: colors.ink),
+              style: AmpereType.numericHero.copyWith(color: ink),
             ),
           ),
           if (hint case final hint?) ...[
@@ -1069,7 +1082,11 @@ class _Metric extends ConsumerWidget {
             Text(
               hint,
               style: AmpereType.meta.copyWith(
-                color: meaning == _Meaning.work ? colors.ink3 : tone,
+                color: solid
+                    ? ink.withValues(alpha: 0.65)
+                    : meaning == _Meaning.work
+                    ? colors.ink3
+                    : tone,
               ),
             ),
           ],

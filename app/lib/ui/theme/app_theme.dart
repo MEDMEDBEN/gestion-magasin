@@ -37,6 +37,17 @@ class AppTheme {
     required double fieldHeight,
     required TextStyle bodyStyle,
   }) {
+    // Clair : formes de la maquette (2026-10-13) — cartes très arrondies,
+    // champs doux, boutons en pilule.
+    if (!dark) {
+      cardRadius = 20;
+      fieldRadius = 14;
+    }
+    final OutlinedBorder buttonShape = dark
+        ? RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(fieldRadius),
+          )
+        : const StadiumBorder();
     final scheme = ColorScheme(
       brightness: dark ? Brightness.dark : Brightness.light,
       primary: colors.accent,
@@ -109,9 +120,7 @@ class AppTheme {
           minimumSize: Size(0, fieldHeight),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(fieldRadius),
-          ),
+          shape: buttonShape,
         ).copyWith(side: focusSide(colors)),
       ),
 
@@ -123,9 +132,7 @@ class AppTheme {
               minimumSize: Size(0, fieldHeight),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(fieldRadius),
-              ),
+              shape: buttonShape,
             ).copyWith(
               side: focusSide(
                 colors,

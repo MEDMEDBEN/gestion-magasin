@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Thème clair monochrome (maquette MEDMEDBEN) — 2026-10-13 (MEDMEDBEN, Claude)
+
+- Palette claire (desktop + mobile) : fond gris perle #E9E9EC, cartes et menu BLANCS, accent NOIR #111113
+  (boutons, pastilles actives), couleurs gardées pour les états (vert, ambre, rouge, bleu). Remplace « ardoise ».
+- Formes du clair (`app_theme.dart`, si `!dark`) : cartes 20 px, champs 14 px, boutons en pilule.
+- Menu (desktop, clair) : carte blanche flottante arrondie (`_Floating`), élément actif en pilule noire.
+- Accueil (clair) : tuiles « travail en cours » en carte noire pleine, texte blanc.
+- Sombre inchangé. Captures 50-53 (`clair`) ajoutées à `screen_captures_test.dart`.
+- Preuves : app analyze 0, tests verts ; captures Accueil, Vente, Stock, Transferts en clair vérifiées.
+
 ### Tickets en rouleau bloqués « en erreur » — 2026-10-13 (MEDMEDBEN, Claude)
 
 - Terrain : la tâche d'un ticket (rouleau) restait en ERREUR dans la file Windows, les autres formats passaient.

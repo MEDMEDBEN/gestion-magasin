@@ -1257,6 +1257,56 @@ void main() {
       home: const ChangePasswordScreen(),
     ),
   );
+  // Thème clair monochrome (maquette du 2026-10-13).
+  testWidgets(
+    '50 clair accueil desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '50_clair_accueil_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+    ),
+  );
+  testWidgets(
+    '51 clair stock desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '51_clair_stock_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      interact: (t) async => t.tap(find.text('Stock').first),
+    ),
+  );
+  testWidgets(
+    '52 clair vente desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '52_clair_vente_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      user: _vendeuse,
+      products: _priced,
+      interact: _fillCart,
+    ),
+  );
+  testWidgets(
+    '53 clair transferts desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '53_clair_transferts_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      interact: (t) async => t.tap(find.text('Transferts').first),
+    ),
+  );
   testWidgets(
     '45 accueil desktop',
     skip: skip,
