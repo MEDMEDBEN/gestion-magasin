@@ -451,7 +451,9 @@ describe('Rapports produits (e2e)', () => {
           .slice(0, 10);
       const inside = await demand(`?from=${day(205)}&to=${day(195)}`);
       expect(
-        inside.bestSellers.some((r: { productId: string }) => r.productId === id),
+        inside.bestSellers.some(
+          (r: { productId: string }) => r.productId === id,
+        ),
       ).toBe(true);
       const outside = await demand(`?from=${day(30)}&to=${day(0)}`);
       expect(
