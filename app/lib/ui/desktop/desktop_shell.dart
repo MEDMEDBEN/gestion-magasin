@@ -100,23 +100,43 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
           children: [
             // Réduit (demande MEDMEDBEN du 2026-10-12) : le menu DISPARAÎT,
             // tout l'écran va au contenu ; une flèche au bord le rouvre.
-            if (!compact) ...[
-              _Floating(
-                child: _Sidebar(
-                  user: widget.user,
-                  entries: entries,
-                  selectedIndex: index,
-                  unread: ref.watch(unreadNotificationsProvider).value ?? 0,
-                  onSelect: (i) => setState(() => _index = i),
-                  onToggle: () => ref
-                      .read(sidebarCollapsedProvider.notifier)
-                      .set(collapsed: true),
-                  onProfile: profile < 0
-                      ? null
-                      : () => setState(() => _index = profile),
+            // Mouvement (demande MEDMEDBEN du 2026-10-14) : le menu glisse
+            // et se rétracte vers la gauche au lieu d'apparaître d'un coup.
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 280),
+              reverseDuration: const Duration(milliseconds: 240),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) => ClipRect(
+                child: SizeTransition(
+                  sizeFactor: animation,
+                  axis: Axis.horizontal,
+                  alignment: Alignment.centerRight,
+                  child: FadeTransition(opacity: animation, child: child),
                 ),
               ),
-            ],
+              child: compact
+                  ? const SizedBox.shrink(key: ValueKey('menu-ferme'))
+                  : KeyedSubtree(
+                      key: const ValueKey('menu-ouvert'),
+                      child: _Floating(
+                        child: _Sidebar(
+                          user: widget.user,
+                          entries: entries,
+                          selectedIndex: index,
+                          unread:
+                              ref.watch(unreadNotificationsProvider).value ?? 0,
+                          onSelect: (i) => setState(() => _index = i),
+                          onToggle: () => ref
+                              .read(sidebarCollapsedProvider.notifier)
+                              .set(collapsed: true),
+                          onProfile: profile < 0
+                              ? null
+                              : () => setState(() => _index = profile),
+                        ),
+                      ),
+                    ),
+            ),
             Expanded(
               child: Column(
                 children: [
