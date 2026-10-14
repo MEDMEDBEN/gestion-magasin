@@ -300,6 +300,22 @@ void main() {
       expect(find.text('Gestion magasin'), findsOneWidget);
     });
 
+    /// Demande MEDMEDBEN du 2026-10-14 : toute la zone est cliquable, pas
+    /// seulement la flèche.
+    testWidgets('la bande du haut réduit, le titre de la page rouvre', (
+      tester,
+    ) async {
+      await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
+      await tester.tap(find.text('Gestion magasin'));
+      await tester.pumpAndSettle();
+      expect(find.text('Gestion magasin'), findsNothing);
+
+      // Le titre de la page (Accueil) à côté de la flèche rouvre le menu.
+      await tester.tap(find.text('Accueil').first);
+      await tester.pumpAndSettle();
+      expect(find.text('Gestion magasin'), findsOneWidget);
+    });
+
     testWidgets('écran étroit : rail par défaut, agrandissable', (
       tester,
     ) async {

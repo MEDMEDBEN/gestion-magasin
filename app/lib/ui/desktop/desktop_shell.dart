@@ -196,33 +196,36 @@ class _Sidebar extends StatelessWidget {
         children: [
           SizedBox(
             height: 56,
-            // Réduit, l'en-tête ne garde que le bouton pour agrandir : un rail
-            // de 64 px n'a la place que d'une icône.
-            child: Row(
-              children: [
-                const SizedBox(width: 18),
-                // `zap` est le SEUL éclair du système (§5).
-                Icon(LucideIcons.zap, size: 20, color: colors.accent),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Gestion magasin',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.h4.copyWith(color: colors.ink),
+            // TOUTE la bande du haut réduit le menu, pas seulement la flèche
+            // (demande MEDMEDBEN du 2026-10-14 : viser plus facilement).
+            child: InkWell(
+              onTap: onToggle,
+              child: Row(
+                children: [
+                  const SizedBox(width: 18),
+                  // `zap` est le SEUL éclair du système (§5).
+                  Icon(LucideIcons.zap, size: 20, color: colors.accent),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Gestion magasin',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.h4.copyWith(color: colors.ink),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: 'Réduire le menu',
-                  onPressed: onToggle,
-                  icon: Icon(
-                    LucideIcons.chevronsLeft,
-                    size: 18,
-                    color: colors.ink2,
+                  IconButton(
+                    tooltip: 'Réduire le menu',
+                    onPressed: onToggle,
+                    icon: Icon(
+                      LucideIcons.chevronsLeft,
+                      size: 18,
+                      color: colors.ink2,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-              ],
+                  const SizedBox(width: 6),
+                ],
+              ),
             ),
           ),
           Divider(height: 1, color: colors.line),
@@ -457,25 +460,51 @@ class _TopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          if (onExpand != null) ...[
-            IconButton(
-              tooltip: 'Agrandir le menu',
-              onPressed: onExpand,
-              icon: Icon(
-                LucideIcons.chevronsRight,
-                size: 18,
-                color: colors.ink2,
-              ),
-            ),
-            const SizedBox(width: 4),
-          ],
           Expanded(
-            child: Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AmpereType.bodyStrong.copyWith(color: colors.ink2),
-            ),
+            child: onExpand == null
+                ? Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.bodyStrong.copyWith(color: colors.ink2),
+                  )
+                // Menu caché : de la flèche jusqu'au titre, tout rouvre le
+                // menu (demande MEDMEDBEN du 2026-10-14).
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: onExpand,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Agrandir le menu',
+                              onPressed: onExpand,
+                              icon: Icon(
+                                LucideIcons.chevronsRight,
+                                size: 18,
+                                color: colors.ink2,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AmpereType.bodyStrong.copyWith(
+                                  color: colors.ink2,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
           ),
           // Assistant (2026-10-05) : actions préparées, Ctrl+K au clavier.
           IconButton(
