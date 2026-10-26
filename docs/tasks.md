@@ -4,6 +4,13 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Thème sombre noir (opposé du clair) — 2026-10-27 (MEDMEDBEN, Claude)
+
+- Palettes `desktopDark`/`mobileDark` : noir zinc (#09090B fond, cartes #111113, filets #27272A), texte
+  blanc, action principale BLANCHE texte noir ; aucun bleu (l'état « info » passe en gris clair). Les états
+  ok/warn/error gardent leur couleur. UI seulement.
+- Preuves : analyze 0, 556 tests ; captures Accueil, Vente, Achats en sombre vérifiées.
+
 ### Ordre actions → recherche → filtres + Planning jamais vide — 2026-10-26 (MEDMEDBEN, Claude)
 
 - Règle d'écran : les ACTIONS en haut, puis la recherche, puis les FILTRES juste au-dessus de la liste.
