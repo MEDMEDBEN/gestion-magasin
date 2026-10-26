@@ -234,6 +234,27 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
               ActionGrid(children: actions),
               const SizedBox(height: 14),
             ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'COMMANDES',
+                    style: AmpereType.label.copyWith(color: colors.ink3),
+                  ),
+                ),
+                if (_filter != _Filter.all)
+                  TextButton.icon(
+                    onPressed: () => setState(() => _filter = _Filter.all),
+                    icon: const Icon(LucideIcons.x, size: 15),
+                    label: const Text('Tout afficher'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            toolbar,
+            const SizedBox(height: 10),
+            // Filtres JUSTE au-dessus de la liste (demande MEDMEDBEN du
+            // 2026-10-26) : les actions en haut, le tri près de ce qu'il trie.
             if (items.isNotEmpty) ...[
               StatGrid(
                 children: [
@@ -271,25 +292,6 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'COMMANDES',
-                    style: AmpereType.label.copyWith(color: colors.ink3),
-                  ),
-                ),
-                if (_filter != _Filter.all)
-                  TextButton.icon(
-                    onPressed: () => setState(() => _filter = _Filter.all),
-                    icon: const Icon(LucideIcons.x, size: 15),
-                    label: const Text('Tout afficher'),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            toolbar,
-            const SizedBox(height: 10),
             if (items.isEmpty)
               const AmpereInlineAlert(
                 tone: StatusTone.info,

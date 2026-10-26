@@ -382,7 +382,16 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                 ],
               ),
               const SizedBox(height: 12),
-            ] else ...[
+            ],
+            if (actions.isNotEmpty) ...[
+              ActionGrid(children: actions),
+              const SizedBox(height: 14),
+            ],
+            if (!catalogEmpty) ...[
+              searchBar,
+              const SizedBox(height: 10),
+              // Filtres SOUS la recherche (demande MEDMEDBEN du 2026-10-26) :
+              // on agit en haut, on trie la liste juste au-dessus d'elle.
               StatGrid(
                 children: [
                   tile(
@@ -412,14 +421,6 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                 ],
               ),
               const SizedBox(height: 12),
-            ],
-            if (actions.isNotEmpty) ...[
-              ActionGrid(children: actions),
-              const SizedBox(height: 14),
-            ],
-            if (!catalogEmpty) ...[
-              searchBar,
-              const SizedBox(height: 10),
               if (_filter != _Filter.all)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),

@@ -226,6 +226,23 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
               ActionGrid(children: actions),
               const SizedBox(height: 12),
             ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'TRANSFERTS',
+                    style: AmpereType.label.copyWith(color: colors.ink3),
+                  ),
+                ),
+                PeriodFilter(
+                  value: ref.watch(transferPeriodProvider),
+                  onChanged: ref.read(transferPeriodProvider.notifier).set,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            // Filtres JUSTE au-dessus de la liste (demande MEDMEDBEN du
+            // 2026-10-26) : les actions en haut, le tri près de ce qu'il trie.
             if (items.isNotEmpty) ...[
               StatGrid(
                 children: [
@@ -269,21 +286,6 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'TRANSFERTS',
-                    style: AmpereType.label.copyWith(color: colors.ink3),
-                  ),
-                ),
-                PeriodFilter(
-                  value: ref.watch(transferPeriodProvider),
-                  onChanged: ref.read(transferPeriodProvider.notifier).set,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             OfflineDocumentsNotice(cachedAt: list.cachedAt),
             if (items.isEmpty)
               const AmpereInlineAlert(

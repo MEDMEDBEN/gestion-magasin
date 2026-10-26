@@ -84,8 +84,21 @@ class _ProblemsScreenState extends ConsumerState<ProblemsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // L'action d'abord, les filtres dessous, juste au-dessus de la liste
+        // (demande MEDMEDBEN du 2026-10-26 : ne pas mélanger les deux).
         Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
+          padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: () => openProblemForm(context),
+              icon: const Icon(LucideIcons.plus, size: 17),
+              label: const Text('Signaler'),
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(margin, 12, margin, 10),
           child: Row(
             children: [
               Expanded(
@@ -119,12 +132,6 @@ class _ProblemsScreenState extends ConsumerState<ProblemsScreen> {
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: () => openProblemForm(context),
-                icon: const Icon(LucideIcons.plus, size: 17),
-                label: const Text('Signaler'),
               ),
             ],
           ),

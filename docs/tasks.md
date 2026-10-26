@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Ordre actions → recherche → filtres + Planning jamais vide — 2026-10-26 (MEDMEDBEN, Claude)
+
+- Règle d'écran : les ACTIONS en haut, puis la recherche, puis les FILTRES juste au-dessus de la liste.
+  Appliqué à Stock, Achats, Transferts (filtres déplacés), Signalements et Réappro (action séparée des filtres).
+  Inventaire était déjà conforme ; Catalogue garde « Nouveau produit » à côté de sa recherche.
+- Planning : guide en 3 étapes, action « Nouvelle tâche », filtres, en-tête de tableau, lignes avec icône du
+  type ; vide → tableau d'EXEMPLES grisés (maquette) au lieu d'une page blanche. Logique inchangée.
+- Preuves : analyze 0, 556 tests ; captures Planning, Stock, Achats vérifiées.
+
 ### Boutons d'action compacts + caisse resserrée — 2026-10-26 (MEDMEDBEN, Claude)
 
 - `ActionTile`/`ActionGrid` (Stock, Achats, Transferts…) : petits boutons 32 px à la suite ; l'explication

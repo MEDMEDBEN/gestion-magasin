@@ -131,11 +131,7 @@ class _ReplenishmentScreenState extends ConsumerState<ReplenishmentScreen> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              FilterChip(
-                label: const Text('Ruptures seulement'),
-                selected: _outOfStockOnly,
-                onSelected: (on) => setState(() => _outOfStockOnly = on),
-              ),
+              // L'action d'abord, le filtre ensuite (2026-10-26).
               if (page.value case final data? when data.data.isNotEmpty)
                 FilledButton.icon(
                   onPressed: _preparing
@@ -144,6 +140,11 @@ class _ReplenishmentScreenState extends ConsumerState<ReplenishmentScreen> {
                   icon: const Icon(Icons.playlist_add_check, size: 18),
                   label: const Text('Préparer les commandes'),
                 ),
+              FilterChip(
+                label: const Text('Ruptures seulement'),
+                selected: _outOfStockOnly,
+                onSelected: (on) => setState(() => _outOfStockOnly = on),
+              ),
               if (page.value case final data?)
                 Text(
                   data.outOfStockCount == 0

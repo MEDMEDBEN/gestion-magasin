@@ -6,7 +6,9 @@ import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
+import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/planning_controller.dart';
@@ -84,119 +86,161 @@ class _PlanningScreenState extends ConsumerState<PlanningScreen> {
           }
         : const <String, String>{};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    final colors = AmpereColors.of(context);
+    // Jamais une page vide (demande MEDMEDBEN du 2026-10-26) : un guide, les
+    // actions, les filtres, puis un TABLEAU des tâches — même vide, il montre
+    // à quoi il servira.
+    return ListView(
+      padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
       children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 10),
-          child: Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            alignment: WrapAlignment.spaceBetween,
+        GuideSteps(
+          title: 'COMMENT FONCTIONNE LE PLANNING',
+          steps: [
+            (
+              'Planifier',
+              rights.canManage
+                  ? 'Créez une tâche : quoi, pour qui, pour quand.'
+                  : 'L’administrateur vous confie des tâches datées.',
+            ),
+            (
+              'Exécuter',
+              'Le membre la commence, puis la termine avec son résultat.',
+            ),
+            ('Suivre', 'Les retards ressortent en rouge ; tout reste tracé.'),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (rights.canManage) ...[
+          ActionGrid(
             children: [
-              if (rights.canManage)
-                SizedBox(
-                  width: 240,
-                  child: DropdownButtonFormField<String?>(
-                    icon: const Icon(LucideIcons.chevronDown, size: 17),
-                    initialValue: _memberId,
-                    isExpanded: true,
-                    decoration: const InputDecoration(labelText: 'Membre'),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Toute l’équipe'),
-                      ),
-                      for (final e in members.entries)
-                        DropdownMenuItem<String?>(
-                          value: e.key,
-                          child: Text(e.value),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() => _memberId = v),
-                  ),
-                ),
-              SegmentedButton<PlanningView>(
-                segments: [
-                  for (final v in PlanningView.values)
-                    ButtonSegment(value: v, label: Text(v.label)),
-                ],
-                selected: {_view},
-                showSelectedIcon: false,
-                onSelectionChanged: (s) => setState(() => _view = s.first),
+              ActionTile(
+                icon: LucideIcons.plus,
+                title: 'Nouvelle tâche',
+                subtitle: 'Saisie, comptage, révision, réception…',
+                tone: StatusTone.info,
+                prominent: true,
+                onTap: () =>
+                    openFormPanel<void>(context, const PlanningTaskForm()),
               ),
-              if (rights.canManage)
-                FilledButton.icon(
-                  onPressed: () =>
-                      openFormPanel<void>(context, const PlanningTaskForm()),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('Nouvelle tâche'),
-                ),
             ],
           ),
+          const SizedBox(height: 14),
+        ],
+        // Filtres JUSTE au-dessus du tableau (2026-10-26).
+        Wrap(
+          spacing: 12,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            if (rights.canManage)
+              SizedBox(
+                width: 240,
+                child: DropdownButtonFormField<String?>(
+                  icon: const Icon(LucideIcons.chevronDown, size: 17),
+                  initialValue: _memberId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Membre'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Toute l’équipe'),
+                    ),
+                    for (final e in members.entries)
+                      DropdownMenuItem<String?>(
+                        value: e.key,
+                        child: Text(e.value),
+                      ),
+                  ],
+                  onChanged: (v) => setState(() => _memberId = v),
+                ),
+              ),
+            SegmentedButton<PlanningView>(
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              segments: [
+                for (final v in PlanningView.values)
+                  ButtonSegment(value: v, label: Text(v.label)),
+              ],
+              selected: {_view},
+              showSelectedIcon: false,
+              onSelectionChanged: (s) => setState(() => _view = s.first),
+            ),
+          ],
         ),
-        Expanded(
-          child: tasks.when(
-            loading: () => const AmpereSkeletonList(rows: 5),
-            error: (error, _) => ScreenStateView(
+        const SizedBox(height: 14),
+        _TableHeader(colors: colors, withMember: rights.canManage),
+        const SizedBox(height: 6),
+        ...tasks.when(
+          loading: () => const [
+            SizedBox(height: 240, child: AmpereSkeletonList(rows: 4)),
+          ],
+          error: (error, _) => [
+            ScreenStateView(
               status: error is ApiException && error.isOffline
                   ? ScreenStatus.offline
                   : ScreenStatus.error,
               message: error is ApiException ? error.userMessage : '$error',
               onRetry: () => ref.invalidate(planningTasksProvider(_filter)),
             ),
-            data: (listing) => listing.tasks.isEmpty
-                ? ScreenStateView(
-                    status: ScreenStatus.empty,
+          ],
+          data: (listing) => listing.tasks.isEmpty
+              ? [
+                  _EmptyTable(
+                    colors: colors,
                     title: switch (_view) {
                       PlanningView.open => 'Aucune tâche à faire',
                       PlanningView.late => 'Rien en retard',
                       PlanningView.done => 'Aucune tâche terminée',
                     },
                     message: rights.canManage
-                        ? 'Planifiez la semaine : saisies, comptages, révisions.'
-                        : 'Aucune tâche ne vous est confiée pour le moment.',
-                  )
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
-                    children: [
-                      // Page tronquée : on le DIT, on ne perd rien en silence.
-                      if (listing.total > listing.tasks.length)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: AmpereInlineAlert(
-                            tone: StatusTone.info,
-                            icon: LucideIcons.info,
-                            message:
-                                '${listing.tasks.length} tâches affichées sur '
-                                '${listing.total} — filtrez par membre pour '
-                                'voir les autres.',
-                          ),
-                        ),
-                      for (final t in listing.tasks)
-                        Card(
-                          child: ListTile(
-                            title: Text(t.title),
-                            subtitle: Text(
-                              [
-                                t.type.label,
-                                if (rights.canManage)
-                                  members[t.assignedToId] ?? 'Membre',
-                                'échéance ${formatIsoDay(t.dueDate)}',
-                                ?t.zone,
-                              ].join(' · '),
-                            ),
-                            trailing: AmpereBadge(
-                              label: _badge(t).label,
-                              tone: _badge(t).tone,
-                            ),
-                            onTap: () => _openActions(t, rights),
-                          ),
-                        ),
-                    ],
+                        ? 'Planifiez la semaine avec « Nouvelle tâche ». '
+                              'Voici à quoi ressemblera le tableau :'
+                        : 'Aucune tâche ne vous est confiée pour le moment. '
+                              'Elles apparaîtront ainsi :',
                   ),
-          ),
+                ]
+              : [
+                  // Page tronquée : on le DIT, on ne perd rien en silence.
+                  if (listing.total > listing.tasks.length)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: AmpereInlineAlert(
+                        tone: StatusTone.info,
+                        icon: LucideIcons.info,
+                        message:
+                            '${listing.tasks.length} tâches affichées sur '
+                            '${listing.total} — filtrez par membre pour '
+                            'voir les autres.',
+                      ),
+                    ),
+                  for (final t in listing.tasks)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Card(
+                        child: ListTile(
+                          leading: Icon(
+                            _typeIcon(t.type),
+                            size: 18,
+                            color: colors.ink2,
+                          ),
+                          title: Text(t.title),
+                          subtitle: Text(
+                            [
+                              t.type.label,
+                              if (rights.canManage)
+                                members[t.assignedToId] ?? 'Membre',
+                              'échéance ${formatIsoDay(t.dueDate)}',
+                              ?t.zone,
+                            ].join(' · '),
+                          ),
+                          trailing: AmpereBadge(
+                            label: _badge(t).label,
+                            tone: _badge(t).tone,
+                          ),
+                          onTap: () => _openActions(t, rights),
+                        ),
+                      ),
+                    ),
+                ],
         ),
       ],
     );
@@ -428,6 +472,148 @@ class _CompleteDialogState extends State<_CompleteDialog> {
         ),
         FilledButton(onPressed: _submit, child: const Text('Terminer')),
       ],
+    );
+  }
+}
+
+/// Icône d'un type de tâche : on reconnaît la ligne d'un coup d'œil.
+IconData _typeIcon(PlanningTaskType type) => switch (type) {
+  PlanningTaskType.entry => LucideIcons.keyboard,
+  PlanningTaskType.count => LucideIcons.listChecks,
+  PlanningTaskType.review => LucideIcons.searchCheck,
+  PlanningTaskType.reception => LucideIcons.truck,
+  PlanningTaskType.preparation => LucideIcons.packageOpen,
+  PlanningTaskType.other => LucideIcons.clipboardList,
+};
+
+/// En-tête du tableau des tâches.
+class _TableHeader extends StatelessWidget {
+  const _TableHeader({required this.colors, required this.withMember});
+
+  final AmpereColors colors;
+  final bool withMember;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AmpereType.label.copyWith(color: colors.ink3);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(child: Text('TÂCHE', style: style)),
+          Text(
+            withMember ? 'TYPE · MEMBRE · ÉCHÉANCE' : 'TYPE · ÉCHÉANCE',
+            style: style,
+          ),
+          const SizedBox(width: 24),
+          Text('ÉTAT', style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tableau vide : le message, puis des lignes d'EXEMPLE grisées pour montrer
+/// ce que la page contiendra (jamais une page blanche).
+class _EmptyTable extends StatelessWidget {
+  const _EmptyTable({
+    required this.colors,
+    required this.title,
+    required this.message,
+  });
+
+  final AmpereColors colors;
+  final String title;
+  final String message;
+
+  static const _examples = [
+    (
+      PlanningTaskType.count,
+      'Compter les disjoncteurs du rayon B',
+      'Comptage · lundi',
+      'À faire',
+    ),
+    (
+      PlanningTaskType.reception,
+      'Réceptionner la livraison du fournisseur',
+      'Réception · mardi',
+      'Exemple',
+    ),
+    (
+      PlanningTaskType.entry,
+      'Saisir les nouveaux prix du catalogue',
+      'Saisie · vendredi',
+      'Terminée',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.calendarDays, size: 18, color: colors.ink2),
+                const SizedBox(width: 8),
+                Text(title, style: AmpereType.h4.copyWith(color: colors.ink)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(message, style: AmpereType.meta.copyWith(color: colors.ink3)),
+            const SizedBox(height: 12),
+            // Maquette : lignes grisées, non cliquables.
+            Opacity(
+              opacity: 0.45,
+              child: Column(
+                children: [
+                  for (final (type, label, detail, state) in _examples)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: colors.line),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(_typeIcon(type), size: 16, color: colors.ink2),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  label,
+                                  style: AmpereType.bodyStrong.copyWith(
+                                    color: colors.ink,
+                                  ),
+                                ),
+                                Text(
+                                  detail,
+                                  style: AmpereType.meta.copyWith(
+                                    color: colors.ink3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          AmpereBadge(label: state, tone: StatusTone.neutral),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
