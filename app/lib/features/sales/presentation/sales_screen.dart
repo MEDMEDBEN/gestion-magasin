@@ -489,9 +489,9 @@ class _DrawerCard extends StatelessWidget {
       child: Container(
         // Sobre (maquette du 2026-10-26) : carte blanche à filet, seule
         // l'icône dit l'état de la caisse.
-        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+        padding: const EdgeInsets.fromLTRB(10, 0, 2, 0),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           color: colors.surface,
           border: Border.all(color: colors.line),
         ),
@@ -1162,7 +1162,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                     children: _ticketBody(),
                   ),
                 ),
@@ -1271,13 +1271,16 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     return [
       if (widget.rights.canManageCash) ...[
         const _CashBar(),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
       ],
       Row(
         children: [
-          Icon(LucideIcons.receipt, size: 18, color: colors.ink2),
+          Icon(LucideIcons.receipt, size: 15, color: colors.ink2),
           const SizedBox(width: 8),
-          Text('Ticket', style: AmpereType.h4.copyWith(color: colors.ink)),
+          Text(
+            'Ticket',
+            style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1291,9 +1294,9 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           ),
         ],
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 8),
       Divider(height: 1, color: colors.line),
-      const SizedBox(height: 16),
+      const SizedBox(height: 10),
       BuyerBar(
         withConfreres: widget.rights.canSeeConfreres,
         withSuppliers:
@@ -1356,7 +1359,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // Acheteur à choisir à CHAQUE vente (décision du 2026-10-12).
     final noBuyer = cart.buyer == null && cart.quote == null;
     return Padding(
-      padding: EdgeInsets.all(compact ? 12 : 24),
+      padding: EdgeInsets.fromLTRB(16, 10, 16, compact ? 10 : 14),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1440,7 +1443,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'dépôt — sinon la vente sera refusée.',
             ),
           ],
-          SizedBox(height: compact ? 8 : 12),
+          const SizedBox(height: 8),
           // Les gestes du panier en boutons étiquetés et colorés (demande
           // MEDMEDBEN du 2026-10-13 : « remise, devis… dans un bouton clair »).
           if (!cart.isEmpty) ...[
@@ -1487,7 +1490,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     ? _PayButton(
                         icon: LucideIcons.userRoundSearch,
                         label: 'Choisir l’acheteur',
-                        height: 52,
+                        height: 42,
                         tone: AmpereColors.of(context).accent,
                         onPressed: cart.isEmpty ? null : _chooseBuyer,
                       )
@@ -1498,7 +1501,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                       _PayButton(
                         icon: LucideIcons.lockOpen,
                         label: 'Ouvrir la caisse pour encaisser',
-                        height: 52,
+                        height: 42,
                         tone: AmpereColors.of(context).warn,
                         onPressed: widget.rights.canManageCash
                             ? () => _openCashFlow(context, ref)
@@ -1511,14 +1514,14 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                       _PayButton(
                         icon: LucideIcons.fileText,
                         label: 'Mettre à jour le devis ${cart.quote!.number}',
-                        height: 52,
+                        height: 42,
                         onPressed: blocked ? null : _updateQuote,
                       )
                     : _PayButton(
                         icon: LucideIcons.banknote,
                         label: 'Encaisser ${formatDA(estimate.totalTtc)}',
                         shortcut: compact ? null : 'F9',
-                        height: 52,
+                        height: 42,
                         onPressed: blocked || shortages.isNotEmpty
                             ? null
                             : () => _checkout(estimate),
@@ -1552,7 +1555,7 @@ class _TotalDisplay extends StatelessWidget {
     final amount = Text(
       formatDA(total),
       style: AmpereType.numericHero.copyWith(
-        fontSize: compact ? 28 : 32,
+        fontSize: compact ? 24 : 26,
         color: colors.ink,
       ),
     );
@@ -1563,7 +1566,7 @@ class _TotalDisplay extends StatelessWidget {
       border: Border.all(color: colors.line),
     );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
       decoration: screen,
       child: Row(
         children: [
@@ -1640,11 +1643,11 @@ class _PayButton extends StatelessWidget {
             shadowColor: Colors.transparent,
             foregroundColor: colors.onAccent,
             disabledForegroundColor: colors.ink3,
-            textStyle: AmpereType.sectionTitle,
+            textStyle: AmpereType.bodyStrong.copyWith(fontSize: 14),
             shape: RoundedRectangleBorder(borderRadius: radius),
           ),
           onPressed: onPressed,
-          icon: Icon(icon, size: 22),
+          icon: Icon(icon, size: 17),
           label: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -2074,141 +2077,148 @@ class _CartLineRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final cart = ref.read(cartProvider.notifier);
-    final compact = VisualDensity.compact;
+    // Une seule bande par ligne (demande MEDMEDBEN du 2026-10-26) : nom et
+    // prix à gauche ; quantité, total et gestes à droite, en petit.
+    Widget tool(
+      IconData icon,
+      String tip,
+      VoidCallback onPressed, {
+      Color? color,
+    }) => IconButton(
+      tooltip: tip,
+      style: IconButton.styleFrom(
+        padding: EdgeInsets.zero,
+        minimumSize: const Size(26, 26),
+        fixedSize: const Size(26, 26),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      iconSize: 14,
+      icon: Icon(icon, color: color ?? colors.ink2),
+      onPressed: onPressed,
+    );
+    final badges = [
+      if (missingPrice)
+        const AmpereBadge(label: 'Prix non fixé', tone: StatusTone.error)
+      else if (unitPriceHt != tariffPriceHt)
+        const AmpereBadge(label: 'Prix modifié', tone: StatusTone.warn),
+      if (invalidDiscount)
+        AmpereBadge(
+          label: 'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
+          tone: StatusTone.error,
+        )
+      else if (line.discountHt > 0)
+        Text(
+          'Remise ${formatDA(line.discountHt)}',
+          style: AmpereType.meta.copyWith(color: colors.warn),
+        ),
+    ];
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 7),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.lineSoft)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  line.product.name,
-                  style: AmpereType.rowTitle.copyWith(color: colors.ink),
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (totalHt != null)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  formatDA(totalHt!),
-                  style: AmpereType.bodyStrong.copyWith(
-                    color: colors.ink,
-                    fontFeatures: AmpereType.tabular,
+                  line.product.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                ),
+                Text(
+                  [
+                    if (unitPriceHt != null)
+                      '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
+                    // Prix d'achat visible (2026-10-05) : jusqu'où baisser.
+                    if (line.product.lastPurchasePriceHt case final cost?)
+                      'achat ${formatDA(cost)}',
+                    line.product.sku,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
+                ),
+                if (badges.isNotEmpty)
+                  Wrap(spacing: 4, runSpacing: 2, children: badges),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Quantité : − 2 pce +, petite pastille bordée.
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: colors.line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                tool(
+                  LucideIcons.minus,
+                  'Moins',
+                  () => cart.setQuantity(
+                    line.product.id,
+                    line.quantity - Quantity.one,
                   ),
                 ),
-            ],
-          ),
-          Text(
-            [
-              line.product.sku,
-              if (unitPriceHt != null)
-                '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
-              // Prix d'achat visible (2026-10-05) : savoir jusqu'où baisser.
-              // Absent si inconnu ou non autorisé (serveur).
-              if (line.product.lastPurchasePriceHt case final cost?)
-                'achat ${formatDA(cost)}',
-            ].join(' · '),
-            style: AmpereType.meta.copyWith(color: colors.ink3),
-          ),
-          if (missingPrice)
-            const AmpereBadge(label: 'Prix non fixé', tone: StatusTone.error)
-          else if (unitPriceHt != tariffPriceHt)
-            const AmpereBadge(label: 'Prix modifié', tone: StatusTone.warn),
-          if (invalidDiscount)
-            AmpereBadge(
-              label:
-                  'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
-              tone: StatusTone.error,
-            )
-          else if (line.discountHt > 0)
-            Text(
-              'Remise ${formatDA(line.discountHt)}',
-              style: AmpereType.meta.copyWith(color: colors.warn),
-            ),
-          Row(
-            children: [
-              // Quantité : − 2 pce +, dans une pastille comme sur un terminal.
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.surface2,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      visualDensity: compact,
-                      tooltip: 'Moins',
-                      icon: const Icon(LucideIcons.minus, size: 16),
-                      onPressed: () => cart.setQuantity(
-                        line.product.id,
-                        line.quantity - Quantity.one,
-                      ),
-                    ),
-                    // Toucher la quantité la SAISIT (2026-10-12) : 12,5 m
-                    // sans taper 12 fois sur « + ».
-                    InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => _editQuantity(context, ref),
-                      child: Tooltip(
-                        message: 'Saisir la quantité',
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minWidth: 64),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 4,
-                            ),
-                            child: Text(
-                              '${formatQuantity(line.quantity)} ${line.product.unit.short}',
-                              textAlign: TextAlign.center,
-                              style: AmpereType.bodyStrong.copyWith(
-                                color: colors.accentHi,
-                                fontFeatures: AmpereType.tabular,
-                                decoration: TextDecoration.underline,
-                                decorationStyle: TextDecorationStyle.dotted,
-                              ),
-                            ),
-                          ),
+                // Toucher la quantité la SAISIT (2026-10-12).
+                InkWell(
+                  onTap: () => _editQuantity(context, ref),
+                  child: Tooltip(
+                    message: 'Saisir la quantité',
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 44),
+                      child: Text(
+                        '${formatQuantity(line.quantity)} ${line.product.unit.short}',
+                        textAlign: TextAlign.center,
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                          fontFeatures: AmpereType.tabular,
+                          decoration: TextDecoration.underline,
+                          decorationStyle: TextDecorationStyle.dotted,
                         ),
                       ),
                     ),
-                    IconButton(
-                      visualDensity: compact,
-                      tooltip: 'Plus',
-                      icon: const Icon(LucideIcons.plus, size: 16),
-                      onPressed: () => cart.add(line.product),
-                    ),
-                  ],
+                  ),
                 ),
+                tool(LucideIcons.plus, 'Plus', () => cart.add(line.product)),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 92,
+            child: Text(
+              totalHt == null ? '—' : formatDA(totalHt!),
+              textAlign: TextAlign.end,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AmpereType.bodyStrong.copyWith(
+                color: colors.ink,
+                fontFeatures: AmpereType.tabular,
               ),
-              const Spacer(),
-              IconButton(
-                visualDensity: compact,
-                tooltip: 'Modifier le prix',
-                icon: const Icon(LucideIcons.pencil, size: 16),
-                onPressed: () => _editPrice(context, ref),
-              ),
-              if (canDiscount && !missingPrice)
-                IconButton(
-                  visualDensity: compact,
-                  tooltip: 'Remise',
-                  icon: const Icon(LucideIcons.percent, size: 16),
-                  onPressed: () => _editDiscount(context, ref),
-                ),
-              IconButton(
-                visualDensity: compact,
-                tooltip: 'Retirer',
-                icon: Icon(LucideIcons.trash2, size: 16, color: colors.error),
-                onPressed: () =>
-                    cart.setQuantity(line.product.id, Quantity.zero),
-              ),
-            ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          tool(
+            LucideIcons.pencil,
+            'Modifier le prix',
+            () => _editPrice(context, ref),
+          ),
+          if (canDiscount && !missingPrice)
+            tool(
+              LucideIcons.percent,
+              'Remise',
+              () => _editDiscount(context, ref),
+            ),
+          tool(
+            LucideIcons.trash2,
+            'Retirer',
+            () => cart.setQuantity(line.product.id, Quantity.zero),
+            color: colors.error,
           ),
         ],
       ),
@@ -2702,11 +2712,12 @@ class _CartAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
     style: OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 40),
+      minimumSize: const Size(0, 32),
       padding: const EdgeInsets.symmetric(horizontal: 8),
+      textStyle: AmpereType.bodyStrong,
     ),
     onPressed: onPressed,
-    icon: Icon(icon, size: 16, color: onPressed == null ? null : color),
+    icon: Icon(icon, size: 14, color: onPressed == null ? null : color),
     label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
   );
 }

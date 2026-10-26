@@ -4,6 +4,14 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Boutons d'action compacts + caisse resserrée — 2026-10-26 (MEDMEDBEN, Claude)
+
+- `ActionTile`/`ActionGrid` (Stock, Achats, Transferts…) : petits boutons 32 px à la suite ; l'explication
+  passe en infobulle ; l'action principale est pleine, les autres bordées.
+- Vente : ligne du panier sur UNE bande (~50 px : nom + prix, quantité, total, gestes en icônes 26 px),
+  ticket/caisse/acheteur/total resserrés, boutons d'action 32 px, bouton principal 42 px. ~6 lignes visibles.
+- Preuves : analyze 0, 556 tests ; captures Vente et Stock vérifiées.
+
 ### Refonte UI « shadcn » (thème clair) — 2026-10-26 (MEDMEDBEN, Claude)
 
 Front seulement, aucune logique touchée. Maquette fournie (Shadcn UI Kit, CRM Dashboard).

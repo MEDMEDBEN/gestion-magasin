@@ -341,7 +341,7 @@ class BuyerBar extends ConsumerWidget {
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         side: BorderSide(
           color: missing ? tone : colors.line,
           width: missing ? 1.5 : 1,
@@ -351,12 +351,12 @@ class BuyerBar extends ConsumerWidget {
       child: InkWell(
         onTap: choose,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           child: Row(
             children: [
               Icon(
                 missing ? LucideIcons.userRoundSearch : LucideIcons.userCheck,
-                size: 18,
+                size: 15,
                 color: tone,
               ),
               const SizedBox(width: 10),

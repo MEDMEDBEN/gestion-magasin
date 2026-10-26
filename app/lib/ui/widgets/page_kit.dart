@@ -114,97 +114,45 @@ class ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    // Maquette du 2026-10-26 : carte blanche à filet, icône dans un carré
-    // bordé ; l'action principale est pleine (noir en clair).
-    final ink = prominent ? colors.onAccent : colors.ink;
-    final soft = prominent
-        ? colors.onAccent.withValues(alpha: 0.75)
-        : colors.ink3;
-    return Material(
-      color: prominent ? colors.accent : colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: prominent ? colors.accent : colors.line),
+    // Petit bouton (demande MEDMEDBEN du 2026-10-26 : les tuiles d'action
+    // étaient trop grandes) ; l'explication passe en infobulle. L'action
+    // principale est pleine, les autres bordées, icône à la couleur de l'état.
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 12),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: prominent
-                      ? colors.onAccent.withValues(alpha: 0.12)
-                      : colors.surface,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: prominent
-                        ? colors.onAccent.withValues(alpha: 0.2)
-                        : colors.line,
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  size: 18,
-                  color: prominent ? ink : tone.foreground(colors),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: AmpereType.rowTitle.copyWith(color: ink),
-                    ),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.meta.copyWith(color: soft),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(LucideIcons.chevronRight, size: 18, color: soft),
-            ],
-          ),
-        ),
-      ),
+      textStyle: WidgetStatePropertyAll(AmpereType.bodyStrong),
+      visualDensity: VisualDensity.compact,
+    );
+    return Tooltip(
+      message: subtitle,
+      child: prominent
+          ? FilledButton.icon(
+              style: style,
+              onPressed: onTap,
+              icon: Icon(icon, size: 15),
+              label: Text(title),
+            )
+          : OutlinedButton.icon(
+              style: style,
+              onPressed: onTap,
+              icon: Icon(icon, size: 15, color: tone.foreground(colors)),
+              label: Text(title),
+            ),
     );
   }
 }
 
-/// Grille d'[ActionTile] : 3 par ligne au poste, une par ligne sur téléphone.
+/// Rangée d'[ActionTile] : de petits boutons à la suite, à la ligne si besoin.
 class ActionGrid extends StatelessWidget {
   const ActionGrid({super.key, required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final perRow = constraints.maxWidth >= 900
-          ? 3
-          : constraints.maxWidth >= 560
-          ? 2
-          : 1;
-      const gap = 12.0;
-      final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
-      return Wrap(
-        spacing: gap,
-        runSpacing: gap,
-        children: [
-          for (final child in children) SizedBox(width: width, child: child),
-        ],
-      );
-    },
-  );
+  Widget build(BuildContext context) =>
+      Wrap(spacing: 8, runSpacing: 8, children: children);
 }
 
 /// « Comment ça marche » : étapes numérotées, pour qu'un écran sans données
