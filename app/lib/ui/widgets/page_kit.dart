@@ -33,41 +33,44 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    const white = Color(0xFFFFFFFF);
-    final fg = selected ? white : tone.foreground(colors);
+    // Maquette du 2026-10-26 : pastille blanche à filet ; choisie, pleine
+    // (noir en clair). La couleur de l'état ne teinte que l'icône.
+    final fg = selected ? colors.onAccent : colors.ink;
     return Material(
-      color: colors.surface,
-      shape: StadiumBorder(
-        side: BorderSide(color: selected ? Colors.transparent : colors.line),
+      color: selected ? colors.accent : colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: selected ? colors.accent : colors.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(gradient: selected ? tone.gradient() : null),
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 15, color: fg),
-                const SizedBox(width: 6),
-                Text(
-                  value,
-                  style: AmpereType.bodyStrong.copyWith(
-                    color: fg,
-                    fontFeatures: AmpereType.tabular,
-                  ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 15,
+                color: selected ? colors.onAccent : tone.foreground(colors),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                value,
+                style: AmpereType.bodyStrong.copyWith(
+                  color: fg,
+                  fontFeatures: AmpereType.tabular,
                 ),
-                const SizedBox(width: 5),
-                Text(
-                  label,
-                  style: AmpereType.meta.copyWith(
-                    color: selected ? white : colors.ink2,
-                  ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: AmpereType.meta.copyWith(
+                  color: selected ? colors.onAccent : colors.ink2,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -83,7 +86,7 @@ class StatGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Wrap(spacing: 6, runSpacing: 6, children: children);
+      Wrap(spacing: 8, runSpacing: 8, children: children);
 }
 
 /// Une action expliquée : icône colorée, titre, une ligne de « pourquoi ».
@@ -111,68 +114,65 @@ class ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final fg = tone.foreground(colors);
-    const white = Color(0xFFFFFFFF);
+    // Maquette du 2026-10-26 : carte blanche à filet, icône dans un carré
+    // bordé ; l'action principale est pleine (noir en clair).
+    final ink = prominent ? colors.onAccent : colors.ink;
+    final soft = prominent
+        ? colors.onAccent.withValues(alpha: 0.75)
+        : colors.ink3;
     return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(14),
-      elevation: prominent ? 4 : 0,
-      shadowColor: fg.withValues(alpha: 0.4),
+      color: prominent ? colors.accent : colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: prominent ? colors.accent : colors.line),
+      ),
       clipBehavior: Clip.antiAlias,
-      child: Ink(
-        decoration: BoxDecoration(gradient: prominent ? tone.gradient() : null),
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              border: prominent ? null : Border.all(color: colors.line),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: prominent
+                      ? colors.onAccent.withValues(alpha: 0.12)
+                      : colors.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
                     color: prominent
-                        ? white.withValues(alpha: 0.2)
-                        : tone.background(colors),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Icon(icon, size: 20, color: prominent ? white : fg),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: AmpereType.rowTitle.copyWith(
-                          color: prominent ? white : colors.ink,
-                        ),
-                      ),
-                      Text(
-                        subtitle,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: AmpereType.meta.copyWith(
-                          color: prominent
-                              ? white.withValues(alpha: 0.85)
-                              : colors.ink3,
-                        ),
-                      ),
-                    ],
+                        ? colors.onAccent.withValues(alpha: 0.2)
+                        : colors.line,
                   ),
                 ),
-                Icon(
-                  LucideIcons.chevronRight,
+                child: Icon(
+                  icon,
                   size: 18,
-                  color: prominent ? white : colors.ink3,
+                  color: prominent ? ink : tone.foreground(colors),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AmpereType.rowTitle.copyWith(color: ink),
+                    ),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: soft),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(LucideIcons.chevronRight, size: 18, color: soft),
+            ],
           ),
         ),
       ),
@@ -194,7 +194,7 @@ class ActionGrid extends StatelessWidget {
           : constraints.maxWidth >= 560
           ? 2
           : 1;
-      const gap = 8.0;
+      const gap = 12.0;
       final width = (constraints.maxWidth - gap * (perRow - 1)) / perRow;
       return Wrap(
         spacing: gap,
@@ -233,19 +233,19 @@ class GuideSteps extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.lineSoft),
+        border: Border.all(color: colors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(LucideIcons.lightbulb, size: 16, color: colors.info),
+              Icon(LucideIcons.lightbulb, size: 16, color: colors.ink2),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   title,
-                  style: AmpereType.label.copyWith(color: colors.info),
+                  style: AmpereType.label.copyWith(color: colors.ink2),
                 ),
               ),
             ],

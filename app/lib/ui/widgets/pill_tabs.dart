@@ -21,11 +21,12 @@ class PillTabs<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     return Container(
-      padding: const EdgeInsets.all(4),
+      // Onglets « shadcn » (maquette du 2026-10-26) : fond gris doux,
+      // l'onglet actif en carte blanche, sans couleur.
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: colors.surface2,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colors.lineSoft),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Wrap(
         runSpacing: 4,
@@ -39,29 +40,27 @@ class PillTabs<T> extends StatelessWidget {
 
   Widget _tab(AmpereColors colors, T value, IconData icon, String label) {
     final on = value == selected;
-    final ink = on ? colors.onAccent : colors.ink2;
+    final ink = on ? colors.ink : colors.ink2;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(7),
           onTap: () => onSelect(value),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              gradient: on
-                  ? LinearGradient(colors: [colors.accent, colors.accentHi])
-                  : null,
+              borderRadius: BorderRadius.circular(7),
+              color: on ? colors.surface : null,
               boxShadow: on
-                  ? [
+                  ? const [
                       BoxShadow(
-                        color: colors.accent.withValues(alpha: 0.35),
-                        blurRadius: 12,
-                        offset: const Offset(0, 3),
+                        color: Color(0x14000000),
+                        blurRadius: 3,
+                        offset: Offset(0, 1),
                       ),
                     ]
                   : null,
@@ -69,15 +68,9 @@ class PillTabs<T> extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon, size: 18, color: ink),
+                Icon(icon, size: 16, color: ink),
                 const SizedBox(width: 7),
-                Text(
-                  label,
-                  style: AmpereType.bodyStrong.copyWith(
-                    color: ink,
-                    fontSize: 15,
-                  ),
-                ),
+                Text(label, style: AmpereType.bodyStrong.copyWith(color: ink)),
               ],
             ),
           ),

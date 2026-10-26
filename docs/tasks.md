@@ -4,6 +4,21 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Refonte UI « shadcn » (thème clair) — 2026-10-26 (MEDMEDBEN, Claude)
+
+Front seulement, aucune logique touchée. Maquette fournie (Shadcn UI Kit, CRM Dashboard).
+- Thème clair : palette zinc neutre (fond #FAFAFA, cartes blanches à filet #E4E4E7, noir #18181B) ;
+  cartes 12 px, champs et boutons 8 px (plus de pilules) ; titres moins gras. Couleur réservée aux états.
+- Composants partagés : `StatTile`/`ActionTile` neutres (choisi/principal = plein noir), `PillTabs` en onglets
+  gris doux, menu latéral à plat (actif en gris), barre du haut 52 px. `StatusTone.gradient()` retiré.
+- Accueil : disposition de la maquette — en-tête (titre + actions), rangée de KPI neutres (verdict du jour en
+  tête), 3 panneaux (état du stock / à faire maintenant / meilleurs produits), courbe des ventes, tableau
+  « À réapprovisionner ». Graphiques en noir et gris.
+- Vente : plus d'espace, tuiles d'articles plus petites (nom, point de stock, prix), total et boutons sans
+  halo ni dégradé, caisse et acheteur en cartes sobres.
+- Sombre : suit les mêmes formes ; ses couleurs sont à retravailler (prochaine demande de MEDMEDBEN).
+- Preuves : analyze 0, 556 tests ; captures Accueil (clair + sombre), Vente, Stock vérifiées.
+
 ### Couleurs vives et cohérentes dans toute l'app — 2026-10-14 (MEDMEDBEN, Claude)
 
 - Accueil : tuiles et bandeau du jour en DÉGRADÉS vifs pleins, texte blanc (`_gradients` dans

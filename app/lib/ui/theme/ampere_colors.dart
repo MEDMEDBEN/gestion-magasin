@@ -101,35 +101,35 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   );
 
   /// §2.4 — mobile clair.
-  /// Clair MONOCHROME (maquette fournie par MEDMEDBEN le 2026-10-13) : fond
-  /// gris perle, cartes blanches très arrondies, l'actif en NOIR (pastilles et
-  /// boutons pilule), la couleur gardée pour les états seulement.
+  /// Clair NEUTRE (maquette « shadcn » fournie par MEDMEDBEN le 2026-10-26) :
+  /// fond presque blanc, cartes blanches à filet fin, noir et gris zinc ; la
+  /// couleur ne sert qu'aux états (petites pastilles, tendances).
   static const mobileLight = AmpereColors(
-    bg: Color(0xFFE9E9EC),
-    bgAlt: Color(0xFFFFFFFF),
+    bg: Color(0xFFFAFAFA),
+    bgAlt: Color(0xFFFAFAFA),
     surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFF3F3F5),
-    surface3: Color(0xFFE7E7EA),
-    line: Color(0xFFE0E0E4),
-    lineSoft: Color(0xFFEDEDF0),
-    ink: Color(0xFF111113),
-    ink2: Color(0xFF4A4A50),
-    ink3: Color(0xFF8A8A92),
-    accent: Color(0xFF111113),
-    accentHi: Color(0xFF2A2A2E),
-    accentBg: Color(0xFFECECEF),
+    surface2: Color(0xFFF4F4F5),
+    surface3: Color(0xFFE4E4E7),
+    line: Color(0xFFE4E4E7),
+    lineSoft: Color(0xFFF0F0F2),
+    ink: Color(0xFF09090B),
+    ink2: Color(0xFF52525B),
+    ink3: Color(0xFF71717A),
+    accent: Color(0xFF18181B),
+    accentHi: Color(0xFF27272A),
+    accentBg: Color(0xFFF4F4F5),
     onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF059669),
-    okBg: Color(0xFFD1FAE5),
-    warn: Color(0xFFEA580C),
-    warnBg: Color(0xFFFFEDD5),
-    error: Color(0xFFE11D48),
-    errorBg: Color(0xFFFFE4E6),
-    info: Color(0xFF4F46E5),
-    infoBg: Color(0xFFE0E7FF),
-    neutral: Color(0xFF5C5C64),
-    neutralBg: Color(0xFFEFEFF2),
-    vizAlt: Color(0xFF6D5BD0),
+    ok: Color(0xFF16A34A),
+    okBg: Color(0xFFF0FDF4),
+    warn: Color(0xFFD97706),
+    warnBg: Color(0xFFFFFBEB),
+    error: Color(0xFFDC2626),
+    errorBg: Color(0xFFFEF2F2),
+    info: Color(0xFF2563EB),
+    infoBg: Color(0xFFEFF6FF),
+    neutral: Color(0xFF52525B),
+    neutralBg: Color(0xFFF4F4F5),
+    vizAlt: Color(0xFFA1A1AA),
     scrim: Color(0xA804070B),
   );
 
@@ -166,31 +166,31 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   /// §2.2 — desktop clair (accents assombris pour tenir le contraste ;
   /// ce n'est PAS une inversion du thème sombre).
   static const desktopLight = AmpereColors(
-    bg: Color(0xFFE9E9EC),
-    bgAlt: Color(0xFFFFFFFF),
+    bg: Color(0xFFFAFAFA),
+    bgAlt: Color(0xFFFAFAFA),
     surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFF3F3F5),
-    surface3: Color(0xFFE7E7EA),
-    line: Color(0xFFE0E0E4),
-    lineSoft: Color(0xFFEDEDF0),
-    ink: Color(0xFF111113),
-    ink2: Color(0xFF4A4A50),
-    ink3: Color(0xFF8A8A92),
-    accent: Color(0xFF111113),
-    accentHi: Color(0xFF2A2A2E),
-    accentBg: Color(0xFFECECEF),
+    surface2: Color(0xFFF4F4F5),
+    surface3: Color(0xFFE4E4E7),
+    line: Color(0xFFE4E4E7),
+    lineSoft: Color(0xFFF0F0F2),
+    ink: Color(0xFF09090B),
+    ink2: Color(0xFF52525B),
+    ink3: Color(0xFF71717A),
+    accent: Color(0xFF18181B),
+    accentHi: Color(0xFF27272A),
+    accentBg: Color(0xFFF4F4F5),
     onAccent: Color(0xFFFFFFFF),
-    ok: Color(0xFF059669),
-    okBg: Color(0xFFD1FAE5),
-    warn: Color(0xFFEA580C),
-    warnBg: Color(0xFFFFEDD5),
-    error: Color(0xFFE11D48),
-    errorBg: Color(0xFFFFE4E6),
-    info: Color(0xFF4F46E5),
-    infoBg: Color(0xFFE0E7FF),
-    neutral: Color(0xFF5C5C64),
-    neutralBg: Color(0xFFEFEFF2),
-    vizAlt: Color(0xFF6D5BD0),
+    ok: Color(0xFF16A34A),
+    okBg: Color(0xFFF0FDF4),
+    warn: Color(0xFFD97706),
+    warnBg: Color(0xFFFFFBEB),
+    error: Color(0xFFDC2626),
+    errorBg: Color(0xFFFEF2F2),
+    info: Color(0xFF2563EB),
+    infoBg: Color(0xFFEFF6FF),
+    neutral: Color(0xFF52525B),
+    neutralBg: Color(0xFFF4F4F5),
+    vizAlt: Color(0xFFA1A1AA),
     scrim: Color(0x9E03070E),
   );
 
@@ -209,20 +209,6 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
 enum StatusTone { ok, warn, error, info, neutral }
 
 extension StatusToneColors on StatusTone {
-  /// Dégradé VIF de l'état (même famille que le tableau de bord, 2026-10-14) :
-  /// pour ce qui est mis en avant (action principale, filtre choisi).
-  LinearGradient gradient() => LinearGradient(
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-    colors: switch (this) {
-      StatusTone.ok => const [Color(0xFF06B6D4), Color(0xFF10B981)],
-      StatusTone.info => const [Color(0xFF6366F1), Color(0xFF3B82F6)],
-      StatusTone.warn => const [Color(0xFFF59E0B), Color(0xFFF97316)],
-      StatusTone.error => const [Color(0xFFF43F5E), Color(0xFFD946EF)],
-      StatusTone.neutral => const [Color(0xFF64748B), Color(0xFF475569)],
-    },
-  );
-
   Color foreground(AmpereColors c) => switch (this) {
     StatusTone.ok => c.ok,
     StatusTone.warn => c.warn,

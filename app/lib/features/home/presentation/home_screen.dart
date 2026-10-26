@@ -38,16 +38,41 @@ class HomeScreen extends ConsumerWidget {
     final margin = desktop ? 24.0 : 16.0;
     final summary = ref.watch(dashboardSummaryProvider);
 
-    return ListView(
-      padding: EdgeInsets.fromLTRB(margin, 16, margin, 24),
+    final colors = AmpereColors.of(context);
+    // Maquette du 2026-10-26 : titre à gauche, actions à droite.
+    final title = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Bonjour ${user.fullName.split(' ').first}',
-          style: desktop ? AmpereType.h2 : AmpereType.h3,
+          'Tableau de bord',
+          style: (desktop ? AmpereType.h1 : AmpereType.h3).copyWith(
+            color: colors.ink,
+          ),
         ),
-        const SizedBox(height: 12),
-        _Shortcuts(user: user, desktop: desktop),
-        const SizedBox(height: 18),
+        const SizedBox(height: 2),
+        Text(
+          'Bonjour ${user.fullName.split(' ').first} · '
+          '${formatDate(DateTime.now())}',
+          style: AmpereType.bodyDesktop.copyWith(color: colors.ink3),
+        ),
+      ],
+    );
+    return ListView(
+      padding: EdgeInsets.fromLTRB(margin, 20, margin, 32),
+      children: [
+        if (desktop)
+          Row(
+            children: [
+              Expanded(child: title),
+              _Shortcuts(user: user, desktop: desktop),
+            ],
+          )
+        else ...[
+          title,
+          const SizedBox(height: 12),
+          _Shortcuts(user: user, desktop: desktop),
+        ],
+        const SizedBox(height: 20),
         switch (summary) {
           // Hauteur BORNÉE : le squelette est lui-même une liste défilante,
           // et deux listes imbriquées sans borne cassent la mise en page.
@@ -224,33 +249,17 @@ Future<void> quickAddProduct(
   );
 }
 
-/// LE code couleur de l'accueil (demande MEDMEDBEN du 2026-10-09 : des
-/// couleurs qui EXPLIQUENT). Le même partout, rappelé par la légende :
-/// vert = l'argent rentre / tout va bien ; bleu = travail en cours ;
-/// orange = à surveiller ; rouge = urgent.
+/// Le sens d'un chiffre (demande MEDMEDBEN du 2026-10-09), DISCRET depuis
+/// la maquette du 2026-10-26 : les cartes restent neutres, seule une petite
+/// pastille ou une ligne de texte prend la couleur de l'état.
 enum _Meaning { good, work, watch, urgent }
 
-/// Couleurs du tableau de bord (retour MEDMEDBEN du 2026-10-13 : « des
-/// couleurs vives, fluides et cohérentes ») : chaque sens a un DÉGRADÉ vif —
-/// cyan → émeraude (bon), indigo → bleu (en cours), ambre → orange (à
-/// surveiller), rose → magenta (urgent) —, identique en clair et en sombre,
-/// texte blanc dessus.
-const _gradients = {
-  _Meaning.good: [Color(0xFF06B6D4), Color(0xFF10B981)],
-  _Meaning.work: [Color(0xFF6366F1), Color(0xFF3B82F6)],
-  _Meaning.watch: [Color(0xFFF59E0B), Color(0xFFF97316)],
-  _Meaning.urgent: [Color(0xFFF43F5E), Color(0xFFD946EF)],
+StatusTone _status(_Meaning meaning) => switch (meaning) {
+  _Meaning.good => StatusTone.ok,
+  _Meaning.work => StatusTone.info,
+  _Meaning.watch => StatusTone.warn,
+  _Meaning.urgent => StatusTone.error,
 };
-
-LinearGradient _gradient(_Meaning meaning) => LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: _gradients[meaning]!,
-);
-
-/// Couleur pleine d'un sens (pastilles, traits, icônes sur fond neutre).
-Color _tone(AmpereColors colors, _Meaning meaning) =>
-    _gradients[meaning]!.first;
 
 /// « 1 tâche » / « 3 tâches » : accorder plutôt que d'écrire « tâche(s) ».
 String _n(int n, String one, String many) => '$n ${n > 1 ? many : one}';
@@ -377,12 +386,6 @@ class _Blocks extends StatelessWidget {
         ),
     ];
 
-    final width = desktop
-        ? 236.0
-        : (MediaQuery.sizeOf(context).width - 2 * margin - _gap) / 2;
-    Widget grid(List<Widget> cards) =>
-        Wrap(spacing: _gap, runSpacing: _gap, children: cards);
-
     final days = sales?.last7Days ?? const <DashboardDay>[];
     final salesCards = [
       if (sales != null)
@@ -398,8 +401,6 @@ class _Blocks extends StatelessWidget {
                   before: days[days.length - 2].revenueTtc,
                 )
               : null,
-          desktop: desktop,
-          width: width,
         ),
       // À partir de 2 ventes (avec une seule, il répète le CA) et un CA
       // positif (des retours d'anciennes ventes le fausseraient).
@@ -413,8 +414,6 @@ class _Blocks extends StatelessWidget {
             (sales.revenueTtc * 2 + sales.count) ~/ (sales.count * 2),
           ),
           hint: 'par vente aujourd’hui',
-          desktop: desktop,
-          width: width,
         ),
       if (summary.margin case final margin?)
         _Metric(
@@ -426,8 +425,6 @@ class _Blocks extends StatelessWidget {
               ? '${formatDA(margin.uncostedRevenueHt)} vendus sans coût connu'
               : 'prix de vente − dernier prix d’achat',
           destination: to('Rapports'),
-          desktop: desktop,
-          width: width,
         ),
       if (summary.cash case final cash?)
         _Metric(
@@ -437,8 +434,6 @@ class _Blocks extends StatelessWidget {
           value: cash.open ? formatDA(cash.currentAmount) : 'Fermée',
           hint: cash.open ? 'dans le tiroir' : 'ouvrez-la avant d’encaisser',
           destination: to('Vente'),
-          desktop: desktop,
-          width: width,
         ),
     ];
     final workCards = [
@@ -452,8 +447,6 @@ class _Blocks extends StatelessWidget {
               ? 'Aucune en retard'
               : '${tasks.late} en retard',
           destination: to('Tâches'),
-          desktop: desktop,
-          width: width,
         ),
       if (stock != null)
         _Metric(
@@ -469,8 +462,6 @@ class _Blocks extends StatelessWidget {
               ? 'Aucune rupture'
               : '${stock.outOfStockCount} en rupture',
           destination: to('Stock'),
-          desktop: desktop,
-          width: width,
         ),
       if (transfers != null)
         _Metric(
@@ -480,8 +471,6 @@ class _Blocks extends StatelessWidget {
           value: '${transfers.toPrepare}',
           hint: '${transfers.inTransit} en route',
           destination: to('Transferts'),
-          desktop: desktop,
-          width: width,
         ),
       if (purchases != null)
         _Metric(
@@ -491,8 +480,6 @@ class _Blocks extends StatelessWidget {
           value: '${purchases.toReceive}',
           hint: 'livraisons attendues',
           destination: to('Achats'),
-          desktop: desktop,
-          width: width,
         ),
     ];
     final debtCards = [
@@ -510,8 +497,6 @@ class _Blocks extends StatelessWidget {
               ? 'Rien en retard'
               : '${formatDA(customers.overdue)} en retard',
           share: customers.debt > 0 ? customers.overdue / customers.debt : null,
-          desktop: desktop,
-          width: width,
         ),
       if (suppliers != null)
         _Metric(
@@ -523,102 +508,117 @@ class _Blocks extends StatelessWidget {
               ? 'à payer aux fournisseurs'
               : 'Tout est réglé',
           destination: to('Fournisseurs'),
-          desktop: desktop,
-          width: width,
         ),
     ];
 
-    final figures = <Widget>[
-      if (salesCards.isNotEmpty) ...[
-        const _SectionTitle(
-          meaning: _Meaning.good,
-          title: 'Ventes du jour',
-          subtitle: 'L’argent qui rentre aujourd’hui',
-        ),
-        grid(salesCards),
-      ],
-      if (workCards.isNotEmpty) ...[
-        const _SectionTitle(
-          meaning: _Meaning.work,
-          title: 'Travail en cours',
-          subtitle: 'Tâches, stock, transferts, livraisons',
-        ),
-        grid(workCards),
-      ],
-      if (debtCards.isNotEmpty) ...[
-        const _SectionTitle(
-          meaning: _Meaning.watch,
-          title: 'Dettes',
-          subtitle: 'À récupérer des clients, à payer aux fournisseurs',
-        ),
-        grid(debtCards),
-      ],
-      // Graphiques (2026-10-05) : chacun n'apparaît que si son bloc est
-      // envoyé par le serveur — le tableau de bord suit donc le RÔLE.
-      if (charts(sales, stock).isNotEmpty) ...[
-        const SizedBox(height: 18),
-        _ChartGrid(desktop: desktop, children: charts(sales, stock)),
-      ],
-      if (stock != null && stock.low.isNotEmpty) ...[
-        const _SectionTitle(
-          meaning: _Meaning.watch,
-          title: 'À réapprovisionner',
-          subtitle: 'Rouge : épuisé · orange : sous le seuil',
-        ),
-        for (final row in stock.low)
-          _LowStockRow(row: row, destination: to('Stock')),
-      ],
-    ];
-    final header = [
+    // Maquette du 2026-10-26 : une rangée de chiffres (le verdict du jour
+    // en tête), trois panneaux côte à côte, la courbe, puis le tableau.
+    final kpis = [
       _Verdict(alerts: alerts),
-      const SizedBox(height: 10),
-      const _Legend(),
+      ...salesCards,
+      ...workCards,
+      ...debtCards,
     ];
-    // Grand écran : ce qu'il faut FAIRE reste à droite, toujours sous les
-    // yeux ; les chiffres défilent à gauche. Téléphone : une colonne.
-    if (desktop &&
-        MediaQuery.sizeOf(context).width >= 1200 &&
-        alerts.isNotEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ...header,
-          const SizedBox(height: 4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: figures,
-                ),
-              ),
-              const SizedBox(width: 18),
-              SizedBox(
-                width: 360,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 18),
-                  child: _AttentionList(alerts: alerts, limit: null),
-                ),
-              ),
-            ],
-          ),
-        ],
-      );
-    }
+    final trendDays = sales == null
+        ? const <DashboardDay>[]
+        : (sales.last30Days.isNotEmpty ? sales.last30Days : sales.last7Days);
+    final panels = [
+      if (stock != null)
+        ChartCard(
+          title: 'État du stock',
+          subtitle: 'Produits actifs',
+          child: StockHealthDonut(stock: stock),
+        ),
+      _AttentionPanel(alerts: alerts),
+      if (sales != null)
+        ChartCard(
+          title: 'Meilleurs produits',
+          subtitle: '30 derniers jours, par chiffre d’affaires',
+          child: TopProductsChart(products: sales.topProducts),
+        ),
+    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ...header,
-        const SizedBox(height: 16),
-        _AttentionList(alerts: alerts, limit: 3),
-        ...figures,
+        _Grid(columns: desktop ? 4 : 2, children: kpis),
+        const SizedBox(height: _gap),
+        _Panels(desktop: desktop, children: panels),
+        if (trendDays.isNotEmpty) ...[
+          const SizedBox(height: _gap),
+          ChartCard(
+            title: 'Ventes des ${trendDays.length} derniers jours',
+            subtitle:
+                '${formatDA(trendDays.fold<int>(0, (s, d) => s + d.revenueTtc))} au total',
+            child: RevenueTrendChart(days: trendDays),
+          ),
+        ],
+        if (stock != null && stock.low.isNotEmpty) ...[
+          const SizedBox(height: _gap),
+          _LowStockTable(rows: stock.low, destination: to('Stock')),
+        ],
       ],
     );
   }
 }
 
-/// Le jour en une phrase, dans la couleur du point le plus grave.
+/// Grille à colonnes égales (cartes de chiffres).
+class _Grid extends StatelessWidget {
+  const _Grid({required this.columns, required this.children});
+
+  final int columns;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final perRow = box.maxWidth < 900 ? (columns > 2 ? 2 : columns) : columns;
+      final width = (box.maxWidth - _Blocks._gap * (perRow - 1)) / perRow;
+      return Wrap(
+        spacing: _Blocks._gap,
+        runSpacing: _Blocks._gap,
+        children: [for (final c in children) SizedBox(width: width, child: c)],
+      );
+    },
+  );
+}
+
+/// Trois panneaux côte à côte au poste (comme la maquette), empilés sinon.
+class _Panels extends StatelessWidget {
+  const _Panels({required this.desktop, required this.children});
+
+  final bool desktop;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      if (!desktop || box.maxWidth < 1000) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final (i, c) in children.indexed) ...[
+              if (i > 0) const SizedBox(height: _Blocks._gap),
+              c,
+            ],
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final (i, c) in children.indexed) ...[
+            if (i > 0) const SizedBox(width: _Blocks._gap),
+            Expanded(child: c),
+          ],
+        ],
+      );
+    },
+  );
+}
+
+/// Le jour en une phrase : première carte de la rangée (« Your target is
+/// incomplete » de la maquette) — un anneau à la couleur du point le plus
+/// grave, le reste neutre.
 class _Verdict extends StatelessWidget {
   const _Verdict({required this.alerts});
 
@@ -642,368 +642,262 @@ class _Verdict extends StatelessWidget {
             '${_n(watch, 'point', 'points')} à surveiller',
           )
         : (_Meaning.good, LucideIcons.circleCheck, 'Tout est en ordre');
-    const white = Color(0xFFFFFFFF);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: _gradient(meaning),
-        boxShadow: [
-          BoxShadow(
-            color: _tone(colors, meaning).withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: white, size: 26),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final tone = _status(meaning).foreground(colors);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Aujourd’hui',
+              style: AmpereType.bodyDesktop.copyWith(color: colors.ink2),
+            ),
+            const SizedBox(height: 10),
+            Row(
               children: [
-                Text(
-                  text,
-                  style: AmpereType.sectionTitle.copyWith(color: white),
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: tone, width: 2.5),
+                  ),
+                  child: Icon(icon, size: 18, color: tone),
                 ),
-                Text(
-                  'Résumé du ${formatDate(DateTime.now())}',
-                  style: AmpereType.meta.copyWith(
-                    color: white.withValues(alpha: 0.85),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: AmpereType.h4.copyWith(color: colors.ink),
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              alerts.isEmpty
+                  ? 'Rien ne demande d’action.'
+                  : 'Détail dans « À faire maintenant ».',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// La clé de lecture des couleurs, toujours visible.
-class _Legend extends StatelessWidget {
-  const _Legend();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Wrap(
-      spacing: 16,
-      runSpacing: 6,
-      children: [
-        for (final (meaning, label) in [
-          (_Meaning.good, 'Bon / argent qui rentre'),
-          (_Meaning.work, 'En cours'),
-          (_Meaning.watch, 'À surveiller'),
-          (_Meaning.urgent, 'Urgent'),
-        ])
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 10,
-                height: 10,
-                decoration: BoxDecoration(
-                  color: _tone(colors, meaning),
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 6),
-              Text(label, style: AmpereType.meta.copyWith(color: colors.ink2)),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// « À faire maintenant » : les points qui demandent un geste, chacun dans
-/// sa couleur, cliquable vers l'écran où agir. Rien : on le dit, en vert.
-class _AttentionList extends ConsumerStatefulWidget {
-  const _AttentionList({required this.alerts, required this.limit});
+/// « À faire maintenant » (le panneau « Tasks » de la maquette) : chaque point
+/// dans une ligne bordée, son état en pastille, cliquable vers l'écran où
+/// agir.
+class _AttentionPanel extends ConsumerStatefulWidget {
+  const _AttentionPanel({required this.alerts});
 
   final List<_Alert> alerts;
 
-  /// Nombre de points montrés d'abord (les plus graves) ; `null` : tous.
-  final int? limit;
-
   @override
-  ConsumerState<_AttentionList> createState() => _AttentionListState();
+  ConsumerState<_AttentionPanel> createState() => _AttentionPanelState();
 }
 
-class _AttentionListState extends ConsumerState<_AttentionList> {
+class _AttentionPanelState extends ConsumerState<_AttentionPanel> {
   bool _all = false;
+
+  static const _limit = 4;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final alerts = widget.alerts;
-    if (alerts.isEmpty) return const SizedBox.shrink();
-    final limit = widget.limit;
-    final hidden = limit == null || _all ? 0 : alerts.length - limit;
-    final shown = hidden > 0 ? alerts.take(limit!) : alerts;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'À faire maintenant',
-          style: AmpereType.sectionTitle.copyWith(color: colors.ink),
-        ),
-        const SizedBox(height: 8),
-        for (final (meaning, icon, text, destination) in shown)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              color: colors.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: colors.line),
+    final hidden = _all ? 0 : alerts.length - _limit;
+    final shown = hidden > 0 ? alerts.take(_limit) : alerts;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'À faire maintenant',
+              style: AmpereType.h4.copyWith(color: colors.ink),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Ce qui demande un geste aujourd’hui',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+            const SizedBox(height: 16),
+            if (alerts.isEmpty)
+              Text(
+                'Rien à faire pour l’instant.',
+                style: AmpereType.bodyDesktop.copyWith(color: colors.ink3),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: destination == null
-                    ? null
-                    : () => goToDestination(ref, destination),
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(width: 4, color: _tone(colors, meaning)),
-                      const SizedBox(width: 12),
-                      Icon(icon, size: 18, color: _tone(colors, meaning)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(
-                            text,
-                            style: AmpereType.body.copyWith(color: colors.ink),
+            for (final (meaning, icon, text, destination) in shown)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: colors.surface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: BorderSide(color: colors.line),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: destination == null
+                        ? null
+                        : () => goToDestination(ref, destination),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(icon, size: 16, color: colors.ink2),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  text,
+                                  style: AmpereType.bodyStrong.copyWith(
+                                    color: colors.ink,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                AmpereBadge(
+                                  label: switch (meaning) {
+                                    _Meaning.urgent => 'Urgent',
+                                    _Meaning.watch => 'À surveiller',
+                                    _Meaning.work => 'En cours',
+                                    _Meaning.good => 'En ordre',
+                                  },
+                                  tone: _status(meaning),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (destination != null)
+                            Icon(
+                              LucideIcons.chevronRight,
+                              size: 16,
+                              color: colors.ink3,
+                            ),
+                        ],
                       ),
-                      if (destination != null)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Icon(
-                            LucideIcons.chevronRight,
-                            size: 18,
-                            color: colors.ink3,
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-        if (hidden > 0)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() => _all = true),
-              icon: const Icon(LucideIcons.chevronDown, size: 16),
-              label: Text('Voir ${_n(hidden, 'autre point', 'autres points')}'),
-            ),
-          ),
-        const SizedBox(height: 4),
-      ],
-    );
-  }
-}
-
-/// Titre d'un bloc, précédé de SA couleur : on sait ce qu'on lit.
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.meaning,
-    required this.title,
-    required this.subtitle,
-  });
-
-  final _Meaning meaning;
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
-      child: Row(
-        children: [
-          Container(
-            width: 4,
-            height: 30,
-            decoration: BoxDecoration(
-              color: _tone(colors, meaning),
-              borderRadius: BorderRadius.circular(99),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AmpereType.sectionTitle.copyWith(color: colors.ink),
+            if (hidden > 0)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _all = true),
+                  icon: const Icon(LucideIcons.chevronDown, size: 16),
+                  label: Text(
+                    'Voir ${_n(hidden, 'autre point', 'autres points')}',
+                  ),
                 ),
-                Text(
-                  subtitle,
-                  style: AmpereType.meta.copyWith(color: colors.ink3),
-                ),
-              ],
-            ),
-          ),
-        ],
+              ),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// Un produit à réapprovisionner : rouge s'il est épuisé, orange sinon.
-class _LowStockRow extends ConsumerWidget {
-  const _LowStockRow({required this.row, required this.destination});
+/// « À réapprovisionner » en tableau (le tableau « Leads » de la maquette).
+class _LowStockTable extends ConsumerWidget {
+  const _LowStockTable({required this.rows, required this.destination});
 
-  final DashboardLowStock row;
+  final List<DashboardLowStock> rows;
   final String? destination;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
-    final out = (double.tryParse(row.quantity) ?? 0) <= 0;
-    final tone = out ? colors.error : colors.warn;
     final target = destination;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: colors.surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: colors.line),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: target == null ? null : () => goToDestination(ref, target),
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  out ? LucideIcons.packageX : LucideIcons.packageMinus,
-                  color: tone,
-                  size: 20,
+                Text(
+                  'À réapprovisionner',
+                  style: AmpereType.h4.copyWith(color: colors.ink),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        row.name,
-                        style: AmpereType.rowTitle.copyWith(color: colors.ink),
-                      ),
-                      Text(
-                        'Reste ${row.quantity} · seuil ${row.minThreshold}',
-                        style: AmpereType.meta.copyWith(color: colors.ink2),
-                      ),
-                    ],
-                  ),
-                ),
-                AmpereBadge(
-                  label: out ? 'Épuisé' : 'Sous le seuil',
-                  tone: out ? StatusTone.error : StatusTone.warn,
+                const SizedBox(height: 2),
+                Text(
+                  'Produits épuisés ou sous leur seuil',
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
                 ),
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Graphiques autorisés à ce compte, dans l'ordre d'affichage.
-List<Widget> charts(DashboardSales? sales, DashboardStock? stock) {
-  final days = sales == null
-      ? const <DashboardDay>[]
-      : (sales.last30Days.isNotEmpty ? sales.last30Days : sales.last7Days);
-  return [
-    if (days.isNotEmpty)
-      ChartCard(
-        title: 'Ventes des ${days.length} derniers jours',
-        subtitle:
-            '${formatDA(days.fold<int>(0, (s, d) => s + d.revenueTtc))} au total',
-        child: RevenueTrendChart(days: days),
-      ),
-    if (sales != null)
-      ChartCard(
-        title: 'Meilleurs produits',
-        subtitle: '30 derniers jours, par chiffre d’affaires',
-        child: TopProductsChart(products: sales.topProducts),
-      ),
-    if (stock != null)
-      ChartCard(
-        title: 'État du stock',
-        subtitle: 'Produits actifs',
-        child: StockHealthDonut(stock: stock),
-      ),
-  ];
-}
-
-/// Deux colonnes au poste, une seule sur téléphone.
-class _ChartGrid extends StatelessWidget {
-  const _ChartGrid({required this.desktop, required this.children});
-
-  final bool desktop;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    if (!desktop) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final c in children)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: c),
-        ],
-      );
-    }
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = (constraints.maxWidth - 12) / 2;
-        return Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            for (final (i, c) in children.indexed)
-              SizedBox(
-                // La courbe prend toute la largeur, les autres une moitié.
-                width: i == 0 && children.length.isOdd
-                    ? constraints.maxWidth
-                    : width,
-                child: c,
+          for (final row in rows) ...[
+            Divider(height: 1, color: colors.line),
+            InkWell(
+              onTap: target == null ? null : () => goToDestination(ref, target),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            row.name,
+                            style: AmpereType.bodyStrong.copyWith(
+                              color: colors.ink,
+                            ),
+                          ),
+                          Text(
+                            'Reste ${row.quantity} · seuil ${row.minThreshold}',
+                            style: AmpereType.meta.copyWith(color: colors.ink3),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if ((double.tryParse(row.quantity) ?? 0) <= 0)
+                      const AmpereBadge(label: 'Épuisé', tone: StatusTone.error)
+                    else
+                      const AmpereBadge(
+                        label: 'Sous le seuil',
+                        tone: StatusTone.warn,
+                      ),
+                  ],
+                ),
               ),
+            ),
           ],
-        );
-      },
+        ],
+      ),
     );
   }
 }
 
-/// Un chiffre, ce qu'il veut dire, et SA couleur (le code de l'accueil) :
-/// liseré + icône teintés, tendance vs hier, part en retard. Cliquable quand
-/// l'écran correspondant est ouvert à ce compte (jamais un bouton qui refuse).
+/// Un chiffre (carte KPI de la maquette) : libellé, icône dans un carré
+/// bordé, grand nombre, une ligne d'explication. Neutre : seule la ligne du
+/// bas prend la couleur d'un état à surveiller ou urgent. Cliquable quand
+/// l'écran correspondant est ouvert à ce compte.
 class _Metric extends ConsumerWidget {
   const _Metric({
     required this.meaning,
     required this.icon,
     required this.label,
     required this.value,
-    required this.desktop,
-    required this.width,
     this.hint,
     this.destination,
     this.trend,
@@ -1014,65 +908,58 @@ class _Metric extends ConsumerWidget {
   final IconData icon;
   final String label;
   final String value;
-  final bool desktop;
-
-  /// Desktop : largeur fixe (grille). Mobile : deux cartes par ligne.
-  final double width;
   final String? hint;
   final String? destination;
 
-  /// Aujourd'hui comparé à hier : flèche verte en hausse, rouge en baisse.
+  /// Aujourd'hui comparé à hier.
   final ({int today, int before})? trend;
 
-  /// Part (0..1) en retard d'un montant dû : barre rouge sur fond orange.
+  /// Part (0..1) en retard d'un montant dû.
   final double? share;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
     final target = destination;
     final evolution = switch (trend) {
       (today: final t, before: final b) when b > 0 =>
         ((t - b) * 100 / b).round(),
       _ => null,
     };
-    // Clair (maquette du 2026-10-13) : le « travail en cours » est une carte
-    // NOIRE pleine, texte blanc — l'accent du thème monochrome.
-    // Toutes les tuiles : dégradé VIF de leur sens, texte blanc (2026-10-13).
-    const ink = Color(0xFFFFFFFF);
-    final card = Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: _gradient(meaning),
-      ),
-      padding: const EdgeInsets.all(14),
+    final hintColor = switch (meaning) {
+      _Meaning.urgent => colors.error,
+      _Meaning.watch => colors.warn,
+      _ => colors.ink3,
+    };
+    final card = Padding(
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: ink.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(icon, size: 16, color: ink),
-              ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   label,
                   maxLines: 2,
-                  style: AmpereType.label.copyWith(
-                    color: ink.withValues(alpha: 0.85),
-                  ),
+                  style: AmpereType.bodyDesktop.copyWith(color: colors.ink2),
                 ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: colors.line),
+                ),
+                child: Icon(icon, size: 16, color: colors.ink2),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           // Un montant long RÉTRÉCIT au lieu de passer à la ligne.
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -1080,38 +967,31 @@ class _Metric extends ConsumerWidget {
             child: Text(
               value,
               maxLines: 1,
-              style: AmpereType.numericHero.copyWith(color: ink),
-            ),
-          ),
-          if (hint case final hint?) ...[
-            const SizedBox(height: 4),
-            Text(
-              hint,
-              style: AmpereType.meta.copyWith(
-                color: ink.withValues(alpha: 0.85),
+              style: AmpereType.numeric.copyWith(
+                color: colors.ink,
+                fontSize: 26,
               ),
             ),
-          ],
-          if (evolution case final e?) ...[
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Icon(
-                  e >= 0 ? LucideIcons.trendingUp : LucideIcons.trendingDown,
-                  size: 15,
-                  color: ink,
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  '${e >= 0 ? '+' : ''}$e % par rapport à hier',
-                  style: AmpereType.meta.copyWith(
-                    color: ink,
-                    fontWeight: FontWeight.w600,
+          ),
+          const SizedBox(height: 6),
+          if (evolution case final e?)
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${e >= 0 ? '+' : ''}$e %',
+                    style: TextStyle(
+                      color: e >= 0 ? colors.ok : colors.error,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-              ],
+                  const TextSpan(text: ' par rapport à hier'),
+                ],
+              ),
+              style: AmpereType.meta.copyWith(color: colors.ink3),
             ),
-          ],
+          if (hint case final hint?)
+            Text(hint, style: AmpereType.meta.copyWith(color: hintColor)),
           if (share case final s?) ...[
             const SizedBox(height: 8),
             ClipRRect(
@@ -1119,8 +999,8 @@ class _Metric extends ConsumerWidget {
               child: LinearProgressIndicator(
                 value: s.clamp(0, 1),
                 minHeight: 6,
-                color: ink,
-                backgroundColor: ink.withValues(alpha: 0.3),
+                color: colors.ink,
+                backgroundColor: colors.surface2,
               ),
             ),
           ],
@@ -1128,17 +1008,11 @@ class _Metric extends ConsumerWidget {
       ),
     );
 
-    return SizedBox(
-      width: width,
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        // Pas d'ombre : en sombre, elle dessinait un halo comme une bordure.
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        child: target == null
-            ? card
-            : InkWell(onTap: () => goToDestination(ref, target), child: card),
-      ),
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: target == null
+          ? card
+          : InkWell(onTap: () => goToDestination(ref, target), child: card),
     );
   }
 }

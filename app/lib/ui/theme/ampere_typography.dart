@@ -20,13 +20,13 @@ class AmpereType {
     fontFamily: family,
     fontSize: 23,
     height: 1.2,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
   );
   static const sectionTitle = TextStyle(
     fontFamily: family,
     fontSize: 17,
     height: 1.25,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w600,
   );
   static const numericHero = TextStyle(
     fontFamily: family,
@@ -81,21 +81,21 @@ class AmpereType {
     fontFamily: family,
     fontSize: 26,
     height: 1.15,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     letterSpacing: -0.78,
   );
   static const h2 = TextStyle(
     fontFamily: family,
     fontSize: 21,
     height: 1.2,
-    fontWeight: FontWeight.w800,
+    fontWeight: FontWeight.w700,
     letterSpacing: -0.42,
   );
   static const h3 = TextStyle(
     fontFamily: family,
     fontSize: 19,
     height: 1.25,
-    fontWeight: FontWeight.w700,
+    fontWeight: FontWeight.w600,
     letterSpacing: -0.38,
   );
   static const h4 = TextStyle(

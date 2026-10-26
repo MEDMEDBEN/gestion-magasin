@@ -37,11 +37,13 @@ class AppTheme {
     required double fieldHeight,
     required TextStyle bodyStyle,
   }) {
-    // Formes de la maquette (2026-10-13), les MÊMES en clair et en sombre
-    // (2026-10-14) : cartes très arrondies, champs doux, boutons en pilule.
-    cardRadius = 20;
-    fieldRadius = 14;
-    const OutlinedBorder buttonShape = StadiumBorder();
+    // Formes de la maquette « shadcn » (2026-10-26), les MÊMES en clair et
+    // en sombre : cartes à 12 px, champs et boutons à 8 px, filet fin.
+    cardRadius = 12;
+    fieldRadius = 8;
+    final OutlinedBorder buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(8),
+    );
     final scheme = ColorScheme(
       brightness: dark ? Brightness.dark : Brightness.light,
       primary: colors.accent,
@@ -85,7 +87,7 @@ class AppTheme {
 
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: colors.surface2,
+        fillColor: colors.surface,
         constraints: BoxConstraints(minHeight: fieldHeight),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
@@ -122,7 +124,7 @@ class AppTheme {
         style:
             OutlinedButton.styleFrom(
               foregroundColor: colors.ink,
-              backgroundColor: colors.surface2,
+              backgroundColor: colors.surface,
               minimumSize: Size(0, fieldHeight),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
@@ -140,7 +142,7 @@ class AppTheme {
 
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: colors.accentHi,
+          foregroundColor: colors.ink,
           minimumSize: const Size(0, AmpereGeometry.touchMin),
           textStyle: bodyStyle.copyWith(fontWeight: FontWeight.w600),
         ).copyWith(side: focusSide(colors)),
@@ -237,7 +239,7 @@ class AppTheme {
         selectedColor: colors.accentBg,
         checkmarkColor: colors.accent,
         side: BorderSide(color: colors.line),
-        shape: const StadiumBorder(),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         iconTheme: IconThemeData(size: 15, color: colors.ink2),
       ),
       iconTheme: IconThemeData(color: colors.ink2, size: 19),

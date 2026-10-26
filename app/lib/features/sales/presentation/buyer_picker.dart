@@ -336,17 +336,22 @@ class BuyerBar extends ConsumerWidget {
         ? 'Dette ${formatDA(customer.balanceDue)} · sans plafond'
         : 'Dette ${formatDA(customer.balanceDue)} · plafond '
               '${formatDA(customer.creditLimit)}';
+    // Sobre (maquette du 2026-10-26) : filet, l'icône porte l'état ; à
+    // choisir, le filet est appuyé pour attirer l'œil sans colorer le fond.
     return Material(
-      color: tone.withValues(alpha: 0.10),
+      color: colors.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: tone.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: missing ? tone : colors.line,
+          width: missing ? 1.5 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: choose,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
               Icon(

@@ -8,8 +8,8 @@ import '../../../ui/theme/ampere_typography.dart';
 import '../data/dashboard_models.dart';
 
 /// Graphiques de l'accueil (demande MEDMEDBEN du 2026-10-05) : courbes et
-/// anneaux animés (`fl_chart`), palette du design système AMPÈRE (accent cyan
-/// électrique, dégradés), jamais de couleurs « par défaut ». Chaque graphique
+/// anneaux animés (`fl_chart`), en NOIR ET GRIS depuis la maquette du
+/// 2026-10-26 (« pas beaucoup de couleur »). Chaque graphique
 /// porte un résumé lisible (lecteur d'écran, et quand il n'y a rien à tracer).
 
 const _animation = Duration(milliseconds: 650);
@@ -41,11 +41,11 @@ class ChartCard extends StatelessWidget {
     final colors = AmpereColors.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: AmpereType.sectionTitle),
+            Text(title, style: AmpereType.h4.copyWith(color: colors.ink)),
             if (subtitle != null) ...[
               const SizedBox(height: 2),
               Text(
@@ -53,7 +53,7 @@ class ChartCard extends StatelessWidget {
                 style: AmpereType.meta.copyWith(color: colors.ink3),
               ),
             ],
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             child,
           ],
         ),
@@ -170,14 +170,13 @@ class RevenueTrendChart extends StatelessWidget {
                 spots: spots,
                 isCurved: true,
                 preventCurveOverShooting: true,
-                barWidth: 3,
-                // Vert = l'argent qui rentre (code couleur de l'accueil).
-                gradient: LinearGradient(colors: [colors.accent, colors.ok]),
+                barWidth: 2,
+                color: colors.ink,
                 dotData: FlDotData(
                   checkToShowDot: (spot, _) => spot.x == days.length - 1,
                   getDotPainter: (_, _, _, _) => FlDotCirclePainter(
                     radius: 5,
-                    color: colors.ok,
+                    color: colors.ink,
                     strokeWidth: 2,
                     strokeColor: colors.surface,
                   ),
@@ -188,8 +187,8 @@ class RevenueTrendChart extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      colors.ok.withValues(alpha: 0.30),
-                      colors.ok.withValues(alpha: 0.0),
+                      colors.ink.withValues(alpha: 0.10),
+                      colors.ink.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -247,7 +246,7 @@ class TopProductsChart extends StatelessWidget {
                       Text(
                         formatDA(p.revenueTtc),
                         style: AmpereType.bodyStrong.copyWith(
-                          color: i == 0 ? colors.accentHi : colors.ink2,
+                          color: colors.ink,
                           fontFeatures: AmpereType.tabular,
                         ),
                       ),
@@ -266,22 +265,13 @@ class TopProductsChart extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                       child: Stack(
                         children: [
-                          Container(height: 10, color: colors.surface2),
+                          Container(height: 8, color: colors.surface2),
                           FractionallySizedBox(
                             widthFactor: value,
+                            // Le premier en noir plein, les suivants en gris.
                             child: Container(
-                              height: 10,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  // Vert : du chiffre d'affaires ; le 1er plein.
-                                  colors: i == 0
-                                      ? [colors.ok, colors.accent]
-                                      : [
-                                          colors.ok.withValues(alpha: 0.55),
-                                          colors.ok.withValues(alpha: 0.85),
-                                        ],
-                                ),
-                              ),
+                              height: 8,
+                              color: i == 0 ? colors.ink : colors.ink3,
                             ),
                           ),
                         ],
@@ -312,9 +302,9 @@ class StockHealthDonut extends StatelessWidget {
     final ok = stock.okCount;
     final total = ok + low + out;
     final parts = [
-      ('Sains', ok, colors.ok),
-      ('Sous le seuil', low, colors.warn),
-      ('Épuisés', out, colors.error),
+      ('Sains', ok, colors.ink),
+      ('Sous le seuil', low, colors.ink3),
+      ('Épuisés', out, colors.surface3),
     ];
 
     return Semantics(
@@ -322,11 +312,11 @@ class StockHealthDonut extends StatelessWidget {
           'État du stock : $ok sains, $low sous le seuil, $out épuisés '
           'sur $total produits.',
       excludeSemantics: true,
-      child: Row(
+      child: Column(
         children: [
           SizedBox(
-            width: 150,
-            height: 150,
+            width: 170,
+            height: 170,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -334,15 +324,15 @@ class StockHealthDonut extends StatelessWidget {
                   duration: _animation,
                   curve: _curve,
                   PieChartData(
-                    sectionsSpace: 3,
-                    centerSpaceRadius: 48,
+                    sectionsSpace: 2,
+                    centerSpaceRadius: 52,
                     startDegreeOffset: -90,
                     sections: [
                       if (total == 0)
                         PieChartSectionData(
                           value: 1,
                           color: colors.surface3,
-                          radius: 18,
+                          radius: 26,
                           showTitle: false,
                         )
                       else
@@ -351,7 +341,7 @@ class StockHealthDonut extends StatelessWidget {
                             PieChartSectionData(
                               value: count.toDouble(),
                               color: color,
-                              radius: 18,
+                              radius: 26,
                               showTitle: false,
                             ),
                     ],
@@ -362,7 +352,7 @@ class StockHealthDonut extends StatelessWidget {
                   children: [
                     Text(
                       '$total',
-                      style: AmpereType.h3.copyWith(color: colors.ink),
+                      style: AmpereType.h2.copyWith(color: colors.ink),
                     ),
                     Text(
                       'produits',
@@ -373,43 +363,43 @@ class StockHealthDonut extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                for (final (label, count, color) in parts)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              for (final (label, count, color) in parts)
+                Column(
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 10,
-                          height: 10,
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
                             color: color,
                             shape: BoxShape.circle,
+                            border: Border.all(color: colors.line),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            label,
-                            style: AmpereType.body.copyWith(color: colors.ink2),
-                          ),
-                        ),
+                        const SizedBox(width: 6),
                         Text(
-                          '$count',
-                          style: AmpereType.bodyStrong.copyWith(
-                            color: colors.ink,
-                            fontFeatures: AmpereType.tabular,
-                          ),
+                          label.toUpperCase(),
+                          style: AmpereType.label.copyWith(color: colors.ink3),
                         ),
                       ],
                     ),
-                  ),
-              ],
-            ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$count',
+                      style: AmpereType.h4.copyWith(
+                        color: colors.ink,
+                        fontFeatures: AmpereType.tabular,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
           ),
         ],
       ),

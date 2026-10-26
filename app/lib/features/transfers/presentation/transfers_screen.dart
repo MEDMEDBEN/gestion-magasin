@@ -210,7 +210,10 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
                   'Préparation',
                   'Le dépôt accepte, rassemble et compte ce qu’il envoie.',
                 ),
-                ('Expédition', 'La marchandise part : elle est « en transit ».'),
+                (
+                  'Expédition',
+                  'La marchandise part : elle est « en transit ».',
+                ),
                 (
                   'Réception',
                   'Le magasin compte ce qui arrive : c’est vendable. Un '

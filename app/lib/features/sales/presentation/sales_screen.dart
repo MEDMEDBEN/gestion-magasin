@@ -487,16 +487,13 @@ class _DrawerCard extends StatelessWidget {
     return Tooltip(
       message: subtitle,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 2, 2, 2),
+        // Sobre (maquette du 2026-10-26) : carte blanche à filet, seule
+        // l'icône dit l'état de la caisse.
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: tone.withValues(alpha: 0.45)),
-          gradient: LinearGradient(
-            colors: [
-              tone.withValues(alpha: 0.16),
-              tone.withValues(alpha: 0.03),
-            ],
-          ),
+          borderRadius: BorderRadius.circular(10),
+          color: colors.surface,
+          border: Border.all(color: colors.line),
         ),
         child: Row(
           children: [
@@ -1109,12 +1106,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       children: [
         Expanded(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(m, 8, m, m),
+            padding: EdgeInsets.fromLTRB(m + 8, 16, m + 8, m + 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 widget.tabs,
-                const SizedBox(height: 10),
+                const SizedBox(height: 18),
                 ?catalogAlert,
                 if (catalogAlert != null) const SizedBox(height: 12),
                 TextField(
@@ -1127,13 +1124,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   onChanged: (_) => setState(() {}),
                   onSubmitted: (value) => _submitSearch(value, products),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 _CategoryChips(
                   products: products,
                   selected: _categoryId,
                   onSelect: (id) => setState(() => _categoryId = id),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 16),
                 Expanded(
                   child: _ProductGrid(
                     products: _categoryId == null
@@ -1165,7 +1162,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
                     children: _ticketBody(),
                   ),
                 ),
@@ -1280,10 +1277,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         children: [
           Icon(LucideIcons.receipt, size: 18, color: colors.ink2),
           const SizedBox(width: 8),
-          Text(
-            'Ticket',
-            style: AmpereType.sectionTitle.copyWith(color: colors.ink),
-          ),
+          Text('Ticket', style: AmpereType.h4.copyWith(color: colors.ink)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1297,9 +1291,9 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           ),
         ],
       ),
-      const SizedBox(height: 8),
-      _DashedLine(color: colors.line),
-      const SizedBox(height: 10),
+      const SizedBox(height: 14),
+      Divider(height: 1, color: colors.line),
+      const SizedBox(height: 16),
       BuyerBar(
         withConfreres: widget.rights.canSeeConfreres,
         withSuppliers:
@@ -1362,7 +1356,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // Acheteur à choisir à CHAQUE vente (décision du 2026-10-12).
     final noBuyer = cart.buyer == null && cart.quote == null;
     return Padding(
-      padding: EdgeInsets.all(compact ? 12 : 16),
+      padding: EdgeInsets.all(compact ? 12 : 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1538,28 +1532,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   }
 }
 
-/// Pointillés d'un ticket de caisse.
-class _DashedLine extends StatelessWidget {
-  const _DashedLine({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, box) => Row(
-      children: [
-        for (var i = 0; i < box.maxWidth ~/ 9; i++)
-          Container(
-            width: 5,
-            height: 1.5,
-            margin: const EdgeInsets.only(right: 4),
-            color: color,
-          ),
-      ],
-    ),
-  );
-}
-
 /// Afficheur de caisse : le montant à payer, en grand, comme sur un terminal.
 class _TotalDisplay extends StatelessWidget {
   const _TotalDisplay({
@@ -1580,31 +1552,18 @@ class _TotalDisplay extends StatelessWidget {
     final amount = Text(
       formatDA(total),
       style: AmpereType.numericHero.copyWith(
-        fontSize: compact ? 30 : 34,
-        color: colors.accentHi,
-        shadows: [
-          Shadow(color: colors.accent.withValues(alpha: 0.55), blurRadius: 14),
-        ],
+        fontSize: compact ? 28 : 32,
+        color: colors.ink,
       ),
     );
+    // Sobre (maquette du 2026-10-26) : un encadré gris clair, sans halo.
     final screen = BoxDecoration(
-      borderRadius: BorderRadius.circular(compact ? 12 : 16),
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [colors.bgAlt, colors.bg],
-      ),
-      border: Border.all(color: colors.accent.withValues(alpha: 0.5)),
-      boxShadow: [
-        BoxShadow(
-          color: colors.accent.withValues(alpha: 0.16),
-          blurRadius: 18,
-          offset: const Offset(0, 4),
-        ),
-      ],
+      borderRadius: BorderRadius.circular(12),
+      color: colors.surface2,
+      border: Border.all(color: colors.line),
     );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: screen,
       child: Row(
         children: [
@@ -1663,42 +1622,23 @@ class _PayButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final tone = this.tone ?? colors.ok;
+    // Plein, sans dégradé ni ombre (maquette du 2026-10-26) : noir en clair.
+    final tone = this.tone ?? colors.accent;
     final enabled = onPressed != null;
-    final radius = BorderRadius.circular(16);
+    final radius = BorderRadius.circular(10);
     return SizedBox(
       height: height,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: radius,
-          color: enabled ? null : colors.surface3,
-          gradient: enabled
-              ? LinearGradient(
-                  // Vert → turquoise ; une autre teinte s'éclaircit seule.
-                  colors: [
-                    tone,
-                    tone == colors.ok
-                        ? Color.lerp(tone, colors.accent, 0.45)!
-                        : Color.lerp(tone, colors.ink, 0.25)!,
-                  ],
-                )
-              : null,
-          boxShadow: enabled
-              ? [
-                  BoxShadow(
-                    color: tone.withValues(alpha: 0.35),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
+          color: enabled ? tone : colors.surface3,
         ),
         child: FilledButton.icon(
           style: FilledButton.styleFrom(
             backgroundColor: Colors.transparent,
             disabledBackgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
-            foregroundColor: colors.bg,
+            foregroundColor: colors.onAccent,
             disabledForegroundColor: colors.ink3,
             textStyle: AmpereType.sectionTitle,
             shape: RoundedRectangleBorder(borderRadius: radius),
@@ -1718,7 +1658,9 @@ class _PayButton extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: colors.bg.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: colors.onAccent.withValues(alpha: 0.5),
+                    ),
                   ),
                   child: Text(key, style: AmpereType.label),
                 ),
@@ -1822,7 +1764,7 @@ class _ProductGrid extends ConsumerWidget {
       children: [
         if (stock != null && store != null) ...[
           Wrap(
-            spacing: 14,
+            spacing: 16,
             children: [
               for (final (tone, label) in [
                 (colors.ok, 'En stock'),
@@ -1833,8 +1775,8 @@ class _ProductGrid extends ConsumerWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 10,
-                      height: 10,
+                      width: 7,
+                      height: 7,
                       decoration: BoxDecoration(
                         color: tone,
                         shape: BoxShape.circle,
@@ -1843,22 +1785,23 @@ class _ProductGrid extends ConsumerWidget {
                     const SizedBox(width: 6),
                     Text(
                       label,
-                      style: AmpereType.meta.copyWith(color: colors.ink2),
+                      style: AmpereType.meta.copyWith(color: colors.ink3),
                     ),
                   ],
                 ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
         ],
         Expanded(
           child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              // Tuiles plus grandes, avec photo (2026-10-12).
-              maxCrossAxisExtent: 240,
-              mainAxisExtent: 168,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+              // Tuiles compactes, façon logiciel de caisse (2026-10-26) :
+              // l'essentiel (nom, stock, prix), plus d'espace entre elles.
+              maxCrossAxisExtent: 190,
+              mainAxisExtent: 138,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
             ),
             itemCount: found.length.clamp(0, _shown),
             itemBuilder: (context, i) {
@@ -1921,91 +1864,91 @@ class _ProductTile extends StatelessWidget {
     final stockLabel = level == null
         ? product.sku
         : level <= Quantity.zero
-        ? 'Rupture · ${product.sku}'
-        : 'Stock ${formatQuantity(level)} ${product.unit.short} · ${product.sku}';
+        ? 'Rupture'
+        : 'Stock ${formatQuantity(level)} ${product.unit.short}';
     return Material(
-      color: picked ? colors.accentBg : colors.surface,
+      color: colors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: picked ? colors.accent : colors.line),
+        side: BorderSide(
+          color: picked ? colors.accent : colors.line,
+          width: picked ? 1.5 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Container(
-          // Liseré d'état du stock en haut de la tuile.
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: tone, width: 3)),
-          ),
-          padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ProductThumbnail(product: product, size: 54),
-                    const SizedBox(width: 10),
-                    Expanded(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ProductThumbnail(product: product, size: 32),
+                  const Spacer(),
+                  if (picked)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: colors.accent,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                       child: Text(
-                        product.name,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                        formatQuantity(inCart!),
+                        style: AmpereType.label.copyWith(
+                          color: colors.onAccent,
+                        ),
                       ),
                     ),
-                    if (picked)
-                      Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.accent,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          formatQuantity(inCart!),
-                          style: AmpereType.label.copyWith(
-                            color: colors.onAccent,
-                          ),
-                        ),
-                      ),
-                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
                 ),
               ),
+              Row(
+                children: [
+                  // Le stock dit sa couleur par un simple point.
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: tone,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      stockLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: colors.ink3),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
               Text(
-                stockLabel,
+                price == null
+                    ? 'Prix non fixé'
+                    : '${formatDA(price!)} / ${product.unit.short}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AmpereType.meta.copyWith(
-                  color: level == null ? colors.ink3 : tone,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: price == null
-                      ? colors.error.withValues(alpha: 0.14)
-                      : colors.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  price == null
-                      ? 'Prix non fixé'
-                      : '${formatDA(price!)} / ${product.unit.short}',
-                  style: AmpereType.sectionTitle.copyWith(
-                    fontSize: 16,
-                    color: price == null ? colors.error : colors.ink,
-                    fontFeatures: AmpereType.tabular,
-                  ),
+                style: AmpereType.bodyStrong.copyWith(
+                  fontSize: 14,
+                  color: price == null ? colors.error : colors.ink,
+                  fontFeatures: AmpereType.tabular,
                 ),
               ),
             ],
@@ -2759,15 +2702,11 @@ class _CartAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) => OutlinedButton.icon(
     style: OutlinedButton.styleFrom(
-      foregroundColor: color,
-      backgroundColor: color.withValues(alpha: 0.08),
-      side: BorderSide(color: color.withValues(alpha: 0.55)),
-      minimumSize: const Size(0, 42),
+      minimumSize: const Size(0, 40),
       padding: const EdgeInsets.symmetric(horizontal: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ),
     onPressed: onPressed,
-    icon: Icon(icon, size: 16),
+    icon: Icon(icon, size: 16, color: onPressed == null ? null : color),
     label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
   );
 }

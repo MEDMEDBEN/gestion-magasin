@@ -119,21 +119,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   ? const SizedBox.shrink(key: ValueKey('menu-ferme'))
                   : KeyedSubtree(
                       key: const ValueKey('menu-ouvert'),
-                      child: _Floating(
-                        child: _Sidebar(
-                          user: widget.user,
-                          entries: entries,
-                          selectedIndex: index,
-                          unread:
-                              ref.watch(unreadNotificationsProvider).value ?? 0,
-                          onSelect: (i) => setState(() => _index = i),
-                          onToggle: () => ref
-                              .read(sidebarCollapsedProvider.notifier)
-                              .set(collapsed: true),
-                          onProfile: profile < 0
-                              ? null
-                              : () => setState(() => _index = profile),
-                        ),
+                      child: _Sidebar(
+                        user: widget.user,
+                        entries: entries,
+                        selectedIndex: index,
+                        unread:
+                            ref.watch(unreadNotificationsProvider).value ?? 0,
+                        onSelect: (i) => setState(() => _index = i),
+                        onToggle: () => ref
+                            .read(sidebarCollapsedProvider.notifier)
+                            .set(collapsed: true),
+                        onProfile: profile < 0
+                            ? null
+                            : () => setState(() => _index = profile),
                       ),
                     ),
             ),
@@ -208,9 +206,12 @@ class _Sidebar extends StatelessWidget {
 
     return Container(
       width: 246,
-      // Carte flottante (2026-10-14) : la couleur des cartes, pour se
-      // détacher du fond dans les deux thèmes.
-      color: colors.surface,
+      // Maquette du 2026-10-26 : le menu est À PLAT sur le fond, un filet le
+      // sépare du contenu.
+      decoration: BoxDecoration(
+        color: colors.bgAlt,
+        border: Border(right: BorderSide(color: colors.line)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -224,7 +225,19 @@ class _Sidebar extends StatelessWidget {
                 children: [
                   const SizedBox(width: 18),
                   // `zap` est le SEUL éclair du système (§5).
-                  Icon(LucideIcons.zap, size: 20, color: colors.accent),
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: colors.accent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      LucideIcons.zap,
+                      size: 16,
+                      color: colors.onAccent,
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -349,38 +362,6 @@ class _NavListState extends State<_NavList> {
   }
 }
 
-/// Clair (maquette du 2026-10-13) : le menu est une carte blanche flottante,
-/// arrondie, posée sur le fond gris. Sombre : collé au bord, comme avant.
-class _Floating extends StatelessWidget {
-  const _Floating({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final colors = AmpereColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 4, 12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          // Sombre : un filet suffit à détacher la carte du fond.
-          border: dark ? Border.all(color: colors.line) : null,
-          boxShadow: [
-            BoxShadow(
-              color: Color(dark ? 0x40000000 : 0x14000000),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(borderRadius: BorderRadius.circular(24), child: child),
-      ),
-    );
-  }
-}
-
 class _NavItem extends StatelessWidget {
   const _NavItem({
     required this.entry,
@@ -407,15 +388,14 @@ class _NavItem extends StatelessWidget {
         label: entry.label,
         child: AmpereTappable(
           onTap: onTap,
-          borderRadius: 999,
+          borderRadius: 8,
           child: Container(
-            height: 36,
+            height: 34,
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(
-              // Actif : pilule pleine (maquette du 2026-10-13), dans les
-              // deux thèmes — noire en clair, couleur d'accent en sombre.
-              color: selected ? colors.accent : Colors.transparent,
-              borderRadius: BorderRadius.circular(999),
+              // Actif : fond gris doux, texte appuyé (maquette 2026-10-26).
+              color: selected ? colors.surface3 : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               children: [
@@ -425,7 +405,7 @@ class _NavItem extends StatelessWidget {
                   child: Icon(
                     entry.icon,
                     size: 17,
-                    color: selected ? colors.onAccent : colors.ink2,
+                    color: selected ? colors.ink : colors.ink2,
                   ),
                 ),
                 ...[
@@ -436,7 +416,7 @@ class _NavItem extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AmpereType.bodyDesktop.copyWith(
-                        color: selected ? colors.onAccent : colors.ink2,
+                        color: selected ? colors.ink : colors.ink2,
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w400,
@@ -475,9 +455,9 @@ class _TopBar extends ConsumerWidget {
     final themeMode = ref.watch(themeModeProvider);
 
     return Container(
-      height: 44,
+      height: 52,
       color: colors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
         children: [
           Expanded(
@@ -486,7 +466,7 @@ class _TopBar extends ConsumerWidget {
                     title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: AmpereType.bodyStrong.copyWith(color: colors.ink2),
+                    style: AmpereType.h4.copyWith(color: colors.ink),
                   )
                 // Menu caché : de la flèche jusqu'au titre, tout rouvre le
                 // menu (demande MEDMEDBEN du 2026-10-14).
