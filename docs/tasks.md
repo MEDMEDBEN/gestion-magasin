@@ -4,6 +4,14 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Accueil : bande « Aujourd'hui » — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `_Today` dans `desktop_shell.dart`, avant les tuiles : petites cartes cliquables, une ligne (3 par ligne
+  sous 1180 px) — Caisse, Messages non lus, Tâches, Alerte la plus grave, + Ventes du jour et À traiter
+  (transferts / livraisons). Données : `dashboardSummaryProvider` + `conversationsProvider(false)` ; un bloc
+  non envoyé par le serveur (droits) n'est pas affiché.
+- Preuves : analyze 0, 551 tests ; capture accueil vérifiée.
+
 ### Poste : accueil à tuiles au lieu du menu latéral — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `ui/desktop/desktop_shell.dart` réécrit : plus de sidebar. À la connexion, ÉCRAN D'ACCUEIL (compte + toutes

@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../core/dates.dart';
+import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
+import '../../features/home/application/dashboard_controller.dart';
+import '../../features/messaging/application/conversations_controller.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/users/data/user_models.dart';
 import '../navigation.dart';
@@ -159,7 +162,7 @@ const _essentials = [
 ];
 
 /// L'écran d'accueil : le compte, puis les fonctionnalités en tuiles.
-class _Launcher extends StatelessWidget {
+class _Launcher extends ConsumerWidget {
   const _Launcher({
     super.key,
     required this.user,
@@ -176,7 +179,7 @@ class _Launcher extends StatelessWidget {
   final ValueChanged<int> onOpen;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final indexed = [for (final (i, d) in entries.indexed) (i, d)];
     final main = [
@@ -247,7 +250,15 @@ class _Launcher extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 28),
+            _Today(
+              columns: columns == 2 ? 3 : 6,
+              open: (label) {
+                final i = entries.indexWhere((d) => d.label == label);
+                if (i >= 0) onOpen(i);
+              },
+            ),
+            const SizedBox(height: 28),
             _SectionLabel('L’essentiel'),
             const SizedBox(height: 12),
             _Grid(
@@ -521,6 +532,227 @@ class _TopBar extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// « Aujourd'hui » (demande MEDMEDBEN du 2026-10-28) : l'essentiel à savoir
+/// AVANT d'ouvrir une fonctionnalité — caisse, messages, tâches, alerte, plus
+/// les ventes du jour et ce qui arrive (transferts, livraisons). Une ligne de
+/// petites cartes, chacune cliquable vers l'écran où agir. Un bloc que le
+/// serveur n'envoie pas (droits) n'est pas affiché ; rien à montrer : rien.
+class _Today extends ConsumerWidget {
+  const _Today({required this.columns, required this.open});
+
+  final int columns;
+  final ValueChanged<String> open;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summary = ref.watch(dashboardSummaryProvider).value;
+    final conversations = ref.watch(conversationsProvider(false)).value;
+    final unreadMessages = conversations?.data.fold<int>(
+      0,
+      (sum, c) => sum + c.unread,
+    );
+
+    final cash = summary?.cash;
+    final tasks = summary?.tasks;
+    final stock = summary?.stock;
+    final customers = summary?.customers;
+    final sales = summary?.sales;
+    final transfers = summary?.transfers;
+    final purchases = summary?.purchases;
+
+    // L'alerte la plus grave du moment, une seule.
+    final alert = stock != null && stock.outOfStockCount > 0
+        ? (StatusTone.error, '${stock.outOfStockCount} en rupture', 'Stock')
+        : customers != null && customers.overdue > 0
+        ? (StatusTone.error, 'Créances ${formatDA(customers.overdue)}', 'Vente')
+        : stock != null && stock.lowCount > 0
+        ? (StatusTone.warn, '${stock.lowCount} sous le seuil', 'Stock')
+        : (stock != null || customers != null)
+        ? (StatusTone.ok, 'Aucune alerte', 'Stock')
+        : null;
+
+    final items = <_TodayItem>[
+      if (cash != null)
+        _TodayItem(
+          icon: cash.open ? LucideIcons.wallet : LucideIcons.lock,
+          label: 'Caisse',
+          value: cash.open ? formatDA(cash.currentAmount) : 'Fermée',
+          tone: cash.open ? StatusTone.ok : StatusTone.warn,
+          target: 'Vente',
+        ),
+      if (unreadMessages != null)
+        _TodayItem(
+          icon: LucideIcons.messagesSquare,
+          label: 'Messages',
+          value: unreadMessages == 0
+              ? 'Rien de nouveau'
+              : '$unreadMessages non lu${unreadMessages > 1 ? 's' : ''}',
+          tone: unreadMessages == 0 ? StatusTone.neutral : StatusTone.info,
+          target: 'Messages',
+        ),
+      if (tasks != null)
+        _TodayItem(
+          icon: LucideIcons.listChecks,
+          label: 'Tâches',
+          value: tasks.late > 0
+              ? '${tasks.open} à faire · ${tasks.late} en retard'
+              : '${tasks.open} à faire',
+          tone: tasks.late > 0
+              ? StatusTone.error
+              : tasks.open > 0
+              ? StatusTone.info
+              : StatusTone.ok,
+          target: 'Tâches',
+        ),
+      if (alert case (final tone, final text, final target))
+        _TodayItem(
+          icon: LucideIcons.triangleAlert,
+          label: 'Alerte',
+          value: text,
+          tone: tone,
+          target: target,
+        ),
+      if (sales != null)
+        _TodayItem(
+          icon: LucideIcons.banknote,
+          label: 'Ventes du jour',
+          value:
+              '${formatDA(sales.revenueTtc)} · ${sales.count} vente${sales.count > 1 ? 's' : ''}',
+          tone: StatusTone.neutral,
+          target: 'Accueil',
+        ),
+      if (transfers != null || purchases != null)
+        _TodayItem(
+          icon: LucideIcons.truck,
+          label: 'À traiter',
+          value: [
+            if (transfers != null) '${transfers.toPrepare} transfert(s)',
+            if (purchases != null) '${purchases.toReceive} livraison(s)',
+          ].join(' · '),
+          tone: (transfers?.toPrepare ?? 0) + (purchases?.toReceive ?? 0) > 0
+              ? StatusTone.info
+              : StatusTone.neutral,
+          target: transfers != null ? 'Transferts' : 'Achats',
+        ),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SectionLabel('Aujourd’hui'),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, box) {
+            const gap = 10.0;
+            final perRow = columns.clamp(1, items.length);
+            final width = (box.maxWidth - gap * (perRow - 1)) / perRow;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                for (final item in items)
+                  SizedBox(
+                    width: width,
+                    child: _TodayCard(item: item, onTap: open),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _TodayItem {
+  const _TodayItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.tone,
+    required this.target,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final StatusTone tone;
+
+  /// Destination ouverte au clic (libellé de [destinationsFor]).
+  final String target;
+}
+
+/// Petite carte : un point d'état, le libellé, la valeur. Discrète.
+class _TodayCard extends StatelessWidget {
+  const _TodayCard({required this.item, required this.onTap});
+
+  final _TodayItem item;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Material(
+      color: colors.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: colors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => onTap(item.target),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(item.icon, size: 16, color: colors.ink2),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: item.tone.foreground(colors),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AmpereType.meta.copyWith(color: colors.ink3),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Text(
+                      item.value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.bodyStrong.copyWith(
+                        color: colors.ink,
+                        fontFeatures: AmpereType.tabular,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
