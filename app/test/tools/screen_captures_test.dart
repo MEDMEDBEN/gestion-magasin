@@ -1492,6 +1492,44 @@ void main() {
     ),
   );
   testWidgets(
+    '95 verre accueil',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '95_verre_accueil',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '96 verre stock',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '96_verre_stock',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      signal: true,
+      interact: (t) async => t.tap(find.text('Stock').first),
+    ),
+  );
+  testWidgets(
+    '97 verre vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '97_verre_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      signal: true,
+      interact: (t) async => t.tap(find.text('Vente').first),
+    ),
+  );
+  testWidgets(
     '60 fond signal desktop',
     skip: skip,
     (t) => _capture(

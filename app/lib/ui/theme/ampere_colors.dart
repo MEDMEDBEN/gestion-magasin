@@ -70,6 +70,10 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   static AmpereColors of(BuildContext context) =>
       Theme.of(context).extension<AmpereColors>()!;
 
+  /// Thème blanc « verre » (iOS/macOS) : la palette Clair seulement.
+  bool get isGlass =>
+      identical(this, desktopLight) || identical(this, mobileLight);
+
   /// Thème sombre ? (fond peu lumineux) — sans passer par le `ThemeData`.
   bool get isDark => bg.computeLuminance() < 0.2;
 
@@ -119,23 +123,23 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   );
 
   /// §2.4 — mobile clair.
-  /// Clair NEUTRE (maquette « shadcn » fournie par MEDMEDBEN le 2026-10-26) :
-  /// fond presque blanc, cartes blanches à filet fin, noir et gris zinc ; la
-  /// couleur ne sert qu'aux états (petites pastilles, tendances).
+  /// Clair « verre » façon iOS / macOS (demande MEDMEDBEN du 2026-10-28) :
+  /// fond gris-bleu très clair sous des taches de couleur floues, surfaces en
+  /// verre dépoli, accent bleu iOS (`widgets/glass.dart`).
   static const mobileLight = AmpereColors(
-    bg: Color(0xFFFAFAFA),
-    bgAlt: Color(0xFFFAFAFA),
+    bg: Color(0xFFEEF2F8),
+    bgAlt: Color(0xFFEEF2F8),
     surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFF4F4F5),
-    surface3: Color(0xFFE4E4E7),
-    line: Color(0xFFE4E4E7),
-    lineSoft: Color(0xFFF0F0F2),
-    ink: Color(0xFF09090B),
-    ink2: Color(0xFF52525B),
-    ink3: Color(0xFF71717A),
-    accent: Color(0xFF18181B),
-    accentHi: Color(0xFF27272A),
-    accentBg: Color(0xFFF4F4F5),
+    surface2: Color(0xFFF1F5F9),
+    surface3: Color(0xFFE2E8F0),
+    line: Color(0xFFDCE3EC),
+    lineSoft: Color(0xFFE8EDF3),
+    ink: Color(0xFF0F172A),
+    ink2: Color(0xFF475569),
+    ink3: Color(0xFF64748B),
+    accent: Color(0xFF2563EB),
+    accentHi: Color(0xFF1D4ED8),
+    accentBg: Color(0xFFE3ECFD),
     onAccent: Color(0xFFFFFFFF),
     ok: Color(0xFF16A34A),
     okBg: Color(0xFFF0FDF4),
@@ -147,7 +151,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     infoBg: Color(0xFFEFF6FF),
     neutral: Color(0xFF52525B),
     neutralBg: Color(0xFFF4F4F5),
-    vizAlt: Color(0xFFA1A1AA),
+    vizAlt: Color(0xFF6366F1),
     scrim: Color(0xA804070B),
   );
 
@@ -184,19 +188,19 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   /// §2.2 — desktop clair (accents assombris pour tenir le contraste ;
   /// ce n'est PAS une inversion du thème sombre).
   static const desktopLight = AmpereColors(
-    bg: Color(0xFFFAFAFA),
-    bgAlt: Color(0xFFFAFAFA),
+    bg: Color(0xFFEEF2F8),
+    bgAlt: Color(0xFFEEF2F8),
     surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFF4F4F5),
-    surface3: Color(0xFFE4E4E7),
-    line: Color(0xFFE4E4E7),
-    lineSoft: Color(0xFFF0F0F2),
-    ink: Color(0xFF09090B),
-    ink2: Color(0xFF52525B),
-    ink3: Color(0xFF71717A),
-    accent: Color(0xFF18181B),
-    accentHi: Color(0xFF27272A),
-    accentBg: Color(0xFFF4F4F5),
+    surface2: Color(0xFFF1F5F9),
+    surface3: Color(0xFFE2E8F0),
+    line: Color(0xFFDCE3EC),
+    lineSoft: Color(0xFFE8EDF3),
+    ink: Color(0xFF0F172A),
+    ink2: Color(0xFF475569),
+    ink3: Color(0xFF64748B),
+    accent: Color(0xFF2563EB),
+    accentHi: Color(0xFF1D4ED8),
+    accentBg: Color(0xFFE3ECFD),
     onAccent: Color(0xFFFFFFFF),
     ok: Color(0xFF16A34A),
     okBg: Color(0xFFF0FDF4),
@@ -208,7 +212,7 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
     infoBg: Color(0xFFEFF6FF),
     neutral: Color(0xFF52525B),
     neutralBg: Color(0xFFF4F4F5),
-    vizAlt: Color(0xFFA1A1AA),
+    vizAlt: Color(0xFF6366F1),
     scrim: Color(0x9E03070E),
   );
 

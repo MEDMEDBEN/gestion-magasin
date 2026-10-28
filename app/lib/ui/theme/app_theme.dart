@@ -73,7 +73,10 @@ class AppTheme {
 
       // Aucune ombre sur ce qui ne flotte pas : la bordure suffit (§4).
       cardTheme: CardThemeData(
-        color: colors.surface,
+        // Thème « verre » : cartes translucides sur le fond liquide.
+        color: colors.isGlass
+            ? colors.surface.withValues(alpha: 0.72)
+            : colors.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(

@@ -15,6 +15,7 @@ import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../theme/palettes.dart';
+import '../widgets/glass.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/section_tabs.dart';
 import '../widgets/signal_background.dart';
@@ -56,6 +57,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     final index = _index?.clamp(0, entries.length - 1);
     _followRequest(entries);
     void open(int? i) => setState(() => _index = i);
+    final glass = colors.isGlass;
+    final settings = entries.indexWhere((d) => d.label == 'Paramètres');
+    final profile = entries.indexWhere((d) => d.label == 'Mon profil');
 
     // Ctrl+K : l'assistant ; Échap : retour à l'accueil.
     return CallbackShortcuts(
@@ -69,6 +73,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
       child: Scaffold(
         body: Stack(
           children: [
+            // Thème blanc « verre » (iOS/macOS, 2026-10-28) : fond liquide.
+            if (glass) const Positioned.fill(child: LiquidBackground()),
             // Fond « signal électrique », éteignable (2026-10-28).
             if (ref.watch(signalBackgroundProvider))
               Positioned.fill(
@@ -80,51 +86,91 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   intensity: ref.watch(ledStyleProvider).ambiance.intensity,
                 ),
               ),
-            Column(
-              children: [
-                _TopBar(
-                  title: index == null
-                      ? 'Accueil'
-                      : _display(entries[index].label),
-                  user: widget.user,
-                  onHome: index == null ? null : () => open(null),
-                ),
-                Divider(height: 1, color: colors.line),
-                Expanded(
-                  // Passage fluide entre l'accueil et une fonctionnalité.
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 220),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeInCubic,
-                    transitionBuilder: (child, animation) => FadeTransition(
-                      opacity: animation,
-                      child: SlideTransition(
-                        position: Tween(
-                          begin: const Offset(0, 0.015),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                    ),
-                    child: index == null
-                        ? _Launcher(
-                            key: const ValueKey('accueil'),
-                            user: widget.user,
-                            entries: entries,
-                            columns: widget.compact ? 2 : 3,
-                            unread:
-                                ref.watch(unreadNotificationsProvider).value ??
-                                0,
-                            onOpen: open,
-                          )
-                        : KeyedSubtree(
-                            key: ValueKey(entries[index].label),
-                            child: entries[index].builder(context, widget.user),
-                          ),
+            Padding(
+              // L'encoche du thème verre occupe le bord gauche.
+              padding: EdgeInsets.only(left: glass ? SideIsland.width + 6 : 0),
+              child: Column(
+                children: [
+                  _TopBar(
+                    title: index == null
+                        ? 'Accueil'
+                        : _display(entries[index].label),
+                    user: widget.user,
+                    glass: glass,
+                    onHome: index == null ? null : () => open(null),
                   ),
-                ),
-              ],
+                  if (!glass) Divider(height: 1, color: colors.line),
+                  Expanded(
+                    // Passage fluide entre l'accueil et une fonctionnalité.
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeInCubic,
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween(
+                            begin: const Offset(0, 0.015),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: index == null
+                          ? _Launcher(
+                              key: const ValueKey('accueil'),
+                              user: widget.user,
+                              entries: entries,
+                              columns: widget.compact ? 2 : 3,
+                              unread:
+                                  ref
+                                      .watch(unreadNotificationsProvider)
+                                      .value ??
+                                  0,
+                              onOpen: open,
+                            )
+                          : KeyedSubtree(
+                              key: ValueKey(entries[index].label),
+                              child: entries[index].builder(
+                                context,
+                                widget.user,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
             ),
+            // Encoche noire iOS : Accueil et Paramètres, toujours à portée.
+            if (glass)
+              Positioned(
+                left: 0,
+                top: 150,
+                child: SideIsland(
+                  buttons: [
+                    (
+                      icon: LucideIcons.house,
+                      tooltip: 'Accueil',
+                      active: index == null,
+                      onTap: () => open(null),
+                    ),
+                    if (settings >= 0)
+                      (
+                        icon: LucideIcons.settings,
+                        tooltip: 'Paramètres',
+                        active: index == settings,
+                        onTap: () => open(settings),
+                      ),
+                    if (profile >= 0)
+                      (
+                        icon: LucideIcons.user,
+                        tooltip: 'Mon profil',
+                        active: index == profile,
+                        onTap: () => open(profile),
+                      ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -251,12 +297,37 @@ class _Launcher extends ConsumerWidget {
                   padding: const EdgeInsets.all(4),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 26,
-                        backgroundColor: colors.accent,
+                      Container(
+                        width: 54,
+                        height: 54,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.isGlass ? null : colors.accent,
+                          gradient: colors.isGlass ? glassAccent : null,
+                          border: colors.isGlass
+                              ? Border.all(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  width: 2,
+                                )
+                              : null,
+                          boxShadow: colors.isGlass
+                              ? const [
+                                  BoxShadow(
+                                    color: Color(0x594F46E5),
+                                    blurRadius: 20,
+                                    offset: Offset(0, 8),
+                                  ),
+                                ]
+                              : null,
+                        ),
                         child: Text(
                           _initials(user.fullName),
-                          style: AmpereType.h4.copyWith(color: colors.onAccent),
+                          style: AmpereType.h4.copyWith(
+                            color: colors.isGlass
+                                ? Colors.white
+                                : colors.onAccent,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -421,6 +492,129 @@ class _Tile extends StatelessWidget {
         ),
       ],
     );
+    if (colors.isGlass) {
+      // Thème blanc « verre » : tuile translucide (ou dégradé bleu iOS pour
+      // ce qui est mis en avant), coins très arrondis, flèche discrète.
+      final light = prominent;
+      final glassInk = light ? Colors.white : colors.ink;
+      final glassSoft = light
+          ? Colors.white.withValues(alpha: 0.85)
+          : colors.ink3;
+      final glassIcon = Container(
+        width: big ? 44 : 36,
+        height: big ? 44 : 36,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: Colors.white.withValues(alpha: light ? 0.2 : 0.7),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: light ? 0.3 : 0.9),
+          ),
+        ),
+        child: Badge.count(
+          count: badge,
+          isLabelVisible: badge > 0,
+          child: Icon(
+            icon,
+            size: big ? 20 : 17,
+            color: light ? Colors.white : const Color(0xFF0EA5E9),
+          ),
+        ),
+      );
+      final body = Padding(
+        padding: EdgeInsets.all(big ? 22 : 14),
+        child: big
+            ? SizedBox(
+                height: 112,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        glassIcon,
+                        const Spacer(),
+                        Icon(
+                          LucideIcons.arrowUpRight,
+                          size: 16,
+                          color: glassSoft,
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.h4.copyWith(color: glassInk),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hint,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: glassSoft),
+                    ),
+                  ],
+                ),
+              )
+            : Row(
+                children: [
+                  glassIcon,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.rowTitle.copyWith(color: glassInk),
+                        ),
+                        Text(
+                          hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.meta.copyWith(color: glassSoft),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(LucideIcons.chevronRight, size: 16, color: glassSoft),
+                ],
+              ),
+      );
+      final tap = Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: onTap,
+          child: body,
+        ),
+      );
+      return Semantics(
+        button: true,
+        label: title,
+        child: light
+            ? DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: glassAccent,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x593B82F6),
+                      blurRadius: 28,
+                      offset: Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: tap,
+              )
+            : Glass(radius: 22, child: tap),
+      );
+    }
     return Semantics(
       button: true,
       label: title,
@@ -481,10 +675,19 @@ class _Tile extends StatelessWidget {
 /// le bouton « Accueil » (toujours à gauche) puis le titre. À droite :
 /// assistant, synchronisation, thème.
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.title, required this.user, this.onHome});
+  const _TopBar({
+    required this.title,
+    required this.user,
+    this.onHome,
+    this.glass = false,
+  });
 
   final String title;
   final AuthUser user;
+
+  /// Thème blanc « verre » : barre flottante translucide, logo en dégradé,
+  /// le retour à l'accueil passe par l'encoche.
+  final bool glass;
 
   /// Retour aux tuiles ; `null` quand on y est déjà.
   final VoidCallback? onHome;
@@ -497,13 +700,53 @@ class _TopBar extends ConsumerWidget {
     final reachable = ref.watch(serverReachableProvider);
     final home = onHome;
 
-    return Container(
+    final bar = Container(
       height: 56,
-      color: colors.bg,
+      color: glass ? null : colors.bg,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          if (home == null) ...[
+          if (glass) ...[
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                gradient: glassAccent,
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x663B82F6),
+                    blurRadius: 14,
+                    offset: Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(LucideIcons.zap, size: 16, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              'Gestion magasin',
+              style: AmpereType.h4.copyWith(color: colors.ink),
+            ),
+            if (home != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(
+                  LucideIcons.chevronRight,
+                  size: 16,
+                  color: colors.ink3,
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.h4.copyWith(color: colors.ink2),
+                ),
+              ),
+            ],
+          ] else if (home == null) ...[
             Container(
               width: 30,
               height: 30,
@@ -563,6 +806,11 @@ class _TopBar extends ConsumerWidget {
           const _PaletteMenu(),
         ],
       ),
+    );
+    if (!glass) return bar;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 12, 16, 6),
+      child: Glass(radius: 20, child: bar),
     );
   }
 }
@@ -728,6 +976,69 @@ class _TodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    if (colors.isGlass) {
+      final dot = item.tone.foreground(colors);
+      return Glass(
+        radius: 16,
+        opacity: 0.5,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => onTap(item.target),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Row(
+                children: [
+                  // Point lumineux d'état.
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      color: dot,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: dot.withValues(alpha: 0.7),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(item.icon, size: 15, color: colors.ink3),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.bodyStrong.copyWith(
+                            color: colors.ink,
+                          ),
+                        ),
+                        Text(
+                          item.value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.meta.copyWith(
+                            color: colors.ink3,
+                            fontFeatures: AmpereType.tabular,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: colors.surface,
       shape: RoundedRectangleBorder(

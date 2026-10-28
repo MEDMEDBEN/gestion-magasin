@@ -39,7 +39,7 @@ enum AppPalette {
 
   /// Couleurs des LED quand elles « suivent la palette ».
   List<Color> get ledHues => switch (this) {
-    clair ||
+    clair => const [Color(0xFF3B82F6), Color(0xFF6366F1), Color(0xFF06B6D4)],
     bleuNuit => const [Color(0xFF5B7CFA), Color(0xFF2DD4BF), Color(0xFFA78BFA)],
     menthe => const [Color(0xFF19E68C), Color(0xFF00C2FF), Color(0xFFB6F23C)],
     rubis => const [Color(0xFFFF2D55), Color(0xFFFF8A3D), Color(0xFFFF3DCB)],

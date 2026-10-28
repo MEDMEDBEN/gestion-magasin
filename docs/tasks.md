@@ -4,6 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Thème blanc « verre » iOS/macOS — 2026-10-28 (MEDMEDBEN, Claude)
+
+- Palette **Clair** seulement (`AmpereColors.isGlass`) : fond #EEF2F8, accent bleu iOS #2563EB, encres slate.
+  `ui/widgets/glass.dart` : `LiquidBackground` (3 taches floues bleu/indigo/cyan qui dérivent, 14 s, fixe si
+  moins d'animations), `Glass` (verre dépoli : flou + voile blanc + filet + ombre), `SideIsland` (encoche
+  noire au bord gauche, raccords concaves, boutons ronds Accueil / Paramètres / Mon profil, infobulles),
+  `glassAccent` (dégradé bleu → indigo).
+- Coquille : fond liquide, barre du haut flottante en verre (logo dégradé, « Gestion magasin › page »), pas
+  de bouton « Accueil » (l'encoche le porte) ; tuiles et cartes « Aujourd'hui » en verre, mises en avant en
+  dégradé ; avatar en dégradé. Cartes du thème translucides (`cardTheme`). Autres palettes inchangées.
+- Captures 95-97 (accueil, Stock, Vente en verre).
+- Preuves : analyze 0, 555 tests ; captures vérifiées.
+
 ### Panneaux d'actions lisibles + fiche produit simplifiée — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `ui/widgets/action_option.dart` : `ActionOption` remplace `SimpleDialogOption` dans les panneaux d'actions
