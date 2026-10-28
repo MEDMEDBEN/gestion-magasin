@@ -171,12 +171,12 @@ class RevenueTrendChart extends StatelessWidget {
                 isCurved: true,
                 preventCurveOverShooting: true,
                 barWidth: 2,
-                color: colors.ink,
+                color: colors.accent,
                 dotData: FlDotData(
                   checkToShowDot: (spot, _) => spot.x == days.length - 1,
                   getDotPainter: (_, _, _, _) => FlDotCirclePainter(
                     radius: 5,
-                    color: colors.ink,
+                    color: colors.accent,
                     strokeWidth: 2,
                     strokeColor: colors.surface,
                   ),
@@ -187,8 +187,8 @@ class RevenueTrendChart extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      colors.ink.withValues(alpha: 0.10),
-                      colors.ink.withValues(alpha: 0.0),
+                      colors.accent.withValues(alpha: 0.18),
+                      colors.accent.withValues(alpha: 0.0),
                     ],
                   ),
                 ),
@@ -271,7 +271,7 @@ class TopProductsChart extends StatelessWidget {
                             // Le premier en noir plein, les suivants en gris.
                             child: Container(
                               height: 8,
-                              color: i == 0 ? colors.ink : colors.ink3,
+                              color: i == 0 ? colors.accent : colors.ink3,
                             ),
                           ),
                         ],
@@ -302,7 +302,7 @@ class StockHealthDonut extends StatelessWidget {
     final ok = stock.okCount;
     final total = ok + low + out;
     final parts = [
-      ('Sains', ok, colors.ink),
+      ('Sains', ok, colors.accent),
       ('Sous le seuil', low, colors.ink3),
       ('Épuisés', out, colors.surface3),
     ];

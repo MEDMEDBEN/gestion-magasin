@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Thème sombre « bleu nuit » — 2026-10-28 (MEDMEDBEN, Claude)
+
+- Remplace le noir zinc du 2026-10-27. Quatre couleurs de base : Nuit #0B1020 (fond), Ardoise #131A2B→#232D45
+  (surfaces/filets #24304A), Pervenche #5B7CFA (accent, texte blanc), Brume #E6EBF5→#7A869F (textes). États :
+  turquoise #2DD4BF, ambre #F5B454, rose #F47185, info = pervenche clair #8FA6FF.
+- Graphiques du tableau de bord : la donnée en `accent` (noir en clair, pervenche en sombre).
+- Thème CLAIR inchangé pour l'instant (MEDMEDBEN valide d'abord le sombre).
+- Preuves : analyze 0, 551 tests ; captures accueil, Vente, Achats en sombre vérifiées.
+
 ### Accueil : bande « Aujourd'hui » — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `_Today` dans `desktop_shell.dart`, avant les tuiles : petites cartes cliquables, une ligne (3 par ligne
