@@ -14,7 +14,7 @@ import '../../features/users/data/user_models.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
-import '../theme/theme_controller.dart';
+import '../theme/palettes.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/signal_background.dart';
 import '../widgets/sync_panel.dart';
@@ -71,7 +71,15 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
           children: [
             // Fond « signal électrique », éteignable (2026-10-28).
             if (ref.watch(signalBackgroundProvider))
-              const Positioned.fill(child: SignalBackground()),
+              Positioned.fill(
+                child: SignalBackground(
+                  hues: ref
+                      .watch(ledStyleProvider)
+                      .colors
+                      .hues(currentPalette(ref).ledHues),
+                  intensity: ref.watch(ledStyleProvider).ambiance.intensity,
+                ),
+              ),
             Column(
               children: [
                 _TopBar(
@@ -467,7 +475,6 @@ class _TopBar extends ConsumerWidget {
     final pending = ref.watch(pendingMutationsCountProvider);
     final rejected = ref.watch(rejectedMutationsProvider);
     final reachable = ref.watch(serverReachableProvider);
-    final themeMode = ref.watch(themeModeProvider);
     final home = onHome;
 
     return Container(
@@ -531,32 +538,9 @@ class _TopBar extends ConsumerWidget {
             onTap: () => showSyncPanel(context),
           ),
           const SizedBox(width: 6),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: ref.watch(signalBackgroundProvider)
-                ? 'Éteindre le fond animé'
-                : 'Allumer le fond animé',
-            onPressed: () =>
-                ref.read(signalBackgroundProvider.notifier).toggle(),
-            icon: Icon(
-              LucideIcons.activity,
-              size: 17,
-              color: ref.watch(signalBackgroundProvider)
-                  ? colors.accent
-                  : colors.ink3,
-            ),
-          ),
-          IconButton(
-            visualDensity: VisualDensity.compact,
-            tooltip: themeMode == ThemeMode.dark
-                ? 'Thème clair'
-                : 'Thème sombre',
-            onPressed: () => ref.read(themeModeProvider.notifier).toggle(),
-            icon: Icon(
-              themeMode == ThemeMode.dark ? LucideIcons.sun : LucideIcons.moon,
-              size: 17,
-            ),
-          ),
+          // Lumières (LED de fond) puis palettes (2026-10-28).
+          const _LightsMenu(),
+          const _PaletteMenu(),
         ],
       ),
     );
@@ -778,6 +762,318 @@ class _TodayCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bouton qui ouvre un panneau sous lui (palettes, lumières).
+class _PanelButton extends StatelessWidget {
+  const _PanelButton({
+    required this.icon,
+    required this.tooltip,
+    required this.panel,
+    this.color,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Widget panel;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => MenuAnchor(
+    alignmentOffset: const Offset(-240, 6),
+    style: MenuStyle(
+      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    ),
+    menuChildren: [panel],
+    builder: (context, controller, _) => IconButton(
+      visualDensity: VisualDensity.compact,
+      tooltip: tooltip,
+      onPressed: () =>
+          controller.isOpen ? controller.close() : controller.open(),
+      icon: Icon(icon, size: 17, color: color),
+    ),
+  );
+}
+
+/// Palettes : une barre de pastilles, clairs puis sombres.
+class _PaletteMenu extends ConsumerWidget {
+  const _PaletteMenu();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => _PanelButton(
+    icon: LucideIcons.palette,
+    tooltip: 'Palette de couleurs',
+    panel: const _PalettePanel(),
+  );
+}
+
+class _PalettePanel extends ConsumerWidget {
+  const _PalettePanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final current = currentPalette(ref);
+    Widget row(String title, bool dark) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title.toUpperCase(),
+          style: AmpereType.label.copyWith(color: colors.ink3),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (final p in AppPalette.values.where((p) => p.dark == dark))
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _PaletteChip(
+                  palette: p,
+                  selected: p == current,
+                  onTap: () => ref.read(paletteProvider.notifier).set(p),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Palette', style: AmpereType.h4.copyWith(color: colors.ink)),
+          const SizedBox(height: 12),
+          row('Clairs', false),
+          const SizedBox(height: 14),
+          row('Sombres', true),
+        ],
+      ),
+    );
+  }
+}
+
+/// Une palette : aperçu (fond, surface, accent) et son nom.
+class _PaletteChip extends StatelessWidget {
+  const _PaletteChip({
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppPalette palette;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final p = palette.desktop;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Palette ${palette.label}',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Container(
+          width: 92,
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? colors.accent : colors.line,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              // Mini-écran : fond, une carte, une barre d'accent.
+              Container(
+                height: 46,
+                decoration: BoxDecoration(
+                  color: p.bg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: p.line),
+                ),
+                padding: const EdgeInsets.all(6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: p.surface,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: p.line),
+                      ),
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: p.accent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        for (final c in palette.ledHues.take(2))
+                          Container(
+                            width: 6,
+                            height: 6,
+                            margin: const EdgeInsets.only(right: 3),
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                palette.label,
+                style: AmpereType.meta.copyWith(
+                  color: colors.ink,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Lumières : allumer/éteindre les LED, leur couleur, l'ambiance.
+class _LightsMenu extends ConsumerWidget {
+  const _LightsMenu();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => _PanelButton(
+    icon: LucideIcons.lightbulb,
+    tooltip: 'Lumières (LED de fond)',
+    color: ref.watch(signalBackgroundProvider)
+        ? AmpereColors.of(context).accent
+        : AmpereColors.of(context).ink3,
+    panel: const _LightsPanel(),
+  );
+}
+
+class _LightsPanel extends ConsumerWidget {
+  const _LightsPanel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final on = ref.watch(signalBackgroundProvider);
+    final style = ref.watch(ledStyleProvider);
+    final paletteHues = currentPalette(ref).ledHues;
+    final led = ref.read(ledStyleProvider.notifier);
+    return SizedBox(
+      width: 320,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Lumières',
+                    style: AmpereType.h4.copyWith(color: colors.ink),
+                  ),
+                ),
+                Switch(
+                  value: on,
+                  onChanged: (_) =>
+                      ref.read(signalBackgroundProvider.notifier).toggle(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'COULEUR DES LED',
+              style: AmpereType.label.copyWith(color: colors.ink3),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final c in LedColors.values)
+                  Tooltip(
+                    message: c.label,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => led.set(colors: c),
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: c == style.colors
+                                ? colors.accent
+                                : colors.line,
+                            width: c == style.colors ? 2 : 1,
+                          ),
+                        ),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: SweepGradient(
+                              colors: [
+                                ...c.hues(paletteHues),
+                                c.hues(paletteHues).first,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              style.colors.label,
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'AMBIANCE',
+              style: AmpereType.label.copyWith(color: colors.ink3),
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<LedAmbiance>(
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              showSelectedIcon: false,
+              segments: [
+                for (final a in LedAmbiance.values)
+                  ButtonSegment(value: a, label: Text(a.label)),
+              ],
+              selected: {style.ambiance},
+              onSelectionChanged: (v) => led.set(ambiance: v.first),
+            ),
+          ],
         ),
       ),
     );

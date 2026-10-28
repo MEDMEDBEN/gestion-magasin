@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/theme/palettes.dart';
 import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
@@ -1096,7 +1097,9 @@ Future<void> _capture(
   Future<void> Function(WidgetTester)? interact,
   List<Product>? products,
   bool signal = false,
+  AppPalette? palette,
 }) async {
+  if (palette != null) dark = palette.dark;
   if (signal) {
     // Fond animé allumé, figé sur une image (sinon pumpAndSettle attend
     // une animation sans fin).
@@ -1182,6 +1185,8 @@ Future<void> _capture(
           (ref) => Stream.value(foreignPending),
         ),
         rejectedMutationsProvider.overrideWith((ref) => Stream.value(const [])),
+        if (palette != null)
+          paletteProvider.overrideWith(() => _FixedPalette(palette)),
       ],
       child: RepaintBoundary(
         key: key,
@@ -1189,8 +1194,8 @@ Future<void> _capture(
           debugShowCheckedModeBanner: false,
           builder: (context, child) => Theme(
             data: isDesktopWidth(MediaQuery.sizeOf(context).width)
-                ? AppTheme.desktop(dark: dark)
-                : AppTheme.mobile(dark: dark),
+                ? AppTheme.desktop(dark: dark, colors: palette?.desktop)
+                : AppTheme.mobile(dark: dark, colors: palette?.mobile),
             child: child!,
           ),
           home: home,
@@ -1236,6 +1241,15 @@ Future<void> _viaMore(WidgetTester t, String label) async {
 class _SignalOff extends SignalBackgroundController {
   @override
   bool build() => false;
+}
+
+class _FixedPalette extends PaletteController {
+  _FixedPalette(this.palette);
+
+  final AppPalette palette;
+
+  @override
+  AppPalette? build() => palette;
 }
 
 class _SignalOn extends SignalBackgroundController {
@@ -1328,6 +1342,124 @@ void main() {
       home: const AdaptiveShell(),
       dark: false,
       interact: (t) async => t.tap(find.text('Transferts').first),
+    ),
+  );
+  testWidgets(
+    '70 palette menthe accueil',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '70_palette_menthe_accueil',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.menthe,
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '70 palette menthe vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '70_palette_menthe_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.menthe,
+      interact: (t) async => t.tap(find.text('Vente').first),
+    ),
+  );
+  testWidgets(
+    '71 palette aurore accueil',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '71_palette_aurore_accueil',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.aurore,
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '71 palette aurore vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '71_palette_aurore_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.aurore,
+      interact: (t) async => t.tap(find.text('Vente').first),
+    ),
+  );
+  testWidgets(
+    '72 palette neon accueil',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '72_palette_neon_accueil',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.neon,
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '72 palette neon vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '72_palette_neon_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.neon,
+      interact: (t) async => t.tap(find.text('Vente').first),
+    ),
+  );
+  testWidgets(
+    '73 palette synthwave accueil',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '73_palette_synthwave_accueil',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.synthwave,
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '73 palette synthwave vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '73_palette_synthwave_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.synthwave,
+      interact: (t) async => t.tap(find.text('Vente').first),
+    ),
+  );
+  testWidgets(
+    '78 menu palettes',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '78_menu_palettes',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.byTooltip('Palette de couleurs')),
+    ),
+  );
+  testWidgets(
+    '79 menu lumieres',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '79_menu_lumieres',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async => t.tap(find.byTooltip('Lumières (LED de fond)')),
     ),
   );
   testWidgets(

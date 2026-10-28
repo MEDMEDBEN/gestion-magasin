@@ -6,7 +6,7 @@ import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
 import 'ui/breakpoints.dart';
 import 'ui/theme/app_theme.dart';
-import 'ui/theme/theme_controller.dart';
+import 'ui/theme/palettes.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,8 +20,9 @@ class GestionMagasinApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Thème SOMBRE par défaut, clair disponible, choix persisté (AMPÈRE §2).
-    final mode = ref.watch(themeModeProvider);
-    final dark = mode != ThemeMode.light;
+    // Palette au choix (2026-10-28) ; à défaut, Clair / Bleu nuit.
+    final palette = currentPalette(ref);
+    final dark = palette.dark;
 
     return MaterialApp.router(
       title: 'Gestion magasin',
@@ -35,8 +36,8 @@ class GestionMagasinApp extends ConsumerWidget {
         final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
         return Theme(
           data: isDesktop
-              ? AppTheme.desktop(dark: dark)
-              : AppTheme.mobile(dark: dark),
+              ? AppTheme.desktop(dark: dark, colors: palette.desktop)
+              : AppTheme.mobile(dark: dark, colors: palette.mobile),
           child: child ?? const SizedBox.shrink(),
         );
       },
@@ -44,7 +45,7 @@ class GestionMagasinApp extends ConsumerWidget {
       // la palette dépendante de la taille.
       theme: AppTheme.mobile(dark: false),
       darkTheme: AppTheme.mobile(dark: true),
-      themeMode: mode,
+      themeMode: dark ? ThemeMode.dark : ThemeMode.light,
     );
   }
 }

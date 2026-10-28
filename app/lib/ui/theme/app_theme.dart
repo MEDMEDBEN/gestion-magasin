@@ -11,8 +11,11 @@ import 'ampere_typography.dart';
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData mobile({required bool dark}) => _build(
-    colors: dark ? AmpereColors.mobileDark : AmpereColors.mobileLight,
+  /// `colors` : une palette au choix (`palettes.dart`) ; par défaut, celle
+  /// d'origine du mode clair ou sombre.
+  static ThemeData mobile({required bool dark, AmpereColors? colors}) => _build(
+    colors:
+        colors ?? (dark ? AmpereColors.mobileDark : AmpereColors.mobileLight),
     dark: dark,
     cardRadius: AmpereGeometry.cardRadiusMobile,
     fieldRadius: AmpereGeometry.fieldRadiusMobile,
@@ -20,14 +23,17 @@ class AppTheme {
     bodyStyle: AmpereType.body,
   );
 
-  static ThemeData desktop({required bool dark}) => _build(
-    colors: dark ? AmpereColors.desktopDark : AmpereColors.desktopLight,
-    dark: dark,
-    cardRadius: AmpereGeometry.cardRadiusDesktop,
-    fieldRadius: AmpereGeometry.fieldRadiusDesktop,
-    fieldHeight: AmpereGeometry.fieldHeightDesktop,
-    bodyStyle: AmpereType.bodyDesktop,
-  );
+  static ThemeData desktop({required bool dark, AmpereColors? colors}) =>
+      _build(
+        colors:
+            colors ??
+            (dark ? AmpereColors.desktopDark : AmpereColors.desktopLight),
+        dark: dark,
+        cardRadius: AmpereGeometry.cardRadiusDesktop,
+        fieldRadius: AmpereGeometry.fieldRadiusDesktop,
+        fieldHeight: AmpereGeometry.fieldHeightDesktop,
+        bodyStyle: AmpereType.bodyDesktop,
+      );
 
   static ThemeData _build({
     required AmpereColors colors,

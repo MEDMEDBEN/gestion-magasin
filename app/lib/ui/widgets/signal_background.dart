@@ -48,6 +48,108 @@ final signalBackgroundProvider =
       SignalBackgroundController.new,
     );
 
+/// Couleur des LED (demande MEDMEDBEN du 2026-10-28).
+enum LedColors {
+  palette('Palette'),
+  arcEnCiel('Arc-en-ciel'),
+  cyan('Cyan'),
+  magenta('Magenta'),
+  vert('Vert néon'),
+  ambre('Ambre');
+
+  const LedColors(this.label);
+
+  final String label;
+
+  /// Couleurs du cycle ; `palette` : celles de la palette en vigueur.
+  List<Color> hues(List<Color> fromPalette) => switch (this) {
+    palette => fromPalette,
+    arcEnCiel => const [
+      Color(0xFFFF3D7F),
+      Color(0xFFFFB020),
+      Color(0xFF3DFFB0),
+      Color(0xFF3DB8FF),
+      Color(0xFFA066FF),
+    ],
+    cyan => const [Color(0xFF22E4FF), Color(0xFF3D8BFF)],
+    magenta => const [Color(0xFFFF3DCB), Color(0xFFB04DFF)],
+    vert => const [Color(0xFF2BFF9E), Color(0xFFB6FF3D)],
+    ambre => const [Color(0xFFFFB020), Color(0xFFFF6A3D)],
+  };
+}
+
+/// Ambiance lumineuse : intensité des LED et de leurs halos.
+enum LedAmbiance {
+  douce('Douce', 0.5),
+  normale('Normale', 1.0),
+  vive('Vive', 1.6);
+
+  const LedAmbiance(this.label, this.intensity);
+
+  final String label;
+  final double intensity;
+}
+
+typedef LedStyle = ({LedColors colors, LedAmbiance ambiance});
+
+/// Couleur et ambiance des LED, gardées par compte sur le poste.
+class LedStyleController extends Notifier<LedStyle> {
+  bool _chosen = false;
+
+  static String _key(String userId) => 'led_style.$userId';
+
+  static const _default = (
+    colors: LedColors.palette,
+    ambiance: LedAmbiance.normale,
+  );
+
+  @override
+  LedStyle build() {
+    _chosen = false;
+    final userId = ref.watch(currentUserIdProvider);
+    if (userId != null) _restore(userId);
+    return _default;
+  }
+
+  Future<void> _restore(String userId) async {
+    final stored = await ref
+        .read(localSettingsStoreProvider)
+        .read(_key(userId));
+    if (_chosen ||
+        stored == null ||
+        !ref.mounted ||
+        ref.read(currentUserIdProvider) != userId) {
+      return;
+    }
+    final [colors, ambiance] = [...stored.split('|'), '', ''].take(2).toList();
+    state = (
+      colors:
+          LedColors.values.where((c) => c.name == colors).firstOrNull ??
+          _default.colors,
+      ambiance:
+          LedAmbiance.values.where((a) => a.name == ambiance).firstOrNull ??
+          _default.ambiance,
+    );
+  }
+
+  Future<void> set({LedColors? colors, LedAmbiance? ambiance}) async {
+    _chosen = true;
+    state = (
+      colors: colors ?? state.colors,
+      ambiance: ambiance ?? state.ambiance,
+    );
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    await ref
+        .read(localSettingsStoreProvider)
+        .write(_key(userId), '${state.colors.name}|${state.ambiance.name}');
+  }
+}
+
+final ledStyleProvider = NotifierProvider<LedStyleController, LedStyle>(
+  LedStyleController.new,
+);
+
 /// Rubans de LED parcourus d'un chenillard lumineux, et deux barres-graphes
 /// (vumètres) de LED dans les coins du bas, dans des couleurs qui passent de
 /// l'une à l'autre (pervenche → turquoise → violet). Discret : petites diodes,
@@ -56,7 +158,18 @@ final signalBackgroundProvider =
 /// Animation coupée si le système demande moins de mouvement : une image fixe
 /// est alors dessinée.
 class SignalBackground extends StatefulWidget {
-  const SignalBackground({super.key, this.animate = true});
+  const SignalBackground({
+    super.key,
+    required this.hues,
+    this.intensity = 1,
+    this.animate = true,
+  });
+
+  /// Couleurs du cycle des LED.
+  final List<Color> hues;
+
+  /// Ambiance : 0,5 douce … 1,6 vive.
+  final double intensity;
 
   /// `false` : image fixe (tests, captures, préférence d'accessibilité).
   final bool animate;
@@ -108,7 +221,12 @@ class _SignalBackgroundState extends State<SignalBackground>
     return IgnorePointer(
       child: RepaintBoundary(
         child: CustomPaint(
-          painter: _SignalPainter(clock: _clock, dark: dark),
+          painter: _SignalPainter(
+            clock: _clock,
+            dark: dark,
+            hues: widget.hues,
+            intensity: widget.intensity,
+          ),
           size: Size.infinite,
         ),
       ),
@@ -117,26 +235,25 @@ class _SignalBackgroundState extends State<SignalBackground>
 }
 
 class _SignalPainter extends CustomPainter {
-  _SignalPainter({required this.clock, required this.dark})
-    : super(repaint: clock);
+  _SignalPainter({
+    required this.clock,
+    required this.dark,
+    required this.hues,
+    required this.intensity,
+  }) : super(repaint: clock);
 
   final Animation<double> clock;
   final bool dark;
-
-  /// Les couleurs du cycle, accordées à la palette « bleu nuit ».
-  static const _hues = [
-    Color(0xFF5B7CFA), // pervenche
-    Color(0xFF2DD4BF), // turquoise
-    Color(0xFFA78BFA), // violet
-  ];
+  final List<Color> hues;
+  final double intensity;
 
   /// Couleur au point `u` du cycle, en fondu continu.
-  static Color _hue(double u) {
-    final x = (u % 1) * _hues.length;
+  Color _hue(double u) {
+    final x = (u % 1) * hues.length;
     final i = x.floor();
     return Color.lerp(
-      _hues[i % _hues.length],
-      _hues[(i + 1) % _hues.length],
+      hues[i % hues.length],
+      hues[(i + 1) % hues.length],
       x - i,
     )!;
   }
@@ -156,13 +273,16 @@ class _SignalPainter extends CustomPainter {
       canvas.drawRRect(
         RRect.fromRectAndRadius(body.inflate(4), const Radius.circular(6)),
         Paint()
-          ..color = color.withValues(alpha: 0.28 * lit * strength)
+          ..color = color.withValues(alpha: (0.28 * lit * strength).clamp(0, 1))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
     }
     canvas.drawRRect(
       RRect.fromRectAndRadius(body, const Radius.circular(2)),
-      Paint()..color = color.withValues(alpha: (0.10 + 0.75 * lit) * strength),
+      Paint()
+        ..color = color.withValues(
+          alpha: ((0.10 + 0.75 * lit) * strength).clamp(0, 1),
+        ),
     );
   }
 
@@ -172,7 +292,7 @@ class _SignalPainter extends CustomPainter {
     final t = clock.value;
     final w = size.width;
     final h = size.height;
-    final strength = dark ? 1.0 : 0.55;
+    final strength = (dark ? 1.0 : 0.55) * intensity;
 
     // ── Rubans : des rangées de diodes, un chenillard qui court ─────────
     // Le long des bords (sous la barre du haut, en bas, sur les côtés) : là
@@ -252,5 +372,6 @@ class _SignalPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SignalPainter old) => old.dark != dark;
+  bool shouldRepaint(_SignalPainter old) =>
+      old.dark != dark || old.hues != hues || old.intensity != intensity;
 }

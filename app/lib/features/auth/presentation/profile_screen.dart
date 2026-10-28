@@ -7,6 +7,7 @@ import '../../../core/pdf_printing.dart';
 import '../../../core/providers.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/theme/palettes.dart';
 import '../../../ui/theme/theme_controller.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/screen_state.dart';
@@ -172,8 +173,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     Switch(
                       value: themeMode == ThemeMode.dark,
                       onChanged: (isDark) => ref
-                          .read(themeModeProvider.notifier)
-                          .set(isDark ? ThemeMode.dark : ThemeMode.light),
+                          .read(paletteProvider.notifier)
+                          .set(isDark ? AppPalette.bleuNuit : AppPalette.clair),
                     ),
                   ],
                 ),

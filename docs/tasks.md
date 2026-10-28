@@ -4,6 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Palettes au choix + réglages des LED — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `ui/theme/palettes.dart` : `AppPalette` = Clair, Menthe, Aurore (clairs) · Bleu nuit, Néon, Synthwave
+  (sombres). Chacune : `AmpereColors` + couleurs de LED. `paletteProvider` (par compte, réglages locaux) ;
+  `null` = suit `themeModeProvider` (Clair / Bleu nuit). Choisir une palette règle aussi clair/sombre.
+  `AppTheme.desktop/mobile` acceptent `colors:` ; `main.dart` applique `currentPalette(ref)`.
+- Barre du haut : le soleil/lune devient « Palette » (panneau de pastilles Clairs / Sombres) ; l'ampoule
+  « Lumières » ouvre : marche/arrêt, couleur des LED (Palette, Arc-en-ciel, Cyan, Magenta, Vert néon, Ambre),
+  ambiance (Douce / Normale / Vive). `ledStyleProvider` gardé par compte. Profil : l'interrupteur sombre
+  choisit Bleu nuit / Clair.
+- Captures 70-79 (palettes, menus) ; tests de persistance dans `signal_background_test.dart`.
+- Preuves : analyze 0, 553 tests ; captures vérifiées.
+
 ### Fond animé : barres de LED (remplace les ondes) — 2026-10-28 (MEDMEDBEN, Claude)
 
 - Même fichier/interrupteur (`signal_background.dart`, `signalBackgroundProvider`). Dessin : rubans de diodes
