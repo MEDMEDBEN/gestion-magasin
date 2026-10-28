@@ -16,6 +16,7 @@ import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/screen_state.dart';
+import '../widgets/signal_background.dart';
 import '../widgets/sync_panel.dart';
 import '../../features/assistant/assistant.dart';
 
@@ -66,45 +67,55 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               open(null),
       },
       child: Scaffold(
-        body: Column(
+        body: Stack(
           children: [
-            _TopBar(
-              title: index == null ? 'Accueil' : _display(entries[index].label),
-              user: widget.user,
-              onHome: index == null ? null : () => open(null),
-            ),
-            Divider(height: 1, color: colors.line),
-            Expanded(
-              // Passage fluide entre l'accueil et une fonctionnalité.
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) => FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween(
-                      begin: const Offset(0, 0.015),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
+            // Fond « signal électrique », éteignable (2026-10-28).
+            if (ref.watch(signalBackgroundProvider))
+              const Positioned.fill(child: SignalBackground()),
+            Column(
+              children: [
+                _TopBar(
+                  title: index == null
+                      ? 'Accueil'
+                      : _display(entries[index].label),
+                  user: widget.user,
+                  onHome: index == null ? null : () => open(null),
+                ),
+                Divider(height: 1, color: colors.line),
+                Expanded(
+                  // Passage fluide entre l'accueil et une fonctionnalité.
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween(
+                          begin: const Offset(0, 0.015),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    ),
+                    child: index == null
+                        ? _Launcher(
+                            key: const ValueKey('accueil'),
+                            user: widget.user,
+                            entries: entries,
+                            columns: widget.compact ? 2 : 3,
+                            unread:
+                                ref.watch(unreadNotificationsProvider).value ??
+                                0,
+                            onOpen: open,
+                          )
+                        : KeyedSubtree(
+                            key: ValueKey(entries[index].label),
+                            child: entries[index].builder(context, widget.user),
+                          ),
                   ),
                 ),
-                child: index == null
-                    ? _Launcher(
-                        key: const ValueKey('accueil'),
-                        user: widget.user,
-                        entries: entries,
-                        columns: widget.compact ? 2 : 3,
-                        unread:
-                            ref.watch(unreadNotificationsProvider).value ?? 0,
-                        onOpen: open,
-                      )
-                    : KeyedSubtree(
-                        key: ValueKey(entries[index].label),
-                        child: entries[index].builder(context, widget.user),
-                      ),
-              ),
+              ],
             ),
           ],
         ),
@@ -519,7 +530,22 @@ class _TopBar extends ConsumerWidget {
             isOffline: !reachable,
             onTap: () => showSyncPanel(context),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 6),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: ref.watch(signalBackgroundProvider)
+                ? 'Éteindre le fond animé'
+                : 'Allumer le fond animé',
+            onPressed: () =>
+                ref.read(signalBackgroundProvider.notifier).toggle(),
+            icon: Icon(
+              LucideIcons.activity,
+              size: 17,
+              color: ref.watch(signalBackgroundProvider)
+                  ? colors.accent
+                  : colors.ink3,
+            ),
+          ),
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: themeMode == ThemeMode.dark

@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/features/audit/data/audit_api.dart';
@@ -1094,7 +1095,15 @@ Future<void> _capture(
   int foreignPending = 0,
   Future<void> Function(WidgetTester)? interact,
   List<Product>? products,
+  bool signal = false,
 }) async {
+  if (signal) {
+    // Fond animé allumé, figé sur une image (sinon pumpAndSettle attend
+    // une animation sans fin).
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  }
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -1104,6 +1113,9 @@ Future<void> _capture(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        signalBackgroundProvider.overrideWith(
+          signal ? _SignalOn.new : _SignalOff.new,
+        ),
         authControllerProvider.overrideWith(
           auth ??
               () => _SignedIn(
@@ -1220,6 +1232,17 @@ Future<void> _viaMore(WidgetTester t, String label) async {
   await t.tap(find.text(label));
 }
 
+/// Fond animé éteint : une animation sans fin bloquerait `pumpAndSettle`.
+class _SignalOff extends SignalBackgroundController {
+  @override
+  bool build() => false;
+}
+
+class _SignalOn extends SignalBackgroundController {
+  @override
+  bool build() => true;
+}
+
 void main() {
   setUpAll(_loadFonts);
   const skip = out == '';
@@ -1305,6 +1328,29 @@ void main() {
       home: const AdaptiveShell(),
       dark: false,
       interact: (t) async => t.tap(find.text('Transferts').first),
+    ),
+  );
+  testWidgets(
+    '60 fond signal desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '60_fond_signal_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      signal: true,
+    ),
+  );
+  testWidgets(
+    '61 clair fond signal desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '61_clair_fond_signal_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      signal: true,
+      dark: false,
     ),
   );
   testWidgets(

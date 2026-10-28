@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Fond animé « signal électrique » — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `ui/widgets/signal_background.dart` : 4 ondes fines (1,4 px + halo), salves qui les parcourent, couleurs en
+  fondu pervenche → turquoise → violet, bords fondus ; boucle de 36 s sans raccord ; `RepaintBoundary`,
+  `IgnorePointer` ; image fixe si le système demande moins d'animations. Plus discret en clair.
+- Poste seulement, derrière tout l'écran (`DesktopShell`). Bouton « activity » dans la barre du haut :
+  allumé par défaut, éteignable, choix gardé par compte (`signalBackgroundProvider`, réglages locaux).
+- Tests : `signal_background_test.dart` (choix gardé) ; fond éteint dans `shell_test` et les captures (une
+  animation sans fin bloque `pumpAndSettle`) ; captures 60/61 le montrent figé, en sombre et en clair.
+- Preuves : analyze 0, 552 tests ; captures 60 et 61 vérifiées.
+
 ### Thème sombre « bleu nuit » — 2026-10-28 (MEDMEDBEN, Claude)
 
 - Remplace le noir zinc du 2026-10-27. Quatre couleurs de base : Nuit #0B1020 (fond), Ardoise #131A2B→#232D45

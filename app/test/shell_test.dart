@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
@@ -45,6 +46,7 @@ Future<void> _pumpShell(
     ProviderScope(
       overrides: [
         authControllerProvider.overrideWith(() => _SignedIn(user)),
+        signalBackgroundProvider.overrideWith(_SignalOff.new),
         appDatabaseProvider.overrideWithValue(db),
         usersApiProvider.overrideWithValue(
           FakeUsersApi(users: [managedUser()]),
@@ -111,6 +113,12 @@ class _CountingCatalog implements CatalogRepository {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Fond animé éteint : une animation sans fin bloquerait `pumpAndSettle`.
+class _SignalOff extends SignalBackgroundController {
+  @override
+  bool build() => false;
 }
 
 void main() {
@@ -315,7 +323,10 @@ void main() {
 
       // Le titre de la barre du haut suit la rubrique ouverte.
       expect(find.text('Mon profil'), findsAtLeastNWidgets(1));
-      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
+      expect(
+        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -530,13 +541,19 @@ void main() {
       await tester.pumpAndSettle();
       // Ouvert : le titre de la barre du haut, et le bouton « Accueil ».
       expect(find.text('Mon profil'), findsOneWidget);
-      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
+      expect(
+        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
+        findsOneWidget,
+      );
 
       // « Scanner » n'existe pas au poste : on reste où on est, sans erreur.
       container.read(requestedDestinationProvider.notifier).ask('Scanner');
       await tester.pumpAndSettle();
       expect(find.text('Mon profil'), findsOneWidget);
-      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
+      expect(
+        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
+        findsOneWidget,
+      );
       expect(container.read(requestedDestinationProvider), isNull);
     },
   );
