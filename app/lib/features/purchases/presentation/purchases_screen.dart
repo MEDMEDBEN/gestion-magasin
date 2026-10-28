@@ -13,6 +13,7 @@ import '../../../ui/widgets/export_button.dart';
 import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/page_kit.dart';
+import '../../../ui/widgets/action_option.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
@@ -699,19 +700,26 @@ Widget _option(
   IconData icon,
   Color color,
   String label,
-) => SimpleDialogOption(
-  onPressed: () => Navigator.of(context).pop(value),
-  child: Padding(
-    padding: const EdgeInsets.symmetric(vertical: 4),
-    child: Row(
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 12),
-        Expanded(child: Text(label)),
-      ],
-    ),
-  ),
-);
+) {
+  final colors = AmpereColors.of(context);
+  // La couleur choisie dit le ton de l'action (2026-10-28).
+  final tone = color == colors.ok
+      ? StatusTone.ok
+      : color == colors.error
+      ? StatusTone.error
+      : color == colors.warn
+      ? StatusTone.warn
+      : color == colors.info
+      ? StatusTone.info
+      : StatusTone.neutral;
+  return ActionOption(
+    icon: icon,
+    tone: tone,
+    primary: value == 'receive' || value == 'confirm',
+    onPressed: () => Navigator.of(context).pop(value),
+    child: Text(label),
+  );
+}
 
 /// Clôture du reliquat : motif obligatoire. Dialogue à état pour que le
 /// contrôleur de texte vive jusqu'à la fin de l'animation de fermeture.

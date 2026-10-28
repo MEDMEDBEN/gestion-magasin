@@ -508,13 +508,22 @@ void main() {
       await tester.tap(find.text('Nouveau'));
       await tester.pumpAndSettle();
 
-      final fields = find.byType(TextFormField);
-      await tester.enterText(fields.at(0), 'Disjoncteur 16A');
-      await tester.enterText(fields.at(1), 'DIS-16A');
-      // Champs : désignation, référence, code-barres, marque, stock magasin,
-      // stock dépôt, seuil minimum…
-      await tester.enterText(fields.at(4), '120');
-      await tester.enterText(fields.at(6), '12,5');
+      await tester.enterText(
+        find.byKey(const ValueKey('champ-nom')),
+        'Disjoncteur 16A',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('champ-reference')),
+        'DIS-16A',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('champ-stock-magasin')),
+        '120',
+      );
+      // Le seuil est dans « Plus de détails » (replié à la création).
+      await tester.tap(find.text('Plus de détails'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('champ-seuil')), '12,5');
       await tester.ensureVisible(find.text('Créer le produit'));
       await tester.tap(find.text('Créer le produit'));
       await tester.pumpAndSettle();
@@ -544,10 +553,17 @@ void main() {
     await tester.tap(find.text('Nouveau'));
     await tester.pumpAndSettle();
 
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Disjoncteur');
-    await tester.enterText(fields.at(1), 'DIS');
-    await tester.enterText(fields.at(6), '-3');
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-nom')),
+      'Disjoncteur',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-reference')),
+      'DIS',
+    );
+    await tester.tap(find.text('Plus de détails'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('champ-seuil')), '-3');
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));
     await tester.pumpAndSettle();
@@ -603,13 +619,20 @@ void main() {
     await tester.tap(find.text('Nouveau'));
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('Plus de détails'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ajouter une photo'));
     await tester.pumpAndSettle();
     expect(find.text('Changer la photo'), findsOneWidget);
 
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Disjoncteur');
-    await tester.enterText(fields.at(1), 'DIS-PHOTO');
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-nom')),
+      'Disjoncteur',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-reference')),
+      'DIS-PHOTO',
+    );
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));
     await tester.pumpAndSettle();
@@ -629,6 +652,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nouveau'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plus de détails'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Ajouter une photo'));
@@ -793,10 +818,20 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Nouveau'));
     await tester.pumpAndSettle();
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), 'Interrupteur');
-    await tester.enterText(fields.at(1), 'INT-COUT');
-    await tester.enterText(fields.last, '85,50');
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-nom')),
+      'Interrupteur',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-reference')),
+      'INT-COUT',
+    );
+    await tester.tap(find.text('Plus de détails'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-prix-achat')),
+      '85,50',
+    );
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));
     await tester.pumpAndSettle();

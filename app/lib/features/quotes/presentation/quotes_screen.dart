@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
@@ -8,6 +9,7 @@ import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/amount_dialog.dart';
 import '../../../ui/widgets/ampere_controls.dart';
+import '../../../ui/widgets/action_option.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../sales/application/sales_controller.dart';
@@ -132,34 +134,47 @@ class QuotesScreen extends ConsumerWidget {
       builder: (context) => SimpleDialog(
         title: Text('${quote.number} — ${status.label}'),
         children: [
-          SimpleDialogOption(
+          ActionOption(
+            icon: LucideIcons.printer,
+            tone: StatusTone.neutral,
             onPressed: () => Navigator.of(context).pop('print'),
             child: const Text('Imprimer / partager le PDF'),
           ),
           // Miroir du serveur : son auteur, ou l'admin.
           if (status.canEdit &&
               (quote.userId == user.id || user.hasRole('ADMIN')))
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.pencil,
+              tone: StatusTone.neutral,
               onPressed: () => Navigator.of(context).pop('edit'),
               child: const Text('Modifier (dans le panier de la vente)'),
             ),
           if (status.canSend)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.send,
+              tone: StatusTone.info,
               onPressed: () => Navigator.of(context).pop('send'),
               child: const Text('Marquer comme envoyé au client'),
             ),
           if (status.canAccept)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.circleCheck,
+              tone: StatusTone.ok,
               onPressed: () => Navigator.of(context).pop('accept'),
               child: const Text('Le client accepte'),
             ),
           if (status.canConvert)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.shoppingCart,
+              tone: StatusTone.ok,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('convert'),
               child: Text('Convertir en vente (${formatDA(quote.totalTtc)})'),
             ),
           if (status.canRefuse)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.circleX,
+              tone: StatusTone.error,
               onPressed: () => Navigator.of(context).pop('refuse'),
               child: const Text('Le client refuse'),
             ),

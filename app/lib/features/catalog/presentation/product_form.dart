@@ -117,7 +117,12 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   void initState() {
     super.initState();
     final p = widget.existing;
-    _sku = TextEditingController(text: p?.sku ?? '');
+    // Nouveau produit : référence proposée d'office (2026-10-28), modifiable.
+    _sku = TextEditingController(
+      text:
+          p?.sku ??
+          'P${DateTime.now().millisecondsSinceEpoch.toRadixString(36).toUpperCase()}',
+    );
     _name = TextEditingController(text: p?.name ?? widget.initialName ?? '');
     _barcode = TextEditingController(
       text: p?.barcode ?? widget.initialBarcode ?? '',
@@ -299,12 +304,14 @@ class _ProductFormState extends ConsumerState<ProductForm> {
   Widget _quantityField(
     String label,
     TextEditingController controller,
+    String key,
   ) => Expanded(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         AmpereFieldLabel(label),
         TextFormField(
+          key: ValueKey(key),
           controller: controller,
           enabled: !_locked,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -347,6 +354,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       children: [
         const AmpereFieldLabel('Prix d’achat'),
         TextFormField(
+          key: const ValueKey('champ-prix-achat'),
           controller: _cost,
           enabled: !_saving,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -358,13 +366,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             final amount = parseDA(raw);
             return amount == null || amount < 0 ? 'Montant invalide' : null;
           },
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Coût connu aujourd’hui (marge, prix de vente minimum). '
-          'Modifiable tant qu’aucune réception ; ensuite, les réceptions le '
-          'fixent.',
-          style: AmpereType.meta.copyWith(color: colors.ink3),
         ),
       ],
     );
@@ -602,25 +603,17 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     );
     final inputStyle = AmpereType.input.copyWith(color: colors.ink);
 
-    return FormPanelFrame(
-      formKey: _formKey,
-      title: !widget.canEdit
-          ? 'Fiche produit'
-          : _isEdit
-          ? 'Modifier le produit'
-          : 'Nouveau produit',
-      submitLabel: _isEdit ? 'Enregistrer' : 'Créer le produit',
-      onSubmit: widget.canEdit ? _submit : null,
-      saving: _saving,
-      error: _error,
-      children: [
-        if (widget.canEdit || widget.existing?.imageKey != null) ...[
-          const AmpereFieldLabel('Photo'),
-          _photoSection(colors),
-          formFieldGap,
-        ],
-        const AmpereFieldLabel('Désignation'),
+    Widget field(String label, Widget input) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [AmpereFieldLabel(label), input, formFieldGap],
+    );
+
+    // ── L'essentiel : ce qu'il faut pour vendre ────────────────────────
+    final essentials = <Widget>[
+      field(
+        'Désignation *',
         TextFormField(
+          key: const ValueKey('champ-nom'),
           controller: _name,
           enabled: !_locked,
           autofocus: widget.canEdit && !_isEdit,
@@ -631,53 +624,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
               ? 'Au moins 2 caractères'
               : null,
         ),
-        formFieldGap,
-        const AmpereFieldLabel('Référence'),
-        TextFormField(
-          controller: _sku,
-          enabled: !_locked,
-          maxLength: 50,
-          autocorrect: false,
-          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
-          decoration: deco(LucideIcons.hash),
-          validator: (v) =>
-              (v == null || v.trim().isEmpty) ? 'Référence obligatoire' : null,
-        ),
-        formFieldGap,
-        const AmpereFieldLabel('Code-barres'),
-        TextFormField(
-          controller: _barcode,
-          enabled: !_locked,
-          maxLength: 64,
-          autocorrect: false,
-          enableSuggestions: false,
-          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
-          decoration:
-              deco(
-                LucideIcons.scanBarcode,
-                helper: _isEdit
-                    ? 'Corrigez un code mal saisi, ou scannez le bon'
-                    : 'Scannez le code fabricant — vide : un code interne est généré',
-              ).copyWith(
-                suffixIcon: _locked
-                    ? null
-                    : CameraScanButton(onCode: (code) => _barcode.text = code),
-              ),
-          validator: (v) => (v != null && RegExp(r'\s').hasMatch(v.trim()))
-              ? 'Sans espace'
-              : null,
-        ),
-        formFieldGap,
-        const AmpereFieldLabel('Marque'),
-        TextFormField(
-          controller: _brand,
-          enabled: !_locked,
-          maxLength: 80,
-          style: inputStyle,
-          decoration: deco(LucideIcons.tag),
-        ),
-        formFieldGap,
-        const AmpereFieldLabel('Unité de vente'),
+      ),
+      field(
+        'Unité de vente',
         DropdownButtonFormField<ProductUnit>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),
           initialValue: _unit,
@@ -692,8 +641,81 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           ],
           onChanged: _locked ? null : (v) => setState(() => _unit = v!),
         ),
+      ),
+      if (priceTiers.isNotEmpty) ...[
+        if (!widget.canSetPrices) const AmpereFieldLabel('Prix de vente'),
+        _pricesSection(colors, priceTiers),
         formFieldGap,
-        const AmpereFieldLabel('Catégorie'),
+      ],
+      if (!_isEdit) ...[
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _quantityField(
+              'Stock au magasin',
+              _storeStock,
+              'champ-stock-magasin',
+            ),
+            const SizedBox(width: 12),
+            _quantityField('Stock au dépôt', _depotStock, 'champ-stock-depot'),
+          ],
+        ),
+        formFieldGap,
+      ] else if (existingStock != null)
+        field(
+          'Stock actuel',
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StockStatusBadge(
+              product: widget.existing!,
+              stock: existingStock,
+            ),
+          ),
+        ),
+    ];
+
+    // ── Identification ─────────────────────────────────────────────────
+    final identity = <Widget>[
+      field(
+        'Référence *',
+        TextFormField(
+          key: const ValueKey('champ-reference'),
+          controller: _sku,
+          enabled: !_locked,
+          maxLength: 50,
+          autocorrect: false,
+          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
+          decoration: deco(LucideIcons.hash),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Référence obligatoire' : null,
+        ),
+      ),
+      field(
+        'Code-barres',
+        TextFormField(
+          key: const ValueKey('champ-code-barres'),
+          controller: _barcode,
+          enabled: !_locked,
+          maxLength: 64,
+          autocorrect: false,
+          enableSuggestions: false,
+          style: AmpereType.mono.copyWith(color: colors.ink, fontSize: 15),
+          decoration:
+              deco(
+                LucideIcons.scanBarcode,
+                helper: _isEdit ? null : 'Vide : un code est généré',
+              ).copyWith(
+                suffixIcon: _locked
+                    ? null
+                    : CameraScanButton(onCode: (code) => _barcode.text = code),
+              ),
+          validator: (v) => (v != null && RegExp(r'\s').hasMatch(v.trim()))
+              ? 'Sans espace'
+              : null,
+        ),
+      ),
+      field(
+        'Catégorie',
         DropdownButtonFormField<String?>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),
           initialValue: _categoryId,
@@ -715,13 +737,28 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           ],
           onChanged: _locked ? null : (v) => setState(() => _categoryId = v),
         ),
-        formFieldGap,
-        if (widget.canReadSuppliers) ...[
-          const AmpereFieldLabel('Fournisseur principal'),
-          _supplierField(deco),
-          formFieldGap,
-        ],
-        const AmpereFieldLabel('Emplacement au dépôt'),
+      ),
+      field(
+        'Marque',
+        TextFormField(
+          key: const ValueKey('champ-marque'),
+          controller: _brand,
+          enabled: !_locked,
+          maxLength: 80,
+          style: inputStyle,
+          decoration: deco(LucideIcons.tag),
+        ),
+      ),
+    ];
+
+    // ── Plus de détails : tout le reste, facultatif ───────────────────
+    final details = <Widget>[
+      if (widget.canEdit || widget.existing?.imageKey != null)
+        field('Photo', _photoSection(colors)),
+      if (widget.canReadSuppliers)
+        field('Fournisseur principal', _supplierField(deco)),
+      field(
+        'Emplacement au dépôt',
         DropdownButtonFormField<String?>(
           icon: const Icon(LucideIcons.chevronDown, size: 17),
           initialValue: _storageLocationId,
@@ -740,41 +777,13 @@ class _ProductFormState extends ConsumerState<ProductForm> {
               ? null
               : (v) => setState(() => _storageLocationId = v),
         ),
-        formFieldGap,
-        if (!_isEdit) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _quantityField('Stock au magasin', _storeStock),
-              const SizedBox(width: 12),
-              _quantityField('Stock au dépôt', _depotStock),
-            ],
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Quantités présentes aujourd’hui, enregistrées à votre nom. '
-              'Ensuite : Stock → « Ajouter du stock » (sans achat), ou une '
-              'vente, une réception, une perte, un inventaire.',
-              style: AmpereType.meta.copyWith(color: colors.ink3),
-            ),
-          ),
-          formFieldGap,
-        ] else if (existingStock != null) ...[
-          const AmpereFieldLabel('Stock actuel'),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: StockStatusBadge(
-              product: widget.existing!,
-              stock: existingStock,
-            ),
-          ),
-          formFieldGap,
-        ],
-        // UN seul seuil (décision MEDMEDBEN du 2026-10-05) : il déclenche
-        // l'alerte et la proposition de réapprovisionnement.
-        const AmpereFieldLabel('Seuil minimum'),
+      ),
+      // UN seul seuil (décision MEDMEDBEN du 2026-10-05) : il déclenche
+      // l'alerte et la proposition de réapprovisionnement.
+      field(
+        'Seuil minimum',
         TextFormField(
+          key: const ValueKey('champ-seuil'),
           controller: _minThreshold,
           enabled: !_locked,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -782,31 +791,27 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           decoration: InputDecoration(suffixText: _unit.short),
           validator: _validateQuantity,
         ),
-        formFieldGap,
+      ),
+      _costSection(colors, inputStyle),
+      formFieldGap,
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: _allowBackorder,
+        onChanged: _locked ? null : (v) => setState(() => _allowBackorder = v),
+        title: const Text('Vente sans stock autorisée'),
+      ),
+      if (_isEdit && widget.canDisable)
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          value: _allowBackorder,
-          onChanged: _locked
-              ? null
-              : (v) => setState(() => _allowBackorder = v),
-          title: const Text('Vente sans stock autorisée'),
-          subtitle: const Text(
-            'Par défaut, une vente qui rendrait le stock négatif est refusée',
-          ),
+          value: _isActive,
+          onChanged: _saving ? null : (v) => setState(() => _isActive = v),
+          title: const Text('Produit actif'),
         ),
-        if (_isEdit && widget.canDisable)
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _isActive,
-            onChanged: _saving ? null : (v) => setState(() => _isActive = v),
-            title: const Text('Produit actif'),
-            subtitle: const Text(
-              'Désactivé : il n’est plus proposé, son historique est conservé',
-            ),
-          ),
-        formFieldGap,
-        const AmpereFieldLabel('Description'),
+      formFieldGap,
+      field(
+        'Description',
         TextFormField(
+          key: const ValueKey('champ-description'),
           controller: _description,
           enabled: !_locked,
           maxLength: 1000,
@@ -814,13 +819,93 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           maxLines: 5,
           style: inputStyle,
         ),
-        formFieldGap,
-        if (priceTiers.isNotEmpty) ...[
-          if (!widget.canSetPrices) const AmpereFieldLabel('Prix de vente'),
-          _pricesSection(colors, priceTiers),
-        ],
-        formFieldGap,
-        _costSection(colors, inputStyle),
+      ),
+    ];
+
+    Widget block(IconData icon, String title, List<Widget> children) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 15, color: colors.accent),
+            const SizedBox(width: 8),
+            Text(
+              title.toUpperCase(),
+              style: AmpereType.label.copyWith(color: colors.ink2),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ...children,
+      ],
+    );
+
+    return FormPanelFrame(
+      formKey: _formKey,
+      title: !widget.canEdit
+          ? 'Fiche produit'
+          : _isEdit
+          ? 'Modifier le produit'
+          : 'Nouveau produit',
+      submitLabel: _isEdit ? 'Enregistrer' : 'Créer le produit',
+      onSubmit: widget.canEdit ? _submit : null,
+      saving: _saving,
+      error: _error,
+      children: [
+        // Deux colonnes dans la grande fenêtre ; une seule sur téléphone.
+        LayoutBuilder(
+          builder: (context, box) {
+            final left = block(LucideIcons.sparkles, 'L’essentiel', essentials);
+            final right = block(
+              LucideIcons.fingerprint,
+              'Identification',
+              identity,
+            );
+            if (box.maxWidth < 640) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [left, right],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: left),
+                const SizedBox(width: 28),
+                Expanded(child: right),
+              ],
+            );
+          },
+        ),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: colors.line),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              initiallyExpanded: _isEdit,
+              maintainState: true,
+              tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+              childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+              leading: Icon(
+                LucideIcons.slidersHorizontal,
+                size: 17,
+                color: colors.ink2,
+              ),
+              title: Text(
+                'Plus de détails',
+                style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+              ),
+              subtitle: Text(
+                'Facultatif — photo, fournisseur, rangement, seuil, achat',
+                style: AmpereType.meta.copyWith(color: colors.ink3),
+              ),
+              children: details,
+            ),
+          ),
+        ),
       ],
     );
   }

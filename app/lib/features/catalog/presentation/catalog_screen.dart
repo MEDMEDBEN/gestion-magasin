@@ -138,6 +138,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
         canSetPrices: rights.canSetPrices,
         canContactCustomers: rights.canContactCustomers,
       ),
+      centered: true,
     );
     if (saved == null || saved == product) return;
     _showSnack(

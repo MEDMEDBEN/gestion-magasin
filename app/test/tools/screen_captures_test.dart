@@ -1753,6 +1753,39 @@ void main() {
   );
 
   testWidgets(
+    '90 nouveau produit desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '90_nouveau_produit_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Nouveau produit'));
+      },
+    ),
+  );
+  testWidgets(
+    '91 actions transfert desktop',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '91_actions_transfert_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      dark: false,
+      interact: (t) async {
+        await t.tap(find.text('Transferts').first);
+        await t.pumpAndSettle();
+        await t.tap(find.textContaining('TRF-').first);
+      },
+    ),
+  );
+
+  testWidgets(
     '18 stock desktop',
     skip: skip,
     (t) => _capture(

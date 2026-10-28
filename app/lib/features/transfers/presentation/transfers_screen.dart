@@ -11,6 +11,7 @@ import '../../../ui/widgets/offline_documents_notice.dart';
 import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/page_kit.dart';
+import '../../../ui/widgets/action_option.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -359,12 +360,18 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
         title: Text('${transfer.number} — ${status.label}'),
         children: [
           if (status == TransferStatus.requested && rights.canPrepare)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.check,
+              tone: StatusTone.ok,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('accept'),
               child: const Text('Accepter la demande'),
             ),
           if (status.isPreparable && rights.canPrepare)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.packageOpen,
+              tone: StatusTone.warn,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('prepare'),
               child: Text(
                 status == TransferStatus.prepared
@@ -373,30 +380,44 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
               ),
             ),
           if (status == TransferStatus.prepared && rights.canPrepare)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.truck,
+              tone: StatusTone.info,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('ship'),
               child: const Text('Expédier vers le magasin'),
             ),
           if (status == TransferStatus.inTransit && rights.canReceive)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.packageCheck,
+              tone: StatusTone.ok,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('receive'),
               child: const Text('Réceptionner au magasin'),
             ),
           if (status.isPreparable && rights.canRefuse)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.circleX,
+              tone: StatusTone.error,
               onPressed: () => Navigator.of(context).pop('refuse'),
               child: const Text('Refuser la demande'),
             ),
           if (status.isPreparable && rights.canCancelRequest(transfer))
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.ban,
+              tone: StatusTone.error,
               onPressed: () => Navigator.of(context).pop('cancel'),
               child: const Text('Annuler ma demande'),
             ),
-          SimpleDialogOption(
+          ActionOption(
+            icon: LucideIcons.list,
+            tone: StatusTone.neutral,
             onPressed: () => Navigator.of(context).pop('lines'),
             child: const Text('Voir les lignes'),
           ),
-          SimpleDialogOption(
+          ActionOption(
+            icon: LucideIcons.printer,
+            tone: StatusTone.neutral,
             onPressed: () => Navigator.of(context).pop('print'),
             child: const Text('Imprimer le bon de transfert'),
           ),

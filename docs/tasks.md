@@ -4,6 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Panneaux d'actions lisibles + fiche produit simplifiée — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `ui/widgets/action_option.dart` : `ActionOption` remplace `SimpleDialogOption` dans les panneaux d'actions
+  (Devis, Tâches, Signalements, Achats, Transferts) : icône dans une pastille au ton de l'action (vert avancer,
+  rouge annuler/supprimer, bleu info), libellé net, flèche ; l'étape conseillée mise en avant. Valeurs
+  renvoyées inchangées.
+- Fiche produit (`product_form.dart`) : grande fenêtre CENTRÉE au poste (`openFormPanel(centered: true)`,
+  920 px) ; « L'essentiel » (désignation*, unité, prix, stock de départ) | « Identification » (référence*
+  pré-remplie `P…` modifiable — le serveur l'exige —, code-barres, catégorie, marque) ; « Plus de détails »
+  repliable (photo, fournisseur, emplacement, seuil, prix d'achat, options, description), ouvert en
+  modification. Textes d'aide réduits. Champs repérés par `ValueKey('champ-…')` ; tests adaptés.
+- Preuves : analyze 0, 555 tests ; captures 90 (fiche produit) et 91 (actions transfert) vérifiées.
+
 ### Rubriques regroupées en sections + ascenseur LED — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `navigation.dart` : `destinationsFor` (les DROITS) inchangé ; nouveau `menuFor` qui regroupe pour les

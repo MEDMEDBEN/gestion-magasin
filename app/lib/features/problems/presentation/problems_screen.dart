@@ -10,6 +10,7 @@ import '../../../core/photos.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/action_option.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../messaging/application/conversations_controller.dart';
@@ -246,27 +247,38 @@ class _ProblemTile extends ConsumerWidget {
               ),
             ),
           if (rights.canWork(problem) && problem.status == ProblemStatus.open)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.hand,
+              tone: StatusTone.info,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('start'),
               child: const Text('Je m’en occupe'),
             ),
           if (rights.canWork(problem))
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.circleCheck,
+              tone: StatusTone.ok,
               onPressed: () => Navigator.of(context).pop('resolve'),
               child: const Text('Marquer résolu…'),
             ),
           if (rights.isAdmin && problem.status == ProblemStatus.resolved)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.archive,
+              tone: StatusTone.neutral,
               onPressed: () => Navigator.of(context).pop('close'),
               child: const Text('Fermer le signalement'),
             ),
           if (rights.isAdmin && !problem.isClosed)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.userPlus,
+              tone: StatusTone.info,
               onPressed: () => Navigator.of(context).pop('assign'),
               child: const Text('Confier à un membre…'),
             ),
           if (rights.canAttachPhoto(problem))
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.camera,
+              tone: StatusTone.neutral,
               onPressed: () => Navigator.of(context).pop('photo'),
               child: Text(
                 problem.hasPhoto ? 'Remplacer la photo…' : 'Joindre une photo…',
@@ -345,7 +357,8 @@ class _ProblemTile extends ConsumerWidget {
         title: const Text('Confier à'),
         children: [
           for (final member in members)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.user,
               onPressed: () => Navigator.of(context).pop(member.id),
               child: Text(member.fullName),
             ),

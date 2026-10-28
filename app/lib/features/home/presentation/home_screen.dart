@@ -237,6 +237,7 @@ Future<void> quickAddProduct(
       canReadSuppliers: rights.canReadSuppliers,
       canSetPrices: rights.canSetPrices,
     ),
+    centered: true,
   );
   if (saved == null || saved == known || !context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(

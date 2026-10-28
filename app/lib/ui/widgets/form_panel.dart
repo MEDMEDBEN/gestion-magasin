@@ -10,8 +10,30 @@ import 'screen_state.dart';
 /// Ouvre un formulaire — **panneau latéral** sur desktop, **plein écran** sur
 /// mobile : une saisie longue ne se fait jamais dans une feuille modale basse
 /// (AMPÈRE §7). Renvoie ce que le formulaire a enregistré, ou `null`.
-Future<T?> openFormPanel<T>(BuildContext context, Widget form) {
-  if (isDesktopWidth(MediaQuery.sizeOf(context).width)) {
+Future<T?> openFormPanel<T>(
+  BuildContext context,
+  Widget form, {
+  bool centered = false,
+}) {
+  final size = MediaQuery.sizeOf(context);
+  if (isDesktopWidth(size.width) && centered) {
+    // Grande fenêtre au milieu de l'écran (demande MEDMEDBEN du 2026-10-28 :
+    // fiche produit facile à remplir).
+    return showDialog<T>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(32),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: 920,
+          height: (size.height * 0.88).clamp(420.0, 860.0),
+          child: form,
+        ),
+      ),
+    );
+  }
+  if (isDesktopWidth(size.width)) {
     return showAmpereSidePanel<T>(context: context, builder: (_) => form);
   }
   return Navigator.of(context).push<T>(

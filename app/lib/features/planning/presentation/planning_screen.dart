@@ -9,6 +9,7 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/page_kit.dart';
+import '../../../ui/widgets/action_option.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../application/planning_controller.dart';
@@ -256,26 +257,38 @@ class _PlanningScreenState extends ConsumerState<PlanningScreen> {
         title: Text(task.title),
         children: [
           if (task.status == PlanningTaskStatus.todo && work)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.play,
+              tone: StatusTone.info,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('start'),
               child: const Text('Commencer'),
             ),
           if (open && work)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.circleCheck,
+              tone: StatusTone.ok,
+              primary: true,
               onPressed: () => Navigator.of(context).pop('complete'),
               child: const Text('Terminer et donner le résultat'),
             ),
           if (open && rights.canManage)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.pencil,
+              tone: StatusTone.neutral,
               onPressed: () => Navigator.of(context).pop('edit'),
               child: const Text('Modifier / réassigner'),
             ),
           if (task.status == PlanningTaskStatus.todo && rights.canManage)
-            SimpleDialogOption(
+            ActionOption(
+              icon: LucideIcons.trash2,
+              tone: StatusTone.error,
               onPressed: () => Navigator.of(context).pop('remove'),
               child: const Text('Supprimer la tâche'),
             ),
-          SimpleDialogOption(
+          ActionOption(
+            icon: LucideIcons.eye,
+            tone: StatusTone.neutral,
             onPressed: () => Navigator.of(context).pop('details'),
             child: const Text('Voir le détail'),
           ),

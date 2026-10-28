@@ -171,6 +171,7 @@ Future<void> _addProduct(
       canReadSuppliers: rights.canReadSuppliers,
       canSetPrices: rights.canSetPrices,
     ),
+    centered: true,
   );
   if (saved != null && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
