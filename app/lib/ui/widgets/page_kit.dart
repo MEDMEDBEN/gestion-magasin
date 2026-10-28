@@ -9,6 +9,29 @@ import '../theme/ampere_typography.dart';
 /// couleur qui DIT quelque chose). Rouge = à traiter tout de suite, ambre = à
 /// surveiller, vert = en ordre, bleu = en cours / information.
 
+/// Carte d'information ou d'action : la carte du thème, avec en sombre un
+/// léger dégradé pour la distinguer du fond (2026-10-28).
+class SurfaceCard extends StatelessWidget {
+  const SurfaceCard({super.key, required this.child, this.clipBehavior});
+
+  final Widget child;
+
+  /// Gardé pour remplacer `Card` sans retouche ; le contenu est toujours
+  /// découpé aux coins arrondis.
+  final Clip? clipBehavior;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: Ink(
+      decoration: BoxDecoration(
+        gradient: AmpereColors.of(context).cardGradient,
+      ),
+      child: child,
+    ),
+  );
+}
+
 /// Un chiffre clé coloré, cliquable comme filtre (« 3 en rupture »).
 /// Pastille compacte sur une ligne (2026-10-13 : les tuiles étaient trop
 /// grandes) ; choisie, elle prend la couleur de son état.

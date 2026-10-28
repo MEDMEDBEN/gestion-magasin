@@ -150,10 +150,10 @@ final ledStyleProvider = NotifierProvider<LedStyleController, LedStyle>(
   LedStyleController.new,
 );
 
-/// Rubans de LED parcourus d'un chenillard lumineux, et deux barres-graphes
-/// (vumètres) de LED dans les coins du bas, dans des couleurs qui passent de
-/// l'une à l'autre (pervenche → turquoise → violet). Discret : petites diodes,
-/// halos doux, rien sous le pointeur.
+/// Rubans de LED CONTINUS parcourus d'une lumière qui glisse, et des barres
+/// de LED continues (tubes lumineux) qui montent et descendent dans les coins
+/// du bas, dans des couleurs qui passent de l'une à l'autre. Discret : traits
+/// fins, halos doux, rien sous le pointeur.
 ///
 /// Animation coupée si le système demande moins de mouvement : une image fixe
 /// est alors dessinée.
@@ -260,29 +260,140 @@ class _SignalPainter extends CustomPainter {
 
   static const _twoPi = 2 * math.pi;
 
-  /// Une diode : halo (si assez allumée) puis le corps arrondi.
-  void _led(
+  double _alpha(double a) => a.clamp(0.0, 1.0);
+
+  /// Ruban de LED CONTINU (demande MEDMEDBEN du 2026-10-28 : « en ligne
+  /// continue, pas coupé ») : une ligne fine aux couleurs du cycle, parcourue
+  /// d'une lumière qui glisse ; bords fondus.
+  void _ribbon(
     Canvas canvas,
-    Rect body,
-    Color color,
-    double level,
+    Offset from,
+    Offset to,
+    double t,
+    int dir,
+    double hueShift,
     double strength,
   ) {
-    final lit = level.clamp(0.0, 1.0);
-    if (lit > 0.35) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(body.inflate(4), const Radius.circular(6)),
-        Paint()
-          ..color = color.withValues(alpha: (0.28 * lit * strength).clamp(0, 1))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-      );
-    }
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(body, const Radius.circular(2)),
+    final rect = Rect.fromPoints(from, to).inflate(8);
+    final colorsAlong = [
+      for (var k = 0; k <= 6; k++) _hue(k / 6 * 0.6 + t * 2 + hueShift),
+    ];
+    // Ligne de fond, toujours allumée faiblement.
+    canvas.drawLine(
+      from,
+      to,
       Paint()
-        ..color = color.withValues(
-          alpha: ((0.10 + 0.75 * lit) * strength).clamp(0, 1),
-        ),
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..shader = LinearGradient(
+          begin: Alignment(
+            from.dx <= to.dx ? -1 : 1,
+            from.dy <= to.dy ? -1 : 1,
+          ),
+          end: Alignment(from.dx <= to.dx ? 1 : -1, from.dy <= to.dy ? 1 : -1),
+          colors: [
+            for (final (k, c) in colorsAlong.indexed)
+              c.withValues(
+                alpha: _alpha(
+                  0.22 * strength * math.sin(math.pi * k / 6).clamp(0.15, 1),
+                ),
+              ),
+          ],
+        ).createShader(rect),
+    );
+    // La lumière qui court : une zone vive qui glisse le long du ruban.
+    final p = (t * 3 * dir) % 1;
+    final c = _hue(p * 0.6 + t * 2 + hueShift);
+    final lo = (p - 0.14).clamp(0.0, 1.0);
+    final hi = (p + 0.14).clamp(0.0, 1.0);
+    final fade = math.sin(math.pi * p).clamp(0.0, 1.0);
+    final glowShader = LinearGradient(
+      begin: Alignment(from.dx <= to.dx ? -1 : 1, from.dy <= to.dy ? -1 : 1),
+      end: Alignment(from.dx <= to.dx ? 1 : -1, from.dy <= to.dy ? 1 : -1),
+      colors: [
+        c.withValues(alpha: 0),
+        c.withValues(alpha: _alpha(0.95 * strength * fade)),
+        c.withValues(alpha: 0),
+      ],
+      stops: [lo, p.clamp(lo, hi), hi],
+    );
+    canvas.drawLine(
+      from,
+      to,
+      Paint()
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
+        ..shader = glowShader.createShader(rect),
+    );
+    canvas.drawLine(
+      from,
+      to,
+      Paint()
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round
+        ..shader = glowShader.createShader(rect),
+    );
+  }
+
+  /// Barre de LED verticale continue (tube lumineux) qui monte et descend.
+  void _bar(
+    Canvas canvas,
+    double x,
+    double bottom,
+    double maxHeight,
+    double level,
+    double t,
+    double hueShift,
+    double strength,
+  ) {
+    const width = 5.0;
+    final track = RRect.fromLTRBR(
+      x,
+      bottom - maxHeight,
+      x + width,
+      bottom,
+      const Radius.circular(3),
+    );
+    // Rail éteint.
+    canvas.drawRRect(
+      track,
+      Paint()
+        ..color = _hue(
+          t * 2 + hueShift,
+        ).withValues(alpha: _alpha(0.07 * strength)),
+    );
+    final height = maxHeight * level.clamp(0.05, 1.0);
+    final lit = RRect.fromLTRBR(
+      x,
+      bottom - height,
+      x + width,
+      bottom,
+      const Radius.circular(3),
+    );
+    final base = _hue(t * 2 + hueShift);
+    final top = _hue(t * 2 + hueShift + 0.33);
+    final shader = LinearGradient(
+      begin: Alignment.bottomCenter,
+      end: Alignment.topCenter,
+      colors: [
+        base.withValues(alpha: _alpha(0.9 * strength)),
+        top.withValues(alpha: _alpha(0.75 * strength)),
+      ],
+    ).createShader(lit.outerRect);
+    // Halo puis tube.
+    canvas.drawRRect(
+      lit.inflate(3),
+      Paint()
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
+        ..shader = shader,
+    );
+    canvas.drawRRect(lit, Paint()..shader = shader);
+    // Point chaud au sommet.
+    canvas.drawCircle(
+      Offset(x + width / 2, bottom - height + 2),
+      2.4,
+      Paint()..color = Colors.white.withValues(alpha: _alpha(0.7 * strength)),
     );
   }
 
@@ -292,83 +403,72 @@ class _SignalPainter extends CustomPainter {
     final t = clock.value;
     final w = size.width;
     final h = size.height;
-    final strength = (dark ? 1.0 : 0.55) * intensity;
+    final strength = (dark ? 1.0 : 0.6) * intensity;
 
-    // ── Rubans : des rangées de diodes, un chenillard qui court ─────────
-    // Le long des bords (sous la barre du haut, en bas, sur les côtés) : là
-    // où le contenu ne les cache pas. Entiers → boucle sans raccord.
-    const pitch = 14.0;
-    void strip(Offset from, Offset to, int dir, int waves, double hueShift) {
-      final length = (to - from).distance;
-      final count = (length / pitch).floor();
-      final vertical = (to.dx - from.dx).abs() < (to.dy - from.dy).abs();
-      for (var i = 0; i < count; i++) {
-        final u = i / count;
-        final phase = _twoPi * (u * 3 - t * dir * waves * 4);
-        final wave = math.pow((math.sin(phase) + 1) / 2, 6).toDouble();
-        final edge = math.sin(math.pi * u).clamp(0.0, 1.0);
-        final level = (0.10 + 0.90 * wave) * edge;
-        final center = Offset.lerp(from, to, (i + 0.5) / count)!;
-        _led(
-          canvas,
-          Rect.fromCenter(
-            center: center,
-            width: vertical ? 3 : 8,
-            height: vertical ? 8 : 3,
-          ),
-          _hue(u * 0.6 + t * 2 + hueShift),
-          level,
-          strength,
-        );
-      }
+    // Rubans continus le long des bords.
+    _ribbon(canvas, Offset(24, 64), Offset(w - 24, 64), t, -1, 0.4, strength);
+    _ribbon(
+      canvas,
+      Offset(24, h - 12),
+      Offset(w - 24, h - 12),
+      t,
+      1,
+      0,
+      strength,
+    );
+    _ribbon(
+      canvas,
+      Offset(12, h * 0.14),
+      Offset(12, h * 0.6),
+      t,
+      1,
+      0.2,
+      strength,
+    );
+    _ribbon(
+      canvas,
+      Offset(w - 12, h * 0.14),
+      Offset(w - 12, h * 0.6),
+      t,
+      -1,
+      0.7,
+      strength,
+    );
+
+    // Barres de LED continues dans les coins du bas (fréquences entières :
+    // boucle sans raccord).
+    const bars = 6;
+    const gap = 13.0;
+    final bottom = h - 34;
+    final maxHeight = math.min(170.0, h * 0.26);
+    for (var k = 0; k < bars; k++) {
+      final level =
+          0.45 +
+          0.3 * math.sin(_twoPi * (t * (2 + k % 3) + k * 0.17)) +
+          0.18 * math.sin(_twoPi * (t * (5 - k % 2) + k * 0.41));
+      _bar(
+        canvas,
+        30 + k * gap,
+        bottom,
+        maxHeight,
+        level,
+        t,
+        k * 0.05,
+        strength,
+      );
+      _bar(
+        canvas,
+        w - 35 - k * gap,
+        bottom,
+        maxHeight,
+        0.45 +
+            0.3 * math.sin(_twoPi * (t * (3 - k % 2) + k * 0.23)) +
+            0.18 * math.sin(_twoPi * (t * (4 + k % 3) + k * 0.31)),
+        t,
+        0.5 + k * 0.05,
+        strength,
+      );
     }
-
-    strip(Offset(0, 64), Offset(w, 64), -1, 1, 0.4);
-    strip(Offset(0, h - 12), Offset(w, h - 12), 1, 2, 0);
-    strip(Offset(12, h * 0.14), Offset(12, h * 0.62), 1, 1, 0.2);
-    strip(Offset(w - 12, h * 0.14), Offset(w - 12, h * 0.62), -1, 1, 0.7);
-
-    // ── Barres-graphes : colonnes de segments, comme un vumètre ─────────
-    void meter(double left, bool mirror) {
-      const columns = 8;
-      const segments = 16;
-      const colWidth = 12.0;
-      const colGap = 6.0;
-      const segHeight = 5.0;
-      const segGap = 3.0;
-      final bottom = h - 34;
-      for (var c = 0; c < columns; c++) {
-        final k = mirror ? columns - 1 - c : c;
-        // Hauteur qui monte et descend en douceur (fréquences entières).
-        final height =
-            0.35 +
-            0.3 * math.sin(_twoPi * (t * (2 + k % 3) + k * 0.13)) +
-            0.2 * math.sin(_twoPi * (t * (5 - k % 2) + k * 0.37));
-        final lit = (height.clamp(0.05, 1.0) * segments).round();
-        final x = left + c * (colWidth + colGap);
-        for (var g = 0; g < segments; g++) {
-          final on = g < lit;
-          // Du bas (pervenche) vers le haut (violet), le tout en cycle.
-          final color = _hue(t * 2 + g / segments * 0.66);
-          _led(
-            canvas,
-            Rect.fromLTWH(
-              x,
-              bottom - (g + 1) * (segHeight + segGap),
-              colWidth,
-              segHeight,
-            ),
-            color,
-            on ? 0.9 : 0.05,
-            strength,
-          );
-        }
-      }
-    }
-
-    const meterWidth = 8 * 12.0 + 7 * 6.0;
-    meter(28, false);
-    meter(w - 28 - meterWidth, true);
   }
 
   @override

@@ -9,6 +9,7 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../../ui/widgets/form_panel.dart';
 import '../../auth/data/auth_models.dart';
@@ -643,7 +644,7 @@ class _Verdict extends StatelessWidget {
           )
         : (_Meaning.good, LucideIcons.circleCheck, 'Tout est en ordre');
     final tone = _status(meaning).foreground(colors);
-    return Card(
+    return SurfaceCard(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
@@ -711,7 +712,7 @@ class _AttentionPanelState extends ConsumerState<_AttentionPanel> {
     final alerts = widget.alerts;
     final hidden = _all ? 0 : alerts.length - _limit;
     final shown = hidden > 0 ? alerts.take(_limit) : alerts;
-    return Card(
+    return SurfaceCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -820,7 +821,7 @@ class _LowStockTable extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final target = destination;
-    return Card(
+    return SurfaceCard(
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1008,7 +1009,7 @@ class _Metric extends ConsumerWidget {
       ),
     );
 
-    return Card(
+    return SurfaceCard(
       clipBehavior: Clip.antiAlias,
       child: target == null
           ? card

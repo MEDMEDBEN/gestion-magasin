@@ -5,6 +5,7 @@ import '../../../core/dates.dart';
 import '../../../core/money.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/page_kit.dart';
 import '../data/dashboard_models.dart';
 
 /// Graphiques de l'accueil (demande MEDMEDBEN du 2026-10-05) : courbes et
@@ -39,7 +40,7 @@ class ChartCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    return Card(
+    return SurfaceCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

@@ -1369,26 +1369,26 @@ void main() {
     ),
   );
   testWidgets(
-    '71 palette aurore accueil',
+    '71 palette rubis accueil',
     skip: skip,
     (t) => _capture(
       t,
-      name: '71_palette_aurore_accueil',
+      name: '71_palette_rubis_accueil',
       size: const Size(1440, 900),
       home: const AdaptiveShell(),
-      palette: AppPalette.aurore,
+      palette: AppPalette.rubis,
       signal: true,
     ),
   );
   testWidgets(
-    '71 palette aurore vente',
+    '71 palette rubis vente',
     skip: skip,
     (t) => _capture(
       t,
-      name: '71_palette_aurore_vente',
+      name: '71_palette_rubis_vente',
       size: const Size(1440, 900),
       home: const AdaptiveShell(),
-      palette: AppPalette.aurore,
+      palette: AppPalette.rubis,
       interact: (t) async => t.tap(find.text('Vente').first),
     ),
   );

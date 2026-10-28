@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### LED continues, palette Rubis, cartes visibles en sombre — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `signal_background.dart` : rubans de LED CONTINUS (ligne fine + lumière qui glisse, halo) ; les vumètres à
+  segments sont remplacés par des barres de LED continues (tubes 5 px, dégradé, point chaud) dans les coins.
+- `palettes.dart` : « Aurore » (rose) devient « Rubis » (rouge cramoisi #D7263D) ; une ancienne valeur stockée
+  `aurore` retombe sur Clair/Bleu nuit.
+- Sombres (Bleu nuit, Néon, Synthwave) : surfaces et filets un peu plus clairs ; `AmpereColors.cardGradient`
+  (léger dégradé, `null` en clair) via `SurfaceCard` (page_kit) sur les cartes de l'accueil et du tableau de
+  bord, et sur les tuiles / cartes « Aujourd'hui » de l'écran d'accueil.
+- Preuves : analyze 0, 553 tests ; captures 70-73 vérifiées.
+
 ### Palettes au choix + réglages des LED — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `ui/theme/palettes.dart` : `AppPalette` = Clair, Menthe, Aurore (clairs) · Bleu nuit, Néon, Synthwave

@@ -416,40 +416,45 @@ class _Tile extends StatelessWidget {
           side: BorderSide(color: prominent ? colors.accent : colors.line),
         ),
         clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: EdgeInsets.all(big ? 20 : 14),
-            child: big
-                ? SizedBox(
-                    height: 118,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: prominent ? null : colors.cardGradient,
+          ),
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: EdgeInsets.all(big ? 20 : 14),
+              child: big
+                  ? SizedBox(
+                      height: 118,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              iconBox,
+                              const Spacer(),
+                              Icon(
+                                LucideIcons.arrowUpRight,
+                                size: 18,
+                                color: soft,
+                              ),
+                            ],
+                          ),
+                          const Spacer(),
+                          text,
+                        ],
+                      ),
+                    )
+                  : Row(
                       children: [
-                        Row(
-                          children: [
-                            iconBox,
-                            const Spacer(),
-                            Icon(
-                              LucideIcons.arrowUpRight,
-                              size: 18,
-                              color: soft,
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        text,
+                        iconBox,
+                        const SizedBox(width: 12),
+                        Expanded(child: text),
+                        Icon(LucideIcons.chevronRight, size: 16, color: soft),
                       ],
                     ),
-                  )
-                : Row(
-                    children: [
-                      iconBox,
-                      const SizedBox(width: 12),
-                      Expanded(child: text),
-                      Icon(LucideIcons.chevronRight, size: 16, color: soft),
-                    ],
-                  ),
+            ),
           ),
         ),
       ),
@@ -715,52 +720,57 @@ class _TodayCard extends StatelessWidget {
         side: BorderSide(color: colors.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => onTap(item.target),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Icon(item.icon, size: 16, color: colors.ink2),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: item.tone.foreground(colors),
-                            shape: BoxShape.circle,
+      child: Ink(
+        decoration: BoxDecoration(gradient: colors.cardGradient),
+        child: InkWell(
+          onTap: () => onTap(item.target),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(item.icon, size: 16, color: colors.ink2),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              color: item.tone.foreground(colors),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            item.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AmpereType.meta.copyWith(color: colors.ink3),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AmpereType.meta.copyWith(
+                                color: colors.ink3,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    Text(
-                      item.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.bodyStrong.copyWith(
-                        color: colors.ink,
-                        fontFeatures: AmpereType.tabular,
+                        ],
                       ),
-                    ),
-                  ],
+                      Text(
+                        item.value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                          fontFeatures: AmpereType.tabular,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

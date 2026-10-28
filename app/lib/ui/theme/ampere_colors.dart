@@ -70,6 +70,21 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   static AmpereColors of(BuildContext context) =>
       Theme.of(context).extension<AmpereColors>()!;
 
+  /// Thème sombre ? (fond peu lumineux) — sans passer par le `ThemeData`.
+  bool get isDark => bg.computeLuminance() < 0.2;
+
+  /// Léger dégradé des cartes EN SOMBRE (demande MEDMEDBEN du 2026-10-28 :
+  /// distinguer d'un coup d'œil les cartes d'action et d'information du
+  /// fond, sans couleur qui tranche). `null` en clair : la carte blanche se
+  /// détache déjà.
+  LinearGradient? get cardGradient => isDark
+      ? LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color.lerp(surface, ink, 0.07)!, surface],
+        )
+      : null;
+
   /// §2.3 — mobile sombre « bleu nuit » (demande MEDMEDBEN du 2026-10-28) :
   /// QUATRE couleurs de base dont tout dérive — Nuit #0B1020 (fond), Ardoise
   /// #131A2B→#232D45 (surfaces), Pervenche #5B7CFA (accent), Brume
@@ -77,10 +92,10 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   static const mobileDark = AmpereColors(
     bg: Color(0xFF0B1020),
     bgAlt: Color(0xFF0B1020),
-    surface: Color(0xFF131A2B),
-    surface2: Color(0xFF1A2236),
-    surface3: Color(0xFF232D45),
-    line: Color(0xFF24304A),
+    surface: Color(0xFF172036),
+    surface2: Color(0xFF1C263D),
+    surface3: Color(0xFF26314C),
+    line: Color(0xFF2C3A58),
     lineSoft: Color(0xFF1A2338),
     ink: Color(0xFFE6EBF5),
     ink2: Color(0xFF9AA6BF),
@@ -140,10 +155,10 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   static const desktopDark = AmpereColors(
     bg: Color(0xFF0B1020),
     bgAlt: Color(0xFF0B1020),
-    surface: Color(0xFF131A2B),
-    surface2: Color(0xFF1A2236),
-    surface3: Color(0xFF232D45),
-    line: Color(0xFF24304A),
+    surface: Color(0xFF172036),
+    surface2: Color(0xFF1C263D),
+    surface3: Color(0xFF26314C),
+    line: Color(0xFF2C3A58),
     lineSoft: Color(0xFF1A2338),
     ink: Color(0xFFE6EBF5),
     ink2: Color(0xFF9AA6BF),

@@ -12,7 +12,7 @@ import 'theme_controller.dart';
 enum AppPalette {
   clair('Clair', dark: false),
   menthe('Menthe', dark: false),
-  aurore('Aurore', dark: false),
+  rubis('Rubis', dark: false),
   bleuNuit('Bleu nuit', dark: true),
   neon('Néon', dark: true),
   synthwave('Synthwave', dark: true);
@@ -26,7 +26,7 @@ enum AppPalette {
     clair => AmpereColors.desktopLight,
     bleuNuit => AmpereColors.desktopDark,
     menthe => _menthe,
-    aurore => _aurore,
+    rubis => _rubis,
     neon => _neon,
     synthwave => _synthwave,
   };
@@ -42,7 +42,7 @@ enum AppPalette {
     clair ||
     bleuNuit => const [Color(0xFF5B7CFA), Color(0xFF2DD4BF), Color(0xFFA78BFA)],
     menthe => const [Color(0xFF19E68C), Color(0xFF00C2FF), Color(0xFFB6F23C)],
-    aurore => const [Color(0xFFFF4F7B), Color(0xFFFFB020), Color(0xFFB26BFF)],
+    rubis => const [Color(0xFFFF2D55), Color(0xFFFF8A3D), Color(0xFFFF3DCB)],
     neon => const [Color(0xFF2BFF9E), Color(0xFF4DD8FF), Color(0xFFC6FF3D)],
     synthwave => const [
       Color(0xFFFF3DCB),
@@ -85,44 +85,45 @@ const _menthe = AmpereColors(
   scrim: Color(0x990B2A1E),
 );
 
-/// Aurore — clair, corail rosé sur pêche très pâle.
-const _aurore = AmpereColors(
-  bg: Color(0xFFFFF7F3),
-  bgAlt: Color(0xFFFFF7F3),
+/// Rubis — clair, rouge cramoisi sur blanc rosé (remplace « Aurore » le
+/// 2026-10-28, demande MEDMEDBEN : du rouge plutôt que du rose).
+const _rubis = AmpereColors(
+  bg: Color(0xFFFFF8F7),
+  bgAlt: Color(0xFFFFF8F7),
   surface: Color(0xFFFFFFFF),
-  surface2: Color(0xFFFFEFE8),
-  surface3: Color(0xFFFADBCF),
-  line: Color(0xFFF2DCD2),
-  lineSoft: Color(0xFFF8E9E2),
-  ink: Color(0xFF2A1220),
-  ink2: Color(0xFF5E4250),
-  ink3: Color(0xFF7E626C),
-  accent: Color(0xFFE63E6D),
-  accentHi: Color(0xFFC42E5A),
-  accentBg: Color(0xFFFFE3EA),
+  surface2: Color(0xFFFEEFED),
+  surface3: Color(0xFFFBDAD6),
+  line: Color(0xFFF1D6D2),
+  lineSoft: Color(0xFFF8E7E5),
+  ink: Color(0xFF2A0F10),
+  ink2: Color(0xFF5E3B3C),
+  ink3: Color(0xFF7E5D5E),
+  accent: Color(0xFFD7263D),
+  accentHi: Color(0xFFB01E33),
+  accentBg: Color(0xFFFFE1E4),
   onAccent: Color(0xFFFFFFFF),
   ok: Color(0xFF13996B),
   okBg: Color(0xFFDDF5EA),
   warn: Color(0xFFD97706),
   warnBg: Color(0xFFFFF1DA),
-  error: Color(0xFFB42318),
-  errorBg: Color(0xFFFDE7E4),
-  info: Color(0xFF6D4AFF),
-  infoBg: Color(0xFFEEE9FF),
-  neutral: Color(0xFF5E4250),
-  neutralBg: Color(0xFFF6ECEE),
-  vizAlt: Color(0xFFFFB020),
-  scrim: Color(0x992A1220),
+  error: Color(0xFF9F1239),
+  errorBg: Color(0xFFFFE4EA),
+  info: Color(0xFF4F46E5),
+  infoBg: Color(0xFFEDECFF),
+  neutral: Color(0xFF5E3B3C),
+  neutralBg: Color(0xFFF6ECEC),
+  vizAlt: Color(0xFFFF8A3D),
+  scrim: Color(0x992A0F10),
 );
 
 /// Néon — sombre, vert néon sur noir forêt.
 const _neon = AmpereColors(
   bg: Color(0xFF07120F),
   bgAlt: Color(0xFF07120F),
-  surface: Color(0xFF0D1C18),
-  surface2: Color(0xFF12251F),
-  surface3: Color(0xFF1A3029),
-  line: Color(0xFF1E3A31),
+  surface: Color(0xFF10241F),
+  surface2: Color(0xFF152C25),
+  surface3: Color(0xFF1D372F),
+  line: Color(0xFF27463C),
   lineSoft: Color(0xFF142A23),
   ink: Color(0xFFE4F7EF),
   ink2: Color(0xFF93B8A9),
@@ -149,10 +150,10 @@ const _neon = AmpereColors(
 const _synthwave = AmpereColors(
   bg: Color(0xFF0E0920),
   bgAlt: Color(0xFF0E0920),
-  surface: Color(0xFF160F2E),
-  surface2: Color(0xFF1E163C),
-  surface3: Color(0xFF291E4D),
-  line: Color(0xFF2E2357),
+  surface: Color(0xFF1B1338),
+  surface2: Color(0xFF221A45),
+  surface3: Color(0xFF2D2255),
+  line: Color(0xFF3A2D6B),
   lineSoft: Color(0xFF1F1740),
   ink: Color(0xFFF2ECFF),
   ink2: Color(0xFFB3A6D9),
