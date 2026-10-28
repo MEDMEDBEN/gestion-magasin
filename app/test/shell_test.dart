@@ -302,14 +302,15 @@ void main() {
     ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
       expect(find.text('Gestion magasin'), findsOneWidget);
-      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsNothing);
+      expect(find.text('Tableau de bord'), findsOneWidget);
 
       await tester.tap(find.text('Utilisateurs'));
       await tester.pumpAndSettle();
       expect(find.text('Tableau de bord'), findsNothing);
       expect(find.text('Amine Benali'), findsOneWidget);
 
-      await tester.tap(find.byTooltip('Retour à l’accueil (Alt+Origine)'));
+      // L'encoche (thème verre) porte le retour à l'accueil.
+      await tester.tap(find.byTooltip('Accueil'));
       await tester.pumpAndSettle();
       expect(find.text('Tableau de bord'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -323,10 +324,7 @@ void main() {
 
       // Le titre de la barre du haut suit la rubrique ouverte.
       expect(find.text('Mon profil'), findsAtLeastNWidgets(1));
-      expect(
-        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
-        findsOneWidget,
-      );
+      expect(find.text('Tableau de bord'), findsNothing);
     });
 
     testWidgets(
@@ -535,25 +533,19 @@ void main() {
 
       // Au repos : l'accueil, « Mon profil » n'y est qu'une tuile.
       expect(find.text('Mon profil'), findsOneWidget);
-      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsNothing);
+      expect(find.text('Tableau de bord'), findsOneWidget);
 
       container.read(requestedDestinationProvider.notifier).ask('Mon profil');
       await tester.pumpAndSettle();
       // Ouvert : le titre de la barre du haut, et le bouton « Accueil ».
       expect(find.text('Mon profil'), findsOneWidget);
-      expect(
-        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
-        findsOneWidget,
-      );
+      expect(find.text('Tableau de bord'), findsNothing);
 
       // « Scanner » n'existe pas au poste : on reste où on est, sans erreur.
       container.read(requestedDestinationProvider.notifier).ask('Scanner');
       await tester.pumpAndSettle();
       expect(find.text('Mon profil'), findsOneWidget);
-      expect(
-        find.byTooltip('Retour à l’accueil (Alt+Origine)'),
-        findsOneWidget,
-      );
+      expect(find.text('Tableau de bord'), findsNothing);
       expect(container.read(requestedDestinationProvider), isNull);
     },
   );

@@ -70,9 +70,17 @@ class AmpereColors extends ThemeExtension<AmpereColors> {
   static AmpereColors of(BuildContext context) =>
       Theme.of(context).extension<AmpereColors>()!;
 
-  /// Thème blanc « verre » (iOS/macOS) : la palette Clair seulement.
-  bool get isGlass =>
-      identical(this, desktopLight) || identical(this, mobileLight);
+  /// Style « verre » (iOS/macOS) : étendu à TOUTES les palettes le
+  /// 2026-10-29 (demande MEDMEDBEN) ; gardé comme interrupteur unique.
+  bool get isGlass => true;
+
+  /// Dégradé des éléments mis en avant : de l'accent vers la couleur
+  /// secondaire de la palette (bleu → indigo en Clair).
+  LinearGradient get accentGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [accent, vizAlt],
+  );
 
   /// Thème sombre ? (fond peu lumineux) — sans passer par le `ThemeData`.
   bool get isDark => bg.computeLuminance() < 0.2;

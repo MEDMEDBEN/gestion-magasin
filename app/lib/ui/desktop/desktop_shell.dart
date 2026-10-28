@@ -74,7 +74,13 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         body: Stack(
           children: [
             // Thème blanc « verre » (iOS/macOS, 2026-10-28) : fond liquide.
-            if (glass) const Positioned.fill(child: LiquidBackground()),
+            // Les taches bougent quand les lumières sont allumées.
+            if (glass)
+              Positioned.fill(
+                child: LiquidBackground(
+                  animate: ref.watch(signalBackgroundProvider),
+                ),
+              ),
             // Fond « signal électrique », éteignable (2026-10-28).
             if (ref.watch(signalBackgroundProvider))
               Positioned.fill(
@@ -304,7 +310,9 @@ class _Launcher extends ConsumerWidget {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: colors.isGlass ? null : colors.accent,
-                          gradient: colors.isGlass ? glassAccent : null,
+                          gradient: colors.isGlass
+                              ? colors.accentGradient
+                              : null,
                           border: colors.isGlass
                               ? Border.all(
                                   color: Colors.white.withValues(alpha: 0.6),
@@ -314,7 +322,7 @@ class _Launcher extends ConsumerWidget {
                           boxShadow: colors.isGlass
                               ? const [
                                   BoxShadow(
-                                    color: Color(0x594F46E5),
+                                    color: Color(0x40000000),
                                     blurRadius: 20,
                                     offset: Offset(0, 8),
                                   ),
@@ -496,18 +504,22 @@ class _Tile extends StatelessWidget {
       // Thème blanc « verre » : tuile translucide (ou dégradé bleu iOS pour
       // ce qui est mis en avant), coins très arrondis, flèche discrète.
       final light = prominent;
-      final glassInk = light ? Colors.white : colors.ink;
+      final glassInk = light ? colors.onAccent : colors.ink;
       final glassSoft = light
-          ? Colors.white.withValues(alpha: 0.85)
+          ? colors.onAccent.withValues(alpha: 0.8)
           : colors.ink3;
       final glassIcon = Container(
         width: big ? 44 : 36,
         height: big ? 44 : 36,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          color: Colors.white.withValues(alpha: light ? 0.2 : 0.7),
+          color: light
+              ? colors.onAccent.withValues(alpha: 0.15)
+              : Colors.white.withValues(alpha: colors.isDark ? 0.06 : 0.7),
           border: Border.all(
-            color: Colors.white.withValues(alpha: light ? 0.3 : 0.9),
+            color: light
+                ? colors.onAccent.withValues(alpha: 0.25)
+                : Colors.white.withValues(alpha: colors.isDark ? 0.1 : 0.9),
           ),
         ),
         child: Badge.count(
@@ -516,7 +528,7 @@ class _Tile extends StatelessWidget {
           child: Icon(
             icon,
             size: big ? 20 : 17,
-            color: light ? Colors.white : const Color(0xFF0EA5E9),
+            color: light ? colors.onAccent : colors.accent,
           ),
         ),
       );
@@ -597,14 +609,14 @@ class _Tile extends StatelessWidget {
         child: light
             ? DecoratedBox(
                 decoration: BoxDecoration(
-                  gradient: glassAccent,
+                  gradient: colors.accentGradient,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.25),
                   ),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0x593B82F6),
+                      color: Color(0x40000000),
                       blurRadius: 28,
                       offset: Offset(0, 12),
                     ),
@@ -711,17 +723,17 @@ class _TopBar extends ConsumerWidget {
               width: 34,
               height: 34,
               decoration: BoxDecoration(
-                gradient: glassAccent,
+                gradient: colors.accentGradient,
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x663B82F6),
+                    color: Color(0x40000000),
                     blurRadius: 14,
                     offset: Offset(0, 4),
                   ),
                 ],
               ),
-              child: const Icon(LucideIcons.zap, size: 16, color: Colors.white),
+              child: Icon(LucideIcons.zap, size: 16, color: colors.onAccent),
             ),
             const SizedBox(width: 12),
             Text(

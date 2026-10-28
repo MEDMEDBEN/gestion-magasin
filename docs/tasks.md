@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Style « verre » étendu à toutes les palettes — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `AmpereColors.isGlass` = vrai pour toutes les palettes ; `accentGradient` = accent → `vizAlt` de la palette.
+  `glass.dart` : taches du fond liquide aux couleurs de la palette (accent, vizAlt, info), verre clair (voile
+  blanc) ou sombre (voile de la surface + filet clair) ; encoche identique, bouton actif au dégradé de la
+  palette. Coquille : textes posés sur l'accent en `onAccent` (lisibles sur Néon/Synthwave).
+- Le fond liquide ne bouge que lumières allumées (`signalBackgroundProvider`) — immobile sinon (et en test).
+- `shell_test.dart` : le retour à l'accueil passe par l'encoche (infobulle « Accueil »).
+- Preuves : analyze 0, 555 tests ; captures 45, 70-73 vérifiées.
+
 ### Thème blanc « verre » iOS/macOS — 2026-10-28 (MEDMEDBEN, Claude)
 
 - Palette **Clair** seulement (`AmpereColors.isGlass`) : fond #EEF2F8, accent bleu iOS #2563EB, encres slate.

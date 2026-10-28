@@ -3,21 +3,19 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../theme/ampere_colors.dart';
+
 /// Style « verre » façon iOS / macOS, pour le thème BLANC (demande MEDMEDBEN
 /// du 2026-10-28) : fond liquide (taches de couleur floues qui flottent),
 /// surfaces en verre dépoli, encoche noire sur le bord gauche.
 
-/// Dégradé des éléments mis en avant (bleu → indigo).
-const glassAccent = LinearGradient(
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-  colors: [Color(0xFF3B82F6), Color(0xFF6366F1)],
-);
-
 /// Fond liquide : trois grandes taches floues (bleu, indigo, cyan) qui
 /// dérivent lentement. Image fixe si le système demande moins d'animations.
 class LiquidBackground extends StatefulWidget {
-  const LiquidBackground({super.key});
+  const LiquidBackground({super.key, this.animate = true});
+
+  /// `false` : taches immobiles (lumières éteintes, tests).
+  final bool animate;
 
   @override
   State<LiquidBackground> createState() => _LiquidBackgroundState();
@@ -33,7 +31,17 @@ class _LiquidBackgroundState extends State<LiquidBackground>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.of(context).disableAnimations) {
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(LiquidBackground oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    if (!widget.animate || MediaQuery.of(context).disableAnimations) {
       _clock.stop();
     } else if (!_clock.isAnimating) {
       _clock.repeat(reverse: true);
@@ -49,15 +57,19 @@ class _LiquidBackgroundState extends State<LiquidBackground>
   @override
   Widget build(BuildContext context) => IgnorePointer(
     child: RepaintBoundary(
-      child: CustomPaint(painter: _BlobPainter(_clock), size: Size.infinite),
+      child: CustomPaint(
+        painter: _BlobPainter(_clock, AmpereColors.of(context)),
+        size: Size.infinite,
+      ),
     ),
   );
 }
 
 class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.clock) : super(repaint: clock);
+  _BlobPainter(this.clock, this.colors) : super(repaint: clock);
 
   final Animation<double> clock;
+  final AmpereColors colors;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -66,9 +78,10 @@ class _BlobPainter extends CustomPainter {
     final h = size.height;
     // (centre relatif, rayon, couleur, déphasage)
     final blobs = [
-      (const Offset(0.12, 0.05), 300.0, const Color(0xFF3B82F6), 0.0),
-      (const Offset(0.92, 0.95), 260.0, const Color(0xFF6366F1), 0.35),
-      (const Offset(0.55, 0.55), 220.0, const Color(0xFF06B6D4), 0.7),
+      // Les couleurs de la palette : accent, secondaire, information.
+      (const Offset(0.12, 0.05), 300.0, colors.accent, 0.0),
+      (const Offset(0.92, 0.95), 260.0, colors.vizAlt, 0.35),
+      (const Offset(0.55, 0.55), 220.0, colors.info, 0.7),
     ];
     for (final (center, radius, color, phase) in blobs) {
       final u = (t + phase) % 1;
@@ -79,14 +92,14 @@ class _BlobPainter extends CustomPainter {
         Offset(center.dx * w + dx, center.dy * h + dy),
         radius * scale,
         Paint()
-          ..color = color.withValues(alpha: 0.32)
+          ..color = color.withValues(alpha: colors.isDark ? 0.22 : 0.32)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 90),
       );
     }
   }
 
   @override
-  bool shouldRepaint(_BlobPainter old) => false;
+  bool shouldRepaint(_BlobPainter old) => old.colors != colors;
 }
 
 /// Surface en verre dépoli : flou de ce qui est derrière, voile blanc
@@ -106,32 +119,41 @@ class Glass extends StatelessWidget {
   final double blur;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(radius),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x14000000),
-          blurRadius: 24,
-          offset: Offset(0, 8),
-        ),
-      ],
-    ),
-    child: ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: opacity),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final dark = colors.isDark;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            color: Color(dark ? 0x40000000 : 0x14000000),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
-          child: child,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              // Clair : voile blanc ; sombre : voile de la surface.
+              color: (dark ? colors.surface : Colors.white).withValues(
+                alpha: dark ? opacity + 0.15 : opacity,
+              ),
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: dark ? 0.08 : 0.8),
+              ),
+            ),
+            child: child,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Un bouton de l'encoche : rond, infobulle au survol.
@@ -237,7 +259,9 @@ class _IslandButtonViewState extends State<_IslandButtonView> {
                 height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: b.active ? glassAccent : null,
+                  gradient: b.active
+                      ? AmpereColors.of(context).accentGradient
+                      : null,
                   color: b.active
                       ? null
                       : Colors.white.withValues(alpha: _hover ? 0.18 : 0.08),
@@ -247,11 +271,13 @@ class _IslandButtonViewState extends State<_IslandButtonView> {
                     ),
                   ),
                   boxShadow: b.active
-                      ? const [
+                      ? [
                           BoxShadow(
-                            color: Color(0x663B82F6),
+                            color: AmpereColors.of(
+                              context,
+                            ).accent.withValues(alpha: 0.4),
                             blurRadius: 15,
-                            offset: Offset(0, 4),
+                            offset: const Offset(0, 4),
                           ),
                         ]
                       : null,
@@ -259,7 +285,9 @@ class _IslandButtonViewState extends State<_IslandButtonView> {
                 child: Icon(
                   b.icon,
                   size: 19,
-                  color: b.active || _hover
+                  color: b.active
+                      ? AmpereColors.of(context).onAccent
+                      : _hover
                       ? Colors.white
                       : const Color(0xFF94A3B8),
                 ),
