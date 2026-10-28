@@ -4,6 +4,19 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Rubriques regroupées en sections + ascenseur LED — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `navigation.dart` : `destinationsFor` (les DROITS) inchangé ; nouveau `menuFor` qui regroupe pour les
+  coquilles — Vente (+ Devis), Stock (+ Inventaire), Achats (Commandes, Réappro, Fournisseurs), Rapports
+  (Produits, Activité commerciale), Utilisateurs (Comptes, Historique des actions), Notifications (+
+  Signalements). Une section réduite à une rubrique reste une rubrique. `locate()` : un raccourci vers une
+  sous-rubrique ouvre la section sur le bon onglet (`sectionIndexProvider`).
+- `ui/widgets/section_tabs.dart` : barre d'onglets soulignés, fine, au-dessus de la rubrique. Poste ET mobile.
+- Écran d'accueil : 13 tuiles au lieu de 21 ; l'aide d'une section liste ses onglets. Ascenseur à l'extrême
+  droite (liste pleine largeur, contenu centré), style LED (`_LedScrollbar`, accent, rail allumé).
+- Tests : `navigation_sections_test.dart` (aucune rubrique perdue, onglet visé) ; captures 80, 81.
+- Preuves : analyze 0, 555 tests ; captures accueil, Achats, Utilisateurs vérifiées.
+
 ### LED continues, palette Rubis, cartes visibles en sombre — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `signal_background.dart` : rubans de LED CONTINUS (ligne fine + lumière qui glisse, halo) ; les vumètres à

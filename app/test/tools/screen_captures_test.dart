@@ -1463,6 +1463,35 @@ void main() {
     ),
   );
   testWidgets(
+    '80 section achats',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '80_section_achats',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Achats').first);
+        await t.pumpAndSettle();
+      },
+    ),
+  );
+  testWidgets(
+    '81 section utilisateurs',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '81_section_utilisateurs',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      interact: (t) async {
+        await t.tap(find.text('Utilisateurs').first);
+        await t.pumpAndSettle();
+        await t.tap(find.text('Historique des actions'));
+      },
+    ),
+  );
+  testWidgets(
     '60 fond signal desktop',
     skip: skip,
     (t) => _capture(

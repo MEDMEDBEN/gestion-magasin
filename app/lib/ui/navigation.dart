@@ -24,6 +24,7 @@ import '../features/suppliers/presentation/suppliers_screen.dart';
 import '../features/transfers/presentation/transfers_screen.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/users/presentation/users_screen.dart';
+import 'widgets/section_tabs.dart';
 
 /// Une destination de navigation (entrée de sidebar desktop, onglet mobile).
 class AppDestination {
@@ -32,6 +33,7 @@ class AppDestination {
     required this.label,
     required this.builder,
     this.mobileOnly = false,
+    this.sections = const [],
   });
 
   final IconData icon;
@@ -41,6 +43,10 @@ class AppDestination {
   /// Réservée au mobile (ex. le scanner : il lui faut une caméra ; au poste,
   /// la douchette fait le travail dans l'écran Vente).
   final bool mobileOnly;
+
+  /// Section regroupée ([menuFor]) : ses rubriques, une par onglet. Vide pour
+  /// une rubrique simple.
+  final List<AppDestination> sections;
 }
 
 /// Destination demandée par un ÉCRAN (les raccourcis de l'accueil, spec §21).
@@ -244,3 +250,69 @@ List<AppDestination> destinationsFor(AuthUser user) => [
     builder: (context, user) => ProfileScreen(user: user),
   ),
 ];
+
+/// Rubriques qui vont ENSEMBLE (demande MEDMEDBEN du 2026-10-28 : moins de
+/// redondance). Chaque section garde toutes ses rubriques, une par onglet,
+/// dans cet ordre ; une rubrique interdite au compte n'y figure pas.
+const _sections = {
+  'Vente': ['Vente', 'Devis'],
+  'Stock': ['Stock', 'Inventaire'],
+  'Achats': ['Achats', 'Réappro', 'Fournisseurs'],
+  'Rapports': ['Rapports', 'Activité'],
+  'Utilisateurs': ['Utilisateurs', 'Historique'],
+  'Notifications': ['Notifications', 'Signalements'],
+};
+
+/// Nom d'une rubrique dans les onglets de sa section.
+const sectionTabLabels = {
+  'Achats': 'Commandes',
+  'Rapports': 'Produits',
+  'Activité': 'Activité commerciale',
+  'Utilisateurs': 'Comptes',
+  'Historique': 'Historique des actions',
+};
+
+/// Menu des coquilles : [destinationsFor] (les DROITS, inchangés) regroupé en
+/// sections. Une section réduite à une seule rubrique reste une rubrique.
+List<AppDestination> menuFor(AuthUser user) {
+  final flat = destinationsFor(user);
+  final byLabel = {for (final d in flat) d.label: d};
+  final placed = <String>{};
+  final menu = <AppDestination>[];
+  for (final d in flat) {
+    if (placed.contains(d.label)) continue;
+    final group = _sections.values
+        .where((labels) => labels.contains(d.label))
+        .firstOrNull;
+    final members = group == null
+        ? [d]
+        : [for (final label in group) ?byLabel[label]];
+    placed.addAll(members.map((m) => m.label));
+    if (members.length == 1) {
+      menu.add(members.single);
+      continue;
+    }
+    final head = members.first;
+    menu.add(
+      AppDestination(
+        icon: head.icon,
+        label: head.label,
+        sections: members,
+        builder: (context, user) =>
+            SectionTabs(group: head.label, sections: members, user: user),
+      ),
+    );
+  }
+  return menu;
+}
+
+/// Où mène un libellé demandé (raccourci, assistant) : la rubrique du menu
+/// et, dans une section, l'onglet. `null` : rien d'ouvert à ce compte.
+({int index, int section})? locate(List<AppDestination> menu, String label) {
+  for (final (i, d) in menu.indexed) {
+    if (d.label == label && d.sections.isEmpty) return (index: i, section: 0);
+    final s = d.sections.indexWhere((x) => x.label == label);
+    if (s >= 0) return (index: i, section: s);
+  }
+  return null;
+}

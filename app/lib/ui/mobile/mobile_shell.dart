@@ -9,6 +9,7 @@ import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../widgets/screen_state.dart';
+import '../widgets/section_tabs.dart';
 import '../widgets/sync_panel.dart';
 import '../../features/assistant/assistant.dart';
 
@@ -39,7 +40,7 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final reachable = ref.watch(serverReachableProvider);
     final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
 
-    final tabs = mobileTabOrder(destinationsFor(widget.user), widget.user);
+    final tabs = mobileTabOrder(menuFor(widget.user), widget.user);
     final index = _index.clamp(0, tabs.length - 1);
     final current = tabs[index];
     _followRequest(tabs);
@@ -121,11 +122,16 @@ class _MobileShellState extends ConsumerState<MobileShell> {
   void _followRequest(List<AppDestination> tabs) {
     final requested = ref.watch(requestedDestinationProvider);
     if (requested == null) return;
-    final target = tabs.indexWhere((d) => d.label == requested);
+    final target = locate(tabs, requested);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(requestedDestinationProvider.notifier).taken();
-      if (target >= 0) setState(() => _index = target);
+      if (target == null) return;
+      final tab = tabs[target.index];
+      if (tab.sections.isNotEmpty) {
+        ref.read(sectionIndexProvider.notifier).set(tab.label, target.section);
+      }
+      setState(() => _index = target.index);
     });
   }
 

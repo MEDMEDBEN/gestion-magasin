@@ -16,6 +16,7 @@ import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../theme/palettes.dart';
 import '../widgets/screen_state.dart';
+import '../widgets/section_tabs.dart';
 import '../widgets/signal_background.dart';
 import '../widgets/sync_panel.dart';
 import '../../features/assistant/assistant.dart';
@@ -50,9 +51,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     // Le scanner exige une caméra : il ne s'affiche pas au poste.
-    final entries = destinationsFor(
-      widget.user,
-    ).where((d) => !d.mobileOnly).toList();
+    // Rubriques regroupées en sections (2026-10-28) ; droits inchangés.
+    final entries = menuFor(widget.user).where((d) => !d.mobileOnly).toList();
     final index = _index?.clamp(0, entries.length - 1);
     _followRequest(entries);
     void open(int? i) => setState(() => _index = i);
@@ -137,11 +137,18 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   void _followRequest(List<AppDestination> entries) {
     final requested = ref.watch(requestedDestinationProvider);
     if (requested == null) return;
-    final target = entries.indexWhere((d) => d.label == requested);
+    final target = locate(entries, requested);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(requestedDestinationProvider.notifier).taken();
-      if (target >= 0) setState(() => _index = target);
+      if (target == null) return;
+      final entry = entries[target.index];
+      if (entry.sections.isNotEmpty) {
+        ref
+            .read(sectionIndexProvider.notifier)
+            .set(entry.label, target.section);
+      }
+      setState(() => _index = target.index);
     });
   }
 }
@@ -214,7 +221,12 @@ class _Launcher extends ConsumerWidget {
     Widget tile((int, AppDestination) e, {required bool big}) => _Tile(
       icon: e.$2.label == 'Accueil' ? LucideIcons.layoutDashboard : e.$2.icon,
       title: _display(e.$2.label),
-      hint: _hints[e.$2.label] ?? '',
+      hint: e.$2.sections.isEmpty
+          ? _hints[e.$2.label] ?? ''
+          : [
+              for (final s in e.$2.sections)
+                sectionTabLabels[s.label] ?? s.label,
+            ].join(' · '),
       big: big,
       // Tableau de bord et Vente : mis en avant (demande du 2026-10-28).
       prominent: e.$2.label == 'Accueil' || e.$2.label == 'Vente',
@@ -222,80 +234,83 @@ class _Launcher extends ConsumerWidget {
       onTap: () => onOpen(e.$1),
     );
 
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1120),
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(32, 32, 32, 40),
-          children: [
-            // Le compte : qui est connecté ; toucher ouvre « Mon profil ».
-            InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: profile < 0 ? null : () => onOpen(profile),
-              child: Padding(
-                padding: const EdgeInsets.all(4),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 26,
-                      backgroundColor: colors.accent,
-                      child: Text(
-                        _initials(user.fullName),
-                        style: AmpereType.h4.copyWith(color: colors.onAccent),
+    // La liste occupe TOUTE la largeur : l'ascenseur est au bord droit de
+    // l'écran (demande du 2026-10-28), le contenu reste centré à 1120 px.
+    return LayoutBuilder(
+      builder: (context, box) {
+        final side = ((box.maxWidth - 1120) / 2).clamp(32.0, double.infinity);
+        return _LedScrollbar(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(side, 32, side, 40),
+            children: [
+              // Le compte : qui est connecté ; toucher ouvre « Mon profil ».
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: profile < 0 ? null : () => onOpen(profile),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: colors.accent,
+                        child: Text(
+                          _initials(user.fullName),
+                          style: AmpereType.h4.copyWith(color: colors.onAccent),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Bonjour ${user.fullName.split(' ').first}',
-                            style: AmpereType.h1.copyWith(color: colors.ink),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '${user.fullName} · ${formatRoles(user.roles)} · '
-                            '${formatDate(DateTime.now())}',
-                            style: AmpereType.bodyDesktop.copyWith(
-                              color: colors.ink3,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Bonjour ${user.fullName.split(' ').first}',
+                              style: AmpereType.h1.copyWith(color: colors.ink),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 2),
+                            Text(
+                              '${user.fullName} · ${formatRoles(user.roles)} · '
+                              '${formatDate(DateTime.now())}',
+                              style: AmpereType.bodyDesktop.copyWith(
+                                color: colors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 28),
-            _Today(
-              columns: columns == 2 ? 3 : 6,
-              open: (label) {
-                final i = entries.indexWhere((d) => d.label == label);
-                if (i >= 0) onOpen(i);
-              },
-            ),
-            const SizedBox(height: 28),
-            _SectionLabel('L’essentiel'),
-            const SizedBox(height: 12),
-            _Grid(
-              columns: columns,
-              children: [for (final e in main) tile(e, big: true)],
-            ),
-            if (others.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              _SectionLabel('Toutes les fonctionnalités'),
+              const SizedBox(height: 28),
+              _Today(
+                columns: columns == 2 ? 3 : 6,
+                open: (label) {
+                  final i = entries.indexWhere((d) => d.label == label);
+                  if (i >= 0) onOpen(i);
+                },
+              ),
+              const SizedBox(height: 28),
+              _SectionLabel('L’essentiel'),
               const SizedBox(height: 12),
               _Grid(
                 columns: columns,
-                children: [for (final e in others) tile(e, big: false)],
+                children: [for (final e in main) tile(e, big: true)],
               ),
+              if (others.isNotEmpty) ...[
+                const SizedBox(height: 32),
+                _SectionLabel('Toutes les fonctionnalités'),
+                const SizedBox(height: 12),
+                _Grid(
+                  columns: columns,
+                  children: [for (final e in others) tile(e, big: false)],
+                ),
+              ],
             ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -1084,6 +1099,55 @@ class _LightsPanel extends ConsumerWidget {
               onSelectionChanged: (v) => led.set(ambiance: v.first),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ascenseur « LED » (2026-10-28) : un tube fin aux couleurs de l'accent sur un
+/// rail à peine allumé, toujours visible, au bord de l'écran.
+class _LedScrollbar extends StatefulWidget {
+  const _LedScrollbar({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_LedScrollbar> createState() => _LedScrollbarState();
+}
+
+class _LedScrollbarState extends State<_LedScrollbar> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return RawScrollbar(
+      controller: _controller,
+      thumbVisibility: true,
+      trackVisibility: true,
+      thickness: 5,
+      radius: const Radius.circular(3),
+      trackRadius: const Radius.circular(3),
+      thumbColor: colors.accent.withValues(alpha: 0.85),
+      trackColor: colors.accent.withValues(alpha: 0.08),
+      trackBorderColor: Colors.transparent,
+      crossAxisMargin: 3,
+      mainAxisMargin: 6,
+      child: PrimaryScrollController(
+        controller: _controller,
+        // Au poste aussi (par défaut, seul le mobile en hérite).
+        automaticallyInheritForPlatforms: TargetPlatform.values.toSet(),
+        child: ScrollConfiguration(
+          // L'ascenseur par défaut ferait doublon.
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: widget.child,
         ),
       ),
     );
