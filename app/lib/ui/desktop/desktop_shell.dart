@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../core/dates.dart';
 import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
 import '../../features/notifications/application/notifications_controller.dart';
@@ -11,71 +12,35 @@ import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../theme/theme_controller.dart';
-import '../widgets/ampere_controls.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/sync_panel.dart';
 import '../../features/assistant/assistant.dart';
 
-/// Menu latéral réduit (rail d'icônes) ou étendu, au choix de l'utilisateur
-/// et **gardé par compte** sur le poste, comme le thème. `null` = automatique :
-/// rail sous 1180 px de large, menu complet au-delà.
-class SidebarCollapsedController extends Notifier<bool?> {
-  /// Posé dès que l'utilisateur choisit : une lecture stockée arrivant APRÈS
-  /// ne doit pas écraser ce choix (même course que le thème).
-  bool _chosen = false;
-
-  static String _key(String userId) => 'sidebar_collapsed.$userId';
-
-  @override
-  bool? build() {
-    _chosen = false;
-    final userId = ref.watch(currentUserIdProvider);
-    if (userId != null) _restore(userId);
-    return null;
-  }
-
-  Future<void> _restore(String userId) async {
-    final stored = await ref
-        .read(localSettingsStoreProvider)
-        .read(_key(userId));
-    if (_chosen || !ref.mounted || ref.read(currentUserIdProvider) != userId) {
-      return;
-    }
-    if (stored != null) state = stored == 'true';
-  }
-
-  Future<void> set({required bool collapsed}) async {
-    _chosen = true;
-    state = collapsed;
-    final userId = ref.read(currentUserIdProvider);
-    if (userId == null) return;
-    await ref
-        .read(localSettingsStoreProvider)
-        .write(_key(userId), collapsed ? 'true' : 'false');
-  }
-}
-
-final sidebarCollapsedProvider =
-    NotifierProvider<SidebarCollapsedController, bool?>(
-      SidebarCollapsedController.new,
-    );
-
-/// Coquille desktop : sidebar fixe 246 px (ou rail d'icônes 64 px sur
-/// tablette, §9), barre supérieure 56 px, densité assumée (AMPÈRE §6 et §9).
+/// Coquille du poste (demande MEDMEDBEN du 2026-10-28) : PAS de menu latéral.
+/// À la connexion, un ÉCRAN D'ACCUEIL présente le compte et toutes les
+/// fonctionnalités en grandes tuiles (tableau de bord et vente en avant) ;
+/// dans une fonctionnalité, la barre du haut porte un bouton « Accueil » qui
+/// ramène aux tuiles. Les destinations et leurs droits restent ceux de
+/// [destinationsFor] : seule la façon d'y aller change.
 class DesktopShell extends ConsumerStatefulWidget {
   const DesktopShell({super.key, required this.user, this.compact = false});
 
   final AuthUser user;
 
-  /// Tablette (768-1180 px) : la sidebar se réduit à un rail d'icônes.
+  /// Écran moyen (768-1180 px) : tuiles sur deux colonnes.
   final bool compact;
 
   @override
   ConsumerState<DesktopShell> createState() => _DesktopShellState();
 }
 
+/// Libellé affiché pour une destination : l'ancien « Accueil » (les chiffres
+/// du jour) est le TABLEAU DE BORD ; « Accueil » désigne désormais les tuiles.
+String _display(String label) => label == 'Accueil' ? 'Tableau de bord' : label;
+
 class _DesktopShellState extends ConsumerState<DesktopShell> {
-  int _index = 0;
+  /// Destination ouverte ; `null` = l'écran d'accueil (les tuiles).
+  int? _index;
 
   @override
   Widget build(BuildContext context) {
@@ -84,74 +49,58 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     final entries = destinationsFor(
       widget.user,
     ).where((d) => !d.mobileOnly).toList();
-    final index = _index.clamp(0, entries.length - 1);
+    final index = _index?.clamp(0, entries.length - 1);
     _followRequest(entries);
-    final compact = ref.watch(sidebarCollapsedProvider) ?? widget.compact;
-    final profile = entries.indexWhere((d) => d.label == 'Mon profil');
+    void open(int? i) => setState(() => _index = i);
 
-    // Ctrl+K ouvre l'assistant depuis n'importe quel écran du poste.
+    // Ctrl+K : l'assistant ; Échap : retour à l'accueil.
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
             showAssistant(context, ref, widget.user),
+        if (index != null)
+          const SingleActivator(LogicalKeyboardKey.home, alt: true): () =>
+              open(null),
       },
       child: Scaffold(
-        body: Row(
+        body: Column(
           children: [
-            // Réduit (demande MEDMEDBEN du 2026-10-12) : le menu DISPARAÎT,
-            // tout l'écran va au contenu ; une flèche au bord le rouvre.
-            // Mouvement (demande MEDMEDBEN du 2026-10-14) : le menu glisse
-            // et se rétracte vers la gauche au lieu d'apparaître d'un coup.
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 280),
-              reverseDuration: const Duration(milliseconds: 240),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) => ClipRect(
-                child: SizeTransition(
-                  sizeFactor: animation,
-                  axis: Axis.horizontal,
-                  alignment: Alignment.centerRight,
-                  child: FadeTransition(opacity: animation, child: child),
+            _TopBar(
+              title: index == null ? 'Accueil' : _display(entries[index].label),
+              user: widget.user,
+              onHome: index == null ? null : () => open(null),
+            ),
+            Divider(height: 1, color: colors.line),
+            Expanded(
+              // Passage fluide entre l'accueil et une fonctionnalité.
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                transitionBuilder: (child, animation) => FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween(
+                      begin: const Offset(0, 0.015),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
                 ),
-              ),
-              child: compact
-                  ? const SizedBox.shrink(key: ValueKey('menu-ferme'))
-                  : KeyedSubtree(
-                      key: const ValueKey('menu-ouvert'),
-                      child: _Sidebar(
+                child: index == null
+                    ? _Launcher(
+                        key: const ValueKey('accueil'),
                         user: widget.user,
                         entries: entries,
-                        selectedIndex: index,
+                        columns: widget.compact ? 2 : 3,
                         unread:
                             ref.watch(unreadNotificationsProvider).value ?? 0,
-                        onSelect: (i) => setState(() => _index = i),
-                        onToggle: () => ref
-                            .read(sidebarCollapsedProvider.notifier)
-                            .set(collapsed: true),
-                        onProfile: profile < 0
-                            ? null
-                            : () => setState(() => _index = profile),
+                        onOpen: open,
+                      )
+                    : KeyedSubtree(
+                        key: ValueKey(entries[index].label),
+                        child: entries[index].builder(context, widget.user),
                       ),
-                    ),
-            ),
-            Expanded(
-              child: Column(
-                children: [
-                  _TopBar(
-                    title: entries[index].label,
-                    user: widget.user,
-                    // Menu caché : la MÊME double flèche que pour le réduire,
-                    // en haut à gauche (demande MEDMEDBEN du 2026-10-13).
-                    onExpand: compact
-                        ? () => ref
-                              .read(sidebarCollapsedProvider.notifier)
-                              .set(collapsed: false)
-                        : null,
-                  ),
-                  Divider(height: 1, color: colors.line),
-                  Expanded(child: entries[index].builder(context, widget.user)),
-                ],
               ),
             ),
           ],
@@ -160,8 +109,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     );
   }
 
-  /// Suit un raccourci demandé par un écran (accueil, §21). Après la frame :
-  /// changer d'onglet PENDANT la construction rejouerait le build en boucle.
+  /// Suit un raccourci demandé par un écran (tableau de bord, assistant).
+  /// Après la frame : changer d'écran PENDANT la construction rejouerait le
+  /// build en boucle.
   void _followRequest(List<AppDestination> entries) {
     final requested = ref.watch(requestedDestinationProvider);
     if (requested == null) return;
@@ -174,277 +124,320 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   }
 }
 
-class _Sidebar extends StatelessWidget {
-  const _Sidebar({
+/// Ce que fait chaque fonctionnalité, en une ligne, sous sa tuile.
+const _hints = {
+  'Accueil': 'Les chiffres du jour et ce qui demande une action',
+  'Vente': 'Encaisser, tickets, clients',
+  'Devis': 'Préparer et suivre les devis',
+  'Catalogue': 'Produits, prix, catégories',
+  'Stock': 'Niveaux au magasin et au dépôt',
+  'Tâches': 'Le planning de l’équipe',
+  'Transferts': 'Entre le dépôt et le magasin',
+  'Achats': 'Commandes et réceptions fournisseurs',
+  'Activité': 'Ce qui s’est passé, au fil de l’eau',
+  'Rapports': 'Ventes, marges, produits',
+  'Réappro': 'Ce qu’il faut racheter',
+  'Inventaire': 'Compter et corriger le stock',
+  'Fournisseurs': 'Fiches, dettes, paiements',
+  'Utilisateurs': 'Comptes et rôles de l’équipe',
+  'Paramètres': 'Magasin, impression, réglages',
+  'Historique': 'Journal des opérations',
+  'Signalements': 'Problèmes remontés par l’équipe',
+  'Messages': 'Discuter avec l’équipe',
+  'Notifications': 'Alertes et rappels',
+  'Mon profil': 'Mot de passe, sessions, thème',
+};
+
+/// L'essentiel d'un logiciel de vente, en tête et en grand.
+const _essentials = [
+  'Accueil',
+  'Vente',
+  'Stock',
+  'Catalogue',
+  'Transferts',
+  'Achats',
+];
+
+/// L'écran d'accueil : le compte, puis les fonctionnalités en tuiles.
+class _Launcher extends StatelessWidget {
+  const _Launcher({
+    super.key,
     required this.user,
     required this.entries,
-    required this.selectedIndex,
-    required this.onSelect,
-    required this.onToggle,
-    this.onProfile,
-    this.unread = 0,
+    required this.columns,
+    required this.unread,
+    required this.onOpen,
   });
 
   final AuthUser user;
   final List<AppDestination> entries;
-  final int selectedIndex;
-  final ValueChanged<int> onSelect;
-
-  /// Cache le menu (une poignée au bord le rouvre).
-  final VoidCallback onToggle;
-
-  /// Ouvre « Mon profil » depuis le bloc utilisateur du bas.
-  final VoidCallback? onProfile;
-
-  /// Notifications non lues. Le nombre est porté par la SIDEBAR, pas par
-  /// l'écran : on ne va pas ouvrir une boîte dont rien ne dit qu'elle a du neuf.
+  final int columns;
   final int unread;
+  final ValueChanged<int> onOpen;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    final indexed = [for (final (i, d) in entries.indexed) (i, d)];
+    final main = [
+      for (final label in _essentials)
+        ...indexed.where((e) => e.$2.label == label),
+    ];
+    final others = [
+      for (final e in indexed)
+        if (!_essentials.contains(e.$2.label)) e,
+    ];
+    final profile = entries.indexWhere((d) => d.label == 'Mon profil');
 
-    return Container(
-      width: 246,
-      // Maquette du 2026-10-26 : le menu est À PLAT sur le fond, un filet le
-      // sépare du contenu.
-      decoration: BoxDecoration(
-        color: colors.bgAlt,
-        border: Border(right: BorderSide(color: colors.line)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: 56,
-            // TOUTE la bande du haut réduit le menu, pas seulement la flèche
-            // (demande MEDMEDBEN du 2026-10-14 : viser plus facilement).
-            child: InkWell(
-              onTap: onToggle,
-              child: Row(
-                children: [
-                  const SizedBox(width: 18),
-                  // `zap` est le SEUL éclair du système (§5).
-                  Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: colors.accent,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      LucideIcons.zap,
-                      size: 16,
-                      color: colors.onAccent,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Gestion magasin',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.h4.copyWith(color: colors.ink),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Réduire le menu',
-                    onPressed: onToggle,
-                    icon: Icon(
-                      LucideIcons.chevronsLeft,
-                      size: 18,
-                      color: colors.ink2,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                ],
-              ),
-            ),
-          ),
-          Divider(height: 1, color: colors.line),
-          // Plus de rubriques que de hauteur (admin, petit écran) : la liste
-          // défile, avec un ascenseur visible ; logo et profil restent fixes.
-          Expanded(
-            child: _NavList(
-              children: [
-                const SizedBox(height: 10),
-                for (var i = 0; i < entries.length; i++)
-                  _NavItem(
-                    entry: entries[i],
-                    selected: i == selectedIndex,
-                    unread: entries[i].label == 'Notifications' ? unread : 0,
-                    onTap: () => onSelect(i),
-                  ),
-                const SizedBox(height: 10),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: colors.line),
-          // Le bloc utilisateur ouvre « Mon profil » (mot de passe, sessions) :
-          // c'est là qu'on le cherche d'instinct.
-          AmpereTappable(
-            onTap: onProfile,
-            borderRadius: 0,
-            child: _ProfileBlock(user: user),
-          ),
-        ],
-      ),
+    Widget tile((int, AppDestination) e, {required bool big}) => _Tile(
+      icon: e.$2.label == 'Accueil' ? LucideIcons.layoutDashboard : e.$2.icon,
+      title: _display(e.$2.label),
+      hint: _hints[e.$2.label] ?? '',
+      big: big,
+      // Tableau de bord et Vente : mis en avant (demande du 2026-10-28).
+      prominent: e.$2.label == 'Accueil' || e.$2.label == 'Vente',
+      badge: e.$2.label == 'Notifications' ? unread : 0,
+      onTap: () => onOpen(e.$1),
     );
-  }
-}
 
-/// Nom et rôles du compte, en bas du menu étendu.
-class _ProfileBlock extends StatelessWidget {
-  const _ProfileBlock({required this.user});
-
-  final AuthUser user;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            user.fullName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            formatRoles(user.roles),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AmpereType.metaDesktop.copyWith(color: colors.ink3),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Liste des rubriques défilante, ascenseur toujours visible : sans lui, rien
-/// ne dit qu'il y a d'autres rubriques plus bas.
-class _NavList extends StatefulWidget {
-  const _NavList({required this.children});
-
-  final List<Widget> children;
-
-  @override
-  State<_NavList> createState() => _NavListState();
-}
-
-class _NavListState extends State<_NavList> {
-  final _controller = ScrollController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scrollbar(
-      controller: _controller,
-      thumbVisibility: true,
-      child: SingleChildScrollView(
-        controller: _controller,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: widget.children,
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.entry,
-    required this.selected,
-    required this.onTap,
-    this.unread = 0,
-  });
-
-  final AppDestination entry;
-  final bool selected;
-  final VoidCallback onTap;
-  final int unread;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    // Clair : l'actif est une PILULE NOIRE, texte blanc (maquette 2026-10-13).
-
-    final item = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      child: Semantics(
-        selected: selected,
-        button: true,
-        label: entry.label,
-        child: AmpereTappable(
-          onTap: onTap,
-          borderRadius: 8,
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              // Actif : fond gris doux, texte appuyé (maquette 2026-10-26).
-              color: selected ? colors.surface3 : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Badge.count(
-                  count: unread,
-                  isLabelVisible: unread > 0,
-                  child: Icon(
-                    entry.icon,
-                    size: 17,
-                    color: selected ? colors.ink : colors.ink2,
-                  ),
-                ),
-                ...[
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      entry.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.bodyDesktop.copyWith(
-                        color: selected ? colors.ink : colors.ink2,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w400,
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 40),
+          children: [
+            // Le compte : qui est connecté ; toucher ouvre « Mon profil ».
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: profile < 0 ? null : () => onOpen(profile),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: colors.accent,
+                      child: Text(
+                        _initials(user.fullName),
+                        style: AmpereType.h4.copyWith(color: colors.onAccent),
                       ),
                     ),
-                  ),
-                ],
-              ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Bonjour ${user.fullName.split(' ').first}',
+                            style: AmpereType.h1.copyWith(color: colors.ink),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${user.fullName} · ${formatRoles(user.roles)} · '
+                            '${formatDate(DateTime.now())}',
+                            style: AmpereType.bodyDesktop.copyWith(
+                              color: colors.ink3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
+            const SizedBox(height: 32),
+            _SectionLabel('L’essentiel'),
+            const SizedBox(height: 12),
+            _Grid(
+              columns: columns,
+              children: [for (final e in main) tile(e, big: true)],
+            ),
+            if (others.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              _SectionLabel('Toutes les fonctionnalités'),
+              const SizedBox(height: 12),
+              _Grid(
+                columns: columns,
+                children: [for (final e in others) tile(e, big: false)],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    return parts.take(2).map((p) => p.isEmpty ? '' : p[0].toUpperCase()).join();
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text.toUpperCase(),
+    style: AmpereType.label.copyWith(color: AmpereColors.of(context).ink3),
+  );
+}
+
+/// Grille à colonnes égales, aérée.
+class _Grid extends StatelessWidget {
+  const _Grid({required this.columns, required this.children});
+
+  final int columns;
+  final List<Widget> children;
+
+  static const _gap = 16.0;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      final width = (box.maxWidth - _gap * (columns - 1)) / columns;
+      return Wrap(
+        spacing: _gap,
+        runSpacing: _gap,
+        children: [for (final c in children) SizedBox(width: width, child: c)],
+      );
+    },
+  );
+}
+
+/// Une fonctionnalité en tuile : grande (l'essentiel) ou moyenne (le reste).
+/// Mise en avant : pleine (noir en clair, blanc en sombre).
+class _Tile extends StatelessWidget {
+  const _Tile({
+    required this.icon,
+    required this.title,
+    required this.hint,
+    required this.big,
+    required this.prominent,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final IconData icon;
+  final String title;
+  final String hint;
+  final bool big;
+  final bool prominent;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final ink = prominent ? colors.onAccent : colors.ink;
+    final soft = prominent
+        ? colors.onAccent.withValues(alpha: 0.7)
+        : colors.ink3;
+    final iconBox = Container(
+      width: big ? 44 : 36,
+      height: big ? 44 : 36,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: prominent ? colors.onAccent.withValues(alpha: 0.12) : null,
+        border: Border.all(
+          color: prominent
+              ? colors.onAccent.withValues(alpha: 0.2)
+              : colors.line,
+        ),
+      ),
+      child: Badge.count(
+        count: badge,
+        isLabelVisible: badge > 0,
+        child: Icon(icon, size: big ? 22 : 18, color: ink),
+      ),
+    );
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: (big ? AmpereType.h3 : AmpereType.rowTitle).copyWith(
+            color: ink,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          hint,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.meta.copyWith(color: soft),
+        ),
+      ],
+    );
+    return Semantics(
+      button: true,
+      label: title,
+      child: Material(
+        color: prominent ? colors.accent : colors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: prominent ? colors.accent : colors.line),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.all(big ? 20 : 14),
+            child: big
+                ? SizedBox(
+                    height: 118,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            iconBox,
+                            const Spacer(),
+                            Icon(
+                              LucideIcons.arrowUpRight,
+                              size: 18,
+                              color: soft,
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        text,
+                      ],
+                    ),
+                  )
+                : Row(
+                    children: [
+                      iconBox,
+                      const SizedBox(width: 12),
+                      Expanded(child: text),
+                      Icon(LucideIcons.chevronRight, size: 16, color: soft),
+                    ],
+                  ),
           ),
         ),
       ),
     );
-
-    return item;
   }
 }
 
-/// Barre supérieure fine (44 px, 2026-10-12) : titre, indicateur de sync,
-/// bascule de thème — la place va au contenu.
+/// Barre du haut : à l'accueil, le nom du logiciel ; dans une fonctionnalité,
+/// le bouton « Accueil » (toujours à gauche) puis le titre. À droite :
+/// assistant, synchronisation, thème.
 class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.title, required this.user, this.onExpand});
+  const _TopBar({required this.title, required this.user, this.onHome});
 
   final String title;
   final AuthUser user;
 
-  /// Menu caché : rouvre le menu (`null` quand il est affiché).
-  final VoidCallback? onExpand;
+  /// Retour aux tuiles ; `null` quand on y est déjà.
+  final VoidCallback? onHome;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -453,59 +446,54 @@ class _TopBar extends ConsumerWidget {
     final rejected = ref.watch(rejectedMutationsProvider);
     final reachable = ref.watch(serverReachableProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final home = onHome;
 
     return Container(
-      height: 52,
+      height: 56,
       color: colors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Expanded(
-            child: onExpand == null
-                ? Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.h4.copyWith(color: colors.ink),
-                  )
-                // Menu caché : de la flèche jusqu'au titre, tout rouvre le
-                // menu (demande MEDMEDBEN du 2026-10-14).
-                : Align(
-                    alignment: Alignment.centerLeft,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: onExpand,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'Agrandir le menu',
-                              onPressed: onExpand,
-                              icon: Icon(
-                                LucideIcons.chevronsRight,
-                                size: 18,
-                                color: colors.ink2,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AmpereType.bodyStrong.copyWith(
-                                  color: colors.ink2,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
+          if (home == null) ...[
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: colors.accent,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              // `zap` est le SEUL éclair du système (§5).
+              child: Icon(LucideIcons.zap, size: 16, color: colors.onAccent),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Gestion magasin',
+              style: AmpereType.h4.copyWith(color: colors.ink),
+            ),
+          ] else ...[
+            Tooltip(
+              message: 'Retour à l’accueil (Alt+Origine)',
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                ),
+                onPressed: home,
+                icon: const Icon(LucideIcons.house, size: 16),
+                label: const Text('Accueil'),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.h4.copyWith(color: colors.ink),
+              ),
+            ),
+          ],
+          if (home == null) const Spacer(),
           // Assistant (2026-10-05) : actions préparées, Ctrl+K au clavier.
           IconButton(
             visualDensity: VisualDensity.compact,

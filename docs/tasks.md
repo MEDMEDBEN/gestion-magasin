@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Poste : accueil à tuiles au lieu du menu latéral — 2026-10-28 (MEDMEDBEN, Claude)
+
+- `ui/desktop/desktop_shell.dart` réécrit : plus de sidebar. À la connexion, ÉCRAN D'ACCUEIL (compte + toutes
+  les fonctionnalités en tuiles, 3 par ligne, 2 sous 1180 px) ; « L'essentiel » en grand (Tableau de bord et
+  Vente pleins, puis Stock, Catalogue, Transferts, Achats), le reste en tuiles moyennes avec une ligne d'aide.
+  Dans une fonctionnalité : barre du haut avec bouton « Accueil » à gauche (Alt+Origine), puis le titre.
+- L'ancien « Accueil » (chiffres du jour) s'affiche « Tableau de bord » ; `destinationsFor` et les droits sont
+  inchangés ; `goToDestination` / assistant suivent toujours. Mobile inchangé (onglets en bas).
+- `SidebarCollapsedController` et son test retirés (plus de menu à réduire) ; `shell_test.dart` adapté.
+- Preuves : analyze 0, 551 tests ; captures accueil (clair + sombre) et Stock vérifiées.
+
 ### Thème sombre noir (opposé du clair) — 2026-10-27 (MEDMEDBEN, Claude)
 
 - Palettes `desktopDark`/`mobileDark` : noir zinc (#09090B fond, cartes #111113, filets #27272A), texte

@@ -232,16 +232,17 @@ void main() {
       expect(find.byType(NavigationBar), findsOneWidget);
     });
 
-    testWidgets('768-1180 : desktop, menu caché derrière une poignée', (
+    testWidgets('768-1180 : desktop, accueil à tuiles sur deux colonnes', (
       tester,
     ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1000, 800));
 
       final shell = tester.widget<DesktopShell>(find.byType(DesktopShell));
       expect(shell.compact, isTrue);
-      // Menu réduit = CACHÉ (2026-10-12) : seule la poignée reste.
-      expect(find.text('Utilisateurs'), findsNothing);
-      expect(find.byTooltip('Agrandir le menu'), findsOneWidget);
+      // Plus de menu latéral (2026-10-28) : les fonctionnalités sont des
+      // tuiles de l'accueil.
+      expect(find.text('Tableau de bord'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets(
@@ -280,62 +281,41 @@ void main() {
               )
               .first,
         );
+        await tester.ensureVisible(last);
+        await tester.pumpAndSettle();
         expect(last.hitTestable(), findsOneWidget);
       },
     );
 
-    testWidgets('le menu se réduit puis s’agrandit au bouton', (tester) async {
-      await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
-      expect(find.text('Gestion magasin'), findsOneWidget);
-
-      await tester.tap(find.byTooltip('Réduire le menu'));
-      await tester.pumpAndSettle();
-      // Menu caché : ni titre ni rubriques, une poignée pour le rouvrir.
-      expect(find.text('Gestion magasin'), findsNothing);
-      expect(find.text('Utilisateurs'), findsNothing);
-      expect(tester.takeException(), isNull);
-
-      await tester.tap(find.byTooltip('Agrandir le menu'));
-      await tester.pumpAndSettle();
-      expect(find.text('Gestion magasin'), findsOneWidget);
-    });
-
-    /// Demande MEDMEDBEN du 2026-10-14 : toute la zone est cliquable, pas
-    /// seulement la flèche.
-    testWidgets('la bande du haut réduit, le titre de la page rouvre', (
+    /// Demande MEDMEDBEN du 2026-10-28 : pas de menu latéral ; un bouton
+    /// « Accueil » à gauche dans chaque fonctionnalité, absent à l'accueil.
+    testWidgets('une tuile ouvre la fonctionnalité, « Accueil » y ramène', (
       tester,
     ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
-      await tester.tap(find.text('Gestion magasin'));
-      await tester.pumpAndSettle();
-      expect(find.text('Gestion magasin'), findsNothing);
-
-      // Le titre de la page (Accueil) à côté de la flèche rouvre le menu.
-      await tester.tap(find.text('Accueil').first);
-      await tester.pumpAndSettle();
       expect(find.text('Gestion magasin'), findsOneWidget);
-    });
+      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsNothing);
 
-    testWidgets('écran étroit : rail par défaut, agrandissable', (
-      tester,
-    ) async {
-      await _pumpShell(tester, user: authUser(), size: const Size(1000, 800));
-      expect(find.text('Gestion magasin'), findsNothing);
-
-      await tester.tap(find.byTooltip('Agrandir le menu'));
+      await tester.tap(find.text('Utilisateurs'));
       await tester.pumpAndSettle();
-      expect(find.text('Gestion magasin'), findsOneWidget);
+      expect(find.text('Tableau de bord'), findsNothing);
+      expect(find.text('Amine Benali'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Retour à l’accueil (Alt+Origine)'));
+      await tester.pumpAndSettle();
+      expect(find.text('Tableau de bord'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
     testWidgets('le bloc utilisateur ouvre « Mon profil »', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 
-      await tester.tap(find.text('Admin Principal').last);
+      await tester.tap(find.textContaining('Bonjour'));
       await tester.pumpAndSettle();
 
       // Le titre de la barre du haut suit la rubrique ouverte.
-      expect(find.text('Mon profil'), findsAtLeastNWidgets(2));
+      expect(find.text('Mon profil'), findsAtLeastNWidgets(1));
+      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
     });
 
     testWidgets(
@@ -409,7 +389,7 @@ void main() {
       await tester.pump(const Duration(minutes: 2));
     });
 
-    testWidgets('≥ 1180 : sidebar complète', (tester) async {
+    testWidgets('≥ 1180 : accueil sur trois colonnes', (tester) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
 
       expect(
@@ -542,18 +522,21 @@ void main() {
         tester.element(find.byType(AdaptiveShell)),
       );
 
-      // Au repos, « Mon profil » n'est QUE dans la sidebar.
+      // Au repos : l'accueil, « Mon profil » n'y est qu'une tuile.
       expect(find.text('Mon profil'), findsOneWidget);
+      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsNothing);
 
       container.read(requestedDestinationProvider.notifier).ask('Mon profil');
       await tester.pumpAndSettle();
-      // Ouvert : le libellé est aussi le titre de la barre supérieure.
-      expect(find.text('Mon profil'), findsNWidgets(2));
+      // Ouvert : le titre de la barre du haut, et le bouton « Accueil ».
+      expect(find.text('Mon profil'), findsOneWidget);
+      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
 
       // « Scanner » n'existe pas au poste : on reste où on est, sans erreur.
       container.read(requestedDestinationProvider.notifier).ask('Scanner');
       await tester.pumpAndSettle();
-      expect(find.text('Mon profil'), findsNWidgets(2));
+      expect(find.text('Mon profil'), findsOneWidget);
+      expect(find.byTooltip('Retour à l’accueil (Alt+Origine)'), findsOneWidget);
       expect(container.read(requestedDestinationProvider), isNull);
     },
   );
