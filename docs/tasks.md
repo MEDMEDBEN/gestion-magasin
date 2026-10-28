@@ -4,6 +4,14 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Fond animé : barres de LED (remplace les ondes) — 2026-10-28 (MEDMEDBEN, Claude)
+
+- Même fichier/interrupteur (`signal_background.dart`, `signalBackgroundProvider`). Dessin : rubans de diodes
+  (8×3 px, pas de 14 px) le long des bords — sous la barre du haut, en bas, et deux verticaux sur les côtés —
+  parcourus d'un chenillard ; deux vumètres de LED (8 colonnes × 16 segments) dans les coins du bas. Couleurs
+  en cycle pervenche → turquoise → violet ; halos doux ; boucle de 36 s sans raccord.
+- Preuves : analyze 0, 552 tests ; captures 60 (sombre) et 61 (clair) vérifiées.
+
 ### Fond animé « signal électrique » — 2026-10-28 (MEDMEDBEN, Claude)
 
 - `ui/widgets/signal_background.dart` : 4 ondes fines (1,4 px + halo), salves qui les parcourent, couleurs en

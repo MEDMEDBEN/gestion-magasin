@@ -5,7 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
 
-/// Fond animé « signal électrique » (demande MEDMEDBEN du 2026-10-28) :
+/// Fond animé « barres de LED » (demande MEDMEDBEN du 2026-10-28 : un magasin
+/// de matériel électrique et électronique) :
 /// allumé par défaut, **éteignable**, choix gardé par compte sur le poste
 /// (comme le thème). Rangé dans les réglages locaux : ce n'est pas un secret.
 class SignalBackgroundController extends Notifier<bool> {
@@ -47,9 +48,10 @@ final signalBackgroundProvider =
       SignalBackgroundController.new,
     );
 
-/// Ondes fines qui glissent lentement, traversées de salves lumineuses, dans
-/// des couleurs qui passent de l'une à l'autre (pervenche → turquoise →
-/// violet). Discret : traits de 1,4 px, bords fondus, rien sous le pointeur.
+/// Rubans de LED parcourus d'un chenillard lumineux, et deux barres-graphes
+/// (vumètres) de LED dans les coins du bas, dans des couleurs qui passent de
+/// l'une à l'autre (pervenche → turquoise → violet). Discret : petites diodes,
+/// halos doux, rien sous le pointeur.
 ///
 /// Animation coupée si le système demande moins de mouvement : une image fixe
 /// est alors dessinée.
@@ -128,7 +130,7 @@ class _SignalPainter extends CustomPainter {
     Color(0xFFA78BFA), // violet
   ];
 
-  /// Couleur au point `u` (0..1) du cycle, en fondu continu.
+  /// Couleur au point `u` du cycle, en fondu continu.
   static Color _hue(double u) {
     final x = (u % 1) * _hues.length;
     final i = x.floor();
@@ -139,14 +141,30 @@ class _SignalPainter extends CustomPainter {
     )!;
   }
 
-  /// Une onde : hauteur de base, amplitude, vitesses (entières : boucle sans
-  /// raccord), décalage de couleur.
-  static const _waves = [
-    (base: 0.62, amp: 0.040, f: 1.5, k1: 1, k2: 2, burst: 1, hue: 0.0),
-    (base: 0.72, amp: 0.055, f: 1.0, k1: -1, k2: 1, burst: 2, hue: 0.33),
-    (base: 0.82, amp: 0.035, f: 2.2, k1: 2, k2: -1, burst: 1, hue: 0.66),
-    (base: 0.20, amp: 0.025, f: 1.2, k1: -1, k2: 2, burst: 1, hue: 0.5),
-  ];
+  static const _twoPi = 2 * math.pi;
+
+  /// Une diode : halo (si assez allumée) puis le corps arrondi.
+  void _led(
+    Canvas canvas,
+    Rect body,
+    Color color,
+    double level,
+    double strength,
+  ) {
+    final lit = level.clamp(0.0, 1.0);
+    if (lit > 0.35) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(body.inflate(4), const Radius.circular(6)),
+        Paint()
+          ..color = color.withValues(alpha: 0.28 * lit * strength)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+    }
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body, const Radius.circular(2)),
+      Paint()..color = color.withValues(alpha: (0.10 + 0.75 * lit) * strength),
+    );
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -154,77 +172,83 @@ class _SignalPainter extends CustomPainter {
     final t = clock.value;
     final w = size.width;
     final h = size.height;
-    final strength = dark ? 1.0 : 0.6;
-    const twoPi = 2 * math.pi;
+    final strength = dark ? 1.0 : 0.55;
 
-    for (final (i, wave) in _waves.indexed) {
-      final color = _hue(t * 2 + wave.hue);
-      final burstX = w * ((t * wave.burst + i * 0.27) % 1);
-      final burstWidth = w * 0.035;
-
-      double y(double x) {
-        final u = x / w;
-        final calm =
-            math.sin(twoPi * (u * wave.f + t * wave.k1)) +
-            0.5 * math.sin(twoPi * (u * wave.f * 2.3 + t * wave.k2));
-        // Salve : une oscillation rapide, enveloppée d'une cloche, qui court
-        // le long de l'onde — le « signal ».
-        final d = (x - burstX) / burstWidth;
-        final burst =
-            1.2 * math.exp(-d * d) * math.sin(twoPi * x / (w * 0.011));
-        return h * wave.base + h * wave.amp * (calm * 0.6 + burst);
+    // ── Rubans : des rangées de diodes, un chenillard qui court ─────────
+    // Le long des bords (sous la barre du haut, en bas, sur les côtés) : là
+    // où le contenu ne les cache pas. Entiers → boucle sans raccord.
+    const pitch = 14.0;
+    void strip(Offset from, Offset to, int dir, int waves, double hueShift) {
+      final length = (to - from).distance;
+      final count = (length / pitch).floor();
+      final vertical = (to.dx - from.dx).abs() < (to.dy - from.dy).abs();
+      for (var i = 0; i < count; i++) {
+        final u = i / count;
+        final phase = _twoPi * (u * 3 - t * dir * waves * 4);
+        final wave = math.pow((math.sin(phase) + 1) / 2, 6).toDouble();
+        final edge = math.sin(math.pi * u).clamp(0.0, 1.0);
+        final level = (0.10 + 0.90 * wave) * edge;
+        final center = Offset.lerp(from, to, (i + 0.5) / count)!;
+        _led(
+          canvas,
+          Rect.fromCenter(
+            center: center,
+            width: vertical ? 3 : 8,
+            height: vertical ? 8 : 3,
+          ),
+          _hue(u * 0.6 + t * 2 + hueShift),
+          level,
+          strength,
+        );
       }
-
-      final path = Path()..moveTo(0, y(0));
-      for (var x = 3.0; x <= w; x += 3) {
-        path.lineTo(x, y(x));
-      }
-
-      // Bords fondus : l'onde naît et meurt doucement.
-      final shader = LinearGradient(
-        colors: [
-          color.withValues(alpha: 0),
-          color.withValues(alpha: 0.55 * strength),
-          color.withValues(alpha: 0.55 * strength),
-          color.withValues(alpha: 0),
-        ],
-        stops: const [0, 0.18, 0.82, 1],
-      ).createShader(Offset.zero & size);
-
-      // Halo puis trait fin.
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 6
-          ..color = color.withValues(alpha: 0.10 * strength)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-      );
-      canvas.drawPath(
-        path,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.4
-          ..strokeCap = StrokeCap.round
-          ..shader = shader,
-      );
-
-      // L'étincelle au cœur de la salve.
-      final spark = Offset(burstX, y(burstX));
-      final fade = math.sin(math.pi * (burstX / w)).clamp(0.0, 1.0);
-      canvas.drawCircle(
-        spark,
-        12,
-        Paint()
-          ..color = color.withValues(alpha: 0.22 * strength * fade)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
-      );
-      canvas.drawCircle(
-        spark,
-        2.2,
-        Paint()..color = color.withValues(alpha: 0.9 * strength * fade),
-      );
     }
+
+    strip(Offset(0, 64), Offset(w, 64), -1, 1, 0.4);
+    strip(Offset(0, h - 12), Offset(w, h - 12), 1, 2, 0);
+    strip(Offset(12, h * 0.14), Offset(12, h * 0.62), 1, 1, 0.2);
+    strip(Offset(w - 12, h * 0.14), Offset(w - 12, h * 0.62), -1, 1, 0.7);
+
+    // ── Barres-graphes : colonnes de segments, comme un vumètre ─────────
+    void meter(double left, bool mirror) {
+      const columns = 8;
+      const segments = 16;
+      const colWidth = 12.0;
+      const colGap = 6.0;
+      const segHeight = 5.0;
+      const segGap = 3.0;
+      final bottom = h - 34;
+      for (var c = 0; c < columns; c++) {
+        final k = mirror ? columns - 1 - c : c;
+        // Hauteur qui monte et descend en douceur (fréquences entières).
+        final height =
+            0.35 +
+            0.3 * math.sin(_twoPi * (t * (2 + k % 3) + k * 0.13)) +
+            0.2 * math.sin(_twoPi * (t * (5 - k % 2) + k * 0.37));
+        final lit = (height.clamp(0.05, 1.0) * segments).round();
+        final x = left + c * (colWidth + colGap);
+        for (var g = 0; g < segments; g++) {
+          final on = g < lit;
+          // Du bas (pervenche) vers le haut (violet), le tout en cycle.
+          final color = _hue(t * 2 + g / segments * 0.66);
+          _led(
+            canvas,
+            Rect.fromLTWH(
+              x,
+              bottom - (g + 1) * (segHeight + segGap),
+              colWidth,
+              segHeight,
+            ),
+            color,
+            on ? 0.9 : 0.05,
+            strength,
+          );
+        }
+      }
+    }
+
+    const meterWidth = 8 * 12.0 + 7 * 6.0;
+    meter(28, false);
+    meter(w - 28 - meterWidth, true);
   }
 
   @override
