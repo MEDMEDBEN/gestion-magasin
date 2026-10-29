@@ -1115,85 +1115,248 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
 
   Widget _wideBody(List<Product> products, Widget? catalogAlert, double m) {
     final colors = AmpereColors.of(context);
-    // Caisse en grand (2026-10-12) : le catalogue à gauche, le TICKET occupe
-    // toute la hauteur à droite, collé au bord — rien ne se perd en cadres.
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(m + 8, 16, m + 8, m + 8),
-            child: Column(
+    final cart = ref.watch(cartProvider);
+    final articles = cart.lines.length;
+    // Caisse en PANNEAUX (demande MEDMEDBEN du 2026-10-29) : l'écran suit le
+    // geste de la vente — ① choisir les articles, ② vérifier le ticket,
+    // ③ encaisser. Chaque étape est un panneau titré et numéroté ; dans le
+    // ticket, des sections nommées (Acheteur, Articles) guident la lecture.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(m + 4, 12, m + 4, m + 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          widget.tabs,
+          const SizedBox(height: 14),
+          Expanded(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                widget.tabs,
-                const SizedBox(height: 18),
-                ?catalogAlert,
-                if (catalogAlert != null) const SizedBox(height: 12),
-                TextField(
-                  controller: _search,
-                  focusNode: _searchFocus,
-                  autofocus: true,
-                  autocorrect: false,
-                  style: AmpereType.input,
-                  decoration: _searchDecoration(products),
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (value) => _submitSearch(value, products),
-                ),
-                const SizedBox(height: 16),
-                _CategoryChips(
-                  products: products,
-                  selected: _categoryId,
-                  onSelect: (id) => setState(() => _categoryId = id),
-                ),
-                const SizedBox(height: 16),
+                // ① Articles.
                 Expanded(
-                  child: _ProductGrid(
-                    products: _categoryId == null
-                        ? products
-                        : [
-                            for (final p in products)
-                              if (p.categoryId == _categoryId) p,
-                          ],
-                    query: _search.text,
-                    onPick: (p) {
-                      _add(p);
-                      _searchFocus.requestFocus();
-                    },
+                  child: _SalePanel(
+                    step: 1,
+                    icon: LucideIcons.packageSearch,
+                    title: 'Articles',
+                    subtitle: 'Touchez un article ou scannez son code',
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ?catalogAlert,
+                          if (catalogAlert != null) const SizedBox(height: 12),
+                          TextField(
+                            controller: _search,
+                            focusNode: _searchFocus,
+                            autofocus: true,
+                            autocorrect: false,
+                            style: AmpereType.input,
+                            decoration: _searchDecoration(products),
+                            onChanged: (_) => setState(() {}),
+                            onSubmitted: (value) =>
+                                _submitSearch(value, products),
+                          ),
+                          const SizedBox(height: 14),
+                          _CategoryChips(
+                            products: products,
+                            selected: _categoryId,
+                            onSelect: (id) => setState(() => _categoryId = id),
+                          ),
+                          const SizedBox(height: 14),
+                          Expanded(
+                            child: _ProductGrid(
+                              products: _categoryId == null
+                                  ? products
+                                  : [
+                                      for (final p in products)
+                                        if (p.categoryId == _categoryId) p,
+                                    ],
+                              query: _search.text,
+                              onPick: (p) {
+                                _add(p);
+                                _searchFocus.requestFocus();
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: (MediaQuery.sizeOf(context).width * 0.36).clamp(
+                    430.0,
+                    600.0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // La caisse : un bandeau d'état, au-dessus du ticket.
+                      if (widget.rights.canManageCash) ...[
+                        const _CashBar(),
+                        const SizedBox(height: 12),
+                      ],
+                      // ② Ticket.
+                      Expanded(
+                        child: _SalePanel(
+                          step: 2,
+                          icon: LucideIcons.receipt,
+                          title: 'Ticket',
+                          subtitle: formatDate(DateTime.now()),
+                          trailing: articles == 0
+                              ? null
+                              : AmpereBadge(
+                                  label:
+                                      '$articles article${articles > 1 ? 's' : ''}',
+                                  tone: StatusTone.info,
+                                ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  12,
+                                  16,
+                                  0,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    const _SectionHeading('Acheteur'),
+                                    const SizedBox(height: 8),
+                                    BuyerBar(
+                                      withConfreres:
+                                          widget.rights.canSeeConfreres,
+                                      withSuppliers:
+                                          widget.rights.canSeeConfreres &&
+                                          widget.rights.canWriteCustomers,
+                                    ),
+                                    if (cart.quote case final quote?) ...[
+                                      const SizedBox(height: 10),
+                                      AmpereInlineAlert(
+                                        tone: StatusTone.info,
+                                        message:
+                                            'Modification du devis '
+                                            '${quote.number} : le panier '
+                                            'remplacera ses lignes. « Vider » '
+                                            'abandonne la modification.',
+                                      ),
+                                    ],
+                                    const SizedBox(height: 16),
+                                    // En-tête des colonnes des lignes.
+                                    Row(
+                                      children: [
+                                        const Expanded(
+                                          child: _SectionHeading('Articles'),
+                                        ),
+                                        Text(
+                                          'QTÉ  ·  TOTAL',
+                                          style: AmpereType.label.copyWith(
+                                            color: colors.ink3,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 56),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Divider(height: 1, color: colors.line),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: ListView(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    8,
+                                  ),
+                                  children: _ticketLines(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      // ③ Paiement.
+                      _SalePanel(
+                        step: 3,
+                        icon: LucideIcons.wallet,
+                        title: 'Paiement',
+                        fill: false,
+                        child: _payPanel(),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ),
-        SizedBox(
-          width: (MediaQuery.sizeOf(context).width * 0.38).clamp(440.0, 620.0),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              border: Border(left: BorderSide(color: colors.line)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    children: _ticketBody(),
-                  ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: colors.line)),
-                  ),
-                  child: _payPanel(),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
+  }
+
+  /// Les lignes du ticket (ou « panier vide »), pour le panneau ② Ticket.
+  List<Widget> _ticketLines() {
+    final colors = AmpereColors.of(context);
+    final cart = ref.watch(cartProvider);
+    final estimate = ref.watch(cartEstimateProvider);
+    if (cart.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 40),
+          child: Column(
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: colors.surface2,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  LucideIcons.shoppingCart,
+                  size: 28,
+                  color: colors.ink3,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Panier vide',
+                style: AmpereType.rowTitle.copyWith(color: colors.ink2),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Les articles choisis à gauche s’ajoutent ici.',
+                textAlign: TextAlign.center,
+                style: AmpereType.meta.copyWith(color: colors.ink3),
+              ),
+            ],
+          ),
+        ),
+      ];
+    }
+    return [
+      for (final line in cart.lines)
+        _AppearIn(
+          key: ValueKey('ligne-${line.product.id}'),
+          child: _CartLineRow(
+            line: line,
+            missingPrice: estimate.missingPrices.contains(line.product),
+            invalidDiscount: estimate.invalidDiscounts.contains(line.product),
+            totalHt: estimate.lineTotalsHt[line.product.id],
+            unitPriceHt: estimate.unitPricesHt[line.product.id],
+            tariffPriceHt: estimate.tariffPricesHt[line.product.id],
+            canDiscount: widget.rights.canDiscount,
+          ),
+        ),
+    ];
   }
 
   Widget _narrowLayout(List<Product> products, Widget? catalogAlert) {
@@ -2783,5 +2946,119 @@ class _AppearIn extends StatelessWidget {
       child: Transform.translate(offset: Offset(24 * (1 - t), 0), child: child),
     ),
     child: child,
+  );
+}
+
+/// Un panneau de la caisse : en-tête (pastille d'étape, icône, titre, sous-
+/// titre, à droite un indicateur), filet, contenu. Le numéro dit l'ordre du
+/// geste : on lit l'écran de gauche à droite, de haut en bas.
+class _SalePanel extends StatelessWidget {
+  const _SalePanel({
+    required this.step,
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.trailing,
+    this.fill = true,
+  });
+
+  /// Le contenu occupe la hauteur donnée au panneau ; `false` : il prend
+  /// sa taille (panneau Paiement).
+  final bool fill;
+
+  final int step;
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.line),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: colors.isDark ? 0.3 : 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(
+                children: [
+                  // Pastille d'étape : ①, ②, ③.
+                  Container(
+                    width: 26,
+                    height: 26,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: colors.accentGradient,
+                    ),
+                    child: Text(
+                      '$step',
+                      style: AmpereType.bodyStrong.copyWith(
+                        color: colors.onAccent,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Icon(icon, size: 17, color: colors.ink2),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: AmpereType.h4.copyWith(color: colors.ink),
+                        ),
+                        if (subtitle case final s?)
+                          Text(
+                            s,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AmpereType.meta.copyWith(color: colors.ink3),
+                          ),
+                      ],
+                    ),
+                  ),
+                  ?trailing,
+                ],
+              ),
+            ),
+            Divider(height: 1, color: colors.line),
+            if (fill) Expanded(child: child) else child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Titre de section dans un panneau (« ACHETEUR », « ARTICLES »).
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text.toUpperCase(),
+    style: AmpereType.label.copyWith(color: AmpereColors.of(context).ink3),
   );
 }

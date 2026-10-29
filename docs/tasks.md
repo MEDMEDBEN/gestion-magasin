@@ -4,6 +4,14 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente en panneaux numérotés — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `_wideBody` (poste) : ① Articles (recherche, catégories, légende, grille) | caisse en bandeau, ② Ticket
+  (sections ACHETEUR et ARTICLES, en-tête « QTÉ · TOTAL ») , ③ Paiement. `_SalePanel` (en-tête : pastille
+  d'étape au dégradé de la palette, icône, titre, sous-titre, indicateur ; filet ; ombre douce), `_SectionHeading`,
+  `_ticketLines`. Mobile inchangé (`_ticketBody`).
+- Preuves : analyze 0, 555 tests ; captures 21 (sombre) et 52 (clair) vérifiées.
+
 ### Encoche réductible + Vente sans séparations noires — 2026-10-29 (MEDMEDBEN, Claude)
 
 - Vente : séparations noires retirées (MEDMEDBEN n'a pas aimé) — retour aux filets fins.
