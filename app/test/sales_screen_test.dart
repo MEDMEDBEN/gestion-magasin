@@ -723,7 +723,10 @@ void main() {
       final api = _FakeSalesApi(cash: _openCash);
       final queue = _MemoryQueue(pending: 2);
       await _pumpScreen(tester, api, [], queue: queue);
-      await tester.tap(find.text('Clôturer').first);
+      // Téléphone : la caisse est une pastille, « Clôturer » est dans son menu.
+      await tester.tap(find.byTooltip('Caisse'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Clôturer'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, '5000');
       await tester.tap(find.text('Clôturer').last);
@@ -780,10 +783,7 @@ void main() {
       expect(open.type, 'CASH_SESSION');
       expect(open.payload['action'], 'OPEN');
       expect(open.payload['id'], open.key);
-      expect(
-        find.text('Caisse ouverte · en attente de synchronisation'),
-        findsOneWidget,
-      );
+      expect(find.text('Caisse en attente'), findsOneWidget);
 
       await _scanTwiceAndPay(tester);
       final sale = queue.queued.last;
@@ -814,7 +814,8 @@ void main() {
         [],
         settings: settings,
       );
-      expect(find.textContaining('Caisse ouverte'), findsOneWidget);
+      // Téléphone : la caisse ouverte est une pastille avec son menu.
+      expect(find.byTooltip('Caisse'), findsOneWidget);
       expect(find.text('Ouvrir la caisse'), findsNothing);
     },
   );
@@ -1017,6 +1018,9 @@ void main() {
     expect(find.text('2,5 pce'), findsOneWidget);
 
     // Remise sur facture : 2,5 × 1 450,00 = 3 625,00 − 25,00.
+    // Téléphone : Remise / Devis / Vider sont rangés dans « ⋯ ».
+    await tester.tap(find.byTooltip('Plus d’actions'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Remise'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '25');

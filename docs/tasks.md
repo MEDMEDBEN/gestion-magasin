@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Téléphone : barre de verre de l'image, encoche latérale, Vente allégée — 2026-10-29 (MEDMEDBEN, Claude)
+
+- Barre du bas = capsule de verre dépoli de l'image fournie (`_frost`/`_Frosted`, glass.dart) + bouton rond
+  « Rechercher un produit » (Catalogue, sinon Scanner).
+- Encoche noire au bord DROIT (`SideIsland(right: true)`, painter en miroir), repliée en languette par
+  défaut : les actions rapides (Nouvelle vente, Scanner, Ajout produit, Transferts selon droits).
+- Rubriques d'une destination (Vente / Devis…) choisies depuis le TITRE (`_SectionTitle`) ; `SectionTabs`
+  n'affiche plus sa rangée d'onglets sous 600 px.
+- Vente téléphone : rubrique ▾ et caisse (pastille + menu : entrée, sortie, prélèvement, clôturer) sur une
+  ligne ; plus de titre « Ticket » ; Remise / Devis / Vider dans « ⋯ » à côté du bouton principal.
+- Tests adaptés (sales_screen_test à 500 px). Preuves : analyze 0, 557 tests ; captures 19, 22, 48, 49.
+
 ### Téléphone : capsule de verre, actions rapides, rubriques repliées — 2026-10-29 (MEDMEDBEN, Claude)
 
 - Barre du bas : capsule de verre dépoli (`BottomIsland`, onglet actif sur pastille claire) + bouton rond

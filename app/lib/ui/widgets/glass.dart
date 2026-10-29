@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/ampere_colors.dart';
 
@@ -172,9 +173,13 @@ class SideIsland extends StatelessWidget {
     required this.buttons,
     this.collapsed = false,
     this.onToggle,
+    this.right = false,
   });
 
   final List<IslandButton> buttons;
+
+  /// Collée au bord DROIT (téléphone, sous le pouce) plutôt qu'au gauche.
+  final bool right;
 
   /// Réduite (2026-10-29) : une fine languette noire avec une poignée.
   final bool collapsed;
@@ -200,7 +205,7 @@ class SideIsland extends StatelessWidget {
       width: collapsed ? collapsedWidth : width,
       height: collapsed ? 96 : open,
       child: CustomPaint(
-        painter: _IslandPainter(),
+        painter: _IslandPainter(right: right),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 260),
           switchInCurve: Curves.easeOutCubic,
@@ -216,7 +221,9 @@ class SideIsland extends StatelessWidget {
                   maxWidth: width,
                   minHeight: open,
                   maxHeight: open,
-                  alignment: Alignment.centerLeft,
+                  alignment: right
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(11, 40, 11, 16),
                     child: Column(
@@ -233,13 +240,15 @@ class SideIsland extends StatelessWidget {
                             child: InkResponse(
                               onTap: toggle,
                               radius: 18,
-                              child: const SizedBox(
+                              child: SizedBox(
                                 width: 32,
                                 height: 32,
                                 child: Icon(
-                                  Icons.chevron_left_rounded,
+                                  right
+                                      ? LucideIcons.chevronRight
+                                      : LucideIcons.chevronLeft,
                                   size: 20,
-                                  color: Color(0xFF94A3B8),
+                                  color: const Color(0xFF94A3B8),
                                 ),
                               ),
                             ),
@@ -295,8 +304,18 @@ class _GrabberState extends State<_Grabber> {
 }
 
 class _IslandPainter extends CustomPainter {
+  _IslandPainter({this.right = false});
+
+  final bool right;
+
   @override
   void paint(Canvas canvas, Size size) {
+    if (right) {
+      // Même forme, en miroir : collée au bord droit.
+      canvas
+        ..translate(size.width, 0)
+        ..scale(-1, 1);
+    }
     const c = 22.0; // raccord concave
     final h = size.height;
     final w = size.width;
@@ -439,9 +458,68 @@ class _FramePainter extends CustomPainter {
   bool shouldRepaint(_FramePainter old) => false;
 }
 
-/// Un onglet de la barre du bas (téléphone) : icône au-dessus du libellé ;
-/// actif, il se pose sur une pastille claire (style « verre », image fournie
-/// par MEDMEDBEN le 2026-10-29).
+/// Verre dépoli de la barre du téléphone (image fournie par MEDMEDBEN le
+/// 2026-10-29) : voile blanc translucide, reflet en haut, filet blanc.
+BoxDecoration _frost(bool dark, {required BorderRadius radius}) =>
+    BoxDecoration(
+      borderRadius: radius,
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: dark
+            ? [
+                Colors.white.withValues(alpha: 0.16),
+                Colors.white.withValues(alpha: 0.06),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.75),
+                Colors.white.withValues(alpha: 0.4),
+              ],
+      ),
+      border: Border.all(
+        width: 1.2,
+        color: Colors.white.withValues(alpha: dark ? 0.25 : 0.95),
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: dark ? 0.35 : 0.12),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+        ),
+      ],
+    );
+
+/// Un panneau de verre dépoli (flou + voile `_frost`).
+class _Frosted extends StatelessWidget {
+  const _Frosted({required this.radius, required this.child});
+
+  final BorderRadius radius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = AmpereColors.of(context).isDark;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: _frost(dark, radius: radius).boxShadow,
+      ),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: BackdropFilter(
+          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: DecoratedBox(
+            decoration: _frost(dark, radius: radius).copyWith(boxShadow: []),
+            child: child,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Un onglet de la barre du bas : icône au-dessus du libellé ; actif, il se
+/// pose sur une pastille de verre plus claire.
 class IslandTab extends StatelessWidget {
   const IslandTab({
     super.key,
@@ -461,7 +539,7 @@ class IslandTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final ink = active ? colors.accent : colors.ink2;
+    final ink = active ? colors.ink : colors.ink2;
     return Expanded(
       child: Semantics(
         button: true,
@@ -475,24 +553,19 @@ class IslandTab extends StatelessWidget {
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
             padding: const EdgeInsets.symmetric(vertical: 3),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              color: active
-                  ? Colors.white.withValues(alpha: colors.isDark ? 0.12 : 0.6)
-                  : Colors.white.withValues(alpha: 0),
-              border: Border.all(
-                color: Colors.white.withValues(
-                  alpha: active ? (colors.isDark ? 0.18 : 0.9) : 0,
-                ),
-              ),
-            ),
+            decoration: active
+                ? _frost(
+                    colors.isDark,
+                    radius: BorderRadius.circular(24),
+                  ).copyWith(boxShadow: [])
+                : BoxDecoration(borderRadius: BorderRadius.circular(24)),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Badge.count(
                   count: badge,
                   isLabelVisible: badge > 0,
-                  child: Icon(icon, size: 20, color: ink),
+                  child: Icon(icon, size: 21, color: ink),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -514,9 +587,8 @@ class IslandTab extends StatelessWidget {
   }
 }
 
-/// Barre de navigation du téléphone : une CAPSULE de verre dépoli qui flotte
-/// au-dessus du bas de l'écran, et à côté un bouton rond en verre (`side`) —
-/// les actions rapides, à portée du pouce.
+/// Barre de navigation du téléphone : une CAPSULE de verre dépoli, et à côté
+/// un bouton rond de verre (`side`).
 class BottomIsland extends StatelessWidget {
   const BottomIsland({super.key, required this.tabs, this.side});
 
@@ -527,22 +599,21 @@ class BottomIsland extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(12, 6, 12, 10 + bottom),
+      padding: EdgeInsets.fromLTRB(14, 6, 14, 10 + bottom),
       child: SizedBox(
         height: 62,
         child: Row(
           children: [
             Expanded(
-              child: Glass(
-                radius: 30,
-                opacity: 0.6,
+              child: _Frosted(
+                radius: BorderRadius.circular(31),
                 child: Padding(
                   padding: const EdgeInsets.all(5),
                   child: Row(children: tabs),
                 ),
               ),
             ),
-            if (side case final side?) ...[const SizedBox(width: 10), side],
+            if (side case final side?) ...[const SizedBox(width: 12), side],
           ],
         ),
       ),
@@ -550,7 +621,7 @@ class BottomIsland extends StatelessWidget {
   }
 }
 
-/// Bouton rond en verre (à côté de la capsule).
+/// Bouton rond de verre (à côté de la capsule).
 class GlassRoundButton extends StatelessWidget {
   const GlassRoundButton({
     super.key,
@@ -569,17 +640,16 @@ class GlassRoundButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: SizedBox(
-        width: 60,
-        height: 60,
-        child: Glass(
-          radius: 30,
-          opacity: 0.6,
+        width: 62,
+        height: 62,
+        child: _Frosted(
+          radius: BorderRadius.circular(31),
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
               customBorder: const CircleBorder(),
               onTap: onTap,
-              child: Icon(icon, size: 24, color: colors.accent),
+              child: Icon(icon, size: 24, color: colors.ink),
             ),
           ),
         ),

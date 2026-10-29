@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
@@ -143,7 +144,7 @@ class _CompactTabsState<T> extends State<_CompactTabs<T>> {
                     turns: _open ? 0.5 : 0,
                     duration: const Duration(milliseconds: 220),
                     child: Icon(
-                      Icons.expand_more,
+                      LucideIcons.chevronDown,
                       size: 18,
                       color: colors.ink2,
                     ),
@@ -158,7 +159,7 @@ class _CompactTabsState<T> extends State<_CompactTabs<T>> {
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: !_open
-              ? const SizedBox(width: double.infinity)
+              ? const SizedBox.shrink()
               : Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Wrap(

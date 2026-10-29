@@ -282,7 +282,10 @@ Future<void> _openCashFlow(BuildContext context, WidgetRef ref) async {
 /// État de la caisse, toujours visible : une carte « tiroir » — ce qu'il y a
 /// dedans, mouvements, clôture (rapport Z) ; fermée, elle invite à l'ouvrir.
 class _CashBar extends ConsumerWidget {
-  const _CashBar();
+  const _CashBar({this.compact = false});
+
+  /// Téléphone (2026-10-29) : une pastille d'état, les gestes dans un menu.
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -304,7 +307,9 @@ class _CashBar extends ConsumerWidget {
         tone: StatusTone.warn,
         icon: LucideIcons.cloudOff,
       ),
-      data: (cash) => cash == null
+      data: (cash) => compact
+          ? _chip(context, ref, cash)
+          : cash == null
           ? _DrawerCard(
               tone: colors.warn,
               icon: LucideIcons.lock,
@@ -368,6 +373,62 @@ class _CashBar extends ConsumerWidget {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _chip(BuildContext context, WidgetRef ref, CashSession? cash) {
+    final colors = AmpereColors.of(context);
+    if (cash == null) {
+      return ActionChip(
+        avatar: Icon(LucideIcons.lockOpen, size: 15, color: colors.warn),
+        label: const Text('Ouvrir la caisse'),
+        onPressed: () => _openCashFlow(context, ref),
+      );
+    }
+    final pending = cash.status == cashPendingSync;
+    final tone = pending ? colors.warn : colors.ok;
+    return PopupMenuButton<String>(
+      tooltip: 'Caisse',
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (type) => type == 'CLOTURE'
+          ? _closeCash(context, ref, cash)
+          : _cashMovement(context, ref, cash, type),
+      itemBuilder: (context) => [
+        if (!pending) ...const [
+          PopupMenuItem(value: 'ENTREE', child: Text('Entrée d’espèces')),
+          PopupMenuItem(value: 'SORTIE', child: Text('Sortie (dépense)')),
+          PopupMenuItem(
+            value: 'PRELEVEMENT',
+            child: Text('Prélèvement (coffre, banque)'),
+          ),
+          PopupMenuDivider(),
+        ],
+        const PopupMenuItem(value: 'CLOTURE', child: Text('Clôturer')),
+      ],
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(10, 6, 6, 6),
+        decoration: BoxDecoration(
+          color: tone.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              pending ? LucideIcons.refreshCw : LucideIcons.wallet,
+              size: 15,
+              color: tone,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              pending ? 'Caisse en attente' : formatDA(cash.currentAmount),
+              style: AmpereType.bodyStrong.copyWith(color: tone),
+            ),
+            Icon(LucideIcons.chevronDown, size: 15, color: tone),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1342,7 +1403,18 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           child: ListView(
             padding: EdgeInsets.fromLTRB(m, 8, m, 16),
             children: [
-              widget.tabs,
+              if (_phone)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: widget.tabs),
+                    const SizedBox(width: 8),
+                    if (widget.rights.canManageCash)
+                      const _CashBar(compact: true),
+                  ],
+                )
+              else
+                widget.tabs,
               const SizedBox(height: 12),
               ?catalogAlert,
               if (catalogAlert != null) const SizedBox(height: 12),
@@ -1399,6 +1471,65 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     );
   }
 
+  /// Téléphone : sous 600 px de large.
+  bool get _phone => MediaQuery.sizeOf(context).width < 600;
+
+  /// Téléphone : les gestes secondaires du panier dans un menu « ⋯ ».
+  Widget _moreCartActions(CartEstimate estimate, bool blocked) {
+    final colors = AmpereColors.of(context);
+    final cart = ref.read(cartProvider);
+    return PopupMenuButton<String>(
+      tooltip: 'Plus d’actions',
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (v) => switch (v) {
+        'remise' => _globalDiscount(estimate),
+        'devis' => _makeQuote(),
+        _ => ref.read(cartProvider.notifier).clear(),
+      },
+      itemBuilder: (_) => [
+        if (cart.quote == null) ...[
+          PopupMenuItem(
+            value: 'remise',
+            enabled: !_busy,
+            child: _menuRow(
+              LucideIcons.percent,
+              cart.discountHt > 0 ? 'Changer remise' : 'Remise',
+              colors.warn,
+            ),
+          ),
+          PopupMenuItem(
+            value: 'devis',
+            enabled: !blocked,
+            child: _menuRow(LucideIcons.fileText, 'Devis', colors.info),
+          ),
+        ],
+        PopupMenuItem(
+          value: 'vider',
+          enabled: !_busy,
+          child: _menuRow(LucideIcons.trash2, 'Vider', colors.error),
+        ),
+      ],
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: colors.surface2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.line),
+        ),
+        child: Icon(LucideIcons.ellipsis, size: 20, color: colors.ink),
+      ),
+    );
+  }
+
+  Widget _menuRow(IconData icon, String label, Color color) => Row(
+    children: [
+      Icon(icon, size: 17, color: color),
+      const SizedBox(width: 10),
+      Text(label),
+    ],
+  );
+
   /// « Entrée » dans la recherche : code-barres exact, sinon l'UNIQUE produit
   /// trouvé (on tape « 3G2 », Entrée, c'est ajouté).
   void _submitSearch(String value, List<Product> products) {
@@ -1423,34 +1554,36 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final estimate = ref.watch(cartEstimateProvider);
     final articles = cart.lines.length;
     return [
-      if (widget.rights.canManageCash) ...[
+      if (widget.rights.canManageCash && !_phone) ...[
         const _CashBar(),
         const SizedBox(height: 10),
       ],
-      Row(
-        children: [
-          Icon(LucideIcons.receipt, size: 15, color: colors.ink2),
-          const SizedBox(width: 8),
-          Text(
-            'Ticket',
-            style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              articles > 0
-                  ? '$articles article(s) · ${formatDate(DateTime.now())}'
-                  : formatDate(DateTime.now()),
-              textAlign: TextAlign.end,
-              overflow: TextOverflow.ellipsis,
-              style: AmpereType.meta.copyWith(color: colors.ink3),
+      if (!_phone) ...[
+        Row(
+          children: [
+            Icon(LucideIcons.receipt, size: 15, color: colors.ink2),
+            const SizedBox(width: 8),
+            Text(
+              'Ticket',
+              style: AmpereType.bodyStrong.copyWith(color: colors.ink),
             ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-      Divider(height: 1, color: colors.line),
-      const SizedBox(height: 10),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                articles > 0
+                    ? '$articles article(s) · ${formatDate(DateTime.now())}'
+                    : formatDate(DateTime.now()),
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+                style: AmpereType.meta.copyWith(color: colors.ink3),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Divider(height: 1, color: colors.line),
+        const SizedBox(height: 10),
+      ],
       BuyerBar(
         withConfreres: widget.rights.canSeeConfreres,
         withSuppliers:
@@ -1605,7 +1738,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           const SizedBox(height: 8),
           // Les gestes du panier en boutons étiquetés et colorés (demande
           // MEDMEDBEN du 2026-10-13 : « remise, devis… dans un bouton clair »).
-          if (!cart.isEmpty) ...[
+          if (!cart.isEmpty && !_phone) ...[
             Row(
               children: [
                 if (cart.quote == null) ...[
@@ -1644,6 +1777,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           ],
           Row(
             children: [
+              if (_phone && !cart.isEmpty) ...[
+                _moreCartActions(estimate, blocked),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: noBuyer
                     ? _PayButton(

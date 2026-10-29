@@ -1563,7 +1563,7 @@ void main() {
       size: const Size(390, 844),
       home: const AdaptiveShell(),
       palette: AppPalette.clair,
-      interact: (t) async => t.tap(find.byTooltip('Actions rapides')),
+      interact: (t) async => t.tap(find.byTooltip('Déployer')),
     ),
   );
   testWidgets(

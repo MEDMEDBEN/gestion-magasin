@@ -39,6 +39,10 @@ class _MobileShellState extends ConsumerState<MobileShell> {
   /// La page « Plus » est affichée (façon application bancaire, 2026-10-29).
   bool _more = false;
 
+  /// Encoche latérale des actions rapides : repliée en languette par défaut,
+  /// pour ne rien cacher du travail.
+  bool _notchOpen = false;
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -71,7 +75,11 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                 onPressed: () => setState(() => _more = true),
               )
             : null,
-        title: Text(showMore ? 'Plus' : current.label),
+        // Rubriques (Vente / Devis…) : choisies depuis le TITRE, plus de
+        // rangée d'onglets en tête de page (2026-10-29).
+        title: showMore || current.sections.isEmpty
+            ? Text(showMore ? 'Plus' : current.label)
+            : _SectionTitle(group: current.label, sections: current.sections),
         actions: [
           // Assistant (2026-10-05) : actions préparées, en mots simples.
           IconButton(
@@ -92,40 +100,71 @@ class _MobileShellState extends ConsumerState<MobileShell> {
           ),
         ],
       ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 220),
-        transitionBuilder: (child, animation) => FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween(
-              begin: const Offset(0.04, 0),
-              end: Offset.zero,
-            ).animate(animation),
-            child: child,
-          ),
-        ),
-        child: showMore
-            ? _MorePage(
-                key: const ValueKey('plus'),
-                user: widget.user,
-                items: [
-                  for (var i = _maxTabs - 1; i < tabs.length; i++) (i, tabs[i]),
-                ],
-                unread: unread,
-                onOpen: (i) => setState(() {
-                  _index = i;
-                  _more = false;
-                }),
-              )
-            : KeyedSubtree(
-                key: ValueKey(current.label),
-                child: current.builder(context, widget.user),
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, animation) => FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween(
+                    begin: const Offset(0.04, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: child,
+                ),
               ),
+              child: showMore
+                  ? _MorePage(
+                      key: const ValueKey('plus'),
+                      user: widget.user,
+                      items: [
+                        for (var i = _maxTabs - 1; i < tabs.length; i++)
+                          (i, tabs[i]),
+                      ],
+                      unread: unread,
+                      onOpen: (i) => setState(() {
+                        _index = i;
+                        _more = false;
+                      }),
+                    )
+                  : KeyedSubtree(
+                      key: ValueKey(current.label),
+                      child: current.builder(context, widget.user),
+                    ),
+            ),
+          ),
+          // Encoche noire au bord droit, sous le pouce : les actions rapides.
+          if (_quickActions().isNotEmpty)
+            Positioned(
+              right: 0,
+              // Au-dessus de la zone de paiement, encore sous le pouce.
+              bottom: 190,
+              child: SideIsland(
+                right: true,
+                collapsed: !_notchOpen,
+                onToggle: () => setState(() => _notchOpen = !_notchOpen),
+                buttons: [
+                  for (final (icon, label, onTap) in _quickActions())
+                    (
+                      icon: icon,
+                      tooltip: label,
+                      active: false,
+                      onTap: () {
+                        setState(() => _notchOpen = false);
+                        onTap();
+                      },
+                    ),
+                ],
+              ),
+            ),
+        ],
       ),
       // Capsule de verre en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
       // ouvre la page « Plus » ; à côté, les actions rapides.
       bottomNavigationBar: BottomIsland(
-        side: _QuickActions(user: widget.user),
+        side: _searchButton(),
         tabs: [
           for (final (i, tab)
               in (overflow ? tabs.take(_maxTabs - 1) : tabs).indexed)
@@ -171,6 +210,59 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         _more = false;
       });
     });
+  }
+
+  /// Ce que le compte peut ouvrir (destinations et rubriques).
+  Set<String> get _reachable => menuFor(
+    widget.user,
+  ).expand((d) => [d.label, ...d.sections.map((s) => s.label)]).toSet();
+
+  /// Gestes du quotidien, selon les droits du compte.
+  List<(IconData, String, VoidCallback)> _quickActions() {
+    final open = _reachable;
+    final rights = CatalogRights(widget.user);
+    return [
+      if (open.contains('Vente'))
+        (
+          LucideIcons.shoppingCart,
+          'Nouvelle vente',
+          () => goToDestination(ref, 'Vente'),
+        ),
+      if (open.contains('Scanner'))
+        (
+          LucideIcons.scanBarcode,
+          'Scanner',
+          () => goToDestination(ref, 'Scanner'),
+        ),
+      if (rights.canWriteProducts)
+        (
+          LucideIcons.packagePlus,
+          'Ajout rapide produit',
+          () => quickAddProduct(context, ref, rights),
+        ),
+      if (open.contains('Transferts'))
+        (
+          LucideIcons.arrowLeftRight,
+          'Transferts',
+          () => goToDestination(ref, 'Transferts'),
+        ),
+    ];
+  }
+
+  /// Bouton rond de verre à côté de la capsule : chercher un produit.
+  Widget? _searchButton() {
+    final open = _reachable;
+    final target = open.contains('Catalogue')
+        ? 'Catalogue'
+        : open.contains('Scanner')
+        ? 'Scanner'
+        : null;
+    if (target == null) return null;
+    return GlassRoundButton(
+      icon: LucideIcons.search,
+      tooltip: 'Rechercher un produit',
+      onTap: () => goToDestination(ref, target),
+    );
   }
 
   static const _maxTabs = 4;
@@ -399,76 +491,54 @@ class _MoreRow extends StatelessWidget {
   }
 }
 
-/// Actions rapides, à portée du pouce (bouton rond à côté de la barre) : les
-/// gestes du quotidien, selon les droits du compte.
-class _QuickActions extends ConsumerWidget {
-  const _QuickActions({required this.user});
+/// Titre-sélecteur des rubriques : « Vente ▾ » ouvre Vente / Devis.
+class _SectionTitle extends ConsumerWidget {
+  const _SectionTitle({required this.group, required this.sections});
 
-  final AuthUser user;
+  final String group;
+  final List<AppDestination> sections;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final open = menuFor(
-      user,
-    ).expand((d) => [d.label, ...d.sections.map((s) => s.label)]).toSet();
-    final rights = CatalogRights(user);
-    final actions = <(IconData, String, VoidCallback)>[
-      if (open.contains('Vente'))
-        (
-          LucideIcons.shoppingCart,
-          'Nouvelle vente',
-          () => goToDestination(ref, 'Vente'),
-        ),
-      if (open.contains('Scanner'))
-        (
-          LucideIcons.scanBarcode,
-          'Scanner',
-          () => goToDestination(ref, 'Scanner'),
-        ),
-      if (rights.canWriteProducts)
-        (
-          LucideIcons.packagePlus,
-          'Ajout rapide produit',
-          () => quickAddProduct(context, ref, rights),
-        ),
-      if (open.contains('Transferts'))
-        (
-          LucideIcons.arrowLeftRight,
-          'Transferts',
-          () => goToDestination(ref, 'Transferts'),
-        ),
-    ];
-    if (actions.isEmpty) return const SizedBox.shrink();
     final colors = AmpereColors.of(context);
-    return MenuAnchor(
-      alignmentOffset: const Offset(-150, -8),
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(colors.surface),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(vertical: 6),
-        ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: BorderSide(color: colors.line),
-          ),
-        ),
-      ),
-      menuChildren: [
-        for (final (icon, label, onTap) in actions)
-          MenuItemButton(
-            leadingIcon: Icon(icon, size: 18),
-            onPressed: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(label),
+    final index = (ref.watch(sectionIndexProvider)[group] ?? 0).clamp(
+      0,
+      sections.length - 1,
+    );
+    String name(AppDestination d) => sectionTabLabels[d.label] ?? d.label;
+    return PopupMenuButton<int>(
+      tooltip: 'Changer de rubrique',
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (i) => ref.read(sectionIndexProvider.notifier).set(group, i),
+      itemBuilder: (_) => [
+        for (final (i, d) in sections.indexed)
+          PopupMenuItem(
+            value: i,
+            child: Row(
+              children: [
+                Icon(d.icon, size: 18, color: colors.ink2),
+                const SizedBox(width: 10),
+                Expanded(child: Text(name(d))),
+                if (i == index)
+                  Icon(LucideIcons.check, size: 16, color: colors.accent),
+              ],
             ),
           ),
       ],
-      builder: (context, controller, _) => GlassRoundButton(
-        icon: LucideIcons.zap,
-        tooltip: 'Actions rapides',
-        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              name(sections[index]),
+              overflow: TextOverflow.ellipsis,
+              style: AmpereType.h4.copyWith(color: colors.ink),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Icon(LucideIcons.chevronDown, size: 18, color: colors.ink2),
+        ],
       ),
     );
   }

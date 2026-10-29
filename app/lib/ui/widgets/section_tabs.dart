@@ -41,6 +41,13 @@ class SectionTabs extends ConsumerWidget {
       sections.length - 1,
     );
     final current = sections[index];
+    // Téléphone : la rubrique se choisit depuis le titre de la page.
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return KeyedSubtree(
+        key: ValueKey('$group/${current.label}'),
+        child: current.builder(context, user),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
