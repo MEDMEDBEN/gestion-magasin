@@ -1530,6 +1530,19 @@ void main() {
     ),
   );
   testWidgets(
+    '98 verre encoche reduite',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '98_verre_encoche_reduite',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      signal: true,
+      interact: (t) async => t.tap(find.byTooltip('Réduire')),
+    ),
+  );
+  testWidgets(
     '60 fond signal desktop',
     skip: skip,
     (t) => _capture(

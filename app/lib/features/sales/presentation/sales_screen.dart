@@ -22,7 +22,6 @@ import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/pill_tabs.dart';
 import '../../../ui/widgets/export_button.dart';
 import '../../../ui/widgets/feedback_burst.dart';
-import '../../../ui/widgets/glass.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -1169,46 +1168,27 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         ),
         SizedBox(
           width: (MediaQuery.sizeOf(context).width * 0.38).clamp(440.0, 620.0),
-          // Séparations NOIRES, de l'épaisseur du cadre de l'écran
-          // (essai demandé par MEDMEDBEN le 2026-10-29) : le ticket et le
-          // paiement sont des panneaux arrondis découpés dans le cadre.
-          child: ColoredBox(
-            color: Colors.black,
-            child: Padding(
-              padding: const EdgeInsets.only(left: ScreenFrame.width),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
-                      child: ColoredBox(
-                        color: colors.surface,
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                          children: _ticketBody(),
-                        ),
-                      ),
-                    ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              border: Border(left: BorderSide(color: colors.line)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    children: _ticketBody(),
                   ),
-                  const SizedBox(height: ScreenFrame.width),
-                  ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                      bottomLeft: Radius.circular(16),
-                    ),
-                    child: ColoredBox(
-                      color: colors.surface,
-                      child: _payPanel(),
-                    ),
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.line)),
                   ),
-                ],
-              ),
+                  child: _payPanel(),
+                ),
+              ],
             ),
           ),
         ),

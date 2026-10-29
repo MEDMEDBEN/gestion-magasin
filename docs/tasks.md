@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Encoche réductible + Vente sans séparations noires — 2026-10-29 (MEDMEDBEN, Claude)
+
+- Vente : séparations noires retirées (MEDMEDBEN n'a pas aimé) — retour aux filets fins.
+- `SideIsland(collapsed:, onToggle:)` : bouton « Réduire » sous les boutons ; réduite = languette noire de
+  16 px avec poignée (survol : elle s'allonge), un clic la redéploie. Mouvement `easeOutBack` 520 ms, contenu
+  en fondu/échelle, la page glisse (`AnimatedPadding`). État non mémorisé (se rouvre au redémarrage).
+- Capture 98 (encoche réduite).
+- Preuves : analyze 0, 555 tests ; captures 95, 97, 98 vérifiées.
+
 ### Confirmations animées, filtres ≠ actions, cadre noir — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `ui/widgets/feedback_burst.dart` : `showFeedbackBurst(context, kind, titre, detail:)` — pastille au centre

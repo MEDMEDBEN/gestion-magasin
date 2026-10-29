@@ -48,6 +48,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
   /// Destination ouverte ; `null` = l'écran d'accueil (les tuiles).
   int? _index;
 
+  /// Encoche latérale réduite en languette (2026-10-29).
+  bool _islandCollapsed = false;
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -92,9 +95,19 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   intensity: ref.watch(ledStyleProvider).ambiance.intensity,
                 ),
               ),
-            Padding(
-              // L'encoche du thème verre occupe le bord gauche.
-              padding: glass
+            AnimatedPadding(
+              // L'encoche occupe le bord gauche ; réduite, le contenu
+              // glisse et reprend la place (même mouvement qu'elle).
+              duration: const Duration(milliseconds: 520),
+              curve: Curves.easeOutCubic,
+              padding: glass && _islandCollapsed
+                  ? const EdgeInsets.fromLTRB(
+                      SideIsland.collapsedWidth + 10,
+                      ScreenFrame.width,
+                      ScreenFrame.width,
+                      ScreenFrame.width,
+                    )
+                  : glass
                   ? const EdgeInsets.fromLTRB(
                       SideIsland.width + 6,
                       ScreenFrame.width,
@@ -162,6 +175,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                 left: 0,
                 top: 150,
                 child: SideIsland(
+                  collapsed: _islandCollapsed,
+                  onToggle: () =>
+                      setState(() => _islandCollapsed = !_islandCollapsed),
                   buttons: [
                     (
                       icon: LucideIcons.house,

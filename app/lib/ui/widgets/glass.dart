@@ -167,48 +167,150 @@ typedef IslandButton = ({
 /// Encoche noire collée au bord gauche (« Dynamic Island » latérale), avec
 /// ses raccords arrondis concaves en haut et en bas.
 class SideIsland extends StatelessWidget {
-  const SideIsland({super.key, required this.buttons});
+  const SideIsland({
+    super.key,
+    required this.buttons,
+    this.collapsed = false,
+    this.onToggle,
+  });
 
   final List<IslandButton> buttons;
 
+  /// Réduite (2026-10-29) : une fine languette noire avec une poignée.
+  final bool collapsed;
+
+  /// Réduire / déployer ; `null` : pas réductible.
+  final VoidCallback? onToggle;
+
   static const width = 70.0;
+
+  /// Largeur de la languette réduite.
+  static const collapsedWidth = 16.0;
+
+  static const _spring = Duration(milliseconds: 520);
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _IslandPainter(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 11),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (i, b) in buttons.indexed) ...[
-              if (i > 0) const SizedBox(height: 16),
-              _IslandButtonView(button: b),
-            ],
-          ],
+    final toggle = onToggle;
+    final open = 80.0 + buttons.length * 48 + (buttons.length - 1) * 16 + 44;
+    return AnimatedContainer(
+      // Mouvement souple, léger rebond (façon iOS).
+      duration: _spring,
+      curve: Curves.easeOutBack,
+      width: collapsed ? collapsedWidth : width,
+      height: collapsed ? 96 : open,
+      child: CustomPaint(
+        painter: _IslandPainter(),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 260),
+          switchInCurve: Curves.easeOutCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(scale: animation, child: child),
+          ),
+          child: collapsed
+              ? _Grabber(key: const ValueKey('reduite'), onTap: toggle)
+              : OverflowBox(
+                  key: const ValueKey('deployee'),
+                  minWidth: width,
+                  maxWidth: width,
+                  minHeight: open,
+                  maxHeight: open,
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(11, 40, 11, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final (i, b) in buttons.indexed) ...[
+                          if (i > 0) const SizedBox(height: 16),
+                          _IslandButtonView(button: b),
+                        ],
+                        if (toggle != null) ...[
+                          const SizedBox(height: 12),
+                          Tooltip(
+                            message: 'Réduire',
+                            child: InkResponse(
+                              onTap: toggle,
+                              radius: 18,
+                              child: const SizedBox(
+                                width: 32,
+                                height: 32,
+                                child: Icon(
+                                  Icons.chevron_left_rounded,
+                                  size: 20,
+                                  color: Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
         ),
       ),
     );
   }
 }
 
+/// Languette réduite : une poignée claire, toute la languette est cliquable.
+class _Grabber extends StatefulWidget {
+  const _Grabber({super.key, required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  State<_Grabber> createState() => _GrabberState();
+}
+
+class _GrabberState extends State<_Grabber> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: 'Déployer',
+    child: MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: Center(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 4,
+            height: _hover ? 40 : 30,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: _hover ? 0.8 : 0.45),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 class _IslandPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    const r = 30.0; // arrondi côté écran
     const c = 22.0; // raccord concave
     final h = size.height;
-    final w = SideIsland.width;
+    final w = size.width;
+    // Arrondi côté écran : jamais plus que la moitié de la largeur.
+    final r = math.min(30.0, w).clamp(1.0, h / 2);
     final path = Path()
       ..moveTo(0, -c)
       // Raccord concave du haut.
-      ..quadraticBezierTo(0, 0, c, 0)
+      ..quadraticBezierTo(0, 0, c.clamp(0, w), 0)
       ..lineTo(w - r, 0)
-      ..arcToPoint(Offset(w, r), radius: const Radius.circular(r))
+      ..arcToPoint(Offset(w, r), radius: Radius.circular(r))
       ..lineTo(w, h - r)
-      ..arcToPoint(Offset(w - r, h), radius: const Radius.circular(r))
-      ..lineTo(c, h)
+      ..arcToPoint(Offset(w - r, h), radius: Radius.circular(r))
+      ..lineTo(c.clamp(0, w), h)
       // Raccord concave du bas.
       ..quadraticBezierTo(0, h, 0, h + c)
       ..close();
@@ -217,7 +319,7 @@ class _IslandPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IslandPainter old) => false;
+  bool shouldRepaint(_IslandPainter old) => true;
 }
 
 class _IslandButtonView extends StatefulWidget {
