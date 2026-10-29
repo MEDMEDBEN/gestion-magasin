@@ -1121,26 +1121,25 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // geste de la vente — ① choisir les articles, ② vérifier le ticket,
     // ③ encaisser. Chaque étape est un panneau titré et numéroté ; dans le
     // ticket, des sections nommées (Acheteur, Articles) guident la lecture.
+    // Sans titres de panneaux (demande MEDMEDBEN du 2026-10-29) : la place va
+    // aux articles et au panier ; les onglets vivent dans la colonne de
+    // gauche pour que le panier monte jusqu'en haut.
     return Padding(
-      padding: EdgeInsets.fromLTRB(m + 4, 12, m + 4, m + 4),
-      child: Column(
+      padding: EdgeInsets.fromLTRB(m, 10, m, m),
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          widget.tabs,
-          const SizedBox(height: 14),
           Expanded(
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ① Articles.
+                widget.tabs,
+                const SizedBox(height: 10),
+                // Articles.
                 Expanded(
                   child: _SalePanel(
-                    step: 1,
-                    icon: LucideIcons.packageSearch,
-                    title: 'Articles',
-                    subtitle: 'Touchez un article ou scannez son code',
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -1184,116 +1183,91 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: (MediaQuery.sizeOf(context).width * 0.36).clamp(
-                    430.0,
-                    600.0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // La caisse : un bandeau d'état, au-dessus du ticket.
-                      if (widget.rights.canManageCash) ...[
-                        const _CashBar(),
-                        const SizedBox(height: 12),
-                      ],
-                      // ② Ticket.
-                      Expanded(
-                        child: _SalePanel(
-                          step: 2,
-                          icon: LucideIcons.receipt,
-                          title: 'Ticket',
-                          subtitle: formatDate(DateTime.now()),
-                          trailing: articles == 0
-                              ? null
-                              : AmpereBadge(
-                                  label:
-                                      '$articles article${articles > 1 ? 's' : ''}',
-                                  tone: StatusTone.info,
-                                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: (MediaQuery.sizeOf(context).width * 0.36).clamp(
+              430.0,
+              600.0,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // La caisse : un bandeau d'état, au-dessus du ticket.
+                if (widget.rights.canManageCash) ...[
+                  const _CashBar(),
+                  const SizedBox(height: 10),
+                ],
+                // Panier.
+                Expanded(
+                  child: _SalePanel(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  12,
-                                  16,
-                                  0,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    const _SectionHeading('Acheteur'),
-                                    const SizedBox(height: 8),
-                                    BuyerBar(
-                                      withConfreres:
-                                          widget.rights.canSeeConfreres,
-                                      withSuppliers:
-                                          widget.rights.canSeeConfreres &&
-                                          widget.rights.canWriteCustomers,
-                                    ),
-                                    if (cart.quote case final quote?) ...[
-                                      const SizedBox(height: 10),
-                                      AmpereInlineAlert(
-                                        tone: StatusTone.info,
-                                        message:
-                                            'Modification du devis '
-                                            '${quote.number} : le panier '
-                                            'remplacera ses lignes. « Vider » '
-                                            'abandonne la modification.',
-                                      ),
-                                    ],
-                                    const SizedBox(height: 16),
-                                    // En-tête des colonnes des lignes.
-                                    Row(
-                                      children: [
-                                        const Expanded(
-                                          child: _SectionHeading('Articles'),
-                                        ),
-                                        Text(
-                                          'QTÉ  ·  TOTAL',
-                                          style: AmpereType.label.copyWith(
-                                            color: colors.ink3,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 56),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Divider(height: 1, color: colors.line),
-                                  ],
-                                ),
+                              const _SectionHeading('Acheteur'),
+                              const SizedBox(height: 8),
+                              BuyerBar(
+                                withConfreres: widget.rights.canSeeConfreres,
+                                withSuppliers:
+                                    widget.rights.canSeeConfreres &&
+                                    widget.rights.canWriteCustomers,
                               ),
-                              Expanded(
-                                child: ListView(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    16,
-                                    0,
-                                    16,
-                                    8,
+                              if (cart.quote case final quote?) ...[
+                                const SizedBox(height: 10),
+                                AmpereInlineAlert(
+                                  tone: StatusTone.info,
+                                  message:
+                                      'Modification du devis '
+                                      '${quote.number} : le panier '
+                                      'remplacera ses lignes. « Vider » '
+                                      'abandonne la modification.',
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              // En-tête des colonnes des lignes.
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _SectionHeading(
+                                      articles == 0
+                                          ? 'Articles'
+                                          : 'Articles · $articles',
+                                    ),
                                   ),
-                                  children: _ticketLines(),
-                                ),
+                                  Text(
+                                    'QTÉ  ·  TOTAL',
+                                    style: AmpereType.label.copyWith(
+                                      color: colors.ink3,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 56),
+                                ],
                               ),
+                              const SizedBox(height: 6),
+                              Divider(height: 1, color: colors.line),
                             ],
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      // ③ Paiement.
-                      _SalePanel(
-                        step: 3,
-                        icon: LucideIcons.wallet,
-                        title: 'Paiement',
-                        fill: false,
-                        child: _payPanel(),
-                      ),
-                    ],
+                        Expanded(
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            children: _ticketLines(),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                const SizedBox(height: 10),
+                // Paiement.
+                _SalePanel(fill: false, child: _payPanel()),
               ],
             ),
           ),
@@ -2949,34 +2923,24 @@ class _AppearIn extends StatelessWidget {
   );
 }
 
-/// Un panneau de la caisse : en-tête (pastille d'étape, icône, titre, sous-
-/// titre, à droite un indicateur), filet, contenu. Le numéro dit l'ordre du
-/// geste : on lit l'écran de gauche à droite, de haut en bas.
+/// Un panneau de la caisse : fond, filet, coins arrondis, ombre douce — sans
+/// titre (2026-10-29 : « pas besoin d'indication »).
 class _SalePanel extends StatelessWidget {
-  const _SalePanel({
-    required this.step,
-    required this.icon,
-    required this.title,
-    required this.child,
-    this.subtitle,
-    this.trailing,
-    this.fill = true,
-  });
+  const _SalePanel({required this.child, this.fill = true});
+
+  final Widget child;
 
   /// Le contenu occupe la hauteur donnée au panneau ; `false` : il prend
-  /// sa taille (panneau Paiement).
+  /// sa taille (panneau du paiement).
   final bool fill;
-
-  final int step;
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Widget? trailing;
-  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    final body = ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: child,
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surface,
@@ -2990,62 +2954,7 @@ class _SalePanel extends StatelessWidget {
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Row(
-                children: [
-                  // Pastille d'étape : ①, ②, ③.
-                  Container(
-                    width: 26,
-                    height: 26,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: colors.accentGradient,
-                    ),
-                    child: Text(
-                      '$step',
-                      style: AmpereType.bodyStrong.copyWith(
-                        color: colors.onAccent,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Icon(icon, size: 17, color: colors.ink2),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: AmpereType.h4.copyWith(color: colors.ink),
-                        ),
-                        if (subtitle case final s?)
-                          Text(
-                            s,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AmpereType.meta.copyWith(color: colors.ink3),
-                          ),
-                      ],
-                    ),
-                  ),
-                  ?trailing,
-                ],
-              ),
-            ),
-            Divider(height: 1, color: colors.line),
-            if (fill) Expanded(child: child) else child,
-          ],
-        ),
-      ),
+      child: fill ? SizedBox.expand(child: body) : body,
     );
   }
 }

@@ -4,6 +4,13 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : panneaux sans titres, panier jusqu'en haut — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `_SalePanel` réduit au cadre (fond, filet, ombre) ; plus de titres « Articles / Ticket / Paiement ».
+- Onglets de la Vente dans la colonne de gauche : la caisse puis le panier montent jusqu'en haut à droite.
+  Marges et écarts réduits. Le nombre d'articles passe dans « ARTICLES · n ».
+- Preuves : analyze 0, 555 tests ; captures 21 et 52 vérifiées.
+
 ### Vente en panneaux numérotés — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `_wideBody` (poste) : ① Articles (recherche, catégories, légende, grille) | caisse en bandeau, ② Ticket
