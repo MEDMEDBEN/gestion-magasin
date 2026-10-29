@@ -474,6 +474,10 @@ void main() {
         100,
         scrollable: find.byType(Scrollable).last,
       );
+      // La page défile sous la barre de verre : on va jusqu'en bas, la
+      // marge de fin de liste dégage la dernière entrée de la barre.
+      await tester.drag(find.byType(Scrollable).last, const Offset(0, -400));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Mon profil'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Mon profil'), findsOneWidget);

@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Téléphone : barre de verre flottante, sans loupe — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `MobileShell` : `extendBody: true` — le contenu défile SOUS la capsule de verre (plus de bande en pied).
+  Bouton rond de recherche retiré (`GlassRoundButton` et `BottomIsland.side` supprimés) : 4 onglets.
+- `withNavBar(context, padding)` (page_kit.dart) : ajoute la hauteur de la barre au bas des listes de page
+  (28 listes + page « Plus » + Vente panier vide) ; zone de paiement de la Vente : fond sous le verre,
+  contenu au-dessus. Encoche latérale remontée (`bottom: 260`). Voile clair allégé.
+- Preuves : analyze 0, 557 tests ; captures 22, 47, 48.
+
 ### Téléphone : barre de verre de l'image, encoche latérale, Vente allégée — 2026-10-29 (MEDMEDBEN, Claude)
 
 - Barre du bas = capsule de verre dépoli de l'image fournie (`_frost`/`_Frosted`, glass.dart) + bouton rond

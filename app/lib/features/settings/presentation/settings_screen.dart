@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/error/api_exception.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/fields_dialog.dart';
@@ -47,7 +49,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final rights = SettingsRights(user);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: withNavBar(context, EdgeInsets.all(16)),
       children: [
         if (rights.canManageStore) const _StoreCard(),
         if (rights.canManageStore) const _PrintCard(),

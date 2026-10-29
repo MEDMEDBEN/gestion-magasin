@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../ui/breakpoints.dart';
@@ -110,7 +112,10 @@ class NotificationsScreen extends ConsumerWidget {
                         'réceptions viendront s’afficher ici.',
                   )
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       for (final item in page.data)
                         _NotificationTile(item: item, open: open),

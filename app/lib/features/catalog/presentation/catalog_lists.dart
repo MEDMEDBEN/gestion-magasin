@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/ampere_controls.dart';
@@ -46,7 +48,10 @@ class CategoriesList extends ConsumerWidget {
           }
           final roots = items.where((c) => c.parentId == null);
           return ListView(
-            padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+            padding: withNavBar(
+              context,
+              EdgeInsets.fromLTRB(margin, 0, margin, 24),
+            ),
             children: [
               for (final root in roots) ...[
                 _Row(
@@ -115,7 +120,10 @@ class LocationsList extends ConsumerWidget {
             );
           }
           return ListView(
-            padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+            padding: withNavBar(
+              context,
+              EdgeInsets.fromLTRB(margin, 0, margin, 24),
+            ),
             children: [
               for (final bin in bins)
                 _Row(

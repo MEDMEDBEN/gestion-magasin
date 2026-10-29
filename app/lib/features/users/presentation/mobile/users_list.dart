@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../../ui/widgets/page_kit.dart';
+
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
 import '../../../../ui/widgets/ampere_controls.dart';
@@ -35,11 +37,14 @@ class UsersList extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-          AmpereGeometry.screenMarginMobile,
-          0,
-          AmpereGeometry.screenMarginMobile,
-          24,
+        padding: withNavBar(
+          context,
+          EdgeInsets.fromLTRB(
+            AmpereGeometry.screenMarginMobile,
+            0,
+            AmpereGeometry.screenMarginMobile,
+            24,
+          ),
         ),
         itemCount: state.items.length + 1,
         separatorBuilder: (_, _) => const SizedBox(height: 8),

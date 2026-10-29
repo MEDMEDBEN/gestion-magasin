@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'page_kit.dart';
+
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 
@@ -51,7 +53,10 @@ class _AmpereSkeletonListState extends State<AmpereSkeletonList>
     final animate = !MediaQuery.disableAnimationsOf(context);
 
     return ListView.separated(
-      padding: const EdgeInsets.all(AmpereGeometry.screenMarginMobile),
+      padding: withNavBar(
+        context,
+        EdgeInsets.all(AmpereGeometry.screenMarginMobile),
+      ),
       itemCount: widget.rows,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, _) => AnimatedBuilder(

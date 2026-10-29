@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
@@ -170,7 +172,10 @@ class _DormantTab extends ConsumerWidget {
                         'compteur à zéro : c’est la dernière VENTE qui compte.',
                   )
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       for (final row in data.data)
                         _DormantTile(key: ValueKey(row.productId), row: row),
@@ -290,7 +295,10 @@ class _DemandTab extends ConsumerWidget {
               onRetry: () => ref.invalidate(productDemandProvider),
             ),
             data: (data) => ListView(
-              padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+              padding: withNavBar(
+                context,
+                EdgeInsets.fromLTRB(margin, 0, margin, 24),
+              ),
               children: [
                 _DemandSection(
                   title: 'Les plus vendus',

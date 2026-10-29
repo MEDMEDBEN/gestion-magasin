@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/offline_write.dart';
@@ -183,7 +185,10 @@ class ConfreresSection extends ConsumerWidget {
                     title: 'Aucun confrère',
                   )
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       SummaryStrip(
                         items: [

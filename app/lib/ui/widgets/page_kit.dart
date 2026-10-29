@@ -436,3 +436,11 @@ class GuideSteps extends StatelessWidget {
     );
   }
 }
+
+/// Marge du bas d'une liste qui défile DERRIÈRE la barre de verre du
+/// téléphone (2026-10-29) : la hauteur de la barre s'ajoute, pour que le
+/// dernier élément reste atteignable. Sans barre (poste), rien ne change.
+EdgeInsetsGeometry withNavBar(
+  BuildContext context,
+  EdgeInsetsGeometry padding,
+) => padding.add(EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom));

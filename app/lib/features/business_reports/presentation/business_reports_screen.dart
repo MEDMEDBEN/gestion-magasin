@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/error/api_exception.dart';
 import '../../../core/file_export.dart';
 import '../../../core/money.dart';
@@ -33,7 +35,7 @@ class BusinessReportsScreen extends ConsumerWidget {
     final period = ref.watch(reportRangeProvider);
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(margin, 12, margin, 24),
+      padding: withNavBar(context, EdgeInsets.fromLTRB(margin, 12, margin, 24)),
       children: [
         const AmpereInlineAlert(
           tone: StatusTone.info,

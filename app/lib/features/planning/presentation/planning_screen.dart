@@ -92,7 +92,7 @@ class _PlanningScreenState extends ConsumerState<PlanningScreen> {
     // actions, les filtres, puis un TABLEAU des tâches — même vide, il montre
     // à quoi il servira.
     return ListView(
-      padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+      padding: withNavBar(context, EdgeInsets.fromLTRB(margin, 14, margin, 24)),
       children: [
         GuideSteps(
           title: 'COMMENT FONCTIONNE LE PLANNING',

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/error/api_exception.dart';
 import '../../../core/pdf_printing.dart';
 import '../../../core/providers.dart';
@@ -106,7 +108,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640),
         child: ListView(
-          padding: const EdgeInsets.all(AmpereGeometry.screenMarginMobile),
+          padding: withNavBar(
+            context,
+            EdgeInsets.all(AmpereGeometry.screenMarginMobile),
+          ),
           children: [
             _IdentityCard(user: widget.user),
             const SizedBox(height: 14),

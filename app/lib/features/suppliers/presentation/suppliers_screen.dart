@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/error/api_exception.dart';
 import '../../../core/dates.dart';
 import '../../../core/money.dart';
@@ -180,7 +182,10 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                 // MEDMEDBEN du 2026-10-13) : qui, ce que je lui dois, et les
                 // gestes courants sans ouvrir la fiche.
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       SummaryStrip(
                         items: [

@@ -63,7 +63,7 @@ class HomeScreen extends ConsumerWidget {
       ],
     );
     return ListView(
-      padding: EdgeInsets.fromLTRB(margin, 20, margin, 32),
+      padding: withNavBar(context, EdgeInsets.fromLTRB(margin, 20, margin, 32)),
       children: [
         if (desktop)
           Row(

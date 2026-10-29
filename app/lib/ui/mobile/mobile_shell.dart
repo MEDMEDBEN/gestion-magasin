@@ -12,6 +12,7 @@ import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 import '../widgets/glass.dart';
+import '../widgets/page_kit.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/section_tabs.dart';
 import '../widgets/sync_panel.dart';
@@ -64,6 +65,9 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         tabs.skip(_maxTabs - 1).any((t) => t.label == 'Notifications');
 
     return Scaffold(
+      // Le contenu passe SOUS la barre de verre (2026-10-29) : elle flotte,
+      // floute ce qui défile derrière ; pas de bande réservée en pied.
+      extendBody: true,
       // En-tête fin (2026-10-12) : la place va au contenu.
       appBar: AppBar(
         toolbarHeight: 48,
@@ -139,8 +143,8 @@ class _MobileShellState extends ConsumerState<MobileShell> {
           if (_quickActions().isNotEmpty)
             Positioned(
               right: 0,
-              // Au-dessus de la zone de paiement, encore sous le pouce.
-              bottom: 190,
+              // Au-dessus de la barre et de la zone de paiement, sous le pouce.
+              bottom: 260,
               child: SideIsland(
                 right: true,
                 collapsed: !_notchOpen,
@@ -164,7 +168,6 @@ class _MobileShellState extends ConsumerState<MobileShell> {
       // Capsule de verre en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
       // ouvre la page « Plus » ; à côté, les actions rapides.
       bottomNavigationBar: BottomIsland(
-        side: _searchButton(),
         tabs: [
           for (final (i, tab)
               in (overflow ? tabs.take(_maxTabs - 1) : tabs).indexed)
@@ -249,22 +252,6 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     ];
   }
 
-  /// Bouton rond de verre à côté de la capsule : chercher un produit.
-  Widget? _searchButton() {
-    final open = _reachable;
-    final target = open.contains('Catalogue')
-        ? 'Catalogue'
-        : open.contains('Scanner')
-        ? 'Scanner'
-        : null;
-    if (target == null) return null;
-    return GlassRoundButton(
-      icon: LucideIcons.search,
-      tooltip: 'Rechercher un produit',
-      onTap: () => goToDestination(ref, target),
-    );
-  }
-
   static const _maxTabs = 4;
 }
 
@@ -340,7 +327,7 @@ class _MorePage extends StatelessWidget {
     if (rest.isNotEmpty) sections.add(('Autres', rest));
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: withNavBar(context, const EdgeInsets.fromLTRB(16, 8, 16, 24)),
       children: [
         // Carte du compte, en dégradé (comme le solde d'une appli bancaire).
         Container(

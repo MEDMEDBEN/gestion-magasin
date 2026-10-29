@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../ui/breakpoints.dart';
@@ -187,7 +189,10 @@ class _ConversationsScreenState extends ConsumerState<ConversationsScreen> {
                     ),
                   )
                 : ListView.separated(
-                    padding: EdgeInsets.fromLTRB(margin, 4, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 4, margin, 24),
+                    ),
                     itemCount: page.data.length,
                     separatorBuilder: (_, _) =>
                         Divider(height: 1, color: colors.lineSoft),

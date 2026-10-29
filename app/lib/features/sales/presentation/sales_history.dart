@@ -7,6 +7,8 @@ import '../../../core/money.dart';
 import '../../../core/quantity.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/screen_state.dart';
@@ -102,7 +104,10 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
                         : 'Aucune vente ne correspond à « $_query ».',
                   )
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       if (page.meta.total > page.data.length)
                         Padding(

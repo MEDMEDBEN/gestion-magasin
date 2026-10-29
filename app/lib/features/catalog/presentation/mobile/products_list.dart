@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../ui/widgets/page_kit.dart';
+
 import '../../../../core/money.dart';
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
@@ -54,11 +56,14 @@ class ProductsList extends StatelessWidget {
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(
-          AmpereGeometry.screenMarginMobile,
-          0,
-          AmpereGeometry.screenMarginMobile,
-          24,
+        padding: withNavBar(
+          context,
+          EdgeInsets.fromLTRB(
+            AmpereGeometry.screenMarginMobile,
+            0,
+            AmpereGeometry.screenMarginMobile,
+            24,
+          ),
         ),
         itemCount: products.length,
         separatorBuilder: (_, _) => const SizedBox(height: 8),

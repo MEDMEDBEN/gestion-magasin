@@ -205,7 +205,10 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
         );
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          padding: withNavBar(
+            context,
+            EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          ),
           children: [
             GuideSteps(
               title: 'D’UNE COMMANDE À LA MARCHANDISE EN STOCK',

@@ -202,7 +202,10 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
         ];
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          padding: withNavBar(
+            context,
+            EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          ),
           children: [
             GuideSteps(
               title: 'LE CIRCUIT D’UN TRANSFERT',

@@ -358,7 +358,10 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
         final catalogEmpty = products.isEmpty && search.isEmpty;
         final actions = _actions(menu);
         return ListView(
-          padding: EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
+          padding: withNavBar(
+            context,
+            EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
+          ),
           children: [
             if (catalogEmpty) ...[
               const GuideSteps(
@@ -897,11 +900,9 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
             data: (items) {
               if (items.isEmpty) {
                 return ListView(
-                  padding: EdgeInsets.fromLTRB(
-                    widget.margin,
-                    0,
-                    widget.margin,
-                    24,
+                  padding: withNavBar(
+                    context,
+                    EdgeInsets.fromLTRB(widget.margin, 0, widget.margin, 24),
                   ),
                   children: [
                     AmpereInlineAlert(
@@ -941,11 +942,9 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
                 );
               }
               return ListView.separated(
-                padding: EdgeInsets.fromLTRB(
-                  widget.margin,
-                  0,
-                  widget.margin,
-                  24,
+                padding: withNavBar(
+                  context,
+                  EdgeInsets.fromLTRB(widget.margin, 0, widget.margin, 24),
                 ),
                 itemCount: items.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../ui/breakpoints.dart';
@@ -175,7 +177,10 @@ class AuditScreen extends ConsumerWidget {
                         '(« Tout ») pour remonter plus loin.',
                   )
                 : ListView(
-                    padding: EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    padding: withNavBar(
+                      context,
+                      EdgeInsets.fromLTRB(margin, 0, margin, 24),
+                    ),
                     children: [
                       for (var k = 0; k < state.items.length; k++) ...[
                         if (k == 0 ||

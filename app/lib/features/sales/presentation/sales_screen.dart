@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../ui/widgets/page_kit.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
@@ -667,7 +669,10 @@ class _CashSessionsSection extends ConsumerWidget {
               title: 'Aucune caisse ouverte pour l’instant',
             )
           : ListView(
-              padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+              padding: withNavBar(
+                context,
+                EdgeInsets.fromLTRB(margin, 14, margin, 24),
+              ),
               children: [
                 for (final s in items)
                   Card(
@@ -1401,7 +1406,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       children: [
         Expanded(
           child: ListView(
-            padding: EdgeInsets.fromLTRB(m, 8, m, 16),
+            // Panier vide : la liste va jusque sous la barre de verre ; sinon la
+            // zone de paiement s'en charge.
+            padding: ref.watch(cartProvider).isEmpty
+                ? withNavBar(context, EdgeInsets.fromLTRB(m, 8, m, 16))
+                : EdgeInsets.fromLTRB(m, 8, m, 16),
             children: [
               if (_phone)
                 Row(
@@ -1465,7 +1474,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                 top: BorderSide(color: AmpereColors.of(context).line),
               ),
             ),
-            child: _payPanel(compact: true),
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.paddingOf(context).bottom,
+              ),
+              child: _payPanel(compact: true),
+            ),
           ),
       ],
     );

@@ -145,7 +145,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         );
 
         return ListView(
-          padding: EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          padding: withNavBar(
+            context,
+            EdgeInsets.fromLTRB(margin, 14, margin, 24),
+          ),
           children: [
             GuideSteps(
               title: 'COMMENT SE PASSE UN INVENTAIRE',

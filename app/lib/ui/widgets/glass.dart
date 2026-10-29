@@ -472,8 +472,8 @@ BoxDecoration _frost(bool dark, {required BorderRadius radius}) =>
                 Colors.white.withValues(alpha: 0.06),
               ]
             : [
-                Colors.white.withValues(alpha: 0.75),
-                Colors.white.withValues(alpha: 0.4),
+                Colors.white.withValues(alpha: 0.6),
+                Colors.white.withValues(alpha: 0.28),
               ],
       ),
       border: Border.all(
@@ -587,13 +587,12 @@ class IslandTab extends StatelessWidget {
   }
 }
 
-/// Barre de navigation du téléphone : une CAPSULE de verre dépoli, et à côté
-/// un bouton rond de verre (`side`).
+/// Barre de navigation du téléphone : une CAPSULE de verre dépoli qui flotte
+/// au-dessus du contenu (celui-ci défile derrière, flouté).
 class BottomIsland extends StatelessWidget {
-  const BottomIsland({super.key, required this.tabs, this.side});
+  const BottomIsland({super.key, required this.tabs});
 
   final List<IslandTab> tabs;
-  final Widget? side;
 
   @override
   Widget build(BuildContext context) {
@@ -613,45 +612,7 @@ class BottomIsland extends StatelessWidget {
                 ),
               ),
             ),
-            if (side case final side?) ...[const SizedBox(width: 12), side],
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Bouton rond de verre (à côté de la capsule).
-class GlassRoundButton extends StatelessWidget {
-  const GlassRoundButton({
-    super.key,
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AmpereColors.of(context);
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox(
-        width: 62,
-        height: 62,
-        child: _Frosted(
-          radius: BorderRadius.circular(31),
-          child: Material(
-            type: MaterialType.transparency,
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: Icon(icon, size: 24, color: colors.ink),
-            ),
-          ),
         ),
       ),
     );
