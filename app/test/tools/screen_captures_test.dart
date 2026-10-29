@@ -1543,6 +1543,29 @@ void main() {
     ),
   );
   testWidgets(
+    '47 page plus mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '47_page_plus_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async => t.tap(find.text('Plus')),
+    ),
+  );
+  testWidgets(
+    '48 accueil mobile clair',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '48_accueil_mobile_clair',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+    ),
+  );
+  testWidgets(
     '60 fond signal desktop',
     skip: skip,
     (t) => _capture(

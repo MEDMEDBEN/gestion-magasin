@@ -167,8 +167,8 @@ class AmpereGeometry {
   static const double touchMin = 44;
   static const double touchDefault = 48;
   static const double touchPrimary = 52;
-  static const double listRowMin = 56;
-  static const double fieldHeightMobile = 52;
+  static const double listRowMin = 50;
+  static const double fieldHeightMobile = 46;
   static const double fieldHeightDesktop = 38;
   static const double buttonHeightDesktop = 36;
   static const double buttonHeightForm = 40;

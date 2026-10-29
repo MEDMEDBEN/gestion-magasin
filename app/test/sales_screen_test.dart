@@ -1038,6 +1038,9 @@ void main() {
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+      // Onglets en ligne qui défile : on l'amène à l'écran d'abord.
+      await tester.ensureVisible(find.text('Confrères'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Confrères'));
       await tester.pumpAndSettle();
       expect(find.text('Ali Élec'), findsOneWidget);
@@ -1351,6 +1354,9 @@ void main() {
       permissions: const ['sale.create', 'cash.report.read'],
     );
     await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), [], user: admin);
+    // Onglets en ligne qui défile : on l'amène à l'écran d'abord.
+    await tester.ensureVisible(find.text('Caisses'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Caisses'));
     await tester.pumpAndSettle();
     await tester.tap(find.textContaining('Caissier'));

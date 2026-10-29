@@ -2294,115 +2294,124 @@ class _CartLineRow extends ConsumerWidget {
           style: AmpereType.meta.copyWith(color: colors.warn),
         ),
     ];
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          line.product.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+        ),
+        Text(
+          [
+            if (unitPriceHt != null)
+              '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
+            // Prix d'achat visible (2026-10-05) : jusqu'où baisser.
+            if (line.product.lastPurchasePriceHt case final cost?)
+              'achat ${formatDA(cost)}',
+            line.product.sku,
+          ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.meta.copyWith(color: colors.ink3),
+        ),
+        if (badges.isNotEmpty)
+          Wrap(spacing: 4, runSpacing: 2, children: badges),
+      ],
+    );
+    final stepper = Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tool(
+            LucideIcons.minus,
+            'Moins',
+            () =>
+                cart.setQuantity(line.product.id, line.quantity - Quantity.one),
+          ),
+          // Toucher la quantité la SAISIT (2026-10-12).
+          InkWell(
+            onTap: () => _editQuantity(context, ref),
+            child: Tooltip(
+              message: 'Saisir la quantité',
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 44),
+                child: Text(
+                  '${formatQuantity(line.quantity)} ${line.product.unit.short}',
+                  textAlign: TextAlign.center,
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: colors.ink,
+                    fontFeatures: AmpereType.tabular,
+                    decoration: TextDecoration.underline,
+                    decorationStyle: TextDecorationStyle.dotted,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          tool(LucideIcons.plus, 'Plus', () => cart.add(line.product)),
+        ],
+      ),
+    );
+    final rest = <Widget>[
+      SizedBox(
+        width: 92,
+        child: Text(
+          totalHt == null ? '—' : formatDA(totalHt!),
+          textAlign: TextAlign.end,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.bodyStrong.copyWith(
+            color: colors.ink,
+            fontFeatures: AmpereType.tabular,
+          ),
+        ),
+      ),
+      const SizedBox(width: 4),
+      tool(
+        LucideIcons.pencil,
+        'Modifier le prix',
+        () => _editPrice(context, ref),
+      ),
+      if (canDiscount && !missingPrice)
+        tool(LucideIcons.percent, 'Remise', () => _editDiscount(context, ref)),
+      tool(
+        LucideIcons.trash2,
+        'Retirer',
+        () => cart.setQuantity(line.product.id, Quantity.zero),
+        color: colors.error,
+      ),
+    ];
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 7),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: colors.lineSoft)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  line.product.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-                ),
-                Text(
-                  [
-                    if (unitPriceHt != null)
-                      '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
-                    // Prix d'achat visible (2026-10-05) : jusqu'où baisser.
-                    if (line.product.lastPurchasePriceHt case final cost?)
-                      'achat ${formatDA(cost)}',
-                    line.product.sku,
-                  ].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AmpereType.meta.copyWith(color: colors.ink3),
-                ),
-                if (badges.isNotEmpty)
-                  Wrap(spacing: 4, runSpacing: 2, children: badges),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Quantité : − 2 pce +, petite pastille bordée.
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colors.line),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                tool(
-                  LucideIcons.minus,
-                  'Moins',
-                  () => cart.setQuantity(
-                    line.product.id,
-                    line.quantity - Quantity.one,
-                  ),
-                ),
-                // Toucher la quantité la SAISIT (2026-10-12).
-                InkWell(
-                  onTap: () => _editQuantity(context, ref),
-                  child: Tooltip(
-                    message: 'Saisir la quantité',
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 44),
-                      child: Text(
-                        '${formatQuantity(line.quantity)} ${line.product.unit.short}',
-                        textAlign: TextAlign.center,
-                        style: AmpereType.bodyStrong.copyWith(
-                          color: colors.ink,
-                          fontFeatures: AmpereType.tabular,
-                          decoration: TextDecoration.underline,
-                          decorationStyle: TextDecorationStyle.dotted,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                tool(LucideIcons.plus, 'Plus', () => cart.add(line.product)),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 92,
-            child: Text(
-              totalHt == null ? '—' : formatDA(totalHt!),
-              textAlign: TextAlign.end,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AmpereType.bodyStrong.copyWith(
-                color: colors.ink,
-                fontFeatures: AmpereType.tabular,
+      // Téléphone (étroit) : le nom en entier sur sa ligne, les gestes
+      // dessous ; poste : une seule bande (2026-10-29).
+      child: LayoutBuilder(
+        builder: (context, box) => box.maxWidth < 440
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  info,
+                  const SizedBox(height: 6),
+                  Row(children: [stepper, const Spacer(), ...rest]),
+                ],
+              )
+            : Row(
+                children: [
+                  Expanded(child: info),
+                  const SizedBox(width: 8),
+                  stepper,
+                  ...rest,
+                ],
               ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          tool(
-            LucideIcons.pencil,
-            'Modifier le prix',
-            () => _editPrice(context, ref),
-          ),
-          if (canDiscount && !missingPrice)
-            tool(
-              LucideIcons.percent,
-              'Remise',
-              () => _editDiscount(context, ref),
-            ),
-          tool(
-            LucideIcons.trash2,
-            'Retirer',
-            () => cart.setQuantity(line.product.id, Quantity.zero),
-            color: colors.error,
-          ),
-        ],
       ),
     );
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/ui/widgets/glass.dart';
 import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
@@ -196,9 +197,7 @@ void main() {
 
   group('points de rupture AMPÈRE §9', () {
     List<String> tabsOf(WidgetTester tester) => [
-      for (final d in tester.widgetList<NavigationDestination>(
-        find.byType(NavigationDestination),
-      ))
+      for (final d in tester.widgetList<IslandTab>(find.byType(IslandTab)))
         d.label,
     ];
 
@@ -237,7 +236,7 @@ void main() {
       await _pumpShell(tester, user: authUser(), size: const Size(700, 900));
 
       expect(find.byType(MobileShell), findsOneWidget);
-      expect(find.byType(NavigationBar), findsOneWidget);
+      expect(find.byType(BottomIsland), findsOneWidget);
     });
 
     testWidgets('768-1180 : desktop, accueil à tuiles sur deux colonnes', (
@@ -425,7 +424,7 @@ void main() {
       );
 
       // Accueil, Catalogue, Stock + Plus : 4 onglets, jamais 5.
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(IslandTab), findsNWidgets(4));
       expect(find.text('Plus'), findsOneWidget);
       expect(find.text('Utilisateurs'), findsNothing);
 

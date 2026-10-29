@@ -5,9 +5,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
 import '../../features/notifications/application/notifications_controller.dart';
+import '../../features/users/data/user_models.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
+import '../widgets/glass.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/section_tabs.dart';
 import '../widgets/sync_panel.dart';
@@ -32,6 +34,9 @@ class MobileShell extends ConsumerStatefulWidget {
 class _MobileShellState extends ConsumerState<MobileShell> {
   int _index = 0;
 
+  /// La page « Plus » est affichée (façon application bancaire, 2026-10-29).
+  bool _more = false;
+
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
@@ -45,13 +50,26 @@ class _MobileShellState extends ConsumerState<MobileShell> {
     final current = tabs[index];
     _followRequest(tabs);
     final overflow = tabs.length > _maxTabs;
+    // Ouverte depuis « Plus » : une flèche y ramène.
+    final fromMore = overflow && index >= _maxTabs - 1;
+    final showMore = overflow && _more;
+    final moreBadge =
+        unread > 0 &&
+        tabs.skip(_maxTabs - 1).any((t) => t.label == 'Notifications');
 
     return Scaffold(
       // En-tête fin (2026-10-12) : la place va au contenu.
       appBar: AppBar(
         toolbarHeight: 48,
         titleTextStyle: AmpereType.h4.copyWith(color: colors.ink),
-        title: Text(current.label),
+        leading: fromMore && !showMore
+            ? IconButton(
+                tooltip: 'Retour',
+                icon: const Icon(LucideIcons.chevronLeft),
+                onPressed: () => setState(() => _more = true),
+              )
+            : null,
+        title: Text(showMore ? 'Plus' : current.label),
         actions: [
           // Assistant (2026-10-05) : actions préparées, en mots simples.
           IconButton(
@@ -72,45 +90,59 @@ class _MobileShellState extends ConsumerState<MobileShell> {
           ),
         ],
       ),
-      body: current.builder(context, widget.user),
-      bottomNavigationBar: NavigationBar(
-        // Au-delà de 4 destinations (§7), les suivantes passent dans « Plus ».
-        selectedIndex: overflow ? index.clamp(0, _maxTabs - 1) : index,
-        onDestinationSelected: (i) {
-          if (overflow && i == _maxTabs - 1) {
-            _openMore(tabs);
-          } else {
-            setState(() => _index = i);
-          }
-        },
-        backgroundColor: colors.surface,
-        destinations: [
-          for (final tab in overflow ? tabs.take(_maxTabs - 1) : tabs)
-            NavigationDestination(
-              icon: Badge.count(
-                // Non lues : seul l'onglet Notifications porte le compteur ;
-                // sans lui, personne n'irait voir une boîte muette.
-                count: unread,
-                isLabelVisible: tab.label == 'Notifications' && unread > 0,
-                child: Icon(tab.icon),
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween(
+              begin: const Offset(0.04, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        ),
+        child: showMore
+            ? _MorePage(
+                key: const ValueKey('plus'),
+                user: widget.user,
+                items: [
+                  for (var i = _maxTabs - 1; i < tabs.length; i++) (i, tabs[i]),
+                ],
+                unread: unread,
+                onOpen: (i) => setState(() {
+                  _index = i;
+                  _more = false;
+                }),
+              )
+            : KeyedSubtree(
+                key: ValueKey(current.label),
+                child: current.builder(context, widget.user),
               ),
+      ),
+      // Encoche iOS en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
+      // ouvre la page « Plus ».
+      bottomNavigationBar: BottomIsland(
+        tabs: [
+          for (final (i, tab)
+              in (overflow ? tabs.take(_maxTabs - 1) : tabs).indexed)
+            IslandTab(
+              icon: tab.icon,
               label: tab.label,
+              active: !showMore && !fromMore && i == index,
+              badge: tab.label == 'Notifications' ? unread : 0,
+              onTap: () => setState(() {
+                _index = i;
+                _more = false;
+              }),
             ),
           if (overflow)
-            NavigationDestination(
-              // « Plus » hérite du compteur des onglets qu'il cache : sinon,
-              // sur un téléphone où Notifications passe dessous, rien ne
-              // signalerait jamais une alerte.
-              icon: Badge.count(
-                count: unread,
-                isLabelVisible:
-                    unread > 0 &&
-                    tabs
-                        .skip(_maxTabs - 1)
-                        .any((t) => t.label == 'Notifications'),
-                child: const Icon(LucideIcons.ellipsis),
-              ),
+            IslandTab(
+              icon: LucideIcons.layoutGrid,
               label: 'Plus',
+              active: showMore || fromMore,
+              badge: moreBadge ? unread : 0,
+              onTap: () => setState(() => _more = true),
             ),
         ],
       ),
@@ -131,39 +163,14 @@ class _MobileShellState extends ConsumerState<MobileShell> {
       if (tab.sections.isNotEmpty) {
         ref.read(sectionIndexProvider.notifier).set(tab.label, target.section);
       }
-      setState(() => _index = target.index);
+      setState(() {
+        _index = target.index;
+        _more = false;
+      });
     });
   }
 
   static const _maxTabs = 4;
-
-  /// Liste des destinations qui ne tiennent pas dans la barre.
-  Future<void> _openMore(List<AppDestination> tabs) async {
-    final chosen = await showModalBottomSheet<int>(
-      context: context,
-      // DÉFILANTE : un admin a désormais plus d'entrées qu'un petit écran n'en
-      // montre. Une colonne fixe laissait les dernières HORS de l'écran,
-      // inaccessibles sur téléphone.
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = _maxTabs - 1; i < tabs.length; i++)
-                ListTile(
-                  minTileHeight: AmpereGeometry.listRowMin,
-                  leading: Icon(tabs[i].icon),
-                  title: Text(tabs[i].label),
-                  selected: i == _index,
-                  onTap: () => Navigator.of(context).pop(i),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (chosen != null) setState(() => _index = chosen);
-  }
 }
 
 /// Onglets du bas SELON LE RÔLE (bug terrain du 2026-10-05 : admin et vendeur
@@ -187,4 +194,204 @@ List<AppDestination> mobileTabOrder(
       ...destinations.where((d) => d.label == label),
   ];
   return [...first, ...destinations.where((d) => !first.contains(d))];
+}
+
+/// Groupes de la page « Plus », comme dans une application bancaire : on
+/// trouve une fonctionnalité par son THÈME.
+const _groups = [
+  ('Ventes', ['Vente', 'Devis', 'Catalogue', 'Scanner']),
+  (
+    'Stock et achats',
+    ['Stock', 'Transferts', 'Achats', 'Réappro', 'Inventaire', 'Fournisseurs'],
+  ),
+  ('Suivi', ['Accueil', 'Rapports', 'Activité', 'Tâches', 'Historique']),
+  ('Équipe', ['Messages', 'Notifications', 'Signalements', 'Utilisateurs']),
+  ('Compte', ['Paramètres', 'Mon profil']),
+];
+
+/// Page « Plus » : la carte du compte, puis les fonctionnalités par thème,
+/// en lignes nettes (icône dans un carré arrondi, libellé, aide, flèche).
+class _MorePage extends StatelessWidget {
+  const _MorePage({
+    super.key,
+    required this.user,
+    required this.items,
+    required this.unread,
+    required this.onOpen,
+  });
+
+  final AuthUser user;
+  final List<(int, AppDestination)> items;
+  final int unread;
+  final ValueChanged<int> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final placed = <String>{};
+    final sections = <(String, List<(int, AppDestination)>)>[];
+    for (final (title, labels) in _groups) {
+      final found = [
+        for (final e in items)
+          if (labels.contains(e.$2.label)) e,
+      ];
+      placed.addAll(found.map((e) => e.$2.label));
+      if (found.isNotEmpty) sections.add((title, found));
+    }
+    final rest = [
+      for (final e in items)
+        if (!placed.contains(e.$2.label)) e,
+    ];
+    if (rest.isNotEmpty) sections.add(('Autres', rest));
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: [
+        // Carte du compte, en dégradé (comme le solde d'une appli bancaire).
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: colors.accentGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: colors.accent.withValues(alpha: 0.3),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: colors.onAccent.withValues(alpha: 0.18),
+                child: Text(
+                  user.fullName.isEmpty ? '?' : user.fullName[0].toUpperCase(),
+                  style: AmpereType.h4.copyWith(color: colors.onAccent),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.fullName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.h4.copyWith(color: colors.onAccent),
+                    ),
+                    Text(
+                      formatRoles(user.roles),
+                      style: AmpereType.meta.copyWith(
+                        color: colors.onAccent.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final (title, entries) in sections) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+            child: Text(
+              title.toUpperCase(),
+              style: AmpereType.label.copyWith(color: colors.ink3),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: colors.line),
+            ),
+            child: Column(
+              children: [
+                for (final (k, (i, d)) in entries.indexed) ...[
+                  if (k > 0)
+                    Divider(height: 1, indent: 60, color: colors.lineSoft),
+                  _MoreRow(
+                    destination: d,
+                    badge: d.label == 'Notifications' ? unread : 0,
+                    onTap: () => onOpen(i),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MoreRow extends StatelessWidget {
+  const _MoreRow({
+    required this.destination,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final AppDestination destination;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final hint = [
+      for (final s in destination.sections)
+        sectionTabLabels[s.label] ?? s.label,
+    ].join(' · ');
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: colors.accentBg,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Badge.count(
+                count: badge,
+                isLabelVisible: badge > 0,
+                child: Icon(destination.icon, size: 18, color: colors.accent),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    destination.label,
+                    style: AmpereType.bodyStrong.copyWith(
+                      color: colors.ink,
+                      fontSize: 14,
+                    ),
+                  ),
+                  if (hint.isNotEmpty)
+                    Text(
+                      hint,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AmpereType.meta.copyWith(color: colors.ink3),
+                    ),
+                ],
+              ),
+            ),
+            Icon(LucideIcons.chevronRight, size: 17, color: colors.ink3),
+          ],
+        ),
+      ),
+    );
+  }
 }

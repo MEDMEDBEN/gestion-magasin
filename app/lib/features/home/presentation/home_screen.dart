@@ -45,15 +45,19 @@ class HomeScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Tableau de bord',
+          desktop
+              ? 'Tableau de bord'
+              : 'Bonjour ${user.fullName.split(' ').first}',
           style: (desktop ? AmpereType.h1 : AmpereType.h3).copyWith(
             color: colors.ink,
           ),
         ),
         const SizedBox(height: 2),
         Text(
-          'Bonjour ${user.fullName.split(' ').first} · '
-          '${formatDate(DateTime.now())}',
+          desktop
+              ? 'Bonjour ${user.fullName.split(' ').first} · '
+                    '${formatDate(DateTime.now())}'
+              : formatDate(DateTime.now()),
           style: AmpereType.bodyDesktop.copyWith(color: colors.ink3),
         ),
       ],
@@ -152,6 +156,33 @@ class _Shortcuts extends ConsumerWidget {
     final canAdd = rights.canWriteProducts;
     if (shortcuts.isEmpty && !canAdd) return const SizedBox.shrink();
 
+    // Téléphone : des boutons RONDS avec leur libellé dessous, comme les
+    // actions d'une application bancaire (« Envoyer », « Recevoir »…).
+    if (!desktop) {
+      return Row(
+        children: [
+          for (final label in shortcuts)
+            Expanded(
+              child: _RoundAction(
+                icon: label == 'Vente'
+                    ? LucideIcons.plus
+                    : LucideIcons.scanBarcode,
+                label: label == 'Vente' ? 'Nouvelle vente' : label,
+                primary: label == 'Vente',
+                onTap: () => goToDestination(ref, label),
+              ),
+            ),
+          if (canAdd)
+            Expanded(
+              child: _RoundAction(
+                icon: LucideIcons.packagePlus,
+                label: 'Ajout rapide produit',
+                onTap: () => quickAddProduct(context, ref, rights),
+              ),
+            ),
+        ],
+      );
+    }
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -539,10 +570,32 @@ class _Blocks extends StatelessWidget {
           child: TopProductsChart(products: sales.topProducts),
         ),
     ];
+    // Téléphone (2026-10-29, façon application bancaire) : le chiffre
+    // d'affaires en grande carte « solde », les autres chiffres en carrousel
+    // horizontal compact, le reste en page qui défile.
+    final top = desktop
+        ? _Grid(columns: 4, children: kpis)
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (sales != null) ...[
+                _SalesHero(sales: sales),
+                const SizedBox(height: 14),
+              ],
+              _Carousel(
+                children: [
+                  _Verdict(alerts: alerts),
+                  ...salesCards.skip(sales != null ? 1 : 0),
+                  ...workCards,
+                  ...debtCards,
+                ],
+              ),
+            ],
+          );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Grid(columns: desktop ? 4 : 2, children: kpis),
+        top,
         const SizedBox(height: _gap),
         _Panels(desktop: desktop, children: panels),
         if (trendDays.isNotEmpty) ...[
@@ -1015,6 +1068,181 @@ class _Metric extends ConsumerWidget {
       child: target == null
           ? card
           : InkWell(onTap: () => goToDestination(ref, target), child: card),
+    );
+  }
+}
+
+/// Chiffres en carrousel horizontal (téléphone) : cartes compactes, le pouce
+/// fait défiler.
+class _Carousel extends StatelessWidget {
+  const _Carousel({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    clipBehavior: Clip.none,
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final (i, c) in children.indexed) ...[
+          if (i > 0) const SizedBox(width: 10),
+          SizedBox(width: 172, child: c),
+        ],
+      ],
+    ),
+  );
+}
+
+/// Le chiffre d'affaires du jour en carte « solde » (téléphone).
+class _SalesHero extends StatelessWidget {
+  const _SalesHero({required this.sales});
+
+  final DashboardSales sales;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final days = sales.last7Days;
+    final evolution = days.length >= 2 && days[days.length - 2].revenueTtc > 0
+        ? ((days.last.revenueTtc - days[days.length - 2].revenueTtc) *
+                  100 /
+                  days[days.length - 2].revenueTtc)
+              .round()
+        : null;
+    final ink = colors.onAccent;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      decoration: BoxDecoration(
+        gradient: colors.accentGradient,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: colors.accent.withValues(alpha: 0.32),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(LucideIcons.banknote, size: 16, color: ink),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Chiffre d’affaires du jour',
+                  style: AmpereType.bodyStrong.copyWith(
+                    color: ink.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+              if (evolution case final e?)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: ink.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '${e >= 0 ? '+' : ''}$e %',
+                    style: AmpereType.meta.copyWith(
+                      color: ink,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              formatDA(sales.revenueTtc),
+              style: AmpereType.numericHero.copyWith(color: ink, fontSize: 32),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${sales.count} vente(s) validée(s)',
+            style: AmpereType.meta.copyWith(color: ink.withValues(alpha: 0.85)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Action ronde (téléphone) : pastille, libellé court dessous.
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: primary ? colors.accentGradient : null,
+                color: primary ? null : colors.surface,
+                border: primary ? null : Border.all(color: colors.line),
+                boxShadow: primary
+                    ? [
+                        BoxShadow(
+                          color: colors.accent.withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 5),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(
+                icon,
+                size: 22,
+                color: primary ? colors.onAccent : colors.accent,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: AmpereType.meta.copyWith(
+                color: colors.ink,
+                fontWeight: FontWeight.w600,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

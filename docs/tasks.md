@@ -4,6 +4,20 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Version téléphone allégée, façon appli bancaire — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `MobileShell` : barre du bas en ENCOCHE iOS (`BottomIsland`/`IslandTab`, glass.dart) — bloc noir collé au
+  bord bas, raccords concaves, onglets ronds (actif au dégradé). 4 onglets max ; « Plus » ouvre une PAGE
+  (`_MorePage`) : carte du compte + fonctionnalités groupées par thème (Ventes, Stock et achats, Suivi,
+  Équipe, Compte), retour par flèche. L'ancienne feuille « Plus » est retirée.
+- Accueil mobile : boutons ronds (Nouvelle vente, Scanner, Ajout rapide), carte « solde » du chiffre
+  d'affaires (`_SalesHero`), chiffres en carrousel horizontal (`_Carousel`), puis le reste.
+- Plus léger : `fieldHeightMobile` 46, `listRowMin` 50 ; `PillTabs` sur une ligne qui défile ; ligne du
+  panier sur deux rangées sous 440 px (nom entier, puis gestes).
+- Tests : `shell_test` (BottomIsland/IslandTab), `sales_screen_test` (onglet amené à l'écran avant le clic).
+  Captures 46, 47, 48, 22.
+- Preuves : analyze 0, 557 tests ; captures vérifiées.
+
 ### Notifications du bas remplacées par des effets — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `ui/widgets/feedback_messenger.dart` : `FeedbackMessenger` (sous-classe de `ScaffoldMessenger`, posée dans

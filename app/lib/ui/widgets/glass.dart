@@ -438,3 +438,140 @@ class _FramePainter extends CustomPainter {
   @override
   bool shouldRepaint(_FramePainter old) => false;
 }
+
+/// Un onglet de l'encoche du bas (téléphone).
+class IslandTab extends StatelessWidget {
+  const IslandTab({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: 66,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Taille animée seule : un fond dégradé ne s'interpole pas
+              // vers un fond vide.
+              AnimatedScale(
+                scale: active ? 1 : 0.86,
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutBack,
+                child: Container(
+                  width: 46,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(17),
+                    gradient: active ? colors.accentGradient : null,
+                    boxShadow: active
+                        ? [
+                            BoxShadow(
+                              color: colors.accent.withValues(alpha: 0.45),
+                              blurRadius: 12,
+                              offset: const Offset(0, 3),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Badge.count(
+                    count: badge,
+                    isLabelVisible: badge > 0,
+                    child: Icon(
+                      icon,
+                      size: 19,
+                      color: active ? colors.onAccent : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: active ? Colors.white : const Color(0xFF94A3B8),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Barre de navigation du téléphone en ENCOCHE iOS (demande MEDMEDBEN du
+/// 2026-10-29) : bloc noir collé au bord bas, coins hauts arrondis, raccords
+/// concaves vers le bord, onglets ronds.
+class BottomIsland extends StatelessWidget {
+  const BottomIsland({super.key, required this.tabs});
+
+  final List<IslandTab> tabs;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    return SizedBox(
+      height: 70 + bottom,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: CustomPaint(
+          painter: _BottomIslandPainter(),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(10, 9, 10, 7 + bottom),
+            child: Row(mainAxisSize: MainAxisSize.min, children: tabs),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BottomIslandPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    const r = 26.0; // coins hauts
+    const c = 20.0; // raccords concaves vers le bord
+    final w = size.width;
+    final h = size.height;
+    final path = Path()
+      ..moveTo(-c, h)
+      ..quadraticBezierTo(0, h, 0, h - c)
+      ..lineTo(0, r)
+      ..arcToPoint(const Offset(r, 0), radius: const Radius.circular(r))
+      ..lineTo(w - r, 0)
+      ..arcToPoint(Offset(w, r), radius: const Radius.circular(r))
+      ..lineTo(w, h - c)
+      ..quadraticBezierTo(w, h, w + c, h)
+      ..close();
+    canvas.drawShadow(path, Colors.black, 10, false);
+    canvas.drawPath(path, Paint()..color = Colors.black);
+  }
+
+  @override
+  bool shouldRepaint(_BottomIslandPainter old) => false;
+}

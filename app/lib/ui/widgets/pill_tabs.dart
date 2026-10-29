@@ -28,12 +28,16 @@ class PillTabs<T> extends StatelessWidget {
         color: colors.surface2,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Wrap(
-        runSpacing: 4,
-        children: [
-          for (final (value, icon, label) in items)
-            _tab(colors, value, icon, label),
-        ],
+      // Une seule ligne qui défile (téléphone) plutôt que deux lignes.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (value, icon, label) in items)
+              _tab(colors, value, icon, label),
+          ],
+        ),
       ),
     );
   }
