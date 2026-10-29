@@ -8,6 +8,7 @@ import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/ampere_controls.dart';
+import '../../../ui/widgets/page_kit.dart' show SearchField;
 import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
@@ -101,7 +102,7 @@ class CatalogScreen extends ConsumerStatefulWidget {
 
 class _CatalogScreenState extends ConsumerState<CatalogScreen>
     with FollowsRequestedSearch {
-  final _search = TextEditingController();
+  final _search = SearchField();
 
   @override
   TextEditingController get searchField => _search;
@@ -449,7 +450,7 @@ class _ProductsSection extends ConsumerWidget {
                   onChanged: notifier.setSearch,
                 ),
               ),
-              if (canImport)
+              if (canImport && isDesktop)
                 ImportButton(
                   kind: ImportKind.products,
                   // Les produits créés descendent par la synchro du catalogue ;
@@ -461,8 +462,15 @@ class _ProductsSection extends ConsumerWidget {
                 ),
               // Sur téléphone, icônes seules (infobulle) : la barre tient en
               // 360 px avec la recherche et « Nouveau ».
-              if (onLabels case final print?) ...[
-                SizedBox(width: isDesktop ? 12 : 4),
+              if (!isDesktop && selection == null)
+                _PhoneTools(
+                  onLabels: onLabels == null
+                      ? null
+                      : () => onLabels!(products.value ?? const []),
+                  onSelect: canSelect ? selecting.start : null,
+                ),
+              if (onLabels case final print? when isDesktop) ...[
+                const SizedBox(width: 12),
                 isDesktop
                     ? OutlinedButton.icon(
                         onPressed: () => print(products.value ?? const []),
@@ -478,7 +486,7 @@ class _ProductsSection extends ConsumerWidget {
               SizedBox(width: isDesktop ? 12 : 0),
               // Cocher des produits pour les exporter ou en imprimer les
               // étiquettes (2026-10-05). Mêmes droits que l'export serveur.
-              if (!canSelect)
+              if (!canSelect || (!isDesktop && selection == null))
                 const SizedBox.shrink()
               else if (selection != null)
                 TextButton(
@@ -498,12 +506,20 @@ class _ProductsSection extends ConsumerWidget {
                   icon: const Icon(LucideIcons.listChecks, size: 19),
                 ),
               if (canCreate) ...[
-                const SizedBox(width: 12),
-                FilledButton.icon(
-                  onPressed: () => onOpen(null),
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: Text(isDesktop ? 'Nouveau produit' : 'Nouveau'),
-                ),
+                SizedBox(width: isDesktop ? 12 : 6),
+                if (isDesktop)
+                  FilledButton.icon(
+                    onPressed: () => onOpen(null),
+                    icon: const Icon(LucideIcons.plus, size: 17),
+                    label: const Text('Nouveau produit'),
+                  )
+                else
+                  // Téléphone : un « + » carré, la recherche garde la place.
+                  IconButton.filled(
+                    tooltip: 'Nouveau produit',
+                    onPressed: () => onOpen(null),
+                    icon: const Icon(LucideIcons.plus, size: 20),
+                  ),
               ],
             ],
           ),
@@ -815,32 +831,87 @@ class _StockStats extends StatelessWidget {
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        tile(null, LucideIcons.package, 'produits', total, colors.accentHi),
-        tile(
-          StockState.inStock,
-          LucideIcons.circleCheck,
-          'en stock',
-          counts[StockState.inStock] ?? 0,
-          colors.ok,
+    final tiles = [
+      tile(null, LucideIcons.package, 'produits', total, colors.accentHi),
+      tile(
+        StockState.inStock,
+        LucideIcons.circleCheck,
+        'en stock',
+        counts[StockState.inStock] ?? 0,
+        colors.ok,
+      ),
+      tile(
+        StockState.low,
+        LucideIcons.triangleAlert,
+        'stock faible',
+        counts[StockState.low] ?? 0,
+        colors.warn,
+      ),
+      tile(
+        StockState.out,
+        LucideIcons.packageX,
+        'en rupture',
+        counts[StockState.out] ?? 0,
+        colors.error,
+      ),
+    ];
+    // Téléphone : une seule ligne qui défile au lieu de deux rangées.
+    if (MediaQuery.sizeOf(context).width < 600) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final (i, t) in tiles.indexed) ...[
+              if (i > 0) const SizedBox(width: 8),
+              t,
+            ],
+          ],
         ),
-        tile(
-          StockState.low,
-          LucideIcons.triangleAlert,
-          'stock faible',
-          counts[StockState.low] ?? 0,
-          colors.warn,
-        ),
-        tile(
-          StockState.out,
-          LucideIcons.packageX,
-          'en rupture',
-          counts[StockState.out] ?? 0,
-          colors.error,
-        ),
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: tiles);
+  }
+}
+
+/// Téléphone : Étiquettes et Sélectionner rangés derrière « ⋯ ».
+class _PhoneTools extends StatelessWidget {
+  const _PhoneTools({this.onLabels, this.onSelect});
+
+  final VoidCallback? onLabels;
+  final VoidCallback? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    if (onLabels == null && onSelect == null) return const SizedBox.shrink();
+    return PopupMenuButton<VoidCallback>(
+      tooltip: 'Plus d’actions',
+      icon: Icon(LucideIcons.ellipsisVertical, size: 20, color: colors.ink2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onSelected: (action) => action(),
+      itemBuilder: (_) => [
+        if (onLabels case final labels?)
+          PopupMenuItem(
+            value: labels,
+            child: const Row(
+              children: [
+                Icon(LucideIcons.tag, size: 17),
+                SizedBox(width: 10),
+                Text('Étiquettes'),
+              ],
+            ),
+          ),
+        if (onSelect case final select?)
+          PopupMenuItem(
+            value: select,
+            child: const Row(
+              children: [
+                Icon(LucideIcons.listChecks, size: 17),
+                SizedBox(width: 10),
+                Text('Sélectionner'),
+              ],
+            ),
+          ),
       ],
     );
   }

@@ -246,18 +246,28 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Modifier'), findsOneWidget);
+      // Téléphone : les actions du produit sont rangées dans « ⋯ ».
+      Future<void> action(String label) async {
+        if (!desktop) {
+          await tester.tap(find.byTooltip('Actions du produit'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(label));
+        } else {
+          await tester.tap(find.byTooltip(label));
+        }
+        await tester.pumpAndSettle();
+      }
 
-      await tester.tap(find.byTooltip('Supprimer'));
-      await tester.pumpAndSettle();
+      if (desktop) expect(find.byTooltip('Modifier'), findsOneWidget);
+
+      await action('Supprimer');
       expect(find.text('Supprimer « Câble » ?'), findsOneWidget);
       // Annuler : rien ne part.
       await tester.tap(find.text('Annuler'));
       await tester.pumpAndSettle();
       expect(api.productCalls, isEmpty);
 
-      await tester.tap(find.byTooltip('Supprimer'));
-      await tester.pumpAndSettle();
+      await action('Supprimer');
       await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
       await tester.pumpAndSettle();
       // Désactivation, jamais un effacement : l'historique reste.
@@ -280,7 +290,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Nouveau produit : trois unités seulement.
-    await tester.tap(find.text('Nouveau'));
+    await tester.tap(find.byTooltip('Nouveau produit'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<ProductUnit>));
     await tester.pumpAndSettle();
@@ -375,6 +385,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byTooltip('Modifier'), findsNothing);
     expect(find.byTooltip('Supprimer'), findsNothing);
+    // Téléphone : le menu « ⋯ » ne propose que l'étiquette.
+    await tester.tap(find.byTooltip('Actions du produit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Étiquette'), findsOneWidget);
+    expect(find.text('Modifier'), findsNothing);
+    expect(find.text('Supprimer'), findsNothing);
   });
 
   testWidgets(
@@ -392,7 +408,7 @@ void main() {
 
       expect(find.text('Câble 3G2.5'), findsOneWidget);
       expect(find.text('Câbles'), findsWidgets);
-      expect(find.text('Nouveau'), findsNothing);
+      expect(find.byTooltip('Nouveau produit'), findsNothing);
       expect(find.text('Catégories'), findsNothing);
       expect(find.text('Emplacements'), findsNothing);
 
@@ -494,7 +510,7 @@ void main() {
       expect(find.text('Emplacements'), findsOneWidget);
       expect(find.text('Catégories'), findsNothing);
       // Décision MEDMEDBEN du 2026-10-11 : il crée et modifie les produits.
-      expect(find.text('Nouveau'), findsOneWidget);
+      expect(find.byTooltip('Nouveau produit'), findsOneWidget);
     },
   );
 
@@ -506,7 +522,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Aucun produit'), findsOneWidget);
-      await tester.tap(find.text('Nouveau'));
+      await tester.tap(find.byTooltip('Nouveau produit'));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -551,7 +567,7 @@ void main() {
     useScreenSize(tester, const Size(400, 2200));
     await tester.pumpWidget(wrap(_admin()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nouveau'));
+    await tester.tap(find.byTooltip('Nouveau produit'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -617,7 +633,7 @@ void main() {
     );
     await tester.pumpWidget(wrap(_admin(), pickedPhoto: photo));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nouveau'));
+    await tester.tap(find.byTooltip('Nouveau produit'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Plus de détails'));
@@ -652,7 +668,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nouveau'));
+    await tester.tap(find.byTooltip('Nouveau produit'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Plus de détails'));
     await tester.pumpAndSettle();
@@ -817,7 +833,7 @@ void main() {
     useScreenSize(tester, const Size(400, 2200));
     await tester.pumpWidget(wrap(_admin()));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Nouveau'));
+    await tester.tap(find.byTooltip('Nouveau produit'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('champ-nom')),

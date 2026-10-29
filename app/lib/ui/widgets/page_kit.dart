@@ -323,7 +323,7 @@ class ActionGrid extends StatelessWidget {
 
 /// « Comment ça marche » : étapes numérotées, pour qu'un écran sans données
 /// dise quand même quoi faire.
-class GuideSteps extends StatelessWidget {
+class GuideSteps extends StatefulWidget {
   const GuideSteps({
     super.key,
     required this.title,
@@ -340,8 +340,21 @@ class GuideSteps extends StatelessWidget {
   final int? current;
 
   @override
+  State<GuideSteps> createState() => _GuideStepsState();
+}
+
+class _GuideStepsState extends State<GuideSteps> {
+  /// Téléphone (2026-10-29) : replié en une ligne, un toucher l'ouvre.
+  late bool _open = !_isPhone(context);
+
+  String get title => widget.title;
+  List<(String, String)> get steps => widget.steps;
+  int? get current => widget.current;
+
+  @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
+    final phone = _isPhone(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -352,46 +365,73 @@ class GuideSteps extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(LucideIcons.lightbulb, size: 16, color: colors.ink2),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AmpereType.label.copyWith(color: colors.ink2),
+          InkWell(
+            onTap: phone ? () => setState(() => _open = !_open) : null,
+            child: Row(
+              children: [
+                Icon(LucideIcons.lightbulb, size: 16, color: colors.ink2),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: AmpereType.label.copyWith(color: colors.ink2),
+                      ),
+                      if (!_open)
+                        Text(
+                          [for (final s in steps) s.$1].join(' → '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                if (phone)
+                  AnimatedRotation(
+                    turns: _open ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    child: Icon(
+                      LucideIcons.chevronDown,
+                      size: 17,
+                      color: colors.ink2,
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 720;
-              final items = [
-                for (var i = 0; i < steps.length; i++)
-                  _step(colors, i, steps[i].$1, steps[i].$2),
-              ];
-              return wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        for (var i = 0; i < items.length; i++) ...[
-                          if (i > 0) const SizedBox(width: 12),
-                          Expanded(child: items[i]),
+          if (_open) ...[
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 720;
+                final items = [
+                  for (var i = 0; i < steps.length; i++)
+                    _step(colors, i, steps[i].$1, steps[i].$2),
+                ];
+                return wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var i = 0; i < items.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 12),
+                            Expanded(child: items[i]),
+                          ],
                         ],
-                      ],
-                    )
-                  : Column(
-                      children: [
-                        for (var i = 0; i < items.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 10),
-                          items[i],
+                      )
+                    : Column(
+                        children: [
+                          for (var i = 0; i < items.length; i++) ...[
+                            if (i > 0) const SizedBox(height: 10),
+                            items[i],
+                          ],
                         ],
-                      ],
-                    );
-            },
-          ),
+                      );
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -444,3 +484,19 @@ EdgeInsetsGeometry withNavBar(
   BuildContext context,
   EdgeInsetsGeometry padding,
 ) => padding.add(EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom));
+
+/// Champ de recherche sûr sur téléphone (bug terrain du 2026-10-29 : « led »
+/// tapé dans le navigateur d'un téléphone cherchait « del »). Si la position
+/// du curseur se perd (sélection invalide), le navigateur insère la lettre
+/// suivante AU DÉBUT : le texte s'écrit à l'envers. Ici, une sélection
+/// invalide remet le curseur en fin de texte.
+class SearchField extends TextEditingController {
+  @override
+  set value(TextEditingValue newValue) {
+    super.value = newValue.selection.isValid || newValue.text.isEmpty
+        ? newValue
+        : newValue.copyWith(
+            selection: TextSelection.collapsed(offset: newValue.text.length),
+          );
+  }
+}

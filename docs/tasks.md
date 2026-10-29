@@ -4,6 +4,21 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Recherche à l'envers corrigée, Catalogue/Stock allégés, ambiance au téléphone — 2026-10-29 (MEDMEDBEN, Claude)
+
+- Bug terrain « led » → « del » (navigateur du téléphone) : `SearchField` (page_kit.dart) remet le curseur en
+  fin de texte si sa position se perd ; utilisé par les recherches Catalogue, Stock, Vente, Historique,
+  Utilisateurs. Non reproductible en test widget (propre au navigateur) : `search_field_test.dart` vérifie la
+  protection.
+- Téléphone : Catalogue — recherche pleine largeur, « + » carré, Étiquettes/Sélectionner dans « ⋯ », import
+  au poste seulement, compteurs sur une ligne qui défile, actions d'un produit dans « ⋯ »
+  (`ProductRowActions`). Stock — « DISPO. ». `GuideSteps` replié en une ligne (Transferts, Achats…).
+- Ambiance au téléphone : fond liquide (thème verre) et LED de fond ; « Lumières » et « Thème » dans
+  l'encoche latérale (`LightsPanel`/`PalettePanel` déplacés dans ui/widgets/ambiance_panels.dart, partagés
+  avec le poste ; pastilles de palette à la ligne).
+- Captures-outils réparées (`_tapShown`, `_viaSection`) + 51, 53, 54, 55.
+- Preuves : analyze 0, 558 tests ; captures téléphone vérifiées.
+
 ### Téléphone : barre de verre flottante, sans loupe — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `MobileShell` : `extendBody: true` — le contenu défile SOUS la capsule de verre (plus de bande en pied).

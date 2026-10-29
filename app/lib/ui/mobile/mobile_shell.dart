@@ -11,7 +11,10 @@ import '../../features/home/presentation/home_screen.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
+import '../theme/palettes.dart';
+import '../widgets/ambiance_panels.dart';
 import '../widgets/glass.dart';
+import '../widgets/signal_background.dart';
 import '../widgets/page_kit.dart';
 import '../widgets/screen_state.dart';
 import '../widgets/section_tabs.dart';
@@ -106,6 +109,24 @@ class _MobileShellState extends ConsumerState<MobileShell> {
       ),
       body: Stack(
         children: [
+          // Ambiance lumineuse (2026-10-29), comme au poste : fond liquide du
+          // thème verre, LED de fond quand les lumières sont allumées.
+          if (colors.isGlass)
+            Positioned.fill(
+              child: LiquidBackground(
+                animate: ref.watch(signalBackgroundProvider),
+              ),
+            ),
+          if (ref.watch(signalBackgroundProvider))
+            Positioned.fill(
+              child: SignalBackground(
+                hues: ref
+                    .watch(ledStyleProvider)
+                    .colors
+                    .hues(currentPalette(ref).ledHues),
+                intensity: ref.watch(ledStyleProvider).ambiance.intensity,
+              ),
+            ),
           Positioned.fill(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
@@ -140,29 +161,41 @@ class _MobileShellState extends ConsumerState<MobileShell> {
             ),
           ),
           // Encoche noire au bord droit, sous le pouce : les actions rapides.
-          if (_quickActions().isNotEmpty)
-            Positioned(
-              right: 0,
-              // Au-dessus de la barre et de la zone de paiement, sous le pouce.
-              bottom: 260,
-              child: SideIsland(
-                right: true,
-                collapsed: !_notchOpen,
-                onToggle: () => setState(() => _notchOpen = !_notchOpen),
-                buttons: [
-                  for (final (icon, label, onTap) in _quickActions())
-                    (
-                      icon: icon,
-                      tooltip: label,
-                      active: false,
-                      onTap: () {
-                        setState(() => _notchOpen = false);
-                        onTap();
-                      },
-                    ),
-                ],
-              ),
+          Positioned(
+            right: 0,
+            // Au-dessus de la barre et de la zone de paiement, sous le pouce.
+            bottom: 260,
+            child: SideIsland(
+              right: true,
+              collapsed: !_notchOpen,
+              onToggle: () => setState(() => _notchOpen = !_notchOpen),
+              buttons: [
+                // Réglages d'ambiance, puis les gestes du quotidien.
+                (
+                  icon: LucideIcons.lightbulb,
+                  tooltip: 'Lumières',
+                  active: ref.watch(signalBackgroundProvider),
+                  onTap: () => _sheet(const LightsPanel()),
+                ),
+                (
+                  icon: LucideIcons.palette,
+                  tooltip: 'Thème',
+                  active: false,
+                  onTap: () => _sheet(const PalettePanel()),
+                ),
+                for (final (icon, label, onTap) in _quickActions())
+                  (
+                    icon: icon,
+                    tooltip: label,
+                    active: false,
+                    onTap: () {
+                      setState(() => _notchOpen = false);
+                      onTap();
+                    },
+                  ),
+              ],
             ),
+          ),
         ],
       ),
       // Capsule de verre en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
@@ -213,6 +246,16 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         _more = false;
       });
     });
+  }
+
+  /// Un réglage d'ambiance, dans une feuille qui monte du bas.
+  void _sheet(Widget panel) {
+    setState(() => _notchOpen = false);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(child: SingleChildScrollView(child: panel)),
+    );
   }
 
   /// Ce que le compte peut ouvrir (destinations et rubriques).

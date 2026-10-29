@@ -41,7 +41,7 @@ class SalesHistorySection extends ConsumerStatefulWidget {
 }
 
 class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
-  final _search = TextEditingController();
+  final _search = SearchField();
   String _query = '';
   HistoryPeriod _period = lastDays(7);
 

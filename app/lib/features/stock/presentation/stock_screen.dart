@@ -199,7 +199,7 @@ class _LevelsSection extends ConsumerStatefulWidget {
 
 class _LevelsSectionState extends ConsumerState<_LevelsSection>
     with FollowsRequestedSearch {
-  final _search = TextEditingController();
+  final _search = SearchField();
   _Filter _filter = _Filter.all;
 
   @override
@@ -591,7 +591,12 @@ class _LevelRow extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            label.toUpperCase(),
+                            // Téléphone : « DISPO. » tient sur une ligne.
+                            (!isDesktop && label == 'Disponible'
+                                    ? 'Dispo.'
+                                    : label)
+                                .toUpperCase(),
+                            maxLines: 1,
                             style: AmpereType.label.copyWith(
                               color: colors.ink3,
                             ),

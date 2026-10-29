@@ -7,6 +7,7 @@ import '../../../core/providers.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/page_kit.dart' show SearchField;
 import '../../../ui/widgets/screen_state.dart';
 import '../application/users_controller.dart';
 import '../data/user_models.dart';
@@ -30,7 +31,7 @@ class UsersScreen extends ConsumerStatefulWidget {
 }
 
 class _UsersScreenState extends ConsumerState<UsersScreen> {
-  final _search = TextEditingController();
+  final _search = SearchField();
 
   @override
   void dispose() {

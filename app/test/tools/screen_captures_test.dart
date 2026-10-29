@@ -1085,6 +1085,35 @@ final _summary = DashboardSummary(
   tasks: const DashboardTasks(open: 4, late: 1),
 );
 
+/// Téléphone : déplie les rubriques repliées et amène l'élément à l'écran
+/// (au-dessus de la barre de verre) avant de le toucher.
+Future<void> _tapShown(WidgetTester t, Finder finder) async {
+  if (finder.evaluate().isEmpty) await revealAll(t);
+  // Liste construite au fil du défilement : on descend jusqu'à l'élément.
+  if (finder.evaluate().isEmpty) {
+    await t.scrollUntilVisible(
+      finder,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+  }
+  await t.ensureVisible(finder.first);
+  await t.pumpAndSettle();
+  // Sous la barre de verre : on remonte encore un peu.
+  final y = t.getCenter(finder.first).dy;
+  if (y > t.view.physicalSize.height / t.view.devicePixelRatio - 100) {
+    final scrollable = find.ancestor(
+      of: finder.first,
+      matching: find.byType(Scrollable),
+    );
+    if (scrollable.evaluate().isNotEmpty) {
+      await t.drag(scrollable.first, const Offset(0, -120));
+      await t.pumpAndSettle();
+    }
+  }
+  await t.tap(finder.first);
+}
+
 Future<void> _capture(
   WidgetTester tester, {
   required String name,
@@ -1231,10 +1260,19 @@ Future<void> _capture(
 Future<void> _viaMore(WidgetTester t, String label) async {
   await t.tap(find.text('Plus'));
   await t.pumpAndSettle();
-  // Le menu défile : l'entrée peut être sous le pli.
-  await t.ensureVisible(find.text(label));
+  // La page défile (et se construit au fil du défilement) : on y descend.
+  await _tapShown(t, find.text(label));
+}
+
+/// Téléphone : une rubrique (Fournisseurs…) s'ouvre par sa destination dans
+/// « Plus », puis par le titre-sélecteur.
+Future<void> _viaSection(WidgetTester t, String group, String section) async {
+  await _viaMore(t, group);
   await t.pumpAndSettle();
-  await t.tap(find.text(label));
+  await t.tap(find.byTooltip('Changer de rubrique'));
+  await t.pumpAndSettle();
+  await t.tap(find.text(section).last);
+  await t.pumpAndSettle();
 }
 
 /// Fond animé éteint : une animation sans fin bloquerait `pumpAndSettle`.
@@ -1567,6 +1605,68 @@ void main() {
     ),
   );
   testWidgets(
+    '51 catalogue mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '51_catalogue_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async {
+        await t.tap(find.text('Catalogue'));
+      },
+    ),
+  );
+  testWidgets(
+    '53 stock mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '53_stock_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async {
+        await t.tap(find.text('Plus'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Stock').first);
+      },
+    ),
+  );
+  testWidgets(
+    '54 transferts mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '54_transferts_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async {
+        await t.tap(find.text('Plus'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Transferts').first);
+      },
+    ),
+  );
+  testWidgets(
+    '55 achats mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '55_achats_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async {
+        await t.tap(find.text('Plus'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('Achats').first);
+      },
+    ),
+  );
+  testWidgets(
     '48 accueil mobile clair',
     skip: skip,
     (t) => _capture(
@@ -1708,7 +1808,7 @@ void main() {
       interact: (t) async {
         await _viaMore(t, 'Utilisateurs');
         await t.pumpAndSettle();
-        await t.tap(find.text('Nouveau'));
+        await t.tap(find.byTooltip('Nouveau produit'));
       },
     ),
   );
@@ -1816,9 +1916,9 @@ void main() {
         permissions: const ['product.read', 'location.manage'],
       ),
       interact: (t) async {
-        await t.tap(find.text('Catalogue'));
+        await _tapShown(t, find.text('Catalogue'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Emplacements'));
+        await _tapShown(t, find.text('Emplacements'));
       },
     ),
   );
@@ -1833,7 +1933,7 @@ void main() {
       interact: (t) async {
         await t.tap(find.text('Catalogue'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Nouveau'));
+        await t.tap(find.byTooltip('Nouveau produit'));
       },
     ),
   );
@@ -1921,11 +2021,11 @@ void main() {
         ],
       ),
       interact: (t) async {
-        await t.tap(find.text('Stock'));
+        await _tapShown(t, find.text('Stock'));
         await t.pumpAndSettle();
-        await t.tap(find.textContaining('Pertes'));
+        await _tapShown(t, find.textContaining('Pertes'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Déclarer une perte'));
+        await _tapShown(t, find.text('Déclarer une perte'));
       },
     ),
   );
@@ -2002,9 +2102,9 @@ void main() {
       user: _vendeuse,
       products: _priced,
       interact: (t) async {
-        await t.tap(find.text('Vente'));
+        await _tapShown(t, find.text('Vente'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Clients'));
+        await _tapShown(t, find.text('Clients'));
       },
     ),
   );
@@ -2053,11 +2153,10 @@ void main() {
       size: const Size(390, 844),
       home: const AdaptiveShell(),
       interact: (t) async {
-        await _viaMore(t, 'Fournisseurs');
+        await _viaSection(t, 'Achats', 'Fournisseurs');
+        await _tapShown(t, find.text('Sonelgaz Matériel'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Sonelgaz Matériel'));
-        await t.pumpAndSettle();
-        await t.tap(find.text('Enregistrer un paiement'));
+        await _tapShown(t, find.text('Enregistrer un paiement'));
       },
     ),
   );
@@ -2117,9 +2216,9 @@ void main() {
       interact: (t) async {
         await _viaMore(t, 'Achats');
         await t.pumpAndSettle();
-        await t.tap(find.textContaining('BC-2026-00005'));
+        await _tapShown(t, find.textContaining('BC-2026-00005'));
         await t.pumpAndSettle();
-        await t.tap(find.text('Réceptionner la marchandise'));
+        await _tapShown(t, find.text('Réceptionner la marchandise'));
       },
     ),
   );
@@ -2218,9 +2317,8 @@ void main() {
       size: const Size(390, 844),
       home: const AdaptiveShell(),
       interact: (t) async {
-        await _viaMore(t, 'Inventaire');
-        await t.pumpAndSettle();
-        await t.tap(find.text('Reprendre INV-2026-00003'));
+        await _viaSection(t, 'Stock', 'Inventaire');
+        await _tapShown(t, find.text('Reprendre INV-2026-00003'));
       },
     ),
   );

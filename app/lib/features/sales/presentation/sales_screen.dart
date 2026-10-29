@@ -746,7 +746,7 @@ class _SaleSection extends ConsumerStatefulWidget {
 class _SaleSectionState extends ConsumerState<_SaleSection> {
   /// Filtre de la grille : une catégorie, ou tout (null).
   String? _categoryId;
-  final _search = TextEditingController();
+  final _search = SearchField();
   final _searchFocus = FocusNode();
   bool _busy = false;
 
