@@ -10,6 +10,10 @@ import '../theme/ampere_typography.dart';
 /// Ce que l'animation confirme.
 enum FeedbackKind { success, pending, error }
 
+/// Moment de la dernière pastille : les notifications qui la suivent de près
+/// ne se doublent pas (`FeedbackMessenger`).
+DateTime? lastFeedbackBurst;
+
 /// Confirmation animée au centre de l'écran (demande MEDMEDBEN du
 /// 2026-10-29 : « un effet qui fait comprendre ce qui se passe »).
 ///
@@ -25,6 +29,7 @@ void showFeedbackBurst(
 }) {
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return;
+  lastFeedbackBurst = DateTime.now();
   late final OverlayEntry entry;
   entry = OverlayEntry(
     builder: (_) => _Burst(

@@ -7,6 +7,7 @@ import 'core/router/app_router.dart';
 import 'ui/breakpoints.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/palettes.dart';
+import 'ui/widgets/feedback_messenger.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,7 +39,9 @@ class GestionMagasinApp extends ConsumerWidget {
           data: isDesktop
               ? AppTheme.desktop(dark: dark, colors: palette.desktop)
               : AppTheme.mobile(dark: dark, colors: palette.mobile),
-          child: child ?? const SizedBox.shrink(),
+          // Les notifications deviennent des effets animés en haut de
+          // l'écran (2026-10-29), plus de barre qui monte du bas.
+          child: FeedbackMessenger(child: child ?? const SizedBox.shrink()),
         );
       },
       // Thème initial : évite un flash avant que le `builder` n'applique

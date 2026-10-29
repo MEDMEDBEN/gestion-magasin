@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Notifications du bas remplacées par des effets — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `ui/widgets/feedback_messenger.dart` : `FeedbackMessenger` (sous-classe de `ScaffoldMessenger`, posée dans
+  `main.dart`) intercepte TOUS les `showSnackBar` (43 appels) : effet en haut de l'écran, ton déduit du
+  message (réussi vert = rebond ; refusé rouge = tremblement ; en attente ambre = rotation), icône selon
+  l'action (caisse, impression, suppression, réception, envoi…), barre du temps, bouton utile gardé
+  (« Imprimer le bon »), pas de doublon après une pastille `showFeedbackBurst` (< 1,5 s). Une barre
+  invisible et immédiate tient le contrat de `showSnackBar`.
+- Les tests d'écran gardent les SnackBar (leur propre MaterialApp) : aucun test à adapter.
+  `feedback_messenger_test.dart` (2 tests + captures 99a/99b).
+- Preuves : analyze 0, 557 tests ; captures vérifiées.
+
 ### Vente : panneaux sans titres, panier jusqu'en haut — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `_SalePanel` réduit au cadre (fond, filet, ombre) ; plus de titres « Articles / Ticket / Paiement ».
