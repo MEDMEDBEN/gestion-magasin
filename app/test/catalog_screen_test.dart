@@ -490,6 +490,7 @@ void main() {
       await tester.pumpWidget(wrap(_magasinier()));
       await tester.pumpAndSettle();
 
+      await revealAll(tester); // téléphone : rubriques repliées
       expect(find.text('Emplacements'), findsOneWidget);
       expect(find.text('Catégories'), findsNothing);
       // Décision MEDMEDBEN du 2026-10-11 : il crée et modifie les produits.

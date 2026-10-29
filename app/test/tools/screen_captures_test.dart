@@ -1555,6 +1555,18 @@ void main() {
     ),
   );
   testWidgets(
+    '49 actions rapides mobile',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '49_actions_rapides_mobile',
+      size: const Size(390, 844),
+      home: const AdaptiveShell(),
+      palette: AppPalette.clair,
+      interact: (t) async => t.tap(find.byTooltip('Actions rapides')),
+    ),
+  );
+  testWidgets(
     '48 accueil mobile clair',
     skip: skip,
     (t) => _capture(
@@ -1880,6 +1892,9 @@ void main() {
       home: const AdaptiveShell(),
       interact: (t) async {
         await _viaMore(t, 'Stock');
+        await t.pumpAndSettle();
+        // Téléphone : les onglets se déplient d'abord.
+        await t.tap(find.text('Niveaux'));
         await t.pumpAndSettle();
         await t.tap(find.textContaining('Pertes'));
       },

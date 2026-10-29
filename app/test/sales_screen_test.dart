@@ -1038,9 +1038,7 @@ void main() {
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
-      // Onglets en ligne qui défile : on l'amène à l'écran d'abord.
-      await tester.ensureVisible(find.text('Confrères'));
-      await tester.pumpAndSettle();
+      await revealAll(tester); // téléphone : rubriques repliées
       await tester.tap(find.text('Confrères'));
       await tester.pumpAndSettle();
       expect(find.text('Ali Élec'), findsOneWidget);
@@ -1064,6 +1062,7 @@ void main() {
     useScreenSize(tester, const Size(500, 1400));
     final api = _FakeSalesApi(cash: _openCash);
     await _pumpScreen(tester, api, []);
+    await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.text('Clients'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Benali'));
@@ -1116,6 +1115,7 @@ void main() {
   ) async {
     useScreenSize(tester, const Size(500, 1400));
     await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.text('Clients'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Benali'));
@@ -1136,6 +1136,7 @@ void main() {
       permissions: const ['sale.create', 'customer.read', 'customer.write'],
     );
     await _pumpScreen(tester, api, [], user: admin);
+    await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.text('Clients'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Benali'));
@@ -1354,11 +1355,13 @@ void main() {
       permissions: const ['sale.create', 'cash.report.read'],
     );
     await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), [], user: admin);
-    // Onglets en ligne qui défile : on l'amène à l'écran d'abord.
+    await revealAll(tester); // téléphone : rubriques repliées
+    // Poste : la ligne d'onglets défile, on amène l'onglet à l'écran.
     await tester.ensureVisible(find.text('Caisses'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Caisses'));
     await tester.pumpAndSettle();
+    await revealAll(tester);
     await tester.tap(find.textContaining('Caissier'));
     await tester.pumpAndSettle();
     expect(find.text('Mouvements hors vente'), findsOneWidget);

@@ -4,6 +4,8 @@ import 'package:dio/dio.dart';
 
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show ValueKey;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
@@ -409,5 +411,21 @@ class FakeDashboardApi extends DashboardApi {
     calls++;
     if (failure != null) throw failure!;
     return result;
+  }
+}
+
+/// Téléphone (2026-10-29) : onglets, actions et filtres sont repliés derrière
+/// une flèche. Déplie tout ce qui est fermé — à appeler avant de toucher un
+/// élément replié. Sans effet sur le poste.
+Future<void> revealAll(WidgetTester tester) async {
+  for (final key in [
+    'deplier-onglets-ferme',
+    'deplier-Actions-ferme',
+    'deplier-Filtres-ferme',
+  ]) {
+    while (find.byKey(ValueKey(key)).evaluate().isNotEmpty) {
+      await tester.tap(find.byKey(ValueKey(key)).first);
+      await tester.pumpAndSettle();
+    }
   }
 }

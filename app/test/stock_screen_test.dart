@@ -229,6 +229,7 @@ void main() {
       await tester.pumpWidget(wrap(_magasinier()));
       await tester.pumpAndSettle();
 
+      await revealAll(tester); // téléphone : rubriques repliées
       await tester.tap(find.textContaining('Pertes'));
       await tester.pumpAndSettle();
       expect(find.text('Carton écrasé'), findsOneWidget);
@@ -325,6 +326,7 @@ void main() {
     useScreenSize(tester, const Size(400, 900));
     await tester.pumpWidget(wrap(_admin()));
     await tester.pumpAndSettle();
+    await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.textContaining('Pertes'));
     await tester.pumpAndSettle();
 

@@ -439,7 +439,9 @@ class _FramePainter extends CustomPainter {
   bool shouldRepaint(_FramePainter old) => false;
 }
 
-/// Un onglet de l'encoche du bas (téléphone).
+/// Un onglet de la barre du bas (téléphone) : icône au-dessus du libellé ;
+/// actif, il se pose sur une pastille claire (style « verre », image fournie
+/// par MEDMEDBEN le 2026-10-29).
 class IslandTab extends StatelessWidget {
   const IslandTab({
     super.key,
@@ -459,64 +461,52 @@ class IslandTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    return Semantics(
-      button: true,
-      selected: active,
-      label: label,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 66,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Taille animée seule : un fond dégradé ne s'interpole pas
-              // vers un fond vide.
-              AnimatedScale(
-                scale: active ? 1 : 0.86,
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutBack,
-                child: Container(
-                  width: 46,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(17),
-                    gradient: active ? colors.accentGradient : null,
-                    boxShadow: active
-                        ? [
-                            BoxShadow(
-                              color: colors.accent.withValues(alpha: 0.45),
-                              blurRadius: 12,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Badge.count(
-                    count: badge,
-                    isLabelVisible: badge > 0,
-                    child: Icon(
-                      icon,
-                      size: 19,
-                      color: active ? colors.onAccent : const Color(0xFF94A3B8),
-                    ),
-                  ),
+    final ink = active ? colors.accent : colors.ink2;
+    return Expanded(
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: label,
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              color: active
+                  ? Colors.white.withValues(alpha: colors.isDark ? 0.12 : 0.6)
+                  : Colors.white.withValues(alpha: 0),
+              border: Border.all(
+                color: Colors.white.withValues(
+                  alpha: active ? (colors.isDark ? 0.18 : 0.9) : 0,
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  color: active ? Colors.white : const Color(0xFF94A3B8),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Badge.count(
+                  count: badge,
+                  isLabelVisible: badge > 0,
+                  child: Icon(icon, size: 20, color: ink),
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    color: ink,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -524,54 +514,76 @@ class IslandTab extends StatelessWidget {
   }
 }
 
-/// Barre de navigation du téléphone en ENCOCHE iOS (demande MEDMEDBEN du
-/// 2026-10-29) : bloc noir collé au bord bas, coins hauts arrondis, raccords
-/// concaves vers le bord, onglets ronds.
+/// Barre de navigation du téléphone : une CAPSULE de verre dépoli qui flotte
+/// au-dessus du bas de l'écran, et à côté un bouton rond en verre (`side`) —
+/// les actions rapides, à portée du pouce.
 class BottomIsland extends StatelessWidget {
-  const BottomIsland({super.key, required this.tabs});
+  const BottomIsland({super.key, required this.tabs, this.side});
 
   final List<IslandTab> tabs;
+  final Widget? side;
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
-    return SizedBox(
-      height: 70 + bottom,
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: CustomPaint(
-          painter: _BottomIslandPainter(),
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(10, 9, 10, 7 + bottom),
-            child: Row(mainAxisSize: MainAxisSize.min, children: tabs),
-          ),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 6, 12, 10 + bottom),
+      child: SizedBox(
+        height: 62,
+        child: Row(
+          children: [
+            Expanded(
+              child: Glass(
+                radius: 30,
+                opacity: 0.6,
+                child: Padding(
+                  padding: const EdgeInsets.all(5),
+                  child: Row(children: tabs),
+                ),
+              ),
+            ),
+            if (side case final side?) ...[const SizedBox(width: 10), side],
+          ],
         ),
       ),
     );
   }
 }
 
-class _BottomIslandPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const r = 26.0; // coins hauts
-    const c = 20.0; // raccords concaves vers le bord
-    final w = size.width;
-    final h = size.height;
-    final path = Path()
-      ..moveTo(-c, h)
-      ..quadraticBezierTo(0, h, 0, h - c)
-      ..lineTo(0, r)
-      ..arcToPoint(const Offset(r, 0), radius: const Radius.circular(r))
-      ..lineTo(w - r, 0)
-      ..arcToPoint(Offset(w, r), radius: const Radius.circular(r))
-      ..lineTo(w, h - c)
-      ..quadraticBezierTo(w, h, w + c, h)
-      ..close();
-    canvas.drawShadow(path, Colors.black, 10, false);
-    canvas.drawPath(path, Paint()..color = Colors.black);
-  }
+/// Bouton rond en verre (à côté de la capsule).
+class GlassRoundButton extends StatelessWidget {
+  const GlassRoundButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
 
   @override
-  bool shouldRepaint(_BottomIslandPainter old) => false;
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: SizedBox(
+        width: 60,
+        height: 60,
+        child: Glass(
+          radius: 30,
+          opacity: 0.6,
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: Icon(icon, size: 24, color: colors.accent),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

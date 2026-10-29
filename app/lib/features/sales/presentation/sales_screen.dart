@@ -1368,7 +1368,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   return TextField(
                     controller: controller,
                     focusNode: focus,
-                    autofocus: true,
+                    // Téléphone : pas de clavier à l'ouverture (2026-10-29).
+                    autofocus: false,
                     autocorrect: false,
                     style: AmpereType.input,
                     decoration: _searchDecoration(products),

@@ -183,6 +183,7 @@ void main() {
     'nouvel inventaire : lieu déjà choisi, la saisie s’ouvre aussitôt',
     (tester) async {
       final api = await _pump(tester, _magasinier());
+      await revealAll(tester); // téléphone : rubriques repliées
       await tester.tap(find.text('Inventaire complet'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Commencer le comptage'));
@@ -200,6 +201,7 @@ void main() {
     tester,
   ) async {
     final api = await _pump(tester, _magasinier());
+    await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.text('Inventaire complet'));
     await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));

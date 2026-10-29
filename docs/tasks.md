@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Téléphone : capsule de verre, actions rapides, rubriques repliées — 2026-10-29 (MEDMEDBEN, Claude)
+
+- Barre du bas : capsule de verre dépoli (`BottomIsland`, onglet actif sur pastille claire) + bouton rond
+  ⚡ `GlassRoundButton` → menu « Actions rapides » (`_QuickActions`, selon les droits).
+- Sous 600 px : `PillTabs` → un bouton « rubrique en cours ▾ » (`_CompactTabs`) ; `ActionGrid` → action
+  principale + « Actions · n ▾ » ; `StatGrid` → filtre en cours + « Filtres · n ▾ » (`_Expandable`,
+  page_kit.dart). Clés `deplier-…-ferme|ouvert` ; helper de test `revealAll` (test/support/fakes.dart).
+- Vente mobile : plus d'`autofocus` sur la recherche (le clavier ne monte plus à l'ouverture).
+- `StatTile` : libellé tronqué au lieu de déborder sur petit écran.
+- Preuves : analyze 0, 557 tests ; captures 19, 22, 48, 49 vérifiées.
+
 ### Version téléphone allégée, façon appli bancaire — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `MobileShell` : barre du bas en ENCOCHE iOS (`BottomIsland`/`IslandTab`, glass.dart) — bloc noir collé au

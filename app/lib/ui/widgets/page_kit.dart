@@ -95,10 +95,15 @@ class StatTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 5),
-              Text(
-                label,
-                style: AmpereType.meta.copyWith(
-                  color: selected ? colors.accent : colors.ink2,
+              // Petit écran : le libellé se raccourcit plutôt que déborder.
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.meta.copyWith(
+                    color: selected ? colors.accent : colors.ink2,
+                  ),
                 ),
               ),
             ],
@@ -116,8 +121,118 @@ class StatGrid extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) =>
-      Wrap(spacing: 8, runSpacing: 8, children: children);
+  Widget build(BuildContext context) {
+    // Téléphone (2026-10-29) : seul le filtre EN COURS est montré, une flèche
+    // déplie les autres — l'écran de travail reste dégagé.
+    if (_isPhone(context) && children.length > 1) {
+      final current =
+          children.whereType<StatTile>().where((t) => t.selected).firstOrNull ??
+          children.first;
+      return _Expandable(
+        icon: LucideIcons.listFilter,
+        label: 'Filtres',
+        visible: current,
+        all: children,
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: children);
+  }
+}
+
+/// Téléphone : largeur sous 600 px.
+bool _isPhone(BuildContext context) => MediaQuery.sizeOf(context).width < 600;
+
+/// Ce qui est montré tout de suite (`visible`), un bouton à flèche qui déplie
+/// le reste (`all`) en douceur ; replié par défaut.
+class _Expandable extends StatefulWidget {
+  const _Expandable({
+    required this.icon,
+    required this.label,
+    required this.visible,
+    required this.all,
+  });
+
+  final IconData icon;
+  final String label;
+  final Widget visible;
+  final List<Widget> all;
+
+  @override
+  State<_Expandable> createState() => _ExpandableState();
+}
+
+class _ExpandableState extends State<_Expandable> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final others = [
+      for (final c in widget.all)
+        if (!identical(c, widget.visible)) c,
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Flexible(child: widget.visible),
+            const SizedBox(width: 8),
+            Material(
+              color: _open ? colors.accentBg : colors.surface2,
+              shape: const StadiumBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                // Clé lisible par les tests : `deplier-<libellé>-ferme|ouvert`.
+                key: ValueKey(
+                  'deplier-${widget.label}-${_open ? 'ouvert' : 'ferme'}',
+                ),
+                onTap: () => setState(() => _open = !_open),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 7, 8, 7),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(widget.icon, size: 14, color: colors.ink2),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${widget.label} · ${others.length}',
+                        style: AmpereType.meta.copyWith(
+                          color: colors.ink2,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      AnimatedRotation(
+                        turns: _open ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 220),
+                        child: Icon(
+                          LucideIcons.chevronDown,
+                          size: 15,
+                          color: colors.ink2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: _open
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: others),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
 }
 
 /// Une action expliquée : icône colorée, titre, une ligne de « pourquoi ».
@@ -185,8 +300,25 @@ class ActionGrid extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) =>
-      Wrap(spacing: 8, runSpacing: 8, children: children);
+  Widget build(BuildContext context) {
+    // Téléphone (2026-10-29) : l'action PRINCIPALE reste en vue, les autres
+    // se rangent derrière « Actions ▾ ».
+    if (_isPhone(context) && children.length > 1) {
+      final main =
+          children
+              .whereType<ActionTile>()
+              .where((a) => a.prominent)
+              .firstOrNull ??
+          children.first;
+      return _Expandable(
+        icon: LucideIcons.layoutGrid,
+        label: 'Actions',
+        visible: main,
+        all: children,
+      );
+    }
+    return Wrap(spacing: 8, runSpacing: 8, children: children);
+  }
 }
 
 /// « Comment ça marche » : étapes numérotées, pour qu'un écran sans données

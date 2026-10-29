@@ -6,6 +6,8 @@ import '../../core/providers.dart';
 import '../../features/auth/data/auth_models.dart';
 import '../../features/notifications/application/notifications_controller.dart';
 import '../../features/users/data/user_models.dart';
+import '../../features/catalog/presentation/catalog_screen.dart';
+import '../../features/home/presentation/home_screen.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
@@ -120,9 +122,10 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                 child: current.builder(context, widget.user),
               ),
       ),
-      // Encoche iOS en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
-      // ouvre la page « Plus ».
+      // Capsule de verre en bas (2026-10-29) : 4 onglets au plus (§7), le 4ᵉ
+      // ouvre la page « Plus » ; à côté, les actions rapides.
       bottomNavigationBar: BottomIsland(
+        side: _QuickActions(user: widget.user),
         tabs: [
           for (final (i, tab)
               in (overflow ? tabs.take(_maxTabs - 1) : tabs).indexed)
@@ -391,6 +394,81 @@ class _MoreRow extends StatelessWidget {
             Icon(LucideIcons.chevronRight, size: 17, color: colors.ink3),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Actions rapides, à portée du pouce (bouton rond à côté de la barre) : les
+/// gestes du quotidien, selon les droits du compte.
+class _QuickActions extends ConsumerWidget {
+  const _QuickActions({required this.user});
+
+  final AuthUser user;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = menuFor(
+      user,
+    ).expand((d) => [d.label, ...d.sections.map((s) => s.label)]).toSet();
+    final rights = CatalogRights(user);
+    final actions = <(IconData, String, VoidCallback)>[
+      if (open.contains('Vente'))
+        (
+          LucideIcons.shoppingCart,
+          'Nouvelle vente',
+          () => goToDestination(ref, 'Vente'),
+        ),
+      if (open.contains('Scanner'))
+        (
+          LucideIcons.scanBarcode,
+          'Scanner',
+          () => goToDestination(ref, 'Scanner'),
+        ),
+      if (rights.canWriteProducts)
+        (
+          LucideIcons.packagePlus,
+          'Ajout rapide produit',
+          () => quickAddProduct(context, ref, rights),
+        ),
+      if (open.contains('Transferts'))
+        (
+          LucideIcons.arrowLeftRight,
+          'Transferts',
+          () => goToDestination(ref, 'Transferts'),
+        ),
+    ];
+    if (actions.isEmpty) return const SizedBox.shrink();
+    final colors = AmpereColors.of(context);
+    return MenuAnchor(
+      alignmentOffset: const Offset(-150, -8),
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(colors.surface),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(vertical: 6),
+        ),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: colors.line),
+          ),
+        ),
+      ),
+      menuChildren: [
+        for (final (icon, label, onTap) in actions)
+          MenuItemButton(
+            leadingIcon: Icon(icon, size: 18),
+            onPressed: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(label),
+            ),
+          ),
+      ],
+      builder: (context, controller, _) => GlassRoundButton(
+        icon: LucideIcons.zap,
+        tooltip: 'Actions rapides',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
     );
   }
