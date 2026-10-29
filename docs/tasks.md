@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Animations fluides — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `ui/widgets/motion.dart` : `SlidingSelection` (le repère de sélection GLISSE, positions mesurées après mise
+  en page, courbe ressort `springCurve`), `Appear` (fondu + montée, `delay` pour une cascade). Respecte
+  « réduire les animations ».
+- Appliqué : pastille de verre de la barre du téléphone (icône qui grossit), carte de l'onglet actif des
+  `PillTabs`, soulignement des `SectionTabs` + rubrique qui arrive en fondu ; cartes `AmpereTappable` qui
+  apparaissent ; « Actions ▾ / Filtres ▾ / rubriques ▾ » qui se déplient en fondu ; page « Plus » en
+  cascade ; chiffre d'affaires de l'accueil qui compte jusqu'à sa valeur ; transitions de pages
+  `FadeForwardsPageTransitionsBuilder` partout.
+- Preuves : analyze 0, 558 tests ; captures 22, 52, 53.
+
 ### Recherche à l'envers corrigée, Catalogue/Stock allégés, ambiance au téléphone — 2026-10-29 (MEDMEDBEN, Claude)
 
 - Bug terrain « led » → « del » (navigateur du téléphone) : `SearchField` (page_kit.dart) remet le curseur en

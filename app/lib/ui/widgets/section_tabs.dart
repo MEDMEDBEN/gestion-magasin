@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'motion.dart';
 import '../../features/auth/data/auth_models.dart';
 import '../navigation.dart';
 import '../theme/ampere_colors.dart';
@@ -42,12 +43,26 @@ class SectionTabs extends ConsumerWidget {
     );
     final current = sections[index];
     // Téléphone : la rubrique se choisit depuis le titre de la page.
-    if (MediaQuery.sizeOf(context).width < 600) {
-      return KeyedSubtree(
+    // Changer de rubrique : la nouvelle arrive en fondu, légèrement glissée.
+    final content = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      switchInCurve: Curves.easeOutCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0.03, 0),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: KeyedSubtree(
         key: ValueKey('$group/${current.label}'),
         child: current.builder(context, user),
-      );
-    }
+      ),
+    );
+    if (MediaQuery.sizeOf(context).width < 600) return content;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -58,7 +73,19 @@ class SectionTabs extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Row(
+            // Le soulignement GLISSE vers la rubrique choisie.
+            child: SlidingSelection(
+              selected: index,
+              indicator: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: colors.accent,
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
               children: [
                 for (final (i, s) in sections.indexed)
                   _Tab(
@@ -72,12 +99,7 @@ class SectionTabs extends ConsumerWidget {
             ),
           ),
         ),
-        Expanded(
-          child: KeyedSubtree(
-            key: ValueKey('$group/${current.label}'),
-            child: current.builder(context, user),
-          ),
-        ),
+        Expanded(child: content),
       ],
     );
   }
@@ -110,10 +132,8 @@ class _Tab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(10, 12, 10, 10),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                color: selected ? colors.accent : Colors.transparent,
-                width: 2,
-              ),
+              // Le soulignement est dessiné par la barre (il glisse).
+              bottom: const BorderSide(color: Colors.transparent, width: 2),
             ),
           ),
           child: Row(

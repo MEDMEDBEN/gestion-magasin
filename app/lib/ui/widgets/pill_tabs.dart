@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
+import 'motion.dart';
 
 /// Onglets d'un écran en pastilles (Vente, Catalogue…) : l'onglet choisi en
 /// dégradé d'accent ; sur téléphone, les pastilles passent à la ligne.
@@ -41,8 +42,28 @@ class PillTabs<T> extends StatelessWidget {
       // Une seule ligne qui défile (téléphone) plutôt que deux lignes.
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        // La carte blanche de l'onglet actif GLISSE vers l'onglet choisi.
+        child: SlidingSelection(
+          selected: switch (items.indexWhere((i) => i.$1 == selected)) {
+            -1 => null,
+            final i => i,
+          },
+          indicator: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                color: colors.surface,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    blurRadius: 3,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          ),
           children: [
             for (final (value, icon, label) in items)
               _tab(colors, value, icon, label),
@@ -66,19 +87,7 @@ class PillTabs<T> extends StatelessWidget {
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOut,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(7),
-              color: on ? colors.surface : null,
-              boxShadow: on
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x14000000),
-                        blurRadius: 3,
-                        offset: Offset(0, 1),
-                      ),
-                    ]
-                  : null,
-            ),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(7)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -160,23 +169,25 @@ class _CompactTabsState<T> extends State<_CompactTabs<T>> {
           alignment: Alignment.topCenter,
           child: !_open
               ? const SizedBox.shrink()
-              : Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final (value, icon, label) in widget.items)
-                        if (value != widget.selected)
-                          ActionChip(
-                            avatar: Icon(icon, size: 15, color: colors.ink2),
-                            label: Text(label),
-                            onPressed: () {
-                              setState(() => _open = false);
-                              widget.onSelect(value);
-                            },
-                          ),
-                    ],
+              : Appear(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final (value, icon, label) in widget.items)
+                          if (value != widget.selected)
+                            ActionChip(
+                              avatar: Icon(icon, size: 15, color: colors.ink2),
+                              label: Text(label),
+                              onPressed: () {
+                                setState(() => _open = false);
+                                widget.onSelect(value);
+                              },
+                            ),
+                      ],
+                    ),
                   ),
                 ),
         ),

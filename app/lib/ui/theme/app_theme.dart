@@ -64,6 +64,14 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
+      // Pages qui s'ouvrent : fondu et glissement vers l'avant, sur toutes
+      // les plateformes (2026-10-29).
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: {
+          for (final platform in TargetPlatform.values)
+            platform: const FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
       brightness: scheme.brightness,
       colorScheme: scheme,
       fontFamily: AmpereType.family,

@@ -1164,9 +1164,20 @@ class _SalesHero extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(
-              formatDA(sales.revenueTtc),
-              style: AmpereType.numericHero.copyWith(color: ink, fontSize: 32),
+            // Le montant compte jusqu'à sa valeur (comme un compteur).
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: sales.revenueTtc.toDouble()),
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 900),
+              curve: Curves.easeOutCubic,
+              builder: (context, value, _) => Text(
+                formatDA(value.round()),
+                style: AmpereType.numericHero.copyWith(
+                  color: ink,
+                  fontSize: 32,
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 4),

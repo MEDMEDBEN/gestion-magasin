@@ -14,6 +14,7 @@ import '../theme/ampere_typography.dart';
 import '../theme/palettes.dart';
 import '../widgets/ambiance_panels.dart';
 import '../widgets/glass.dart';
+import '../widgets/motion.dart';
 import '../widgets/signal_background.dart';
 import '../widgets/page_kit.dart';
 import '../widgets/screen_state.dart';
@@ -438,10 +439,13 @@ class _MorePage extends StatelessWidget {
                 for (final (k, (i, d)) in entries.indexed) ...[
                   if (k > 0)
                     Divider(height: 1, indent: 60, color: colors.lineSoft),
-                  _MoreRow(
-                    destination: d,
-                    badge: d.label == 'Notifications' ? unread : 0,
-                    onTap: () => onOpen(i),
+                  Appear(
+                    delay: Duration(milliseconds: 30 * k),
+                    child: _MoreRow(
+                      destination: d,
+                      badge: d.label == 'Notifications' ? unread : 0,
+                      onTap: () => onOpen(i),
+                    ),
                   ),
                 ],
               ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import 'motion.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/ampere_typography.dart';
 
@@ -224,9 +225,11 @@ class _ExpandableState extends State<_Expandable> {
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: _open
-              ? Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Wrap(spacing: 8, runSpacing: 8, children: others),
+              ? Appear(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(spacing: 8, runSpacing: 8, children: others),
+                  ),
                 )
               : const SizedBox(width: double.infinity),
         ),

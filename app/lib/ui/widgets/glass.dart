@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../theme/ampere_colors.dart';
+import 'motion.dart';
 
 /// Style « verre » façon iOS / macOS, pour le thème BLANC (demande MEDMEDBEN
 /// du 2026-10-28) : fond liquide (taches de couleur floues qui flottent),
@@ -540,46 +541,48 @@ class IslandTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
     final ink = active ? colors.ink : colors.ink2;
-    return Expanded(
-      child: Semantics(
-        button: true,
-        selected: active,
-        label: label,
-        excludeSemantics: true,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            decoration: active
-                ? _frost(
-                    colors.isDark,
-                    radius: BorderRadius.circular(24),
-                  ).copyWith(boxShadow: [])
-                : BoxDecoration(borderRadius: BorderRadius.circular(24)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Badge.count(
+    return Semantics(
+      button: true,
+      selected: active,
+      label: label,
+      excludeSemantics: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // L'icône choisie grossit un peu, avec un rebond.
+              AnimatedScale(
+                scale: active ? 1.12 : 1,
+                duration: const Duration(milliseconds: 380),
+                curve: springCurve,
+                child: Badge.count(
                   count: badge,
                   isLabelVisible: badge > 0,
                   child: Icon(icon, size: 21, color: ink),
                 ),
-                const SizedBox(height: 2),
-                Text(
+              ),
+              const SizedBox(height: 2),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 220),
+                // Garde la police de l'application (le style est remplacé,
+                // pas fusionné).
+                style: DefaultTextStyle.of(context).style.copyWith(
+                  fontSize: 10.5,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                  color: ink,
+                ),
+                child: Text(
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    color: ink,
-                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -608,7 +611,23 @@ class BottomIsland extends StatelessWidget {
                 radius: BorderRadius.circular(31),
                 child: Padding(
                   padding: const EdgeInsets.all(5),
-                  child: Row(children: tabs),
+                  // La pastille de verre GLISSE vers l'onglet choisi.
+                  child: SlidingSelection(
+                    expand: true,
+                    selected: switch (tabs.indexWhere((t) => t.active)) {
+                      -1 => null,
+                      final i => i,
+                    },
+                    indicator: Builder(
+                      builder: (context) => DecoratedBox(
+                        decoration: _frost(
+                          AmpereColors.of(context).isDark,
+                          radius: BorderRadius.circular(24),
+                        ).copyWith(boxShadow: []),
+                      ),
+                    ),
+                    children: tabs,
+                  ),
                 ),
               ),
             ),

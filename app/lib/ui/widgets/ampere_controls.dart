@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import 'motion.dart';
 import '../theme/ampere_colors.dart';
 import '../theme/app_theme.dart';
 import '../theme/ampere_typography.dart';
@@ -78,22 +79,25 @@ class _AmpereTappableState extends State<AmpereTappable> {
     final colors = AmpereColors.of(context);
     final radius = BorderRadius.circular(widget.borderRadius);
 
-    return Material(
-      color: widget.color,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: widget.onTap,
+    // Les cartes (produits, stock, transferts…) apparaissent en douceur.
+    return Appear(
+      child: Material(
+        color: widget.color,
         borderRadius: radius,
-        hoverColor: colors.accent.withValues(alpha: 0.08),
-        onFocusChange: (focused) => setState(() => _focused = focused),
-        child: Container(
-          foregroundDecoration: _focused
-              ? BoxDecoration(
-                  borderRadius: radius,
-                  border: Border.all(color: colors.accent, width: 2),
-                )
-              : null,
-          child: widget.child,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: radius,
+          hoverColor: colors.accent.withValues(alpha: 0.08),
+          onFocusChange: (focused) => setState(() => _focused = focused),
+          child: Container(
+            foregroundDecoration: _focused
+                ? BoxDecoration(
+                    borderRadius: radius,
+                    border: Border.all(color: colors.accent, width: 2),
+                  )
+                : null,
+            child: widget.child,
+          ),
         ),
       ),
     );
