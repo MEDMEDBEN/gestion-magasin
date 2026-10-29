@@ -56,27 +56,35 @@ class StatTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    // Maquette du 2026-10-26 : pastille blanche à filet ; choisie, pleine
-    // (noir en clair). La couleur de l'état ne teinte que l'icône.
-    final fg = selected ? colors.onAccent : colors.ink;
+    // FILTRE ≠ ACTION (demande MEDMEDBEN du 2026-10-29) : un filtre est une
+    // PILULE au fond doux, sans relief ; choisi, il s'entoure de l'accent et
+    // prend une coche. Les actions, elles, sont des boutons rectangulaires.
+    final fg = selected ? colors.accent : colors.ink;
     return Material(
-      color: selected ? colors.accent : colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: selected ? colors.accent : colors.line),
+      color: selected ? colors.accentBg : colors.surface2,
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: selected ? colors.accent : Colors.transparent,
+          width: 1.4,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(12, 6, 14, 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: 15,
-                color: selected ? colors.onAccent : tone.foreground(colors),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: Icon(
+                  selected ? LucideIcons.check : icon,
+                  key: ValueKey(selected),
+                  size: 14,
+                  color: selected ? colors.accent : tone.foreground(colors),
+                ),
               ),
               const SizedBox(width: 7),
               Text(
@@ -90,7 +98,7 @@ class StatTile extends StatelessWidget {
               Text(
                 label,
                 style: AmpereType.meta.copyWith(
-                  color: selected ? colors.onAccent : colors.ink2,
+                  color: selected ? colors.accent : colors.ink2,
                 ),
               ),
             ],
@@ -140,7 +148,10 @@ class ActionTile extends StatelessWidget {
     // Petit bouton (demande MEDMEDBEN du 2026-10-26 : les tuiles d'action
     // étaient trop grandes) ; l'explication passe en infobulle. L'action
     // principale est pleine, les autres bordées, icône à la couleur de l'état.
+    // Action = bouton rectangulaire avec un léger relief (≠ filtre pilule).
     final style = ButtonStyle(
+      elevation: const WidgetStatePropertyAll(1.5),
+      shadowColor: WidgetStatePropertyAll(colors.ink.withValues(alpha: 0.25)),
       minimumSize: const WidgetStatePropertyAll(Size(0, 32)),
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 12),

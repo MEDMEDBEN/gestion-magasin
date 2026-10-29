@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/offline_write.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
@@ -12,6 +13,7 @@ import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/action_option.dart';
+import '../../../ui/widgets/feedback_burst.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -498,6 +500,18 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
         _ => actions.cancel(transfer.id, refuse: false),
       };
       if (context.mounted) {
+        // Confirmation animée (2026-10-29) ; hors ligne : en attente.
+        showFeedbackBurst(
+          context,
+          outcome is Queued ? FeedbackKind.pending : FeedbackKind.success,
+          switch (action) {
+            'accept' => 'Demande acceptée',
+            'ship' => 'Expédié vers le magasin',
+            'refuse' => 'Demande refusée',
+            _ => 'Demande annulée',
+          },
+          detail: transfer.number,
+        );
         _snack(context, transferOutcomeText(outcome));
       }
     } on ApiException catch (error) {

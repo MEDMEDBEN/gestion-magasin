@@ -4,6 +4,21 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Confirmations animées, filtres ≠ actions, cadre noir — 2026-10-29 (MEDMEDBEN, Claude)
+
+- `ui/widgets/feedback_burst.dart` : `showFeedbackBurst(context, kind, titre, detail:)` — pastille au centre
+  (succès vert : rebond + coche tracée + onde ; en attente ambre ; refus rouge qui tremble), une seule
+  animation de 1,6 s qui se retire seule (aucune minuterie). Branché sur : vente encaissée / hors ligne /
+  refusée, changements de statut Achats et Devis, actions de Transferts.
+- Caisse : tuile qui rebondit à l'ajout, ligne de panier qui glisse en place (`_AppearIn`), total qui défile.
+- Filtres = pilules au fond doux + symbole entonnoir (`StatTile`, `StatGrid`, `chipTheme` en stade) ; choisi :
+  contour accent + coche. Actions = boutons rectangulaires avec léger relief (`ActionTile`).
+- `ScreenFrame` (glass.dart) : cadre noir de 6 px autour de l'écran, l'encoche en fait partie.
+- Vente (essai) : séparations noires de l'épaisseur du cadre (catalogue | ticket, ticket / paiement),
+  panneaux arrondis.
+- `appuild` supprimé (disque plein) : recompiler l'app Windows (`flutter build windows`).
+- Preuves : analyze 0, 555 tests ; captures 21, 95, 97 vérifiées.
+
 ### Style « verre » étendu à toutes les palettes — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `AmpereColors.isGlass` = vrai pour toutes les palettes ; `accentGradient` = accent → `vizAlt` de la palette.

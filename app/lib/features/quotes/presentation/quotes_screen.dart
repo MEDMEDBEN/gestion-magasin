@@ -10,6 +10,7 @@ import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/widgets/amount_dialog.dart';
 import '../../../ui/widgets/ampere_controls.dart';
 import '../../../ui/widgets/action_option.dart';
+import '../../../ui/widgets/feedback_burst.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../sales/application/sales_controller.dart';
@@ -212,6 +213,12 @@ class QuotesScreen extends ConsumerWidget {
             _ => actions.refuse(quote),
           };
           if (context.mounted) {
+            showFeedbackBurst(
+              context,
+              FeedbackKind.success,
+              updated.status.label,
+              detail: updated.number,
+            );
             _snack(context, '${updated.number} : ${updated.status.label}.');
           }
       }

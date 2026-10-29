@@ -21,6 +21,8 @@ import '../../../ui/widgets/history_dialog.dart';
 import '../../../ui/widgets/import_button.dart';
 import '../../../ui/widgets/pill_tabs.dart';
 import '../../../ui/widgets/export_button.dart';
+import '../../../ui/widgets/feedback_burst.dart';
+import '../../../ui/widgets/glass.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
@@ -922,8 +924,20 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       switch (outcome) {
         case Applied(value: final sale):
           ref.invalidate(stockByProductProvider);
+          // Confirmation animée (2026-10-29) : la vente est bien passée.
+          showFeedbackBurst(
+            context,
+            FeedbackKind.success,
+            'Vente encaissée',
+            detail: formatDA(estimate.totalTtc),
+          );
           await _showTicket(sale, change: change);
         case Queued():
+          showFeedbackBurst(
+            context,
+            FeedbackKind.pending,
+            'Enregistrée hors ligne',
+          );
           await _showQueued(
             total: estimate.totalTtc,
             kept: kept,
@@ -941,7 +955,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         ref.invalidate(mySalesProvider);
         ref.invalidate(currentCashSessionProvider);
       }
-      if (mounted) _snack(context, error.userMessage);
+      if (mounted) {
+        showFeedbackBurst(context, FeedbackKind.error, 'Vente refusée');
+        _snack(context, error.userMessage);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1152,27 +1169,46 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         ),
         SizedBox(
           width: (MediaQuery.sizeOf(context).width * 0.38).clamp(440.0, 620.0),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: colors.surface,
-              border: Border(left: BorderSide(color: colors.line)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    children: _ticketBody(),
+          // Séparations NOIRES, de l'épaisseur du cadre de l'écran
+          // (essai demandé par MEDMEDBEN le 2026-10-29) : le ticket et le
+          // paiement sont des panneaux arrondis découpés dans le cadre.
+          child: ColoredBox(
+            color: Colors.black,
+            child: Padding(
+              padding: const EdgeInsets.only(left: ScreenFrame.width),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(16),
+                        bottomLeft: Radius.circular(16),
+                        bottomRight: Radius.circular(16),
+                      ),
+                      child: ColoredBox(
+                        color: colors.surface,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                          children: _ticketBody(),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: colors.line)),
+                  const SizedBox(height: ScreenFrame.width),
+                  ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(16),
+                      topRight: Radius.circular(16),
+                      bottomLeft: Radius.circular(16),
+                    ),
+                    child: ColoredBox(
+                      color: colors.surface,
+                      child: _payPanel(),
+                    ),
                   ),
-                  child: _payPanel(),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1334,14 +1370,19 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         )
       else
         for (final line in cart.lines)
-          _CartLineRow(
-            line: line,
-            missingPrice: estimate.missingPrices.contains(line.product),
-            invalidDiscount: estimate.invalidDiscounts.contains(line.product),
-            totalHt: estimate.lineTotalsHt[line.product.id],
-            unitPriceHt: estimate.unitPricesHt[line.product.id],
-            tariffPriceHt: estimate.tariffPricesHt[line.product.id],
-            canDiscount: widget.rights.canDiscount,
+          // Une ligne qui ARRIVE glisse en place (2026-10-29) ; les autres
+          // ne bougent pas (clé par produit).
+          _AppearIn(
+            key: ValueKey('ligne-${line.product.id}'),
+            child: _CartLineRow(
+              line: line,
+              missingPrice: estimate.missingPrices.contains(line.product),
+              invalidDiscount: estimate.invalidDiscounts.contains(line.product),
+              totalHt: estimate.lineTotalsHt[line.product.id],
+              unitPriceHt: estimate.unitPricesHt[line.product.id],
+              tariffPriceHt: estimate.tariffPricesHt[line.product.id],
+              canDiscount: widget.rights.canDiscount,
+            ),
           ),
     ];
   }
@@ -1552,11 +1593,26 @@ class _TotalDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final amount = Text(
-      formatDA(total),
-      style: AmpereType.numericHero.copyWith(
-        fontSize: compact ? 24 : 26,
-        color: colors.ink,
+    // Le montant défile vers le haut à chaque changement (2026-10-29).
+    final amount = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 260),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, 0.4),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
+        ),
+      ),
+      child: Text(
+        formatDA(total),
+        key: ValueKey(total),
+        style: AmpereType.numericHero.copyWith(
+          fontSize: compact ? 24 : 26,
+          color: colors.ink,
+        ),
       ),
     );
     // Sobre (maquette du 2026-10-26) : un encadré gris clair, sans halo.
@@ -1869,92 +1925,101 @@ class _ProductTile extends StatelessWidget {
         : level <= Quantity.zero
         ? 'Rupture'
         : 'Stock ${formatQuantity(level)} ${product.unit.short}';
-    return Material(
-      color: colors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: picked ? colors.accent : colors.line,
-          width: picked ? 1.5 : 1,
+    // Rebond quand on l'ajoute au panier (2026-10-29) : le geste est vu.
+    return TweenAnimationBuilder<double>(
+      key: ValueKey('tuile-${inCart?.toString() ?? '0'}'),
+      tween: Tween(begin: picked ? 0.9 : 1, end: 1),
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.elasticOut,
+      builder: (context, scale, child) =>
+          Transform.scale(scale: scale, child: child),
+      child: Material(
+        color: colors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: picked ? colors.accent : colors.line,
+            width: picked ? 1.5 : 1,
+          ),
         ),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ProductThumbnail(product: product, size: 32),
-                  const Spacer(),
-                  if (picked)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 7,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.accent,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                      child: Text(
-                        formatQuantity(inCart!),
-                        style: AmpereType.label.copyWith(
-                          color: colors.onAccent,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ProductThumbnail(product: product, size: 32),
+                    const Spacer(),
+                    if (picked)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.accent,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          formatQuantity(inCart!),
+                          style: AmpereType.label.copyWith(
+                            color: colors.onAccent,
+                          ),
                         ),
                       ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Text(
+                    product.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                  ),
+                ),
+                Row(
+                  children: [
+                    // Le stock dit sa couleur par un simple point.
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: tone,
+                        shape: BoxShape.circle,
+                      ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Text(
-                  product.name,
-                  maxLines: 2,
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        stockLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  price == null
+                      ? 'Prix non fixé'
+                      : '${formatDA(price!)} / ${product.unit.short}',
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-                ),
-              ),
-              Row(
-                children: [
-                  // Le stock dit sa couleur par un simple point.
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: BoxDecoration(
-                      color: tone,
-                      shape: BoxShape.circle,
-                    ),
+                  style: AmpereType.bodyStrong.copyWith(
+                    fontSize: 14,
+                    color: price == null ? colors.error : colors.ink,
+                    fontFeatures: AmpereType.tabular,
                   ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      stockLabel,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AmpereType.meta.copyWith(color: colors.ink3),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                price == null
-                    ? 'Prix non fixé'
-                    : '${formatDA(price!)} / ${product.unit.short}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AmpereType.bodyStrong.copyWith(
-                  fontSize: 14,
-                  color: price == null ? colors.error : colors.ink,
-                  fontFeatures: AmpereType.tabular,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2719,5 +2784,24 @@ class _CartAction extends StatelessWidget {
     onPressed: onPressed,
     icon: Icon(icon, size: 14, color: onPressed == null ? null : color),
     label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+  );
+}
+
+/// Fait glisser et apparaître un élément à sa PREMIÈRE construction.
+class _AppearIn extends StatelessWidget {
+  const _AppearIn({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 280),
+    curve: Curves.easeOutCubic,
+    builder: (context, t, child) => Opacity(
+      opacity: t,
+      child: Transform.translate(offset: Offset(24 * (1 - t), 0), child: child),
+    ),
+    child: child,
   );
 }

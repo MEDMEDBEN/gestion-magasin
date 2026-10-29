@@ -94,7 +94,14 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               ),
             Padding(
               // L'encoche du thème verre occupe le bord gauche.
-              padding: EdgeInsets.only(left: glass ? SideIsland.width + 6 : 0),
+              padding: glass
+                  ? const EdgeInsets.fromLTRB(
+                      SideIsland.width + 6,
+                      ScreenFrame.width,
+                      ScreenFrame.width,
+                      ScreenFrame.width,
+                    )
+                  : EdgeInsets.zero,
               child: Column(
                 children: [
                   _TopBar(
@@ -147,6 +154,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                 ],
               ),
             ),
+            // Cadre noir fin autour de l'écran (2026-10-29).
+            if (glass) const Positioned.fill(child: ScreenFrame()),
             // Encoche noire iOS : Accueil et Paramètres, toujours à portée.
             if (glass)
               Positioned(

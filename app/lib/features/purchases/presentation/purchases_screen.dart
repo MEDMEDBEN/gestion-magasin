@@ -14,6 +14,7 @@ import '../../../ui/navigation.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/page_kit.dart';
 import '../../../ui/widgets/action_option.dart';
+import '../../../ui/widgets/feedback_burst.dart';
 import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
@@ -572,6 +573,12 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
         _ => actions.cancel(order.id),
       };
       if (context.mounted) {
+        showFeedbackBurst(
+          context,
+          FeedbackKind.success,
+          updated.status.label,
+          detail: updated.number,
+        );
         _snack(context, '${updated.number} : ${updated.status.label}.');
       }
     } on ApiException catch (error) {
@@ -636,6 +643,12 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
           .read(purchasesActionsProvider)
           .close(order.id, confirmed);
       if (context.mounted) {
+        showFeedbackBurst(
+          context,
+          FeedbackKind.success,
+          updated.status.label,
+          detail: updated.number,
+        );
         _snack(context, '${updated.number} : ${updated.status.label}.');
       }
     } on ApiException catch (error) {

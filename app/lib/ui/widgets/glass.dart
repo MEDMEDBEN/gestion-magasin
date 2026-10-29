@@ -299,3 +299,40 @@ class _IslandButtonViewState extends State<_IslandButtonView> {
     );
   }
 }
+
+/// Cadre noir fin autour de tout l'écran (demande MEDMEDBEN du 2026-10-29) :
+/// l'encoche latérale en fait partie, comme le bord d'un iPhone.
+class ScreenFrame extends StatelessWidget {
+  const ScreenFrame({super.key});
+
+  /// Épaisseur du cadre.
+  static const width = 6.0;
+
+  /// Arrondi intérieur des coins.
+  static const radius = 22.0;
+
+  @override
+  Widget build(BuildContext context) =>
+      IgnorePointer(child: CustomPaint(painter: _FramePainter()));
+}
+
+class _FramePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final outer = Offset.zero & size;
+    final inner = RRect.fromRectAndRadius(
+      outer.deflate(ScreenFrame.width),
+      const Radius.circular(ScreenFrame.radius),
+    );
+    canvas.drawPath(
+      Path()
+        ..fillType = PathFillType.evenOdd
+        ..addRect(outer)
+        ..addRRect(inner),
+      Paint()..color = Colors.black,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FramePainter old) => false;
+}
