@@ -4,6 +4,16 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Version web : plus de cache qui bloque l'iPhone — 2026-10-30 (MEDMEDBEN, Claude)
+
+- Cause : le « service worker » Flutter (cache hors ligne, `offlineFirst` par défaut) servait l'ancienne
+  version avant la nouvelle ; Safari (écran d'accueil) la gardait des jours.
+- `app/Dockerfile.web` : `flutter build web --pwa-strategy=none` (plus de service worker).
+  `app/web/flutter_service_worker.js` : script d'effacement — chez ceux qui ont l'ancien, il vide les caches,
+  se désinscrit et recharge la page.
+- Contrepartie : le site web a besoin du réseau pour s'OUVRIR (les données hors ligne restent).
+- Non vérifié ici : build web local interrompu ; à constater au prochain `docker compose up -d --build web`.
+
 ### Animations fluides — 2026-10-29 (MEDMEDBEN, Claude)
 
 - `ui/widgets/motion.dart` : `SlidingSelection` (le repère de sélection GLISSE, positions mesurées après mise

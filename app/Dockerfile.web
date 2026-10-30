@@ -24,8 +24,11 @@ COPY . .
 RUN dart run build_runner build
 # Adresse de l'API, même domaine que le site (https://<domaine>/api).
 ARG API_BASE_URL
+# Sans « service worker » (--pwa-strategy=none) : il servait l'ancienne version
+# avant la nouvelle (iPhone bloqué des jours). web/flutter_service_worker.js
+# l'efface chez ceux qui l'ont encore.
 RUN test -n "$API_BASE_URL" \
- && flutter build web --release --no-web-resources-cdn \
+ && flutter build web --release --no-web-resources-cdn --pwa-strategy=none \
       --dart-define=API_BASE_URL="$API_BASE_URL"
 
 FROM nginx:1.27-alpine
