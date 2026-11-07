@@ -1022,7 +1022,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         ref.invalidate(currentCashSessionProvider);
       }
       if (mounted) {
-        showFeedbackBurst(context, FeedbackKind.error, 'Vente refusée');
+        // La RAISON dans la pastille même, et en message : on sait pourquoi.
+        showFeedbackBurst(
+          context,
+          FeedbackKind.error,
+          'Vente refusée',
+          detail: error.userMessage,
+        );
         _snack(context, error.userMessage);
       }
     } finally {

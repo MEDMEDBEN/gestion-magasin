@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
+import 'package:gestion_magasin/ui/widgets/feedback_burst.dart';
 import 'package:gestion_magasin/ui/widgets/feedback_messenger.dart';
 
 /// Plus de barre qui monte du bas : un effet en haut, qui part seul.
@@ -59,6 +60,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(printed, isTrue);
     expect(find.text('Retour enregistré'), findsNothing);
+  });
+
+  // Bug du 2026-11-07 : après la pastille « Vente refusée », la RAISON était
+  // avalée comme doublon ; on ne savait jamais pourquoi la vente était refusée.
+  testWidgets('après un refus, la raison s’affiche quand même', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.desktop(dark: false),
+        builder: (context, child) => FeedbackMessenger(child: child!),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                showFeedbackBurst(context, FeedbackKind.error, 'Vente refusée');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Prix non fixé pour ce tarif')),
+                );
+              },
+              child: const Text('Agir'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Agir'));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.text('Prix non fixé pour ce tarif'), findsOneWidget);
+    await tester.pumpAndSettle();
   });
 
   // Capture (outil) : `--dart-define=CAPTURE_OUT=dossier`.

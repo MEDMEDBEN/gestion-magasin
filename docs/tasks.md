@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Bug : la raison d'un refus de vente n'était jamais affichée — 2026-11-07 (MEDMEDBEN, Claude)
+
+- « Vente refusée » sans dire pourquoi : la pastille d'erreur marquait `lastFeedbackBurst`, et
+  `FeedbackMessenger` avalait le message suivant (la RAISON) comme doublon. Désormais seule une pastille de
+  RÉUSSITE marque le doublon ; la pastille de refus porte aussi la raison (`detail`).
+  Test : `feedback_messenger_test.dart` « après un refus, la raison s'affiche quand même ».
+- Rappel : depuis `receivedAmount`, une app à jour envoie ce champ ; un serveur PAS à jour le refuse
+  (`forbidNonWhitelisted`) → mettre à jour le backend en même temps que les apps.
+
 ### Ticket : remise, montant reçu, monnaie rendue ; lenteurs (3e passe) — 2026-11-07 (MEDMEDBEN, Claude)
 
 - **Ticket** : `Sale.receivedAmount Int?` (migration `20261107120000_sale_received_amount`, colonne facultative)

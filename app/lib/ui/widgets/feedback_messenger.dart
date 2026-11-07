@@ -40,6 +40,9 @@ class _FeedbackMessengerState extends ScaffoldMessengerState {
             const Duration(milliseconds: 1500);
     final action = snackBar.action;
     final useful = action != null && action.label != 'Fermer';
+    // Seule une pastille de RÉUSSITE rend ce message inutile (elle seule
+    // marque `lastFeedbackBurst`) : après un refus, la raison s'affiche
+    // toujours (bug du 2026-11-07 : « Vente refusée » sans dire pourquoi).
     if (!justBurst || useful) {
       setState(() {
         _toast = _Toast(

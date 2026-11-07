@@ -30,7 +30,9 @@ void showFeedbackBurst(
 }) {
   final overlay = Overlay.maybeOf(context, rootOverlay: true);
   if (overlay == null) return;
-  lastFeedbackBurst = DateTime.now();
+  // Seule une RÉUSSITE rend le message qui suit inutile ; un refus garde le
+  // sien, qui en donne la raison (2026-11-07).
+  if (kind == FeedbackKind.success) lastFeedbackBurst = DateTime.now();
   late final OverlayEntry entry;
   entry = OverlayEntry(
     builder: (_) => _Burst(
