@@ -145,8 +145,8 @@ class CartLine {
   /// Prix unitaire HT saisi par le vendeur (centimes) ; `null` = prix du tarif.
   final int? unitPriceHt;
 
-  /// Remise HT sur la LIGNE, en centimes (ADMIN, `sale.discount`). Jamais au
-  /// point de vendre sous le coût : vérifié ici ET par le serveur.
+  /// Remise HT sur la LIGNE, en centimes (tout vendeur, 2026-11-07) : au plus
+  /// le montant de la ligne ; sous le coût, un avertissement.
   final int discountHt;
 
   CartLine copyWith({Quantity? quantity, int? unitPriceHt, int? discountHt}) =>
@@ -163,15 +163,11 @@ class CartLine {
 int lineGrossHt(int unitPriceHt, Quantity quantity) =>
     _roundMoney(Decimal.fromInt(unitPriceHt) * quantity);
 
-/// Remise HT maximale d'une ligne, MÊME borne que le serveur : le net ne
-/// descend jamais sous plancher × quantité (donc jamais sous 0). Sans
-/// plancher connu, aucune remise.
-int maxLineDiscountHt(Product product, int unitPriceHt, Quantity quantity) {
-  final floor = priceFloor(product);
-  if (floor == null) return 0;
-  final max = lineGrossHt(unitPriceHt, quantity) - lineGrossHt(floor, quantity);
-  return max < 0 ? 0 : max;
-}
+/// Remise HT maximale d'une ligne, MÊME borne que le serveur : le montant de
+/// la ligne (le net ne descend pas sous 0). Remise libre depuis le 2026-11-07 :
+/// sous le coût, un avertissement (`belowCost`), pas un refus.
+int maxLineDiscountHt(Product product, int unitPriceHt, Quantity quantity) =>
+    lineGrossHt(unitPriceHt, quantity);
 
 /// Plancher du prix de vente (décision 2026-09-22, MÊME règle que le serveur) :
 /// le dernier prix d'achat ; sans coût connu (ou reçu gratuit), le plus bas des
@@ -352,6 +348,7 @@ class CartEstimate {
     required this.totalHt,
     required this.missingPrices,
     this.invalidDiscounts = const [],
+    this.belowCost = const [],
     this.lineTotalsHt = const {},
     this.unitPricesHt = const {},
     this.tariffPricesHt = const {},
@@ -384,6 +381,9 @@ class CartEstimate {
   /// Remise devenue trop forte (quantité, prix ou client changés après coup) :
   /// le serveur refuserait — hors ligne, APRÈS le départ du client.
   final List<Product> invalidDiscounts;
+
+  /// Lignes vendues sous le prix d'achat : AVERTISSEMENT seulement.
+  final List<Product> belowCost;
 
   /// Encaissement ou devis impossible tant qu'une ligne est dans ce cas.
   bool get blocked =>
@@ -422,6 +422,7 @@ CartEstimate estimateCart(
   var ht = 0;
   final missing = <Product>[];
   final invalid = <Product>[];
+  final below = <Product>[];
   final lineTotals = <String, int>{};
   final unitPrices = <String, int>{};
   final tariffs = <String, int>{};
@@ -447,10 +448,11 @@ CartEstimate estimateCart(
     final lineHt = lineGrossHt(price, line.quantity) - line.discountHt;
     lineTotals[line.product.id] = lineHt;
     ht += lineHt;
+    // Remise sur facture : au plus le total des lignes.
+    if (lineHt > 0) room += lineHt;
     final floor = priceFloor(line.product);
-    if (floor != null) {
-      final r = lineHt - lineGrossHt(floor, line.quantity);
-      if (r > 0) room += r;
+    if (floor != null && lineHt < lineGrossHt(floor, line.quantity)) {
+      below.add(line.product);
     }
     final unitCost = line.product.lastPurchasePriceHt;
     if (unitCost != null && unitCost > 0) {
@@ -473,6 +475,7 @@ CartEstimate estimateCart(
     profitHt: profit,
     missingPrices: missing,
     invalidDiscounts: invalid,
+    belowCost: below,
     lineTotalsHt: lineTotals,
     unitPricesHt: unitPrices,
     tariffPricesHt: tariffs,

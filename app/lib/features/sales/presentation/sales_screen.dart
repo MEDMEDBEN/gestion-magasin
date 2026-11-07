@@ -69,8 +69,8 @@ class SalesRights {
           user.hasRole('ADMIN') && user.can('customer.payment.create'),
       canSeeAllCash = user.hasRole('ADMIN') && user.can('cash.report.read'),
       canCancelSales = user.hasRole('ADMIN') && user.can('sale.cancel'),
-      // Remise sur une ligne : ADMIN + sale.discount (miroir du serveur).
-      canDiscount = user.hasRole('ADMIN') && user.can('sale.discount'),
+      // Remise : tout compte qui vend (décision MEDMEDBEN du 2026-11-07).
+      canDiscount = user.can('sale.create'),
       // Tarif et plafond de crédit d'un client : conditions commerciales.
       canManageCustomerTerms =
           user.hasRole('ADMIN') && user.can('price.manage'),
@@ -1721,8 +1721,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             const SizedBox(height: 6),
             AmpereInlineAlert(
               message:
-                  'La remise sur facture dépasse la marge '
-                  '(${formatDA(estimate.maxDiscountHt)} au plus) : réduisez-la.',
+                  'La remise dépasse le total '
+                  '(${formatDA(estimate.maxDiscountHt)}) : réduisez-la.',
             ),
           ],
           if (estimate.missingPrices.isNotEmpty) ...[
@@ -1733,12 +1733,22 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   'la vente sera refusée.',
             ),
           ],
+          if (estimate.belowCost.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            AmpereInlineAlert(
+              tone: StatusTone.warn,
+              message:
+                  'Sous le prix d’achat : '
+                  '${estimate.belowCost.map((p) => p.name).join(', ')}'
+                  '. La vente passera quand même, à perte.',
+            ),
+          ],
           if (estimate.invalidDiscounts.isNotEmpty) ...[
             const SizedBox(height: 10),
             const AmpereInlineAlert(
               message:
-                  'Une remise dépasse désormais ce que sa ligne permet (elle '
-                  'ferait vendre sous le coût) : corrigez-la avant d’encaisser.',
+                  'Une remise dépasse le montant de sa ligne : '
+                  'corrigez-la avant d’encaisser.',
             ),
           ],
           if (shortages.isNotEmpty) ...[
@@ -2356,14 +2366,6 @@ class _CartLineRow extends ConsumerWidget {
   /// plancher : dernier prix d'achat, sinon tarif. Le serveur revérifie.
   Future<void> _editPrice(BuildContext context, WidgetRef ref) async {
     final floor = priceFloor(line.product);
-    if (floor == null) {
-      _snack(
-        context,
-        'Aucun prix de vente pour « ${line.product.name} » : '
-        'l’administrateur doit le définir',
-      );
-      return;
-    }
     final value = await askAmount(
       context,
       title: 'Prix de « ${line.product.name} »',
@@ -2375,29 +2377,28 @@ class _CartLineRow extends ConsumerWidget {
         // Le coût d'achat guide la baisse de prix (2026-10-05).
         if (line.product.lastPurchasePriceHt case final cost?)
           'prix d’achat : ${formatDA(cost)}',
-        'minimum : ${formatDA(floor)}',
       ].join(' · '),
     );
     if (value == null || !context.mounted) return;
-    if (value < floor) {
+    ref.read(cartProvider.notifier).setPrice(line.product.id, value);
+    // Prix libre (2026-11-07) : sous le prix d'achat, on PRÉVIENT seulement.
+    if (floor != null && value < floor) {
       _snack(
         context,
-        'Prix trop bas : minimum ${formatDA(floor)} '
-        '(${(line.product.lastPurchasePriceHt ?? 0) > 0 ? 'prix d’achat' : 'tarif'})',
+        'Attention : prix sous le prix d’achat (${formatDA(floor)}) — '
+        'la vente se fera à perte',
       );
-      return;
     }
-    ref.read(cartProvider.notifier).setPrice(line.product.id, value);
   }
 
-  /// Remise HT sur la ligne (ADMIN). Mêmes bornes que le serveur : jamais plus
-  /// que la ligne, jamais un net sous le plancher (coût) × quantité.
+  /// Remise HT sur la ligne : libre jusqu'au montant de la ligne (2026-11-07) ;
+  /// sous le coût, la ligne est signalée, la vente passe.
   Future<void> _editDiscount(BuildContext context, WidgetRef ref) async {
     final price = unitPriceHt;
     if (price == null) return;
     final gross = lineGrossHt(price, line.quantity);
     final maxDiscount = maxLineDiscountHt(line.product, price, line.quantity);
-    // En DA ou en % (2026-10-12) ; jamais sous le coût (bouton grisé).
+    // En DA ou en % (2026-10-12) ; au plus le montant de la ligne.
     final value = await askDiscount(
       context,
       title: 'Remise sur « ${line.product.name} »',
@@ -2439,7 +2440,7 @@ class _CartLineRow extends ConsumerWidget {
         const AmpereBadge(label: 'Prix modifié', tone: StatusTone.warn),
       if (invalidDiscount)
         AmpereBadge(
-          label: 'Remise ${formatDA(line.discountHt)} trop forte — à corriger',
+          label: 'Remise ${formatDA(line.discountHt)} > ligne — à corriger',
           tone: StatusTone.error,
         )
       else if (line.discountHt > 0)

@@ -93,10 +93,11 @@ export class DashboardService {
     };
   }
 
-  /// Ma caisse ouverte : ce qu'il y a dans le tiroir, comme l'écran Caisse.
-  private async myCash(user: AuthenticatedUser) {
+  /// LA caisse ouverte du magasin (unique, partagée depuis le 2026-11-07) :
+  /// ce qu'il y a dans le tiroir, comme l'écran Caisse.
+  private async myCash(_user: AuthenticatedUser) {
     const session = await this.prisma.cashSession.findFirst({
-      where: { userId: user.id, status: 'OUVERTE' },
+      where: { status: 'OUVERTE' },
     });
     if (!session || CashSessionsService.isStale(session)) {
       return { open: false, currentAmount: 0, openedAt: null };

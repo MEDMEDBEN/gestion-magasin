@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorContext, writeAudit } from '../audit/audit-writer';
-import { AuthenticatedUser, RoleCode } from '../common/auth.decorators';
+import { AuthenticatedUser } from '../common/auth.decorators';
 import { BusinessException } from '../common/business.exception';
 import { parseApiDate } from '../common/api-date';
 import { localDate } from '../common/document-number';
@@ -82,18 +82,15 @@ export class CashSessionsService {
     actor: ActorContext | null,
     openedAt: Date = new Date(),
   ): Promise<CashSessionDto> {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, hashtext(${user.id}))`;
-    await CashSessionsService.closeStale(tx, user.id, openedAt);
+    // UNE caisse pour tout le magasin (décision MEDMEDBEN du 2026-11-07) :
+    // verrou unique, et une caisse déjà ouverte — par n'importe quel compte —
+    // est REJOINTE plutôt que refusée.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, 0)`;
+    await CashSessionsService.closeStale(tx, undefined, openedAt);
     const already = await tx.cashSession.findFirst({
-      where: { userId: user.id, status: 'OUVERTE' },
+      where: { status: 'OUVERTE' },
     });
-    if (already) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_ALREADY_OPEN,
-        'Vous avez déjà une caisse ouverte : clôturez-la avant d’en ouvrir une autre',
-        HttpStatus.CONFLICT,
-      );
-    }
+    if (already) return this.toDto(tx, already);
     const location = await tx.location.findUnique({
       where: { id: dto.locationId },
       select: { type: true, isActive: true },
@@ -171,13 +168,11 @@ export class CashSessionsService {
     return { data, meta: { page: query.page, limit: query.limit, total } };
   }
 
-  /// Caisse ouverte du compte connecté, ou `null`.
-  async current(user: AuthenticatedUser): Promise<CashSessionDto | null> {
-    await this.prisma.$transaction((tx) =>
-      CashSessionsService.closeStale(tx, user.id),
-    );
+  /// LA caisse ouverte du magasin (partagée par tous les vendeurs), ou `null`.
+  async current(_user: AuthenticatedUser): Promise<CashSessionDto | null> {
+    await this.prisma.$transaction((tx) => CashSessionsService.closeStale(tx));
     const session = await this.prisma.cashSession.findFirst({
-      where: { userId: user.id, status: 'OUVERTE' },
+      where: { status: 'OUVERTE' },
     });
     return session ? this.toDto(this.prisma, session) : null;
   }
@@ -378,10 +373,9 @@ export class CashSessionsService {
   ): void {
     // Une session d'autrui répond 404 comme une session absente : pas de fuite
     // de l'existence des caisses des collègues.
-    if (
-      !session ||
-      (session.userId !== user.id && !user.roles.includes(RoleCode.ADMIN))
-    ) {
+    // Caisse partagée (2026-11-07) : tout compte habilité la voit.
+    void user;
+    if (!session) {
       throw new BusinessException(
         ErrorCode.NOT_FOUND,
         'Session de caisse introuvable',
@@ -390,7 +384,8 @@ export class CashSessionsService {
     }
   }
 
-  /// Caisse OUVERTE du compte, VERROUILLÉE jusqu'au commit de l'appelant : une
+  /// LA caisse OUVERTE du magasin (unique, partagée : `userId` n'est plus un
+  /// filtre depuis le 2026-11-07), VERROUILLÉE jusqu'au commit de l'appelant : une
   /// clôture concurrente (qui prend le même verrou) ne peut plus « rater » un
   /// encaissement — l'un attend l'autre, et le rapport Z reste juste (règle 12).
   static async lockOpenSession(
@@ -400,7 +395,6 @@ export class CashSessionsService {
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "CashSession"
       WHERE "status" = 'OUVERTE'
-        AND (${where.userId ?? null}::uuid IS NULL OR "userId" = ${where.userId ?? null}::uuid)
         AND (${where.id ?? null}::uuid IS NULL OR "id" = ${where.id ?? null}::uuid)
         AND (${where.locationId ?? null}::uuid IS NULL OR "locationId" = ${where.locationId ?? null}::uuid)
       LIMIT 1

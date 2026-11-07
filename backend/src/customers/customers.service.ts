@@ -435,20 +435,12 @@ export class CustomersService {
     if (!session) {
       throw new BusinessException(
         ErrorCode.CASH_SESSION_REQUIRED,
-        'Ouvrez votre caisse avant d’encaisser un règlement',
+        'Ouvrez la caisse avant d’encaisser un règlement',
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
-    // Mêmes règles que la vente en espèces : les espèces restent dans la caisse
-    // où elles sont entrées, jamais imputées à une autre (audit tranche B).
-    if (dto.cashSessionId !== undefined && dto.cashSessionId !== session.id) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_CLOSED,
-        'La caisse de ce règlement a été clôturée avant sa synchronisation : ' +
-          'ses espèces ne peuvent pas entrer dans la caisse actuelle — voir l’administrateur',
-        HttpStatus.CONFLICT,
-      );
-    }
+    // Caisse unique (2026-11-07) : un règlement fait sur une caisse clôturée
+    // depuis entre dans LA caisse ouverte, comme une vente.
 
     const payment = await tx.customerPayment.create({
       data: {

@@ -208,53 +208,25 @@ export class SalesService {
       dto.discountAmount ?? 0,
     );
 
-    if (
-      dto.expectedTotalTtc !== undefined &&
-      dto.expectedTotalTtc !== totalTtc
-    ) {
-      throw new BusinessException(
-        ErrorCode.SALE_TOTAL_CHANGED,
-        `Le total a changé : ${formatDA(totalTtc)} (tarif mis à jour) — vérifiez avant d’encaisser`,
-        HttpStatus.CONFLICT,
-      );
-    }
-    if (dto.paidAmount > totalTtc) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'Encaissé supérieur au total : indiquez le montant gardé, pas celui reçu',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    // Plus de refus sur le total ni sur l'encaissé (décision du 2026-11-07) :
+    // les prix des lignes sont ceux vus par le client ; un encaissé au-delà du
+    // total est de la monnaie rendue, on garde le total.
+    if (dto.paidAmount > totalTtc) dto.paidAmount = totalTtc;
 
-    // Espèces : rattachées à la caisse OUVERTE du vendeur (règle 12).
+    // Espèces : rattachées à LA caisse ouverte du magasin, partagée par tous
+    // les vendeurs (règle 12 ; caisse unique, décision du 2026-11-07). Une
+    // vente faite sur une caisse clôturée depuis entre dans la caisse ouverte.
     const cashSession =
       dto.paidAmount > 0
         ? await CashSessionsService.lockOpenSession(tx, {
-            userId: user.id,
             locationId: store.id,
           })
         : null;
     if (dto.paidAmount > 0 && !cashSession) {
       throw new BusinessException(
         ErrorCode.CASH_SESSION_REQUIRED,
-        'Ouvrez votre caisse avant d’encaisser des espèces',
+        'Ouvrez la caisse avant d’encaisser des espèces',
         HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    // Les espèces sont entrées dans la caisse que l'appareil connaissait. Si ce
-    // n'est plus la caisse ouverte (clôturée avant la synchronisation), les
-    // imputer à celle-ci fausserait les deux rapports Z (audit sécu tranche B).
-    // Comparaison d'identifiants : aucune horloge d'appareil n'entre en jeu.
-    if (
-      cashSession &&
-      dto.cashSessionId !== undefined &&
-      dto.cashSessionId !== cashSession.id
-    ) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_CLOSED,
-        'La caisse de cette vente a été clôturée avant sa synchronisation : ' +
-          'ses espèces ne peuvent pas entrer dans la caisse actuelle — voir l’administrateur',
-        HttpStatus.CONFLICT,
       );
     }
 
@@ -281,18 +253,8 @@ export class SalesService {
           HttpStatus.FORBIDDEN,
         );
       }
-      const debt = confrere
-        ? 0
-        : await SalesService.customerDebt(tx, customer.id);
-      // Confrère : dette SANS plafond (décision MEDMEDBEN 2026-10-08).
-      if (!confrere && debt + credit > customer.creditLimit) {
-        throw new BusinessException(
-          ErrorCode.CREDIT_LIMIT_EXCEEDED,
-          `Plafond de crédit dépassé : dette ${formatDA(debt)}, crédit demandé ` +
-            `${formatDA(credit)}, plafond ${formatDA(customer.creditLimit)}`,
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
+      // Plafond de crédit : un AVERTISSEMENT à la caisse, plus un refus
+      // (décision MEDMEDBEN du 2026-11-07).
     }
 
     // Échéance vérifiée APRÈS client, droit et plafond (messages plus utiles).
@@ -685,32 +647,15 @@ export class SalesService {
     credit: number,
     soldAt: Date,
   ): Date | null {
-    if (credit <= 0) {
-      if (raw !== undefined) {
-        throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'dueDate : une vente soldée n’a pas d’échéance',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
-      return null;
+    // Souple depuis le 2026-11-07 : une vente soldée ignore l'échéance ; un
+    // crédit sans échéance (ou passée) en reçoit une à 30 jours.
+    if (credit <= 0) return null;
+    if (raw !== undefined && raw.length === 10 && raw >= localDate(soldAt)) {
+      return parseApiDate(raw, 'dueDate');
     }
-    if (raw === undefined) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'dueDate : l’échéance est obligatoire pour une vente à crédit',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    const date = parseApiDate(raw, 'dueDate');
-    if (raw.length !== 10 || raw < localDate(soldAt)) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'dueDate : date AAAA-MM-JJ, aujourd’hui ou plus tard',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    return date;
+    const due = new Date(soldAt);
+    due.setUTCDate(due.getUTCDate() + 30);
+    return parseApiDate(localDate(due), 'dueDate');
   }
 
   static async customerDebt(
@@ -895,13 +840,15 @@ export class SalesService {
     }[],
     discount: number,
   ): void {
-    const room = lines.map((l) => Math.max(0, l.lineTotalHt - l.floorHt));
+    // Remise LIBRE (décision du 2026-11-07) : répartie au prorata du montant
+    // des lignes ; seule limite, le total (une ligne ne passe pas sous 0).
+    // Le plancher (coût) n'est plus qu'un avertissement, à la caisse.
+    const room = lines.map((l) => Math.max(0, l.lineTotalHt));
     const totalRoom = room.reduce((sum, r) => sum + r, 0);
     if (discount > totalRoom) {
       throw new BusinessException(
-        ErrorCode.PRICE_BELOW_COST,
-        `Remise trop forte : ${formatDA(totalRoom)} au plus sans vendre sous ` +
-          'le prix d’achat',
+        ErrorCode.VALIDATION_FAILED,
+        `Remise supérieure au total (${formatDA(totalRoom)})`,
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
@@ -992,9 +939,11 @@ export class SalesService {
     const lowestTariff = product.prices.length
       ? Math.min(...product.prices.map((p) => p.priceHt))
       : null;
-    const floor = cost ?? lowestTariff;
-    // Ni coût ni tarif : aucune référence, le prix ne se fixe pas en caisse.
-    if (unitPriceHt === null || floor === null) {
+    // Plancher : un simple repère (avertissement à la caisse) depuis le
+    // 2026-11-07 — sans coût ni tarif, 0.
+    const floor = cost ?? lowestTariff ?? 0;
+    // Aucun prix du tout (ni saisi, ni tarif) : la vente n'a pas de montant.
+    if (unitPriceHt === null) {
       throw new BusinessException(
         ErrorCode.PRICE_NOT_DEFINED,
         product.prices.length > 0
@@ -1007,37 +956,12 @@ export class SalesService {
     // En ligne, un prix NON modifié par le vendeur doit être le tarif courant :
     // un catalogue local en retard ne fait pas vendre à l'ancien prix. Hors
     // ligne, le prix vu par le client fait foi (décision 2026-09-22).
-    if (
-      !trustDevicePrice &&
-      line.unitPriceHt !== undefined &&
-      !line.priceEdited &&
-      line.unitPriceHt !== tariffPriceHt
-    ) {
-      throw new BusinessException(
-        ErrorCode.SALE_TOTAL_CHANGED,
-        `Le tarif de « ${product.name} » a changé : vérifiez le prix avant d’encaisser`,
-        HttpStatus.CONFLICT,
-      );
-    }
-    const belowFloor = () =>
-      new BusinessException(
-        ErrorCode.PRICE_BELOW_COST,
-        cost !== null
-          ? `« ${product.name} » : prix inférieur au dernier prix d’achat ` +
-              `(${formatDA(floor)} HT)`
-          : `« ${product.name} » : coût d’achat inconnu, le prix ne peut pas ` +
-              `descendre sous le plus bas tarif (${formatDA(floor)} HT)`,
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    if (unitPriceHt < floor) throw belowFloor();
+    // Prix vu par le client = prix vendu (plus de refus « tarif changé »),
+    // même sous le coût d'achat : la caisse avertit, la vente passe ; la
+    // remise est permise à tout vendeur (décision MEDMEDBEN du 2026-11-07).
+    void trustDevicePrice;
+    void canDiscount;
     const discount = line.discountAmount ?? 0;
-    if (discount > 0 && !canDiscount) {
-      throw new BusinessException(
-        ErrorCode.DISCOUNT_NOT_ALLOWED,
-        'Remise réservée à l’administrateur',
-        HttpStatus.FORBIDDEN,
-      );
-    }
     const grossHt = roundMoney(new Prisma.Decimal(unitPriceHt).mul(quantity));
     if (discount > grossHt) {
       throw new BusinessException(
@@ -1048,11 +972,6 @@ export class SalesService {
     }
     const taxRate = NO_TAX;
     const lineTotalHt = grossHt - discount;
-    // Le plancher vaut aussi pour le NET : une remise admin ne fait pas passer
-    // la ligne sous le coût.
-    if (lineTotalHt < roundMoney(new Prisma.Decimal(floor).mul(quantity))) {
-      throw belowFloor();
-    }
     const lineTaxAmount = taxAmount(lineTotalHt, taxRate);
     return {
       productId: product.id,

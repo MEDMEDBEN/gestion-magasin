@@ -86,6 +86,8 @@ export const ROLE_PERMISSIONS: Record<RoleCode, PermissionCode[]> = {
     P.STOCK_READ_STORE,
     P.STOCK_READ_WAREHOUSE,
     P.SALE_CREATE,
+    // Remise libre pour tout vendeur (décision MEDMEDBEN du 2026-11-07).
+    P.SALE_DISCOUNT,
     P.SALE_CREDIT,
     P.INVOICE_ISSUE,
     P.CASH_SESSION_MANAGE,
@@ -151,7 +153,7 @@ export const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   [P.STOCK_ADJUST_VALIDATE]: "Valider un ajustement d'inventaire",
   [P.STOCK_LOSS]: 'Déclarer une perte ou une casse',
   [P.SALE_CREATE]: 'Créer une vente',
-  [P.SALE_DISCOUNT]: 'Appliquer une remise sur une ligne (admin uniquement)',
+  [P.SALE_DISCOUNT]: 'Appliquer une remise (tout vendeur depuis le 2026-11-07)',
   [P.SALE_CREDIT]: 'Vendre à crédit dans la limite du client',
   [P.INVOICE_ISSUE]: 'Émettre une facture avec numéro légal',
   [P.SALE_CANCEL]: 'Annuler une vente validée',

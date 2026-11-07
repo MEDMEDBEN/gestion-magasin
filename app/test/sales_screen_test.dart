@@ -520,28 +520,27 @@ void main() {
         145000,
       );
 
-      // Borne de la remise = celle du serveur : net ≥ plancher × quantité.
+      // Remise LIBRE depuis le 2026-11-07 : bornée par le montant de la ligne
+      // (jamais un net négatif), plus par le coût.
       final costed = _cable().copyWith(lastPurchasePriceHt: 100000);
       final q = Decimal.parse('2.5');
-      // 2,5 × 1 450,01 = 3 625,025 → 362 503 (demi vers le haut) ; plancher
-      // 2,5 × 1 000 = 250 000 → remise ≤ 112 503.
-      expect(maxLineDiscountHt(costed, 145001, q), 112503);
-      // Sans coût : plancher = plus bas tarif (1 450,00) ; prix modifié 1 500.
-      expect(maxLineDiscountHt(_cable(), 150000, Decimal.one), 5000);
-      // Prix sous le plancher : aucune remise, jamais négative.
-      expect(maxLineDiscountHt(costed, 90000, Decimal.one), 0);
+      // 2,5 × 1 450,01 = 3 625,025 → 362 503 (demi vers le haut).
+      expect(maxLineDiscountHt(costed, 145001, q), 362503);
+      expect(maxLineDiscountHt(costed, 90000, Decimal.one), 90000);
 
-      // Remise valide à 3, devenue trop forte après baisse à 1 : BLOQUÉE.
-      CartEstimate estimateAt(Decimal quantity) => estimateCart(
+      // Sous le coût : AVERTISSEMENT, pas de blocage. Au-delà de la ligne :
+      // bloqué (le net serait négatif).
+      CartEstimate estimateAt(Decimal quantity, int discount) => estimateCart(
         CartState(
           saleId: 's',
-          lines: [CartLine(costed, quantity, discountHt: 100000)],
+          lines: [CartLine(costed, quantity, discountHt: discount)],
         ),
         defaultTierId: 'detail',
       );
-      expect(estimateAt(Decimal.fromInt(3)).blocked, isFalse);
-      expect(estimateAt(Decimal.one).invalidDiscounts, [costed]);
-      expect(estimateAt(Decimal.one).blocked, isTrue);
+      expect(estimateAt(Decimal.one, 100000).belowCost, [costed]);
+      expect(estimateAt(Decimal.one, 100000).blocked, isFalse);
+      expect(estimateAt(Decimal.one, 200000).invalidDiscounts, [costed]);
+      expect(estimateAt(Decimal.one, 200000).blocked, isTrue);
 
       // Remise sur la ligne (P1 bis n°21g) : le total est le NET.
       final discounted = estimateCart(
@@ -867,7 +866,8 @@ void main() {
   );
 
   testWidgets(
-    'prix sous le prix d’achat : refusé à la saisie, le tarif reste appliqué',
+    // Prix libre depuis le 2026-11-07 : sous le prix d'achat, on prévient.
+    'prix sous le prix d’achat : accepté, avec un avertissement',
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       await _pumpScreen(
@@ -886,8 +886,8 @@ void main() {
       await tester.tap(find.text('Appliquer'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Prix trop bas'), findsOneWidget);
-      expect(find.text('Prix modifié'), findsNothing);
+      expect(find.textContaining('sous le prix d’achat'), findsWidgets);
+      expect(find.text('Prix modifié'), findsOneWidget);
     },
   );
 
@@ -1182,7 +1182,9 @@ void main() {
   });
 
   /// P1 bis n°21g : la remise existait au serveur, sans aucune saisie.
-  testWidgets('remise ADMIN : bornée au coût, envoyée au serveur', (
+  // Remise libre depuis le 2026-11-07 : bornée par le montant de la ligne ;
+  // sous le coût, un avertissement.
+  testWidgets('remise : bornée par la ligne, envoyée au serveur', (
     tester,
   ) async {
     useScreenSize(tester, const Size(900, 1400));
@@ -1210,10 +1212,10 @@ void main() {
     // Le prix d'achat est sur la ligne (2026-10-05) : savoir jusqu'où baisser.
     expect(find.textContaining('achat ${formatDA(100000)}'), findsOneWidget);
 
-    // Au-delà de ligne − coût (1 450 − 1 000 = 450 DA) : refusé.
+    // Au-delà du montant de la ligne (1 450 DA) : refusé.
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '500');
+    await tester.enterText(find.byType(TextField).last, '1500');
     await tester.pump();
     expect(find.textContaining('Trop forte'), findsOneWidget);
     final apply = tester.widget<FilledButton>(
@@ -1250,14 +1252,15 @@ void main() {
     expect(line['discountAmount'], 29000);
   });
 
-  testWidgets('le VENDEUR n’a pas de bouton de remise', (tester) async {
+  // Tout vendeur fait des remises depuis le 2026-11-07.
+  testWidgets('le VENDEUR a le bouton de remise', (tester) async {
     useScreenSize(tester, const Size(900, 1400));
     await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
     await tester.enterText(find.byType(TextField).first, '3245060123458');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(find.byTooltip('Modifier le prix'), findsOneWidget);
-    expect(find.byTooltip('Remise'), findsNothing);
+    expect(find.byTooltip('Remise'), findsOneWidget);
   });
 
   testWidgets('remise puis quantité baissée : encaissement bloqué, signalé', (
@@ -1285,16 +1288,17 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
     }
-    // 3 × (1 450 − 1 000) = 1 350 DA : la remise maximale.
+    // 3 × 1 450 = 4 350 DA : la remise maximale (le montant de la ligne) ;
+    // une remise de 4 000 dépasse la ligne une fois la quantité baissée à 2.
     await tester.tap(find.byTooltip('Remise'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '1350');
+    await tester.enterText(find.byType(TextField).last, '4000');
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Moins'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('trop forte — à corriger'), findsOneWidget);
+    expect(find.textContaining('> ligne — à corriger'), findsOneWidget);
     final pay = tester.widget<FilledButton>(
       find.ancestor(
         of: find.textContaining('Encaisser'),
@@ -1310,7 +1314,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Appliquer'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('trop forte'), findsNothing);
+    expect(find.textContaining('à corriger'), findsNothing);
   });
 
   /// P1 bis n°21k : entrée / sortie / prélèvement, avec motif, en ligne.

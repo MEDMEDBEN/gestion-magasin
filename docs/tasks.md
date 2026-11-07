@@ -4,6 +4,27 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : moins de refus, caisse UNIQUE partagée — 2026-11-07 (MEDMEDBEN, Claude)
+
+- **Caisse unique** (CLAUDE.md règle 12 amendée) : `lockOpenSession` ne filtre plus par compte ; ouverture =
+  verrou global, une caisse déjà ouverte est REJOINTE (plus de CASH_SESSION_ALREADY_OPEN) ; `current` et le
+  tableau de bord lisent LA caisse ouverte ; tout compte habilité la voit/la clôture ; une vente ou un
+  règlement fait sur une caisse clôturée depuis entre dans la caisse ouverte (plus de CASH_SESSION_CLOSED).
+- **Plus de refus** (règle 13 amendée) : prix sous le coût, remise au-delà de la marge, remise d'un vendeur
+  (`sale.discount` donné au VENDEUR), tarif changé (SALE_TOTAL_CHANGED), total annoncé différent, encaissé >
+  total (ramené au total), plafond de crédit, échéance absente/passée (30 jours par défaut) → la vente PASSE.
+  Restent refusés : produit sans aucun prix, remise > montant (net négatif), caisse non ouverte pour des
+  espèces, crédit sans client identifié, client/produit introuvable.
+  Bug corrigé : sans coût connu, le plancher = le prix → AUCUNE remise sur facture n'était possible.
+- App : prix libre (avertissement « sous le prix d'achat »), remise bornée par la ligne / le total, bandeau
+  « Sous le prix d'achat : … la vente passera quand même, à perte », bouton Remise pour tout vendeur.
+- Preuves : app analyze 0 + tests ; backend tsc + eslint + jest 184.
+- **À FAIRE (prochaine étape)** : e2e backend NON adaptés ni exécutés (Docker arrêté sur ce PC) — ~29
+  assertions sur les anciens refus dans `test/sales`, `quotes`, `sync-sales`, `sync-payments`, `sync-cash`,
+  `cash-sessions`, `confreres`, `sale-discount-profit` (PRICE_BELOW_COST, CREDIT_LIMIT_EXCEEDED,
+  CASH_SESSION_ALREADY_OPEN/CLOSED, SALE_TOTAL_CHANGED, DISCOUNT_NOT_ALLOWED, dueDate) : démarrer Docker,
+  `npm run test:e2e`, adapter aux nouvelles règles.
+
 ### Bug : la raison d'un refus de vente n'était jamais affichée — 2026-11-07 (MEDMEDBEN, Claude)
 
 - « Vente refusée » sans dire pourquoi : la pastille d'erreur marquait `lastFeedbackBurst`, et
