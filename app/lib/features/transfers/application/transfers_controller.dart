@@ -105,6 +105,28 @@ class TransfersActions {
     return outcome;
   }
 
+  /// ENVOI DIRECT dépôt → magasin, en une étape (décision du 2026-11-07) :
+  /// en ligne seulement (le stock bouge des deux côtés à la fois). Même clé
+  /// d'intention que la demande : un renvoi ne crée pas de doublon.
+  Future<Transfer> direct({
+    required String intent,
+    required List<TransferLineDraft> lines,
+    String? comment,
+  }) async {
+    final key = intent.split(':').last;
+    final transfer = await _api.direct({
+      'clientMutationId': key,
+      'id': key,
+      'comment': ?comment,
+      'lines': [
+        for (final l in lines)
+          {'productId': l.productId, 'quantity': quantityToJson(l.quantity)},
+      ],
+    });
+    _ref.invalidate(transfersProvider);
+    return transfer;
+  }
+
   Future<WriteOutcome<Transfer>> accept(String id) => _step('ACCEPT', id, null);
 
   /// `done: false` sauvegarde une préparation en cours (reprise plus tard).

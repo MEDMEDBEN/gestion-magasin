@@ -154,6 +154,94 @@ export class TransfersService {
     return TransfersService.toDto(transfer);
   }
 
+  /// ENVOI DIRECT dépôt → magasin, en une étape (décision MEDMEDBEN du
+  /// 2026-11-07, « transferts simplifiés ») : pas de demande, de préparation
+  /// ni d'expédition séparées. Le transfert est créé déjà REÇU, tracé comme
+  /// les autres (numéro, lignes, mouvements du journal, audit). Le stock du
+  /// dépôt peut être dépassé (avertissement à l'écran).
+  async direct(
+    dto: CreateTransferDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<TransferDto> {
+    return runOnce(
+      () => this.replay(this.prisma, dto, user),
+      () =>
+        this.prisma.$transaction(async (tx) => {
+          const from = await TransfersService.resolveLocation(
+            tx,
+            'DEPOT',
+            dto.fromLocationId,
+            'fromLocationId',
+          );
+          const to = await TransfersService.resolveLocation(
+            tx,
+            'MAGASIN',
+            dto.toLocationId,
+            'toLocationId',
+          );
+          const lines = await TransfersService.buildLines(tx, dto);
+          const number = await nextDocumentNumber(tx, 'TRANSFERT', 'TRF', 5);
+          const now = new Date();
+          const transfer = await tx.transfer.create({
+            include: TRANSFER_INCLUDE,
+            data: {
+              id: dto.id,
+              number,
+              clientMutationId: dto.clientMutationId,
+              fromLocationId: from,
+              toLocationId: to,
+              requestedById: user.id,
+              preparedById: user.id,
+              receivedById: user.id,
+              priority: dto.priority ?? 'NORMALE',
+              comment: dto.comment ?? 'Envoi direct',
+              status: 'RECUE',
+              acceptedAt: now,
+              preparedAt: now,
+              shippedAt: now,
+              receivedAt: now,
+              lines: {
+                create: lines.map((l) => ({
+                  ...l,
+                  preparedQuantity: l.requestedQuantity,
+                  shippedQuantity: l.requestedQuantity,
+                  receivedQuantity: l.requestedQuantity,
+                })),
+              },
+            },
+          });
+          // Ordre fixe par produit : pas d'interblocage entre transferts.
+          for (const line of TransfersService.byProduct(transfer.lines)) {
+            for (const [locationId, quantity, type] of [
+              [from, line.requestedQuantity.negated(), 'TRANSFERT_SORTIE'],
+              [to, line.requestedQuantity, 'TRANSFERT_ENTREE'],
+            ] as const) {
+              await this.ledger.applyMovement(tx, {
+                productId: line.productId,
+                locationId,
+                quantity,
+                sourceLocationId: from,
+                destinationLocationId: to,
+                type,
+                operationType: 'TRANSFER',
+                operationId: transfer.id,
+                userId: user.id,
+                comment: `${transfer.number} — envoi direct`,
+              });
+            }
+          }
+          await writeAudit(tx, actor, {
+            action: 'CREATE',
+            entityType: 'Transfer',
+            entityId: transfer.id,
+            newValue: TransfersService.snapshot(transfer),
+          });
+          return TransfersService.toDto(transfer);
+        }),
+    );
+  }
+
   /// « Je m'en occupe » : le dépôt prend la demande sans encore rien préparer.
   /// Renvoyé sur une demande déjà acceptée, il rend l'état atteint.
   async accept(
@@ -214,16 +302,8 @@ export class TransfersService {
           // Ligne non citée : sa préparation précédente est conservée.
           if (raw === undefined)
             return { id: line.id, quantity: line.preparedQuantity };
+          // Préparer plus que demandé est permis depuis le 2026-11-07.
           const quantity = parseQuantity(raw, 'lines.preparedQuantity');
-          if (quantity.greaterThan(line.requestedQuantity)) {
-            throw new BusinessException(
-              ErrorCode.VALIDATION_FAILED,
-              `Préparation supérieure à la demande : demandé ` +
-                `${formatQuantity(line.requestedQuantity)}, préparé ` +
-                `${formatQuantity(quantity)} — faites d’abord modifier la demande`,
-              HttpStatus.UNPROCESSABLE_ENTITY,
-            );
-          }
           asked.delete(line.productId);
           return { id: line.id, quantity };
         });

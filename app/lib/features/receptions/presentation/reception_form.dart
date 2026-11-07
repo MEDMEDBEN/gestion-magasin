@@ -48,8 +48,8 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
   /// Intention stable : tous les essais de CETTE réception portent la même clé.
   late final String _intent = 'reception:${ref.read(uuidProvider).v7()}';
   late final List<_LineFields> _lines = [
-    for (final l in widget.order.lines)
-      if (l.remainingQuantity > Quantity.zero) _LineFields(l),
+    // Toutes les lignes : un surplus peut arriver sur une ligne déjà soldée.
+    for (final l in widget.order.lines) _LineFields(l),
   ];
   String? _locationId;
   bool _saving = false;
@@ -184,8 +184,8 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
           icon: LucideIcons.info,
           message:
               'Saisissez ce qui est RÉELLEMENT arrivé. Le stock et la dette '
-              'fournisseur n’augmentent que de ces quantités ; une livraison '
-              'supérieure au reste à recevoir est refusée.',
+              'fournisseur n’augmentent que de ces quantités (une livraison '
+              'plus grande que prévue est acceptée).',
         ),
         // P2 n°24 : quantités proposées depuis une photo de la facture.
         Align(
@@ -257,10 +257,7 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
               final q = parseQuantity(v ?? '');
               if (q == null || q < Quantity.zero) return 'Quantité invalide';
               if (q.scale > quantityScale) return '3 décimales au maximum';
-              // Miroir du serveur : la surlivraison est refusée.
-              if (q > line.remainingQuantity) {
-                return 'Au plus ${formatQuantity(line.remainingQuantity)}';
-              }
+              // Surlivraison acceptée (2026-11-07) : on saisit ce qui est arrivé.
               return null;
             },
           ),

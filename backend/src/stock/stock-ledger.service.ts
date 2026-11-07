@@ -188,6 +188,9 @@ export class StockLedgerService {
       input.quantity.isNegative() &&
       availableAfter.isNegative() &&
       input.operationType !== 'SALE' &&
+      // Transfert : le stock du dépôt peut être dépassé (décision du
+      // 2026-11-07) — la marchandise est souvent là, la quantité pas à jour.
+      input.operationType !== 'TRANSFER' &&
       (!product.allowBackorder || input.operationType === 'SUPPLIER_RETURN')
     ) {
       throw new BusinessException(

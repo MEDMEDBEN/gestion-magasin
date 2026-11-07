@@ -213,8 +213,9 @@ class _TransferQuantitiesFormState
               final q = parseQuantity(v ?? '');
               if (q == null || q < Quantity.zero) return 'Quantité invalide';
               if (q.scale > quantityScale) return '3 décimales au maximum';
-              // Miroir du serveur : jamais plus que l'étape précédente.
-              if (q > fields.maximum) {
+              // Miroir du serveur : la réception ne dépasse pas l'expédié ;
+              // préparer plus que demandé est permis (2026-11-07).
+              if (!isPrepare && q > fields.maximum) {
                 return 'Au plus ${formatQuantity(fields.maximum)}';
               }
               return null;

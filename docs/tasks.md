@@ -4,6 +4,26 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Simplification des règles : réception, achats, pertes, transferts — 2026-11-07 (MEDMEDBEN, Claude)
+
+Demande : « simplifier comme pour la vente ». Choix de MEDMEDBEN : réception libre, achats sans
+confirmation, pertes sans validation, transferts simplifiés.
+- Réception (`receptions.service.ts`) : un BC BROUILLON ou COMMANDÉE se réceptionne (plus besoin de le
+  confirmer) ; réception hors commande permise à tout compte qui réceptionne (plus admin seul) ;
+  surlivraison acceptée. App : `isReceivable`, plus de plafond « Au plus » à la réception ; après un
+  nouveau BC, « Réceptionner maintenant ».
+- Pertes (`stock.service.ts`) : appliquées aussitôt pour tous (plus d'attente de validation admin). Les
+  anciennes pertes en attente gardent leurs boutons Valider/Refuser ; filtre « en attente » retiré.
+- Transferts : préparer plus que demandé est permis ; nouvel **envoi direct** `POST /transfers/direct`
+  (ADMIN/MAGASINIER + `transfer.prepare`) : transfert créé déjà REÇU, mouvements sortie dépôt / entrée
+  magasin dans la même transaction, idempotent (`clientMutationId`). Le stock du dépôt peut être dépassé
+  (ledger : `TRANSFER` exempté de l'anti-négatif, comme `SALE`) — CLAUDE.md règle 9 amendée. App : action
+  « Envoi direct au magasin » (en ligne seulement).
+- Preuves : backend tsc + eslint + jest 184/184 ; app analyze propre + flutter test (4 tests adaptés
+  aux nouvelles règles, tout passe). e2e réceptions/pertes/transferts à adapter avec le reste (Docker).
+- **Prochaine étape** : simplifier TOUS les écrans (Stock, Catalogue, Achats, Transferts, Inventaire,
+  Clients) comme la Vente : actions regroupées, panneaux clairs, moins de boutons visibles.
+
 ### Codes-barres internes en EAN-8, étiquettes lisibles au téléphone — 2026-11-07 (MEDMEDBEN, Claude)
 
 - `internalBarcode` : EAN-8 `2` + séquence sur 6 chiffres + clé (ex. 20000011) au lieu de l'EAN-13

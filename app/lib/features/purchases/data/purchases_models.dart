@@ -31,6 +31,17 @@ enum PurchaseStatus {
   bool get isEditable => this == draft || this == ordered;
 }
 
+/// Commande qui accepte encore de la marchandise : brouillon, envoyée,
+/// confirmée ou partiellement reçue (miroir du serveur ; plus besoin de la
+/// confirmation de l'administrateur depuis le 2026-11-07).
+extension PurchaseStatusReception on PurchaseStatus {
+  bool get isReceivable =>
+      this == PurchaseStatus.draft ||
+      this == PurchaseStatus.ordered ||
+      this == PurchaseStatus.confirmed ||
+      this == PurchaseStatus.partiallyReceived;
+}
+
 @freezed
 abstract class PurchaseLine with _$PurchaseLine {
   const factory PurchaseLine({

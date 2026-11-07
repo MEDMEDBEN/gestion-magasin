@@ -38,6 +38,10 @@ class TransfersApi {
   Future<Transfer> create(Map<String, Object?> fields) =>
       _send('/transfers', fields);
 
+  /// Envoi direct dépôt → magasin, en une étape (2026-11-07).
+  Future<Transfer> direct(Map<String, Object?> fields) =>
+      _send('/transfers/direct', fields);
+
   Future<Transfer> accept(String id) => _send('/transfers/$id/accept', null);
 
   Future<Transfer> prepare(String id, Map<String, Object?> fields) =>

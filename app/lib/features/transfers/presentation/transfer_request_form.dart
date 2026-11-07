@@ -27,7 +27,11 @@ class _LineFields {
 /// Demande du magasin au dépôt (spec §16) : le vendeur dit ce qu'il lui manque.
 /// Aucun stock ne bouge ici — la marchandise part à l'expédition du dépôt.
 class TransferRequestForm extends ConsumerStatefulWidget {
-  const TransferRequestForm({super.key});
+  const TransferRequestForm({super.key, this.direct = false});
+
+  /// Envoi DIRECT dépôt → magasin (2026-11-07) : la marchandise arrive au
+  /// magasin tout de suite, sans demande ni préparation.
+  final bool direct;
 
   @override
   ConsumerState<TransferRequestForm> createState() =>
@@ -61,6 +65,33 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
       _error = null;
     });
     try {
+      if (widget.direct) {
+        final transfer = await ref
+            .read(transfersActionsProvider)
+            .direct(
+              intent: _intent,
+              comment: _comment.text.trim().isEmpty
+                  ? null
+                  : _comment.text.trim(),
+              lines: [
+                for (final l in _lines)
+                  (
+                    productId: l.productId!,
+                    quantity: parseQuantity(l.quantity.text)!,
+                  ),
+              ],
+            );
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${transfer.number} reçu au magasin — stock mis à jour.',
+            ),
+          ),
+        );
+        return;
+      }
       final outcome = await ref
           .read(transfersActionsProvider)
           .request(
@@ -105,7 +136,9 @@ class _TransferRequestFormState extends ConsumerState<TransferRequestForm> {
 
     return FormPanelFrame(
       formKey: _formKey,
-      title: 'Nouvelle demande au dépôt',
+      title: widget.direct
+          ? 'Envoi direct au magasin'
+          : 'Nouvelle demande au dépôt',
       saving: _saving,
       error: _error,
       submitLabel: 'Envoyer la demande',

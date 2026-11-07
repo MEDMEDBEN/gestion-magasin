@@ -70,6 +70,28 @@ export class TransfersController {
     });
   }
 
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.TRANSFER_PREPARE)
+  @Post('direct')
+  @ApiOperation({
+    summary: 'Envoi direct dépôt → magasin, en une étape',
+    description:
+      'Sans demande ni préparation : le transfert est créé déjà REÇU et le stock ' +
+      'passe du dépôt au magasin dans la même transaction. Le stock du dépôt peut ' +
+      'être dépassé. Renvoi de la même `clientMutationId` → même transfert.',
+  })
+  @ApiCreatedResponse({ type: TransferDto })
+  direct(
+    @Body() dto: CreateTransferDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<TransferDto> {
+    return this.transfers.direct(dto, user, {
+      userId: user.id,
+      ipAddress: ip,
+    });
+  }
+
   // Lecture ouverte aux TROIS rôles de la matrice des transferts, sans
   // permission supplémentaire : chacun tient un bout du flux (le vendeur
   // demande et réceptionne, le magasinier prépare et expédie) et doit voir le

@@ -169,7 +169,8 @@ Future<void> _declareLoss(
 ]) async {
   final loss = await openFormPanel<StockLoss>(
     context,
-    LossForm(appliesImmediately: rights.canValidateLoss, product: product),
+    // Perte appliquée aussitôt pour tous depuis le 2026-11-07.
+    LossForm(appliesImmediately: true, product: product),
   );
   if (loss == null || !context.mounted) return;
   _snack(
@@ -825,7 +826,9 @@ class _LossesSection extends ConsumerStatefulWidget {
 }
 
 class _LossesSectionState extends ConsumerState<_LossesSection> {
-  StockLossStatus? _status = StockLossStatus.pending;
+  // Pertes appliquées aussitôt depuis le 2026-11-07 : plus de filtre « en
+  // attente », toutes les pertes (les anciennes en attente gardent leurs boutons).
+  final StockLossStatus? _status = null;
   final _busy = <String>{};
 
   Future<void> _decide(StockLoss loss, {required bool validate}) async {
@@ -883,12 +886,6 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              for (final status in [StockLossStatus.pending, null])
-                ChoiceChip(
-                  label: Text(status == null ? 'Toutes' : status.label),
-                  selected: _status == status,
-                  onSelected: (_) => setState(() => _status = status),
-                ),
               FilledButton.icon(
                 onPressed: () => _declareLoss(context, widget.rights),
                 icon: const Icon(LucideIcons.plus, size: 17),
@@ -912,9 +909,7 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
                   children: [
                     AmpereInlineAlert(
                       tone: StatusTone.ok,
-                      message: _status == StockLossStatus.pending
-                          ? 'Aucune perte en attente de validation.'
-                          : 'Aucune perte déclarée pour l’instant.',
+                      message: 'Aucune perte déclarée pour l’instant.',
                     ),
                     const SizedBox(height: 12),
                     GuideSteps(
@@ -925,17 +920,10 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
                           '« Déclarer une perte » : produit, quantité, lieu '
                               'et ce qui s’est passé.',
                         ),
-                        widget.rights.canValidateLoss
-                            ? (
-                                'Le stock baisse',
-                                'Déclarée par l’administrateur, la perte est '
-                                    'appliquée aussitôt.',
-                              )
-                            : (
-                                'L’administrateur valide',
-                                'Il reçoit la déclaration et la valide ou la '
-                                    'refuse, avec un motif.',
-                              ),
+                        (
+                          'Le stock baisse',
+                          'La perte est appliquée aussitôt, sans validation.',
+                        ),
                         (
                           'Tracé',
                           'La perte reste dans le journal du produit '

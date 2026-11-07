@@ -359,9 +359,9 @@ export class StockService {
   }
 
   /// Cœur partagé par la route en ligne ET le handler de sync (même règle des
-  /// deux côtés) : un compte qui peut valider (`stock.adjust.validate`, ADMIN)
-  /// applique directement ; les autres (MAGASINIER) créent une déclaration EN
-  /// ATTENTE — le stock ne bouge qu'à la validation (décision 2026-09-14).
+  /// deux côtés) : la perte est APPLIQUÉE tout de suite, quel que soit le
+  /// compte (décision MEDMEDBEN du 2026-11-07 ; avant : en attente de
+  /// validation par l'administrateur pour un magasinier).
   async declareLossInTx(
     tx: Db,
     dto: DeclareLossDto,
@@ -410,9 +410,8 @@ export class StockService {
         declaredById: user.id,
       },
     });
-    if (!user.permissions.includes(PERMISSIONS.STOCK_ADJUST_VALIDATE)) {
-      return StockService.lossToDto(created);
-    }
+    // Plus d'attente de validation (décision MEDMEDBEN du 2026-11-07) : la
+    // perte sort du stock tout de suite, tracée (auteur, mouvement, audit).
     return this.applyLoss(tx, created, user.id, null);
   }
 

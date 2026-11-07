@@ -41,9 +41,16 @@ const RECEPTION_INCLUDE = { lines: { orderBy: { id: 'asc' } } } as const;
 /// Tris autorisés (liste blanche, CONVENTIONS.md).
 const RECEPTION_SORT_FIELDS = ['receivedAt', 'number'] as const;
 
-/// Statuts où une commande accepte encore de la marchandise. ANNULEE, BROUILLON
-/// et COMMANDEE en sont exclus : on ne réceptionne que ce qui est engagé.
-const RECEIVABLE = ['CONFIRMEE', 'PARTIELLEMENT_RECUE'];
+/// Statuts où une commande accepte encore de la marchandise. Depuis le
+/// 2026-11-07 (décision MEDMEDBEN : moins d'étapes), une commande se
+/// réceptionne SANS attendre la confirmation de l'administrateur : brouillon et
+/// envoyée comprises. Seules une commande annulée, reçue ou clôturée refusent.
+const RECEIVABLE = [
+  'BROUILLON',
+  'COMMANDEE',
+  'CONFIRMEE',
+  'PARTIELLEMENT_RECUE',
+];
 
 /// Réceptions (P0 #7). Le stock augmente UNIQUEMENT des quantités réellement
 /// reçues (règle 6) et la dette fournisseur augmente du TTC figé ici
@@ -108,17 +115,9 @@ export class ReceptionsService {
     // (« surlivraison ») une réception bel et bien enregistrée.
     const already = await this.replay(tx, dto, user);
     if (already) return already;
-    // Hors commande, la réception EST un achat : elle crée du stock, de
-    // la dette et un coût d'achat sans qu'aucun admin ait engagé quoi que
-    // ce soit. Réservée à l'ADMIN (audit sécurité du 2026-09-20).
-    if (!order && !confrere && !user.roles.includes('ADMIN')) {
-      throw new BusinessException(
-        ErrorCode.FORBIDDEN_ROLE,
-        'Réception hors commande réservée à l’administrateur : ' +
-          'créez la commande, faites-la confirmer, puis réceptionnez',
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    // Réception hors commande : permise à tout compte qui réceptionne
+    // (décision MEDMEDBEN du 2026-11-07, « réception libre ») — elle reste
+    // tracée (auteur, audit) et visible de l'administrateur.
     if (order) {
       if (order.supplierId !== supplier.id) {
         throw new BusinessException(
@@ -389,8 +388,8 @@ export class ReceptionsService {
     return ReceptionsService.toDto(existing);
   }
 
-  /// Lignes validées : produit connu, quantité > 0, et surtout **surlivraison
-  /// refusée** — on ne reçoit jamais plus que le reste à recevoir d'une ligne
+  /// Lignes validées : produit connu, quantité > 0 ; la surlivraison est
+  /// acceptée depuis le 2026-11-07 (avant : jamais plus que le reste à recevoir d'une ligne
   /// de commande (décision MEDMEDBEN 2026-09-16 : le magasinier fait d'abord
   /// modifier la commande).
   private async buildLines(
@@ -450,16 +449,8 @@ export class ReceptionsService {
         const cumulated = (asked.get(ordered.id) ?? new Prisma.Decimal(0)).add(
           quantity,
         );
-        const remaining = ordered.orderedQuantity.sub(ordered.receivedQuantity);
-        if (cumulated.greaterThan(remaining)) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            `Surlivraison refusée : reste à recevoir ${formatQuantity(remaining)}, ` +
-              `reçu annoncé ${formatQuantity(cumulated)} — le surplus fait l’objet ` +
-              'd’une réception hors commande (administrateur)',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
+        // Surlivraison ACCEPTÉE depuis le 2026-11-07 (moins de refus) : le
+        // stock et la dette suivent ce qui est réellement arrivé (règle 6).
         asked.set(ordered.id, cumulated);
       } else if (order) {
         throw new BusinessException(

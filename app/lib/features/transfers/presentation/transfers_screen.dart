@@ -181,6 +181,20 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
           onTap: () => setState(() => _filter = _filter == f ? _Filter.all : f),
         );
         final actions = [
+          // Envoi direct (2026-11-07) : le dépôt envoie au magasin en une
+          // étape, sans demande ni préparation.
+          if (rights.canPrepare)
+            ActionTile(
+              icon: LucideIcons.send,
+              title: 'Envoi direct au magasin',
+              subtitle: 'En une étape : le stock passe du dépôt au magasin.',
+              tone: StatusTone.ok,
+              prominent: !rights.canRequest,
+              onTap: () => openFormPanel<void>(
+                context,
+                const TransferRequestForm(direct: true),
+              ),
+            ),
           if (rights.canRequest)
             ActionTile(
               icon: LucideIcons.plus,

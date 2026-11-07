@@ -344,7 +344,8 @@ void main() {
     ]);
   });
 
-  testWidgets('préparer plus que demandé : refusé avant l’envoi', (
+  // Permis depuis le 2026-11-07 (transferts simplifiés).
+  testWidgets('préparer plus que demandé : envoyé', (
     tester,
   ) async {
     final api = await _pump(
@@ -364,8 +365,8 @@ void main() {
     await tester.tap(find.text('Enregistrer la préparation'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Au plus 20'), findsOneWidget);
-    expect(api.prepared, isNull);
+    expect(find.text('Au plus 20'), findsNothing);
+    expect(api.prepared, isNotNull);
   });
 
   testWidgets('« Enregistrer en cours » garde la préparation ouverte', (

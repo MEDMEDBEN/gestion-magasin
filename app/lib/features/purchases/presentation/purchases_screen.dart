@@ -98,6 +98,39 @@ class PurchasesScreen extends ConsumerStatefulWidget {
 class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
   _Filter _filter = _Filter.all;
 
+  /// Nouvelle commande, puis (2026-11-07, « réception libre ») la marchandise
+  /// déjà là se réceptionne tout de suite — sans confirmation de l'admin.
+  Future<void> _newOrder(PurchaseRights rights) async {
+    final order = await openFormPanel<PurchaseOrder>(
+      context,
+      const PurchaseOrderForm(),
+    );
+    if (order == null || !rights.canReceive || !mounted) return;
+    final now = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${order.number} enregistrée'),
+        content: const Text(
+          'La marchandise est déjà arrivée ? Réceptionnez-la maintenant : '
+          'le stock et la dette fournisseur seront mis à jour.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Plus tard'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Réceptionner maintenant'),
+          ),
+        ],
+      ),
+    );
+    if (now == true && mounted) {
+      await openFormPanel<void>(context, ReceptionForm(order: order));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = widget.user;
@@ -150,7 +183,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
           subtitle: 'Choisir le fournisseur et les produits à commander.',
           tone: StatusTone.info,
           prominent: true,
-          onTap: () => openFormPanel<void>(context, const PurchaseOrderForm()),
+          onTap: () => _newOrder(rights),
         ),
       if (menu.contains('Réappro'))
         ActionTile(
@@ -398,10 +431,9 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
     PurchaseRights rights,
   ) async {
     final editable = order.status.isEditable;
-    // Miroir du serveur : on ne réceptionne qu'une commande engagée.
-    final receivable =
-        order.status == PurchaseStatus.confirmed ||
-        order.status == PurchaseStatus.partiallyReceived;
+    // Miroir du serveur : toute commande en cours se réceptionne, même sans
+    // confirmation de l'administrateur (décision du 2026-11-07).
+    final receivable = order.status.isReceivable;
     final colors = AmpereColors.of(context);
     final action = await showDialog<String>(
       context: context,
@@ -840,13 +872,10 @@ class _OrderCard extends StatelessWidget {
     final o = order;
     final late = _late(o);
     final tone = late ? StatusTone.error : _tone(o.status);
-    final receivable =
-        (o.status == PurchaseStatus.confirmed ||
-            o.status == PurchaseStatus.partiallyReceived) &&
-        rights.canReceive;
+    final receivable = o.status.isReceivable && rights.canReceive;
     final next = switch (o.status) {
       PurchaseStatus.draft => 'Prochaine étape : envoyer au fournisseur',
-      PurchaseStatus.ordered => 'Prochaine étape : confirmer (administrateur)',
+      PurchaseStatus.ordered => 'Prochaine étape : réceptionner à l’arrivée',
       PurchaseStatus.confirmed => 'Prochaine étape : réceptionner',
       PurchaseStatus.partiallyReceived =>
         'Reste à recevoir — ou clôturer le reliquat',

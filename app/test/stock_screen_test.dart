@@ -223,7 +223,7 @@ void main() {
   });
 
   testWidgets(
-    'MAGASINIER : déclare une perte (quantité décimale en chaîne), sans pouvoir valider',
+    'MAGASINIER : déclare une perte (quantité décimale en chaîne), appliquée aussitôt',
     (tester) async {
       useScreenSize(tester, const Size(400, 1400));
       await tester.pumpWidget(wrap(_magasinier()));
@@ -237,7 +237,7 @@ void main() {
 
       await tester.tap(find.text('Déclarer une perte'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('L’administrateur valide'), findsOneWidget);
+      expect(find.textContaining('retirée du stock dès'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField).first, 'câble');
       await tester.pumpAndSettle();
@@ -249,7 +249,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).at(0), '2,5');
       await tester.enterText(find.byType(TextFormField).at(1), 'Carton écrasé');
-      await tester.tap(find.text('Envoyer pour validation'));
+      await tester.tap(find.text('Déclarer et retirer du stock'));
       await tester.pumpAndSettle();
 
       expect(api.declared, {

@@ -362,7 +362,8 @@ void main() {
     expect(api.sent, isEmpty);
   });
 
-  testWidgets('surlivraison bloquée avant l’envoi', (tester) async {
+  // Surlivraison acceptée depuis le 2026-11-07 (réception libre).
+  testWidgets('surlivraison acceptée et envoyée', (tester) async {
     final api = await _pump(
       tester,
       _magasinier(),
@@ -381,8 +382,8 @@ void main() {
     await tester.tap(find.text('Enregistrer la réception'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Au plus 100'), findsOneWidget);
-    expect(api.sent, isEmpty);
+    expect(find.text('Au plus 100'), findsNothing);
+    expect(api.sent, isNotEmpty);
   });
 
   testWidgets('emplacement obligatoire : rien n’est envoyé sans lui', (
@@ -493,12 +494,13 @@ void main() {
     expect(_lastPurchases.closed, ('o1', 'Rupture définitive'));
   });
 
-  testWidgets('commande brouillon : aucune réception proposée', (tester) async {
+  // Achats sans confirmation (2026-11-07) : un brouillon se réceptionne.
+  testWidgets('commande brouillon : réception proposée', (tester) async {
     await _pump(tester, _magasinier(), orders: [_order(PurchaseStatus.draft)]);
     await tester.tap(find.textContaining('BC-2026-00007'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Réceptionner la marchandise'), findsNothing);
+    expect(find.text('Réceptionner la marchandise'), findsOneWidget);
   });
 
   testWidgets('sans le droit reception.create : action absente', (

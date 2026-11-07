@@ -214,7 +214,8 @@ class _PurchaseOrderFormState extends ConsumerState<PurchaseOrderForm> {
             dueDate: _dueDate,
           );
       if (!mounted) return;
-      Navigator.of(context).pop();
+      // La commande remonte à l'écran Achats (proposer de la réceptionner).
+      Navigator.of(context).pop(order);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

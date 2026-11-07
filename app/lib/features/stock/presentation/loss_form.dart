@@ -15,9 +15,9 @@ import '../../catalog/data/catalog_repository.dart';
 import '../application/stock_controller.dart';
 import '../data/stock_models.dart';
 
-/// Déclaration d'une perte / casse. `appliesImmediately` : l'ADMIN applique
-/// tout de suite ; sinon (MAGASINIER) la déclaration attend sa validation —
-/// c'est le serveur qui en décide, l'écran ne fait que l'annoncer.
+/// Déclaration d'une perte / casse, appliquée aussitôt (2026-11-07 ; avant,
+/// le MAGASINIER attendait une validation). `appliesImmediately` reste pour
+/// le libellé ; c'est le serveur qui en décide.
 ///
 /// `LossForm.entry` : le même formulaire pour AJOUTER du stock sans achat
 /// (décision du 2026-10-13) — motif obligatoire, auteur tracé ; rend le
