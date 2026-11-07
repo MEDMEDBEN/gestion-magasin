@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
-import 'motion.dart';
 
 /// Fond animé « barres de LED » (demande MEDMEDBEN du 2026-10-28 : un magasin
 /// de matériel électrique et électronique) :
-/// allumé par défaut, **éteignable**, choix gardé par compte sur le poste
+/// éteint par défaut (2026-11-07 : fluidité), **allumable**, choix gardé par compte sur le poste
 /// (comme le thème). Rangé dans les réglages locaux : ce n'est pas un secret.
 class SignalBackgroundController extends Notifier<bool> {
   bool _chosen = false;
@@ -20,7 +19,7 @@ class SignalBackgroundController extends Notifier<bool> {
     _chosen = false;
     final userId = ref.watch(currentUserIdProvider);
     if (userId != null) _restore(userId);
-    return true;
+    return false;
   }
 
   Future<void> _restore(String userId) async {
@@ -188,7 +187,6 @@ class _SignalBackgroundState extends State<SignalBackground>
     duration: const Duration(seconds: 36),
     value: 0.3,
   );
-  late final ThrottledListenable _frames = ThrottledListenable(_clock);
 
   @override
   void didChangeDependencies() {
@@ -213,7 +211,6 @@ class _SignalBackgroundState extends State<SignalBackground>
 
   @override
   void dispose() {
-    _frames.dispose();
     _clock.dispose();
     super.dispose();
   }
@@ -226,7 +223,6 @@ class _SignalBackgroundState extends State<SignalBackground>
         child: CustomPaint(
           painter: _SignalPainter(
             clock: _clock,
-            frames: _frames,
             dark: dark,
             hues: widget.hues,
             intensity: widget.intensity,
@@ -244,8 +240,7 @@ class _SignalPainter extends CustomPainter {
     required this.dark,
     required this.hues,
     required this.intensity,
-    required Listenable frames,
-  }) : super(repaint: frames);
+  }) : super(repaint: clock);
 
   final Animation<double> clock;
   final bool dark;
@@ -325,10 +320,12 @@ class _SignalPainter extends CustomPainter {
     canvas.drawLine(
       from,
       to,
+      // Lueur sans flou (le flou se recalculait à chaque image) : un trait
+      // large et translucide sous le trait net.
       Paint()
-        ..strokeWidth = 8
+        ..strokeWidth = 10
         ..strokeCap = StrokeCap.round
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 7)
+        ..color = const Color(0x55FFFFFF)
         ..shader = glowShader.createShader(rect),
     );
     canvas.drawLine(
@@ -390,7 +387,7 @@ class _SignalPainter extends CustomPainter {
     canvas.drawRRect(
       lit.inflate(3),
       Paint()
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8)
+        ..color = const Color(0x59FFFFFF)
         ..shader = shader,
     );
     canvas.drawRRect(lit, Paint()..shader = shader);

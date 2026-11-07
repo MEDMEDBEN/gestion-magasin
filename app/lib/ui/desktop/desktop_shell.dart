@@ -99,7 +99,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
             AnimatedPadding(
               // L'encoche occupe le bord gauche ; réduite, le contenu
               // glisse et reprend la place (même mouvement qu'elle).
-              duration: const Duration(milliseconds: 520),
+              duration: const Duration(milliseconds: 320),
               curve: Curves.easeOutCubic,
               padding: glass && _islandCollapsed
                   ? const EdgeInsets.fromLTRB(
@@ -130,19 +130,11 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   Expanded(
                     // Passage fluide entre l'accueil et une fonctionnalité.
                     child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
+                      duration: const Duration(milliseconds: 160),
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween(
-                            begin: const Offset(0, 0.015),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
                       child: index == null
                           ? _Launcher(
                               key: const ValueKey('accueil'),

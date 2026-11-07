@@ -30,7 +30,6 @@ class _LiquidBackgroundState extends State<LiquidBackground>
     vsync: this,
     duration: const Duration(seconds: 14),
   );
-  late final ThrottledListenable _frames = ThrottledListenable(_clock);
 
   @override
   void didChangeDependencies() {
@@ -54,7 +53,6 @@ class _LiquidBackgroundState extends State<LiquidBackground>
 
   @override
   void dispose() {
-    _frames.dispose();
     _clock.dispose();
     super.dispose();
   }
@@ -63,7 +61,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
   Widget build(BuildContext context) => IgnorePointer(
     child: RepaintBoundary(
       child: CustomPaint(
-        painter: _BlobPainter(_clock, AmpereColors.of(context), _frames),
+        painter: _BlobPainter(_clock, AmpereColors.of(context)),
         size: Size.infinite,
       ),
     ),
@@ -71,8 +69,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
 }
 
 class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.clock, this.colors, Listenable frames)
-    : super(repaint: frames);
+  _BlobPainter(this.clock, this.colors) : super(repaint: clock);
 
   final Animation<double> clock;
   final AmpereColors colors;
@@ -211,7 +208,7 @@ class SideIsland extends StatelessWidget {
   /// Largeur de la languette réduite.
   static const collapsedWidth = 16.0;
 
-  static const _spring = Duration(milliseconds: 520);
+  static const _spring = Duration(milliseconds: 320);
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +217,7 @@ class SideIsland extends StatelessWidget {
     return AnimatedContainer(
       // Mouvement souple, léger rebond (façon iOS).
       duration: _spring,
-      curve: Curves.easeOutBack,
+      curve: Curves.easeOutCubic,
       width: collapsed ? collapsedWidth : width,
       height: collapsed ? 96 : open,
       child: CustomPaint(

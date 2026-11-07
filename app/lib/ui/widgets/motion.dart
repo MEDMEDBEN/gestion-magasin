@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 /// Mouvements partagés de l'application (demande MEDMEDBEN du 2026-10-29 :
 /// « pas un clic brut — on voit la sélection glisser vers le bouton choisi »).
 
-/// Courbe « ressort » douce, façon iOS : un léger dépassement puis l'arrêt.
-const Curve springCurve = Cubic(0.34, 1.36, 0.64, 1);
+/// Courbe douce, façon iOS, SANS dépassement : un rebond sur un élément qui
+/// bouge la page se lisait comme une vibration (2026-11-07).
+const Curve springCurve = Cubic(0.22, 1, 0.36, 1);
 
 /// Une rangée d'éléments dont le repère de sélection (`indicator`) GLISSE
 /// d'un élément à l'autre au lieu de sauter. Les positions sont mesurées
@@ -16,7 +17,7 @@ class SlidingSelection extends StatefulWidget {
     required this.children,
     required this.indicator,
     this.expand = false,
-    this.duration = const Duration(milliseconds: 420),
+    this.duration = const Duration(milliseconds: 300),
   });
 
   /// Index choisi ; `null` : aucun repère.
@@ -52,7 +53,17 @@ class _SlidingSelectionState extends State<SlidingSelection> {
     final rect = stack == null || box == null || !box.hasSize
         ? null
         : box.localToGlobal(Offset.zero, ancestor: stack) & box.size;
-    if (rect != _rect) {
+    // Au demi-pixel près : un arrondi de mise en page ne relance rien.
+    final old = _rect;
+    final moved =
+        (rect == null) != (old == null) ||
+        (rect != null &&
+            old != null &&
+            ((rect.left - old.left).abs() > 0.5 ||
+                (rect.top - old.top).abs() > 0.5 ||
+                (rect.width - old.width).abs() > 0.5 ||
+                (rect.height - old.height).abs() > 0.5));
+    if (moved) {
       setState(() => _rect = rect);
     } else if (!_placed && rect != null) {
       setState(() => _placed = true);
@@ -183,33 +194,5 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
         child: widget.child,
       ),
     );
-  }
-}
-
-/// Relaie les battements d'une animation au plus [fps] fois par seconde.
-/// Pour les fonds animés, qui bougent lentement : 20 images par seconde ne se
-/// distinguent pas de 60, et coûtent trois fois moins (2026-11-07).
-class ThrottledListenable extends ChangeNotifier {
-  ThrottledListenable(this.source, {int fps = 20})
-    : _gap = Duration(microseconds: 1000000 ~/ fps) {
-    source.addListener(_tick);
-  }
-
-  final Listenable source;
-  final Duration _gap;
-  DateTime _last = DateTime(0);
-
-  void _tick() {
-    final now = DateTime.now();
-    if (now.difference(_last) >= _gap) {
-      _last = now;
-      notifyListeners();
-    }
-  }
-
-  @override
-  void dispose() {
-    source.removeListener(_tick);
-    super.dispose();
   }
 }

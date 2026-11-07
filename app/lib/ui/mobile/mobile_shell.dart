@@ -130,17 +130,9 @@ class _MobileShellState extends ConsumerState<MobileShell> {
             ),
           Positioned.fill(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              transitionBuilder: (child, animation) => FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween(
-                    begin: const Offset(0.04, 0),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
-              ),
+              duration: const Duration(milliseconds: 160),
+              transitionBuilder: (child, animation) =>
+                  FadeTransition(opacity: animation, child: child),
               child: showMore
                   ? _MorePage(
                       key: const ValueKey('plus'),

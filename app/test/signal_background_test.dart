@@ -7,7 +7,8 @@ import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 
 /// Fond animé : allumé par défaut, éteignable, choix gardé PAR COMPTE.
 void main() {
-  test('éteint, le choix revient au compte qui se reconnecte', () async {
+  // Éteint par défaut depuis le 2026-11-07 (fluidité) ; le choix est gardé.
+  test('allumé, le choix revient au compte qui se reconnecte', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
     ProviderContainer open() => ProviderContainer(
@@ -19,16 +20,16 @@ void main() {
 
     final first = open();
     first.listen(signalBackgroundProvider, (_, _) {});
-    expect(first.read(signalBackgroundProvider), isTrue);
-    await first.read(signalBackgroundProvider.notifier).toggle();
     expect(first.read(signalBackgroundProvider), isFalse);
+    await first.read(signalBackgroundProvider.notifier).toggle();
+    expect(first.read(signalBackgroundProvider), isTrue);
     first.dispose();
 
     final again = open();
     addTearDown(again.dispose);
     again.listen(signalBackgroundProvider, (_, _) {});
     await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(again.read(signalBackgroundProvider), isFalse);
+    expect(again.read(signalBackgroundProvider), isTrue);
   });
 
   test('palette et style des LED gardés pour le compte', () async {

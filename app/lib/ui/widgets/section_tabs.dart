@@ -45,18 +45,10 @@ class SectionTabs extends ConsumerWidget {
     // Téléphone : la rubrique se choisit depuis le titre de la page.
     // Changer de rubrique : la nouvelle arrive en fondu, légèrement glissée.
     final content = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 160),
       switchInCurve: Curves.easeOutCubic,
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: SlideTransition(
-          position: Tween(
-            begin: const Offset(0.03, 0),
-            end: Offset.zero,
-          ).animate(animation),
-          child: child,
-        ),
-      ),
+      transitionBuilder: (child, animation) =>
+          FadeTransition(opacity: animation, child: child),
       child: KeyedSubtree(
         key: ValueKey('$group/${current.label}'),
         child: current.builder(context, user),

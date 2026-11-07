@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Animations sans saccade ni vibration — 2026-11-07, 2e passe (MEDMEDBEN, Claude)
+
+- Retour : lags, « image qui vibre », transitions lentes. Corrigé :
+  - fonds animés de nouveau à la cadence de l'écran (le 20 i/s de la 1re passe avançait par sauts =
+    vibration) ; `ThrottledListenable` supprimé ; lueurs du fond « signal » sans flou (trait large
+    translucide) ; **lumières éteintes par défaut** (rien ne tourne en permanence, choix gardé par compte) ;
+  - `springCurve` sans dépassement, repère glissant en 300 ms, re-mesuré seulement s'il bouge de > 0,5 px ;
+  - changement d'écran / de rubrique (poste, téléphone, rubriques) : fondu de 160 ms, sans glissement ;
+  - encoche : repli en 320 ms sans rebond (le contenu suit).
+- Preuves : analyze 0, 558 tests.
+
 ### Ticket de caisse = document A4 « TICKET » — 2026-11-07 (MEDMEDBEN, Claude)
 
 - `renderSaleDocument` : plus de rouleau thermique ; le ticket est un document complet au gabarit du devis,
