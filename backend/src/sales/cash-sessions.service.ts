@@ -412,6 +412,31 @@ export class CashSessionsService {
       : null;
   }
 
+  /// LA caisse ouverte du magasin, verrouillée ; s'il n'y en a pas, elle est
+  /// OUVERTE automatiquement (fond 0) au nom de `userId` (décision MEDMEDBEN du
+  /// 2026-11-08 : plus aucun blocage à l'encaissement). Même verrou que
+  /// `openInTx` : jamais deux caisses ouvertes.
+  static async ensureOpenSession(
+    tx: Db,
+    userId: string,
+    at: Date = new Date(),
+  ): Promise<CashSession> {
+    const { id: locationId } = await tx.location.findFirstOrThrow({
+      where: { type: 'MAGASIN', isActive: true },
+      select: { id: true },
+    });
+    const open = await CashSessionsService.lockOpenSession(tx, { locationId });
+    if (open) return open;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CASH_SESSION_LOCK}::int, 0)`;
+    await CashSessionsService.closeStale(tx, undefined, at);
+    return (
+      (await CashSessionsService.lockOpenSession(tx, { locationId })) ??
+      (await tx.cashSession.create({
+        data: { userId, locationId, openingFloat: 0, openedAt: at },
+      }))
+    );
+  }
+
   /// Une caisse ne vit qu'UN jour, heure d'Alger (décision MEDMEDBEN du
   /// 2026-10-08) : le lendemain, on rouvre avec le fond de caisse du jour.
   static isStale(session: { openedAt: Date }, now = new Date()): boolean {

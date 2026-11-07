@@ -429,16 +429,8 @@ export class CustomersService {
       }
     }
 
-    const session = await CashSessionsService.lockOpenSession(tx, {
-      userId: user.id,
-    });
-    if (!session) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_REQUIRED,
-        'Ouvrez la caisse avant d’encaisser un règlement',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    // Sans caisse ouverte, elle s'ouvre toute seule (fond 0, 2026-11-08).
+    const session = await CashSessionsService.ensureOpenSession(tx, user.id);
     // Caisse unique (2026-11-07) : un règlement fait sur une caisse clôturée
     // depuis entre dans LA caisse ouverte, comme une vente.
 
@@ -614,16 +606,12 @@ export class CustomersService {
             );
           }
         }
-        const session = await CashSessionsService.lockOpenSession(tx, {
-          userId: user.id,
-        });
-        if (!session) {
-          throw new BusinessException(
-            ErrorCode.CASH_SESSION_REQUIRED,
-            'Ouvrez votre caisse : les espèces du règlement sont rendues au client',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
+        // Sans caisse ouverte, elle s'ouvre (2026-11-08) ; le tiroir doit
+        // contenir de quoi rendre (`withdraw`).
+        const session = await CashSessionsService.ensureOpenSession(
+          tx,
+          user.id,
+        );
         const reversal = await tx.customerPayment.create({
           data: {
             clientMutationId: dto.clientMutationId,

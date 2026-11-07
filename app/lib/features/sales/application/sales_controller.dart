@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/dates.dart';
-import '../../../core/error/error_codes.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/mutation_keys.dart';
 import '../../../core/pdf_printing.dart';
@@ -36,7 +35,7 @@ const cashPendingSync = 'EN_ATTENTE';
 ///    connu : erreur (caisse inconnue) — on ne propose alors pas d'en ouvrir
 ///    une, elle pourrait déjà l'être au serveur (audit tranche C).
 final currentCashSessionProvider = FutureProvider.autoDispose<CashSession?>(
-  (ref) async => todaysCash(await _cashSession(ref)),
+  (ref) => _cashSession(ref),
 );
 
 /// Une caisse ne vit qu'UN jour (décision MEDMEDBEN du 2026-10-08) : celle
@@ -64,14 +63,16 @@ Future<CashSession?> _cashSession(Ref ref) async {
   if (queued != null) {
     final body = jsonDecode(queued.payload) as Map<String, dynamic>;
     if (body['action'] == 'CLOSE') return null;
-    return CashSession(
-      id: body['id'] as String,
-      status: cashPendingSync,
-      openingFloat: body['openingFloat'] as int,
-      cashSalesAmount: 0,
-      cashSalesCount: 0,
-      currentAmount: body['openingFloat'] as int,
-      openedAt: queued.deviceTimestamp,
+    return todaysCash(
+      CashSession(
+        id: body['id'] as String,
+        status: cashPendingSync,
+        openingFloat: body['openingFloat'] as int,
+        cashSalesAmount: 0,
+        cashSalesCount: 0,
+        currentAmount: body['openingFloat'] as int,
+        openedAt: queued.deviceTimestamp,
+      ),
     );
   }
   final settings = ref.watch(localSettingsStoreProvider);
@@ -82,13 +83,19 @@ Future<CashSession?> _cashSession(Ref ref) async {
       memoryKey,
       server == null ? 'none' : jsonEncode(server.toJson()),
     );
+    // Le serveur fait foi (2026-11-08) : la date de l'appareil ne masque plus
+    // une caisse qu'il dit ouverte.
     return server;
   } on ApiException catch (error) {
-    final known = error.isOffline ? await settings.read(memoryKey) : null;
-    if (known == null) rethrow;
-    return known == 'none'
+    // Hors ligne, jamais lue : « fermée » — on peut l'ouvrir sur l'appareil,
+    // le serveur la rejoindra à la caisse déjà ouverte s'il y en a une.
+    if (!error.isOffline) rethrow;
+    final known = await settings.read(memoryKey);
+    return known == null || known == 'none'
         ? null
-        : CashSession.fromJson(jsonDecode(known) as Map<String, dynamic>);
+        : todaysCash(
+            CashSession.fromJson(jsonDecode(known) as Map<String, dynamic>),
+          );
   }
 }
 
@@ -641,16 +648,13 @@ class SalesActions {
     // serveur refuse si ce n'est plus la caisse ouverte — les espèces ne
     // passent jamais dans une autre caisse (audit sécu tranche B).
     // Sans espèces (crédit), aucune caisse en jeu.
+    // Sans caisse ouverte, la vente passe : le serveur ouvre LA caisse du
+    // magasin (fond 0) — plus aucun blocage (décision du 2026-11-08).
     final cash = paidAmount > 0
-        ? _ref.read(currentCashSessionProvider).value
+        ? await _ref
+              .read(currentCashSessionProvider.future)
+              .catchError((Object _) => null)
         : null;
-    if (paidAmount > 0 && cash == null) {
-      throw const ApiException(
-        statusCode: 409,
-        code: ErrorCodes.cashSessionRequired,
-        message: 'Ouvrez la caisse avant d’encaisser des espèces',
-      );
-    }
     // Prix APPLIQUÉ de chaque ligne, envoyé explicitement : si le tarif change
     // pendant une coupure, c'est le prix vu par le client qui est vendu.
     final unitPrices = _ref.read(cartEstimateProvider).unitPricesHt;
@@ -663,7 +667,7 @@ class SalesActions {
         clientMutationId: key,
         id: cart.saleId,
         customerId: cart.customer?.id,
-        cashSessionId: paidAmount > 0 ? cash!.id : null,
+        cashSessionId: cash?.id,
         lines: [
           for (final line in cart.lines)
             (
@@ -773,14 +777,10 @@ class SalesActions {
   /// espèces sont entrées (comme la vente) et le serveur le rejuge au sync (dette
   /// peut-être déjà réglée entre-temps) — jamais présenté comme définitif.
   Future<WriteOutcome<void>> payCustomer(String customerId, int amount) async {
-    final cash = _ref.read(currentCashSessionProvider).value;
-    if (cash == null) {
-      throw const ApiException(
-        statusCode: 409,
-        code: ErrorCodes.cashSessionRequired,
-        message: 'Ouvrez la caisse avant d’encaisser un règlement',
-      );
-    }
+    // Sans caisse ouverte, le serveur l'ouvre (2026-11-08) : pas de refus.
+    final cash = await _ref
+        .read(currentCashSessionProvider.future)
+        .catchError((Object _) => null);
     final outcome = await writeOnlineOrQueue<void>(
       _ref,
       intent: 'customer-payment:$customerId',
@@ -790,11 +790,11 @@ class SalesActions {
         'id': key,
         'customerId': customerId,
         'amount': amount,
-        'cashSessionId': cash.id,
+        'cashSessionId': ?cash?.id,
       },
       online: _api.payCustomer,
       // Caisse encore en file : le règlement passe APRÈS son ouverture.
-      queueOnly: cash.status == cashPendingSync,
+      queueOnly: cash?.status == cashPendingSync,
     );
     _ref.invalidate(customerSearchProvider);
     _ref.invalidate(currentCashSessionProvider);

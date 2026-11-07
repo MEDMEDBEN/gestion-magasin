@@ -182,16 +182,12 @@ class QuoteActions {
   }) async {
     // ATTENDRE l'état de la caisse : lu pendant son chargement, il vaudrait
     // « pas de caisse » et refuserait une conversion parfaitement valable.
+    // Sans caisse ouverte, le serveur l'ouvre (2026-11-08) : pas de refus.
     final cash = paidAmount > 0
-        ? await _ref.read(currentCashSessionProvider.future)
+        ? await _ref
+              .read(currentCashSessionProvider.future)
+              .catchError((Object _) => null)
         : null;
-    if (paidAmount > 0 && cash == null) {
-      throw const ApiException(
-        statusCode: 409,
-        code: ErrorCodes.cashSessionRequired,
-        message: 'Ouvrez la caisse avant d’encaisser des espèces',
-      );
-    }
     final sale = await runMoneyMutation(
       _ref,
       'quote-convert:${quote.id}',

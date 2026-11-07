@@ -53,13 +53,7 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
 
   async validate(payload: unknown): Promise<CreateSaleDto> {
     const sale = await validatePayload(CreateSaleDto, payload);
-    if (sale.paidAmount > 0 && sale.cashSessionId === undefined) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'cashSessionId : la caisse des espèces est obligatoire hors-ligne',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    // Caisse facultative (2026-11-08) : les espèces vont dans LA caisse ouverte.
     if (sale.expectedTotalTtc === undefined) {
       throw new BusinessException(
         ErrorCode.VALIDATION_FAILED,

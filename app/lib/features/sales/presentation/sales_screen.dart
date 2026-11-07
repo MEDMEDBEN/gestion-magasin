@@ -304,11 +304,21 @@ class _CashBar extends ConsumerWidget {
       ),
       // Caisse INCONNUE (hors ligne, jamais lue sur cet appareil) : on ne
       // propose pas d'en ouvrir une — elle l'est peut-être déjà au serveur.
-      error: (error, _) => AmpereBadge(
-        label: 'Caisse indisponible',
-        tone: StatusTone.warn,
-        icon: LucideIcons.cloudOff,
-      ),
+      // État illisible : on propose quand même d'ouvrir (le serveur rejoint
+      // la caisse déjà ouverte s'il y en a une).
+      error: (error, _) => compact
+          ? _chip(context, ref, null)
+          : _DrawerCard(
+              tone: colors.warn,
+              icon: LucideIcons.cloudOff,
+              title: 'Caisse : état inconnu',
+              subtitle: 'Vous pouvez vendre ; ouvrez-la pour compter le fond.',
+              trailing: FilledButton.icon(
+                onPressed: () => _openCashFlow(context, ref),
+                icon: const Icon(LucideIcons.lockOpen, size: 17),
+                label: const Text('Ouvrir la caisse'),
+              ),
+            ),
       data: (cash) => compact
           ? _chip(context, ref, cash)
           : cash == null
@@ -317,8 +327,8 @@ class _CashBar extends ConsumerWidget {
               icon: LucideIcons.lock,
               title: 'Caisse fermée',
               subtitle:
-                  'Saisissez le fond de caisse du jour avant la première '
-                  'vente ou sortie.',
+                  'Ouvrez-la avec le fond du jour — sinon elle s’ouvre '
+                  'toute seule à la première vente.',
               trailing: FilledButton.icon(
                 onPressed: () => _openCashFlow(context, ref),
                 icon: const Icon(LucideIcons.lockOpen, size: 17),
@@ -943,15 +953,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
 
   Future<void> _checkout(CartEstimate estimate) async {
     final cart = ref.read(cartProvider);
-    // Caisse CONNUE fermée (dernier état lu, même hors ligne) : une vente
-    // comptoir encaisserait des espèces sans caisse — refusée à coup sûr.
-    final cashState = ref.read(currentCashSessionProvider);
-    if (cart.customer == null &&
-        cashState.hasValue &&
-        cashState.value == null) {
-      _snack(context, 'Ouvrez la caisse avant d’encaisser des espèces');
-      return;
-    }
+    // Caisse fermée : la vente passe quand même, le serveur ouvre LA caisse
+    // (fond 0) — plus de blocage (décision du 2026-11-08).
     final received = await showPaymentDialog(
       context,
       total: estimate.totalTtc,
@@ -1172,11 +1175,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     }
     if (cart.buyer == null) {
       _chooseBuyer();
-      return;
-    }
-    final cash = ref.read(currentCashSessionProvider);
-    if (cash.hasValue && cash.value == null && cart.customer == null) {
-      if (widget.rights.canManageCash) _openCashFlow(context, ref);
       return;
     }
     _checkout(estimate);
@@ -1659,10 +1657,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   Widget _payPanel({bool compact = false}) {
     final cart = ref.watch(cartProvider);
     final estimate = ref.watch(cartEstimateProvider);
-    final cashState = ref.watch(currentCashSessionProvider);
-    // Hors ligne, la caisse est INCONNUE (pas « fermée ») : pas d'alerte, le
-    // serveur vérifiera à la synchronisation.
-    final noCash = cashState.hasValue && cashState.value == null;
     final blocked = _busy || estimate.blocked || cart.isEmpty;
     final shortages = _shortages(cart);
     // Acheteur à choisir à CHAQUE vente (décision du 2026-10-12).
@@ -1817,19 +1811,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                         height: 42,
                         tone: AmpereColors.of(context).accent,
                         onPressed: cart.isEmpty ? null : _chooseBuyer,
-                      )
-                    : (noCash && cart.customer == null && cart.quote == null)
-                    ?
-                      // Une caisse ne vit qu'un jour : avant la première vente
-                      // espèces, on compte le tiroir (décision du 2026-10-08).
-                      _PayButton(
-                        icon: LucideIcons.lockOpen,
-                        label: 'Ouvrir la caisse pour encaisser',
-                        height: 42,
-                        tone: AmpereColors.of(context).warn,
-                        onPressed: widget.rights.canManageCash
-                            ? () => _openCashFlow(context, ref)
-                            : null,
                       )
                     : cart.quote != null
                     ?

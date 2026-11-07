@@ -76,7 +76,7 @@ export interface SyncMutationHandler<TPayload extends object = object> {
 /// Au-delà, l'instant de l'appareil n'est plus cru. Même valeur que
 /// `AppConfig.maxOfflineDuration`, mais pas la même mesure (l'app mesure l'âge
 /// de sa file au moment de saisir).
-const MAX_OFFLINE_MS = 72 * 3600 * 1000;
+const MAX_OFFLINE_MS = 7 * 24 * 3600 * 1000;
 
 /// Instant d'une opération faite hors-ligne : celui de l'appareil s'il est
 /// plausible — ni dans le futur, ni plus ancien que la durée hors-ligne permise

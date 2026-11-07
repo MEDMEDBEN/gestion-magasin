@@ -88,17 +88,18 @@ void main() {
   });
 
   test(
-    'caisse inconnue ou fermée : aucun règlement, même mis en file',
+    // Plus de blocage (2026-11-08) : le serveur ouvre LA caisse s'il le faut.
+    'caisse fermée : le règlement part quand même, sans caisse désignée',
     () async {
       final queue = _RecordingQueue();
       final container = _container(queue, null);
       await container.read(currentCashSessionProvider.future);
 
-      await expectLater(
-        container.read(salesActionsProvider).payCustomer('client-1', 50000),
-        throwsA(isA<ApiException>()),
-      );
-      expect(queue.queued, isEmpty);
+      final outcome = await container
+          .read(salesActionsProvider)
+          .payCustomer('client-1', 50000);
+      expect(outcome, isA<Queued<void>>());
+      expect(queue.queued.single.payload.containsKey('cashSessionId'), isFalse);
     },
   );
 }

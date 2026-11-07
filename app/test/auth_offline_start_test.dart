@@ -103,8 +103,8 @@ void main() {
   group('pas d’ouverture hors ligne', () {
     setUp(() => api.meFailure = offline);
 
-    test('fiche de plus de 72 h', () async {
-      remembered(age: const Duration(hours: 73));
+    test('fiche plus vieille que la borne hors ligne', () async {
+      remembered(age: AppConfig.maxOfflineDuration + const Duration(hours: 1));
       expect(await start(), isA<AuthUnknown>());
     });
 

@@ -195,16 +195,9 @@ export class SaleReturnsService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      const session = await CashSessionsService.lockOpenSession(tx, {
-        userId: user.id,
-      });
-      if (!session) {
-        throw new BusinessException(
-          ErrorCode.CASH_SESSION_REQUIRED,
-          'Ouvrez votre caisse : les espèces sont rendues au client',
-          HttpStatus.UNPROCESSABLE_ENTITY,
-        );
-      }
+      // Sans caisse ouverte, elle s'ouvre (2026-11-08) ; le tiroir doit
+      // contenir de quoi rendre (`withdraw`).
+      const session = await CashSessionsService.ensureOpenSession(tx, user.id);
       await CashSessionsService.withdraw(tx, session, {
         userId: user.id,
         amount: totalTtc,

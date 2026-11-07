@@ -692,7 +692,8 @@ void main() {
   );
 
   testWidgets(
-    'caisse connue FERMÉE : l’encaissement comptoir est bloqué avant tout envoi',
+    // Plus de blocage (2026-11-08) : le serveur ouvre LA caisse (fond 0).
+    'caisse FERMÉE : l’encaissement comptoir reste possible',
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       final api = _FakeSalesApi();
@@ -702,15 +703,11 @@ void main() {
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
       }
-      // Caisse fermée (2026-10-08) : pas de bouton Encaisser — le bouton
-      // principal ouvre la caisse (fond du jour) avant la première vente.
-      expect(find.textContaining('Encaisser 2'), findsNothing);
-      await tester.tap(find.text('Ouvrir la caisse pour encaisser'));
+      expect(find.text('Ouvrir la caisse pour encaisser'), findsNothing);
+      await tester.tap(find.textContaining('Encaisser 2'));
       await tester.pumpAndSettle();
-      expect(find.text('Ouvrir la caisse du jour'), findsOneWidget);
-
+      expect(find.text('Valider la vente'), findsOneWidget);
       expect(api.sent, isNull);
-      expect(find.text('Valider la vente'), findsNothing);
     },
   );
 
@@ -820,12 +817,13 @@ void main() {
   );
 
   testWidgets(
-    'hors ligne, caisse jamais lue sur cet appareil : aucune ouverture proposée',
+    // 2026-11-08 : on peut l'ouvrir sur l'appareil ; au sync, le serveur la
+    // rejoint à la caisse déjà ouverte s'il y en a une.
+    'hors ligne, caisse jamais lue sur cet appareil : ouverture proposée',
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       await _pumpScreen(tester, _FakeSalesApi(offline: true), []);
-      expect(find.text('Caisse indisponible'), findsOneWidget);
-      expect(find.text('Ouvrir la caisse'), findsNothing);
+      expect(find.text('Ouvrir la caisse'), findsOneWidget);
     },
   );
 

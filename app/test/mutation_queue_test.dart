@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/config/app_config.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/data/models/sync_models.dart';
@@ -205,7 +206,9 @@ void main() {
 
     test('une mutation trop vieille déclenche l’alerte', () async {
       await enqueueAt(
-        DateTime.now().toUtc().subtract(const Duration(hours: 96)),
+        DateTime.now().toUtc().subtract(
+          AppConfig.maxOfflineDuration + const Duration(hours: 1),
+        ),
       );
       expect(await queue.isTooStale(authorUserId: author), isTrue);
     });

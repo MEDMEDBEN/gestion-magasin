@@ -300,7 +300,8 @@ void main() {
     expect(find.text('Vente TK-2026-000042 enregistrée.'), findsOneWidget);
   });
 
-  testWidgets('conversion en espèces sans caisse ouverte : refusée à l’écran', (
+  // Plus de blocage (2026-11-08) : le serveur ouvre LA caisse s'il le faut.
+  testWidgets('conversion en espèces sans caisse ouverte : envoyée', (
     tester,
   ) async {
     final api = await _pump(tester, [_quote('2', QuoteStatus.accepted)]);
@@ -312,11 +313,7 @@ void main() {
     await tester.tap(find.text('Valider la vente'));
     await tester.pumpAndSettle();
 
-    expect(api.converted, isEmpty);
-    expect(
-      find.text('Ouvrez une session de caisse au préalable'),
-      findsOneWidget,
-    );
+    expect(api.converted, isNotEmpty);
   });
 
   /// « Faire un devis » : le panier de la Vente devient un devis, puis se vide.

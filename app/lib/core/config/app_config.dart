@@ -17,8 +17,10 @@ class AppConfig {
 
   /// Au-delà, l'app alerte et restreint les opérations sensibles :
   /// un appareil trop longtemps hors-ligne travaille sur un stock trop faux.
-  static const int maxPendingMutations = 200;
-  static const Duration maxOfflineDuration = Duration(hours: 72);
+  /// Relevées le 2026-11-08 (MEDMEDBEN : « plus de blocage ») : une journée
+  /// chargée hors ligne ne doit pas arrêter la caisse.
+  static const int maxPendingMutations = 2000;
+  static const Duration maxOfflineDuration = Duration(days: 7);
 
   /// Battement de la synchronisation : la file est poussée à cet intervalle tant
   /// qu'une session est ouverte (une file vide ne coûte aucun appel réseau —

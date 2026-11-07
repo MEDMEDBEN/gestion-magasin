@@ -41,13 +41,7 @@ export class CustomerPaymentHandler implements SyncMutationHandler<CreateCustome
 
   async validate(payload: unknown): Promise<CreateCustomerPaymentDto> {
     const dto = await validatePayload(CreateCustomerPaymentDto, payload);
-    if (dto.cashSessionId === undefined) {
-      throw new BusinessException(
-        ErrorCode.VALIDATION_FAILED,
-        'cashSessionId : la caisse des espèces est obligatoire hors-ligne',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    // Caisse facultative (2026-11-08) : les espèces vont dans LA caisse ouverte.
     return dto;
   }
 

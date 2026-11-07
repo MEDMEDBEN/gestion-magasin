@@ -215,20 +215,12 @@ export class SalesService {
 
     // Espèces : rattachées à LA caisse ouverte du magasin, partagée par tous
     // les vendeurs (règle 12 ; caisse unique, décision du 2026-11-07). Une
-    // vente faite sur une caisse clôturée depuis entre dans la caisse ouverte.
+    // vente faite sur une caisse clôturée depuis entre dans la caisse ouverte ;
+    // sans caisse ouverte, elle s'ouvre toute seule (fond 0, 2026-11-08).
     const cashSession =
       dto.paidAmount > 0
-        ? await CashSessionsService.lockOpenSession(tx, {
-            locationId: store.id,
-          })
+        ? await CashSessionsService.ensureOpenSession(tx, user.id)
         : null;
-    if (dto.paidAmount > 0 && !cashSession) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_REQUIRED,
-        'Ouvrez la caisse avant d’encaisser des espèces',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
 
     // Crédit : client identifié, droit `sale.credit`, dans son plafond.
     const credit = totalTtc - dto.paidAmount;

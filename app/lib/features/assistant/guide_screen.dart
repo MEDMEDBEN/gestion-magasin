@@ -65,7 +65,7 @@ class GuideScreen extends StatelessWidget {
     (
       'Sans réseau',
       [
-        'L’application s’ouvre sur le dernier compte connecté (72 h au plus).',
+        'L’application s’ouvre sur le dernier compte connecté (7 jours au plus).',
         'Ventes, caisse, paiements et transferts sont gardés « en attente de '
             'synchronisation » et partent au retour du réseau.',
         'Le serveur revérifie tout : une opération impossible (stock '

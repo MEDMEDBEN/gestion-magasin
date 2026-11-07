@@ -80,7 +80,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<void> _tick() async {
     if (_unverified) {
       // Le temps passé hors ligne compte, même si l'horloge est reculée — et
-      // la borne des 72 h vaut aussi app OUVERTE : dépassée, retour à l'écran
+      // la borne des 7 jours vaut aussi app OUVERTE : dépassée, retour à l'écran
       // « serveur injoignable », sans rien effacer (file, tokens).
       try {
         final tokenStore = ref.read(tokenStoreProvider);
@@ -109,7 +109,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   /// Une session peut s'ouvrir hors ligne si le serveur l'a reconnue il y a
-  /// moins de `maxOfflineDuration` (72 h, la borne du travail hors ligne).
+  /// moins de `maxOfflineDuration` (7 jours, la borne du travail hors ligne).
   /// L'âge se mesure jusqu'à l'instant le plus tardif DÉJÀ VU par l'appareil
   /// (`lastSeen`) : reculer l'horloge ne rend pas de temps. Une horloge avant
   /// le dernier contact est refusée.

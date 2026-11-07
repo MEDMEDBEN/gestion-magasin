@@ -4,6 +4,26 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Caisse : plus de blocage ; revue hors ligne / en ligne — 2026-11-08 (MEDMEDBEN, Claude)
+
+Problème : « la caisse s'ouvre (notif) mais l'état ne change pas, je ne peux pas vendre ».
+- Causes : (1) l'écran Vente refusait d'encaisser tant que la caisse était « fermée » (bouton remplacé
+  par « Ouvrir la caisse pour encaisser ») ; (2) l'app masquait la caisse renvoyée par le serveur si la
+  date de l'APPAREIL différait (`todaysCash` appliqué à la réponse serveur) ; (3) hors ligne sans état
+  connu, on ne pouvait pas ouvrir.
+- Corrigé : le serveur fait foi (`todaysCash` seulement sur l'état local) ; plus aucun refus « Ouvrez la
+  caisse » (vente, conversion de devis, règlement client) côté app ; côté serveur
+  `CashSessionsService.ensureOpenSession` OUVRE la caisse (fond 0) si besoin pour vente, règlement,
+  contre-passation, retour ; `cashSessionId` facultatif aussi au sync. Ouverture hors ligne toujours
+  proposée ; au sync elle rejoint la caisse déjà ouverte en ligne (montant serveur = référence).
+- Revue hors ligne / en ligne : les handlers de sync utilisent le MÊME cœur que les routes (droits et
+  règles identiques) — pas d'écart. Bornes hors ligne relevées : 2000 opérations en file, 7 jours
+  (app `AppConfig` + serveur `MAX_OFFLINE_MS`).
+- Preuves : backend tsc + eslint ; jest 181/184 en lot complet — `import.spec` dépasse le délai sous
+  charge mais passe seul (42/42 sur `common/export`) ; app analyze propre + flutter test (6 tests
+  adaptés aux nouvelles règles), tout passe.
+- **Prochaine étape** : simplifier les écrans (Stock, Catalogue, Achats, Transferts, Inventaire, Clients).
+
 ### Simplification des règles : réception, achats, pertes, transferts — 2026-11-07 (MEDMEDBEN, Claude)
 
 Demande : « simplifier comme pour la vente ». Choix de MEDMEDBEN : réception libre, achats sans
