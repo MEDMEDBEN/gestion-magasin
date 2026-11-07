@@ -216,14 +216,17 @@ describe('Paramètres (e2e)', () => {
       });
       expect(audit.newValue).toMatchObject({ name: 'Électricité El Nour' });
 
-      // Vidé : la valeur de l'environnement revient (déploiement existant).
+      // Vidé : la valeur de l'environnement revient (déploiement existant),
+      // sinon l'identité par défaut (Shino Lighting, 2026-11-07).
       const cleared = (
         await as(tokens.admin)
           .patch('/api/settings/store')
           .send({ name: '' })
           .expect(200)
       ).body;
-      expect(cleared.name).toBe(process.env.STORE_NAME?.trim() || null);
+      expect(cleared.name).toBe(
+        process.env.STORE_NAME?.trim() || 'Shino Lighting',
+      );
     });
   });
 

@@ -4,6 +4,13 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Identité Shino Lighting par défaut sur les documents — 2026-11-07 (MEDMEDBEN, Claude)
+
+- Le ticket sortait avec « Magasin » sans adresse ni téléphone : ni Paramètres ni `.env` n'étaient remplis.
+  `STORE_DEFAULTS` (store-settings.ts) : Shino Lighting, Oran Millenium, 0541487530 — dernière valeur de
+  repli après Paramètres puis `.env`. e2e settings adapté (non exécuté : Docker arrêté sur ce PC).
+- Preuves : backend tsc + eslint OK.
+
 ### Animations sans saccade ni vibration — 2026-11-07, 2e passe (MEDMEDBEN, Claude)
 
 - Retour : lags, « image qui vibre », transitions lentes. Corrigé :

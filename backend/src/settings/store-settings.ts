@@ -24,8 +24,17 @@ export const STORE_FIELDS = [
 export type StoreField = (typeof STORE_FIELDS)[number];
 export type StoreSettingsValues = Record<StoreField, string | null>;
 
-/// Valeurs EFFECTIVES (base, sinon environnement) : ce que les documents
-/// impriment et ce que l'écran Paramètres affiche.
+/// Identité du magasin par défaut (demande MEDMEDBEN du 2026-11-07) : imprimée
+/// tant que ni Paramètres ni le `.env` ne disent autre chose — un ticket ne
+/// sort jamais sans le nom, l'adresse et le téléphone du magasin.
+const STORE_DEFAULTS: Partial<Record<StoreField, string>> = {
+  name: 'Shino Lighting',
+  address: 'Oran Millenium',
+  phone: '0541487530',
+};
+
+/// Valeurs EFFECTIVES (base, sinon environnement, sinon identité par défaut) :
+/// ce que les documents impriment et ce que l'écran Paramètres affiche.
 export async function storeSettings(
   db: Db,
   config: ConfigService,
@@ -36,6 +45,7 @@ export async function storeSettings(
     values[field] =
       row?.[field]?.trim() ||
       config.get<string>(`STORE_${field.toUpperCase()}`)?.trim() ||
+      STORE_DEFAULTS[field] ||
       null;
   }
   return values;
