@@ -8,7 +8,7 @@
     <!-- allowBackup=false : la base locale (file de mutations) et le stockage
          sécurisé ne partent pas dans la sauvegarde cloud automatique d'Android. -->
     <application
-        android:label="gestion_magasin"
+        android:label="Shino Lighting"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

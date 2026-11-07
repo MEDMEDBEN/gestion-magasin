@@ -68,7 +68,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Align(child: AmpereIconChip(icon: LucideIcons.zap, size: 56)),
                   const SizedBox(height: 18),
                   Text(
-                    'Gestion magasin',
+                    'Shino Lighting',
                     textAlign: TextAlign.center,
                     style: AmpereType.screenTitle.copyWith(color: colors.ink),
                   ),

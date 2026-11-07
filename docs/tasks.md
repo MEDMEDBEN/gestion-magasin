@@ -4,6 +4,26 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Fluidité, vente au-delà du stock, documents A4 modernes, nom Shino Lighting — 2026-11-07 (MEDMEDBEN, Claude)
+
+- **Fluidité** (l'app ralentissait depuis les animations) : fonds animés (liquide, signal) redessinés à
+  20 images/s (`ThrottledListenable`, motion.dart) ; taches du fond liquide en dégradé radial au lieu d'un
+  flou de rayon 90 ; dans le NAVIGATEUR, plus de flou d'arrière-plan (`_maybeBlur`, glass.dart ;
+  confirmation animée) — voile plus couvrant à la place ; `Appear` n'anime que les 12 premières cartes d'un
+  écran (pas celles construites au défilement) et, une fois finie, rend la carte sans couche.
+- **Vente au-delà du stock** (décision MEDMEDBEN, règle 9 amendée dans CLAUDE.md et la spec) : le serveur
+  accepte une VENTE même si le stock devient négatif (`stock-ledger.service.ts`) ; les autres sorties restent
+  refusées. App : l'avertissement reste (fenêtre « L'ajouter quand même », bandeau orange) mais Encaisser/F9
+  ne sont plus bloqués ; le devis l'accepte comme avant. e2e `sales.e2e-spec.ts` adaptés (NON exécutés ici :
+  Docker arrêté sur ce PC).
+- **Documents** : gabarit unique `business-document.ts` refait — pastille aux initiales, nom, coordonnées ;
+  titre en grand ; bande de références ; parties à filet noir ; tableau à en-tête noir sans quadrillage ;
+  total en bande noire ; somme en lettres ; signatures en bas de page (la feuille est remplie). Noir et blanc.
+  Ticket de caisse en A4 par défaut (`PRINT_DEFAULTS.ticketPaper`). Vérifié sur un devis d'exemple généré.
+- **Nom** : « Shino Lighting » (titre de l'app, connexion, barre du poste, fenêtre Windows, Android, web).
+  `infra/.env.example` : STORE_NAME=Shino Lighting, STORE_ADDRESS=Oran Millenium, STORE_PHONE=0541487530.
+- Preuves : app analyze 0, 558 tests ; backend tsc OK, jest stock/sales/sync/pdf OK.
+
 ### Version web : plus de cache qui bloque l'iPhone — 2026-10-30 (MEDMEDBEN, Claude)
 
 - Cause : le « service worker » Flutter (cache hors ligne, `offlineFirst` par défaut) servait l'ancienne

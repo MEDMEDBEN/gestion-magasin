@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -29,6 +30,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
     vsync: this,
     duration: const Duration(seconds: 14),
   );
+  late final ThrottledListenable _frames = ThrottledListenable(_clock);
 
   @override
   void didChangeDependencies() {
@@ -52,6 +54,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
 
   @override
   void dispose() {
+    _frames.dispose();
     _clock.dispose();
     super.dispose();
   }
@@ -60,7 +63,7 @@ class _LiquidBackgroundState extends State<LiquidBackground>
   Widget build(BuildContext context) => IgnorePointer(
     child: RepaintBoundary(
       child: CustomPaint(
-        painter: _BlobPainter(_clock, AmpereColors.of(context)),
+        painter: _BlobPainter(_clock, AmpereColors.of(context), _frames),
         size: Size.infinite,
       ),
     ),
@@ -68,7 +71,8 @@ class _LiquidBackgroundState extends State<LiquidBackground>
 }
 
 class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.clock, this.colors) : super(repaint: clock);
+  _BlobPainter(this.clock, this.colors, Listenable frames)
+    : super(repaint: frames);
 
   final Animation<double> clock;
   final AmpereColors colors;
@@ -90,12 +94,23 @@ class _BlobPainter extends CustomPainter {
       final dx = 40 * math.sin(math.pi * 2 * u);
       final dy = 30 * math.cos(math.pi * 2 * u);
       final scale = 1 + 0.1 * math.sin(math.pi * u);
+      // Halo par dégradé radial : le même rendu qu'un flou de rayon 90,
+      // sans son coût (le flou se recalculait à chaque image).
+      final c = Offset(center.dx * w + dx, center.dy * h + dy);
+      final r = (radius + 90) * scale;
+      final alpha = colors.isDark ? 0.22 : 0.32;
       canvas.drawCircle(
-        Offset(center.dx * w + dx, center.dy * h + dy),
-        radius * scale,
+        c,
+        r,
         Paint()
-          ..color = color.withValues(alpha: colors.isDark ? 0.22 : 0.32)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 90),
+          ..shader = RadialGradient(
+            colors: [
+              color.withValues(alpha: alpha),
+              color.withValues(alpha: alpha * 0.55),
+              color.withValues(alpha: 0),
+            ],
+            stops: const [0, 0.55, 1],
+          ).createShader(Rect.fromCircle(center: c, radius: r)),
       );
     }
   }
@@ -137,13 +152,16 @@ class Glass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: DecoratedBox(
+        child: _maybeBlur(
+          blur,
+          DecoratedBox(
             decoration: BoxDecoration(
-              // Clair : voile blanc ; sombre : voile de la surface.
+              // Clair : voile blanc ; sombre : voile de la surface. Sans flou
+              // (navigateur), le voile est plus couvrant.
               color: (dark ? colors.surface : Colors.white).withValues(
-                alpha: dark ? opacity + 0.15 : opacity,
+                alpha: ((dark ? opacity + 0.15 : opacity) + (kIsWeb ? 0.25 : 0))
+                    .clamp(0, 1)
+                    .toDouble(),
               ),
               borderRadius: BorderRadius.circular(radius),
               border: Border.all(
@@ -507,10 +525,16 @@ class _Frosted extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: DecoratedBox(
-            decoration: _frost(dark, radius: radius).copyWith(boxShadow: []),
+        child: _maybeBlur(
+          20,
+          DecoratedBox(
+            decoration: _frost(dark, radius: radius).copyWith(
+              boxShadow: [],
+              // Sans flou (navigateur) : un fond qui couvre davantage.
+              color: kIsWeb
+                  ? (dark ? const Color(0xE6161A22) : const Color(0xEBF4F6FA))
+                  : null,
+            ),
             child: child,
           ),
         ),
@@ -637,3 +661,13 @@ class BottomIsland extends StatelessWidget {
     );
   }
 }
+
+/// Flou d'arrière-plan, sauf dans le navigateur : il y recalcule tout ce qui
+/// passe derrière à chaque image (barre du bas sur une liste qui défile) et
+/// rendait la version web lente (2026-11-07). Un voile plus couvrant le remplace.
+Widget _maybeBlur(double sigma, Widget child) => kIsWeb
+    ? child
+    : BackdropFilter(
+        filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: child,
+      );

@@ -56,7 +56,9 @@ export interface PrintSettings {
 }
 
 export const PRINT_DEFAULTS: PrintSettings = {
-  ticketPaper: 'TICKET_80',
+  // A4 par défaut (demande MEDMEDBEN du 2026-11-07) : le ticket de caisse est
+  // un document complet ; les tickets thermiques restent au choix (Paramètres).
+  ticketPaper: 'A4',
   documentPaper: 'A4',
   labelWidthMm: 50,
   labelHeightMm: 30,

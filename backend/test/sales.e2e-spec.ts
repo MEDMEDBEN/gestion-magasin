@@ -384,29 +384,31 @@ describe('Ventes (e2e)', () => {
       expect(res.body.totalTtc).toBe(120000);
     });
 
-    it('stock insuffisant → STOCK_NEGATIVE, et RIEN n’est écrit (atomicité)', async () => {
+    // Décision MEDMEDBEN du 2026-11-07 : une vente passe même au-delà du stock
+    // (la quantité n'a souvent pas été mise à jour) ; le stock devient négatif
+    // et l'inventaire régularise.
+    it('stock insuffisant : la vente passe, le stock devient négatif', async () => {
       const ok = await product('10.000');
       const short = await product('1.000');
       const before = await prisma.sale.count();
 
-      const res = await as(tokens.vendeur)
+      await as(tokens.vendeur)
         .post('/api/sales')
         .send({
           lines: [
             { productId: ok, quantity: '2' },
             { productId: short, quantity: '5' },
           ],
-          // Payée en entier : la vente est ÉCRITE puis défaite par le refus de stock.
           paidAmount: 7 * 145000,
         })
-        .expect(422);
+        .expect(201);
 
-      expect(res.body.code).toBe('STOCK_NEGATIVE');
-      expect(await prisma.sale.count()).toBe(before);
-      expect(await stockOf(ok)).toBe('10.000');
+      expect(await prisma.sale.count()).toBe(before + 1);
+      expect(await stockOf(ok)).toBe('8.000');
+      expect(await stockOf(short)).toBe('-4.000');
     });
 
-    it('deux ventes simultanées de la DERNIÈRE unité : une seule passe', async () => {
+    it('deux ventes simultanées de la DERNIÈRE unité : les deux passent', async () => {
       const p = await product('1.000');
       const results = await Promise.all(
         [tokens.vendeur, tokens.autreVendeur].map((token) =>
@@ -418,8 +420,9 @@ describe('Ventes (e2e)', () => {
             }),
         ),
       );
-      expect(results.map((r) => r.status).sort()).toEqual([201, 422]);
-      expect(await stockOf(p)).toBe('0.000');
+      expect(results.map((r) => r.status)).toEqual([201, 201]);
+      // Les deux sorties s'additionnent : aucune n'écrase l'autre.
+      expect(await stockOf(p)).toBe('-1.000');
     });
 
     it('espèces sans caisse ouverte → CASH_SESSION_REQUIRED', async () => {

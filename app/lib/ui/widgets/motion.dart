@@ -108,35 +108,70 @@ class Appear extends StatefulWidget {
   State<Appear> createState() => _AppearState();
 }
 
+/// Vague d'apparitions en cours : seules les PREMIÈRES cartes d'un écran
+/// s'animent. Les cartes construites ensuite — au défilement d'une longue
+/// liste — s'affichent directement : animer chacune pendant qu'on fait défiler
+/// coûtait cher et ralentissait le défilement (2026-11-07).
+DateTime _waveStart = DateTime(0);
+DateTime _lastMount = DateTime(0);
+int _waveCount = 0;
+
+bool _joinWave() {
+  final now = DateTime.now();
+  // Plus d'une seconde sans nouvelle carte : un nouvel écran commence.
+  if (now.difference(_lastMount) > const Duration(seconds: 1)) {
+    _waveStart = now;
+    _waveCount = 0;
+  }
+  _lastMount = now;
+  _waveCount++;
+  return _waveCount <= 12 &&
+      now.difference(_waveStart) < const Duration(milliseconds: 600);
+}
+
 class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 320) + widget.delay,
-  );
+  /// Créés seulement si la carte s'anime : une carte affichée directement
+  /// (hors vague, ou animations réduites) n'a ni contrôleur ni ticker.
+  AnimationController? _c;
+  Animation<double>? _t;
+  bool _started = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _c.value = 1;
-    } else if (!_c.isAnimating && _c.value == 0) {
-      _c.forward();
-    }
+    if (_started) return;
+    _started = true;
+    if (MediaQuery.disableAnimationsOf(context) || !_joinWave()) return;
+    final c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320) + widget.delay,
+    );
+    _c = c;
+    _t = CurvedAnimation(
+      parent: c,
+      curve: Interval(
+        widget.delay.inMilliseconds / c.duration!.inMilliseconds,
+        1,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    c.forward().whenCompleteOrCancel(() {
+      // Animation finie : la carte est dessinée telle quelle, sans couche de
+      // transparence ni transformation.
+      if (mounted) setState(() => _t = null);
+    });
   }
 
   @override
   void dispose() {
-    _c.dispose();
+    _c?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final start = widget.delay.inMilliseconds / _c.duration!.inMilliseconds;
-    final t = CurvedAnimation(
-      parent: _c,
-      curve: Interval(start, 1, curve: Curves.easeOutCubic),
-    );
+    final t = _t;
+    if (t == null) return widget.child;
     return FadeTransition(
       opacity: t,
       child: AnimatedBuilder(
@@ -148,5 +183,33 @@ class _AppearState extends State<Appear> with SingleTickerProviderStateMixin {
         child: widget.child,
       ),
     );
+  }
+}
+
+/// Relaie les battements d'une animation au plus [fps] fois par seconde.
+/// Pour les fonds animés, qui bougent lentement : 20 images par seconde ne se
+/// distinguent pas de 60, et coûtent trois fois moins (2026-11-07).
+class ThrottledListenable extends ChangeNotifier {
+  ThrottledListenable(this.source, {int fps = 20})
+    : _gap = Duration(microseconds: 1000000 ~/ fps) {
+    source.addListener(_tick);
+  }
+
+  final Listenable source;
+  final Duration _gap;
+  DateTime _last = DateTime(0);
+
+  void _tick() {
+    final now = DateTime.now();
+    if (now.difference(_last) >= _gap) {
+      _last = now;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    source.removeListener(_tick);
+    super.dispose();
   }
 }

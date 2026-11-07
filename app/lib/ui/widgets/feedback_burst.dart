@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -200,7 +201,11 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(16),
     child: BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+      // Navigateur : flou nul (il y coûte cher), le fond reste couvrant.
+      filter: ui.ImageFilter.blur(
+        sigmaX: kIsWeb ? 0 : 16,
+        sigmaY: kIsWeb ? 0 : 16,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(

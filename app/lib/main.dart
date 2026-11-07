@@ -26,7 +26,7 @@ class GestionMagasinApp extends ConsumerWidget {
     final dark = palette.dark;
 
     return MaterialApp.router(
-      title: 'Gestion magasin',
+      title: 'Shino Lighting',
       debugShowCheckedModeBanner: false,
       routerConfig: ref.watch(routerProvider),
       builder: (context, child) {

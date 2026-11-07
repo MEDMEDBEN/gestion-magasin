@@ -789,8 +789,9 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     return (store: at('MAGASIN'), depot: at('DEPOT'));
   }
 
-  /// Lignes du ticket qui dépassent le stock du MAGASIN (règle 9 : le
-  /// serveur refusera la vente), sauf produit en « commande autorisée ».
+  /// Lignes du ticket qui dépassent le stock du MAGASIN, sauf produit en
+  /// « commande autorisée ». Un simple AVERTISSEMENT depuis le 2026-11-07 :
+  /// la vente passe quand même, le stock devient négatif.
   List<(Product, Quantity)> _shortages(CartState cart) => [
     for (final line in cart.lines)
       if (!line.product.allowBackorder)
@@ -838,12 +839,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  known.depot > Quantity.zero
-                      ? 'Vous pouvez l’ajouter si on le ramène du dépôt : la '
-                            'vente ne passera qu’une fois la marchandise arrivée '
-                            'au magasin.'
-                      : 'Le dépôt n’en a pas non plus. La vente sera refusée '
-                            'tant qu’il n’est pas réapprovisionné.',
+                  // Vente permise au-delà du stock (décision du 2026-11-07) :
+                  // la quantité n'a souvent pas été mise à jour.
+                  'Si l’article est bien là, vous pouvez le vendre quand même : '
+                  'le stock du magasin passera en négatif, pensez à le corriger '
+                  '(inventaire ou ajout de stock).',
                   style: AmpereType.body.copyWith(color: colors.ink2),
                 ),
               ],
@@ -1160,11 +1160,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   void _payShortcut() {
     final estimate = ref.read(cartEstimateProvider);
     final cart = ref.read(cartProvider);
-    if (_busy ||
-        estimate.blocked ||
-        cart.isEmpty ||
-        cart.quote != null ||
-        _shortages(cart).isNotEmpty) {
+    if (_busy || estimate.blocked || cart.isEmpty || cart.quote != null) {
       return;
     }
     if (cart.buyer == null) {
@@ -1741,12 +1737,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           if (shortages.isNotEmpty) ...[
             const SizedBox(height: 10),
             AmpereInlineAlert(
+              tone: StatusTone.warn,
               icon: LucideIcons.packageX,
               message:
-                  'Pas assez au magasin : '
+                  'Stock du magasin dépassé : '
                   '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
-                  '. Retirez-le, baissez la quantité ou faites-le venir du '
-                  'dépôt — sinon la vente sera refusée.',
+                  '. La vente passera quand même ; pensez à corriger la '
+                  'quantité en stock.',
             ),
           ],
           const SizedBox(height: 8),
@@ -1832,9 +1829,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                         label: 'Encaisser ${formatDA(estimate.totalTtc)}',
                         shortcut: compact ? null : 'F9',
                         height: 42,
-                        onPressed: blocked || shortages.isNotEmpty
-                            ? null
-                            : () => _checkout(estimate),
+                        onPressed: blocked ? null : () => _checkout(estimate),
                       ),
               ),
             ],

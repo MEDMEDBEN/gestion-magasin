@@ -179,11 +179,15 @@ export class StockLedgerService {
 
     // Seule une SORTIE peut être refusée : une entrée ne rend jamais le disponible « plus
     // négatif », et la bloquer empêcherait de régulariser un stock déjà en négatif.
-    // « Vente sans stock » autorise une VENTE à découvert, jamais un renvoi au
-    // fournisseur : on ne rend que ce qu'on a (P1 bis n°21l).
+    // Une VENTE passe toujours, même à découvert (décision MEDMEDBEN du
+    // 2026-11-07 : le produit est souvent là, la quantité n'a juste pas été
+    // mise à jour) ; le vendeur a été averti à la caisse, l'inventaire
+    // régularise. « Vente sans stock » (allowBackorder) couvre les autres
+    // sorties, jamais un renvoi au fournisseur : on ne rend que ce qu'on a.
     if (
       input.quantity.isNegative() &&
       availableAfter.isNegative() &&
+      input.operationType !== 'SALE' &&
       (!product.allowBackorder || input.operationType === 'SUPPLIER_RETURN')
     ) {
       throw new BusinessException(

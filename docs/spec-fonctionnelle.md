@@ -430,7 +430,7 @@ Périmètre : **large dès le départ, ventes incluses.** Le détail complet (UU
 - Inventaire : `physique − théorique = écart` ; ajustement autorisé + traçable.
 - Dette = montant dû − paiements enregistrés (toujours recalculée).
 - Permissions : UI + backend (backend fait autorité).
-- Éviter les stocks négatifs (sauf backorder explicitement autorisé).
+- Éviter les stocks négatifs (sauf backorder explicitement autorisé). **Exception : une vente passe même au-delà du stock** (décision du 2026-11-07), avec un avertissement à la caisse ; le stock devient négatif et l'inventaire le régularise.
 - Pas de suppression physique d'une opération validée : annulation / correction / opération inverse.
 
 ---

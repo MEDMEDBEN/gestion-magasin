@@ -300,7 +300,7 @@ void main() {
       tester,
     ) async {
       await _pumpShell(tester, user: authUser(), size: const Size(1300, 900));
-      expect(find.text('Gestion magasin'), findsOneWidget);
+      expect(find.text('Shino Lighting'), findsOneWidget);
       expect(find.text('Tableau de bord'), findsOneWidget);
 
       await tester.tap(find.text('Utilisateurs'));
@@ -404,7 +404,7 @@ void main() {
         tester.widget<DesktopShell>(find.byType(DesktopShell)).compact,
         isFalse,
       );
-      expect(find.text('Gestion magasin'), findsOneWidget);
+      expect(find.text('Shino Lighting'), findsOneWidget);
     });
   });
 

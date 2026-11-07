@@ -763,7 +763,7 @@ class _TopBar extends ConsumerWidget {
             ),
             const SizedBox(width: 12),
             Text(
-              'Gestion magasin',
+              'Shino Lighting',
               style: AmpereType.h4.copyWith(color: colors.ink),
             ),
             if (home != null) ...[
@@ -797,7 +797,7 @@ class _TopBar extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             Text(
-              'Gestion magasin',
+              'Shino Lighting',
               style: AmpereType.h4.copyWith(color: colors.ink),
             ),
           ] else ...[

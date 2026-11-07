@@ -933,10 +933,11 @@ void main() {
     },
   );
 
-  /// Demande MEDMEDBEN du 2026-10-09 : un produit en rupture au magasin ne
-  /// s'ajoute qu'après confirmation, et la vente reste bloquée.
+  /// Un produit en rupture au magasin ne s'ajoute qu'après confirmation
+  /// (2026-10-09) ; depuis le 2026-11-07, la vente passe QUAND MÊME (la
+  /// quantité n'a souvent pas été mise à jour), avec un avertissement.
   testWidgets(
-    'rupture au magasin : on prévient, on choisit, Encaisser bloqué',
+    'rupture au magasin : on prévient, on choisit, la vente reste possible',
     (tester) async {
       useScreenSize(tester, const Size(500, 1400));
       final api = _FakeSalesApi(cash: _openCash);
@@ -974,11 +975,13 @@ void main() {
       await tester.tap(find.text('L’ajouter quand même'));
       await tester.pumpAndSettle();
       expect(find.text('Câble 3G2,5'), findsOneWidget);
-      expect(find.textContaining('Pas assez au magasin'), findsOneWidget);
+      expect(
+        find.textContaining('La vente passera quand même'),
+        findsOneWidget,
+      );
       await tester.tap(find.textContaining('Encaisser'));
       await tester.pumpAndSettle();
-      expect(find.text('Valider la vente'), findsNothing);
-      expect(api.sent, isNull);
+      expect(find.text('Valider la vente'), findsOneWidget);
     },
   );
 

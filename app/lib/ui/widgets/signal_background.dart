@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import 'motion.dart';
 
 /// Fond animé « barres de LED » (demande MEDMEDBEN du 2026-10-28 : un magasin
 /// de matériel électrique et électronique) :
@@ -187,6 +188,7 @@ class _SignalBackgroundState extends State<SignalBackground>
     duration: const Duration(seconds: 36),
     value: 0.3,
   );
+  late final ThrottledListenable _frames = ThrottledListenable(_clock);
 
   @override
   void didChangeDependencies() {
@@ -211,6 +213,7 @@ class _SignalBackgroundState extends State<SignalBackground>
 
   @override
   void dispose() {
+    _frames.dispose();
     _clock.dispose();
     super.dispose();
   }
@@ -223,6 +226,7 @@ class _SignalBackgroundState extends State<SignalBackground>
         child: CustomPaint(
           painter: _SignalPainter(
             clock: _clock,
+            frames: _frames,
             dark: dark,
             hues: widget.hues,
             intensity: widget.intensity,
@@ -240,7 +244,8 @@ class _SignalPainter extends CustomPainter {
     required this.dark,
     required this.hues,
     required this.intensity,
-  }) : super(repaint: clock);
+    required Listenable frames,
+  }) : super(repaint: frames);
 
   final Animation<double> clock;
   final bool dark;
