@@ -983,6 +983,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             kept,
             expectedTotalTtc: estimate.totalTtc,
             dueDate: dueDate,
+            receivedAmount: received,
           );
       if (!mounted) return;
       final change = received - kept;

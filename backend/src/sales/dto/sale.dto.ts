@@ -141,6 +141,18 @@ export class CreateSaleDto {
   paidAmount!: number;
 
   @ApiPropertyOptional({
+    example: 300000,
+    description:
+      'Espèces REMISES par le client, monnaie comprise (centimes) : imprimé sur ' +
+      'le ticket avec la monnaie rendue. Ignoré s’il est inférieur à `paidAmount`.',
+  })
+  @IsInt()
+  @Min(0)
+  @Max(MAX_MONEY)
+  @IsOptional()
+  receivedAmount?: number;
+
+  @ApiPropertyOptional({
     example: 50000,
     description:
       'Remise sur TOUTE la facture (centimes HT), admin ou vendeur (décision ' +
@@ -238,6 +250,11 @@ export class SaleDto {
   @ApiProperty() totalTax!: number;
   @ApiProperty() totalTtc!: number;
   @ApiProperty() paidAmount!: number;
+  @ApiProperty({
+    nullable: true,
+    description: 'Espèces remises par le client (centimes), si saisies.',
+  })
+  receivedAmount!: number | null;
   @ApiProperty({ description: 'Remise sur toute la facture (centimes HT).' })
   discountAmount!: number;
   @ApiProperty({

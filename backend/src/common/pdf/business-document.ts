@@ -493,9 +493,12 @@ function signatures(
   if (doc.y + h + 12 > bottom()) doc.addPage();
   const top = Math.max(doc.y + 6 * k, bottom() - h - 8 * k);
   const gap = 24 * k;
-  const boxW = (width - gap * (labels.length - 1)) / labels.length;
+  // Une seule signature : la moitié droite, comme sur un document signé.
+  const slots = Math.max(labels.length, 2);
+  const boxW = (width - gap * (slots - 1)) / slots;
+  const first = slots - labels.length;
   labels.forEach((label, i) => {
-    const x = left + i * (boxW + gap);
+    const x = left + (first + i) * (boxW + gap);
     font(true, 6.5).fillColor(MUTED).text(label.toUpperCase(), x, top, {
       width: boxW,
       characterSpacing: 0.8,

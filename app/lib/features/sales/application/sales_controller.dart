@@ -631,6 +631,7 @@ class SalesActions {
     int paidAmount, {
     required int expectedTotalTtc,
     DateTime? dueDate,
+    int? receivedAmount,
   }) async {
     final cart = _ref.read(cartProvider);
     // Caisse où entrent les espèces (dernier état lu, même hors ligne) : le
@@ -673,6 +674,7 @@ class SalesActions {
             ),
         ],
         paidAmount: paidAmount,
+        receivedAmount: receivedAmount,
         expectedTotalTtc: expectedTotalTtc,
         dueDate: dueDate == null ? null : isoDay(dueDate),
         discountAmount: cart.discountHt,

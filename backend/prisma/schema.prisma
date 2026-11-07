@@ -697,6 +697,10 @@ model Sale {
   totalTtc         Int
   /// Montant encaissé au moment de la vente (centimes). Les règlements ultérieurs = CustomerPayment.
   paidAmount       Int            @default(0)
+  /// Espèces REMISES par le client (centimes), monnaie comprise : imprimé sur
+  /// le ticket avec la monnaie rendue (receivedAmount − paidAmount). NULL :
+  /// non saisi (vente d'avant le 2026-11-07, ou crédit).
+  receivedAmount   Int?
   /// Remise sur TOUTE la facture (centimes HT), demandée au comptoir
   /// (décision MEDMEDBEN du 2026-10-12) ; déjà RÉPARTIE dans la remise des
   /// lignes — gardée ici pour l'affichage et les renvois.

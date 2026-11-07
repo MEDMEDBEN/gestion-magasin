@@ -64,12 +64,12 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
-      // Pages qui s'ouvrent : fondu et glissement vers l'avant, sur toutes
-      // les plateformes (2026-10-29).
+      // Pages qui s'ouvrent : un fondu court (le « fade forwards » durait
+      // 800 ms — d'où des animations perçues comme très lentes, 2026-11-07).
       pageTransitionsTheme: PageTransitionsTheme(
         builders: {
           for (final platform in TargetPlatform.values)
-            platform: const FadeForwardsPageTransitionsBuilder(),
+            platform: const _QuickFade(),
         },
       ),
       brightness: scheme.brightness,
@@ -313,4 +313,21 @@ class AppTheme {
       labelSmall: AmpereType.label.copyWith(color: colors.ink3),
     );
   }
+}
+
+/// Transition de page : un simple fondu, à la durée de la route (300 ms).
+class _QuickFade extends PageTransitionsBuilder {
+  const _QuickFade();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => FadeTransition(
+    opacity: CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+    child: child,
+  );
 }

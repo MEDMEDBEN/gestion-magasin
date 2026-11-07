@@ -317,6 +317,13 @@ export class SalesService {
         totalTax,
         totalTtc,
         paidAmount: dto.paidAmount,
+        // Monnaie rendue = reçu − payé ; un reçu inférieur au payé n'a pas de sens.
+        receivedAmount:
+          dto.receivedAmount !== undefined &&
+          dto.receivedAmount >= dto.paidAmount &&
+          dto.paidAmount > 0
+            ? dto.receivedAmount
+            : null,
         discountAmount: dto.discountAmount ?? 0,
         paymentMethod: dto.paidAmount > 0 ? 'ESPECES' : null,
         soldAt,
@@ -1130,6 +1137,7 @@ export class SalesService {
       totalTax: sale.totalTax,
       totalTtc: sale.totalTtc,
       paidAmount: sale.paidAmount,
+      receivedAmount: sale.receivedAmount,
       discountAmount: sale.discountAmount,
       profitHt: SalesService.profitOf(sale.lines),
       remainingAmount:

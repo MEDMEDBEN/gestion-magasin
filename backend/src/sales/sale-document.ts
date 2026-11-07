@@ -46,6 +46,22 @@ export function renderSaleDocument(data: SaleDocumentData): Promise<Buffer> {
   return renderSaleSlip(data);
 }
 
+/// Ce que le client a donné, ce qu'on lui a rendu, ce qu'il doit encore.
+function payment(sale: SaleDocumentData['sale']): [string, string][] {
+  const rows: [string, string][] = [];
+  const received = sale.receivedAmount ?? null;
+  if (received !== null && received > sale.paidAmount) {
+    rows.push(['Montant reçu', formatDA(received)]);
+    rows.push(['Monnaie rendue', formatDA(received - sale.paidAmount)]);
+  } else {
+    rows.push(['Payé (espèces)', formatDA(sale.paidAmount)]);
+  }
+  if (sale.remainingAmount > 0) {
+    rows.push(['Reste à payer', formatDA(sale.remainingAmount)]);
+  }
+  return rows;
+}
+
 /// Le ticket de caisse : un document complet, au format des documents.
 function renderSaleSlip(data: SaleDocumentData): Promise<Buffer> {
   const { sale } = data;
@@ -64,18 +80,11 @@ function renderSaleSlip(data: SaleDocumentData): Promise<Buffer> {
     totalHt: sale.totalHt,
     totalTtc: sale.totalTtc,
     discount: sale.discountAmount,
-    after: [
-      ['Payé (espèces)', formatDA(sale.paidAmount)],
-      ...(sale.remainingAmount > 0
-        ? ([['Reste à payer', formatDA(sale.remainingAmount)]] as [
-            string,
-            string,
-          ][])
-        : []),
-    ],
+    after: payment(sale),
     stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
     wordsSubject: 'le présent ticket',
-    signatures: ['Le client', 'Le vendeur'],
+    // Une seule signature : celle du vendeur (demande du 2026-11-07).
+    signatures: ['Le vendeur'],
   });
 }
 
@@ -154,15 +163,15 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
   const taxed = input.lines.some((l) => Number(l.taxRate) !== 0);
   const discounted = input.lines.some((l) => (l.discountAmount ?? 0) > 0);
   const columns: DocumentColumn[] = [
-    { header: 'Référence', width: 2 },
-    { header: 'Désignation', width: 6 },
+    { header: 'Référence', width: 2.5 },
+    { header: 'Désignation', width: 4.9 },
     { header: 'Qté', width: 1.6, align: 'right' },
-    { header: taxed ? 'PU HT' : 'Prix unitaire', width: 2.2, align: 'right' },
+    { header: taxed ? 'PU HT' : 'Prix unitaire', width: 2.8, align: 'right' },
     ...(discounted
-      ? [{ header: 'Remise', width: 1.8, align: 'right' as const }]
+      ? [{ header: 'Remise', width: 2.4, align: 'right' as const }]
       : []),
     ...(taxed ? [{ header: 'TVA', width: 1.2, align: 'right' as const }] : []),
-    { header: taxed ? 'Total HT' : 'Montant', width: 2.4, align: 'right' },
+    { header: taxed ? 'Total HT' : 'Montant', width: 2.6, align: 'right' },
   ];
   const rows = input.lines.map((line) => {
     const d = designation(input.products, line.productId);
@@ -193,9 +202,18 @@ export function renderA4Document(input: A4Document): Promise<Buffer> {
       totals.push([`TVA ${qty(rate)} %`, formatDA(amount)]);
     }
   }
-  if (input.discount) {
-    // Déjà RÉPARTIE dans les lignes : dite, pas soustraite une 2e fois.
-    totals.push(['Remise sur facture (incluse)', formatDA(input.discount)]);
+  // Remise totale = remises des lignes (la remise sur facture y est déjà
+  // RÉPARTIE) : dite en clair, avec le montant avant remise.
+  const lineDiscounts = input.lines.reduce(
+    (sum, l) => sum + (l.discountAmount ?? 0),
+    0,
+  );
+  if (lineDiscounts > 0) {
+    totals.push([
+      'Montant avant remise',
+      formatDA(input.totalTtc + lineDiscounts),
+    ]);
+    totals.push(['Remise', `- ${formatDA(lineDiscounts)}`]);
   }
   totals.push([
     taxed ? 'TOTAL TTC' : 'TOTAL À PAYER',

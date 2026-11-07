@@ -70,6 +70,7 @@ class SalesApi {
     required int expectedTotalTtc,
     String? dueDate,
     int discountAmount = 0,
+    int? receivedAmount,
   }) => {
     'clientMutationId': clientMutationId,
     'id': id,
@@ -86,6 +87,9 @@ class SalesApi {
         },
     ],
     'paidAmount': paidAmount,
+    // Espèces remises (ticket : montant reçu, monnaie rendue).
+    if (receivedAmount != null && receivedAmount > paidAmount)
+      'receivedAmount': receivedAmount,
     if (discountAmount > 0) 'discountAmount': discountAmount,
     'expectedTotalTtc': expectedTotalTtc,
     'dueDate': ?dueDate,

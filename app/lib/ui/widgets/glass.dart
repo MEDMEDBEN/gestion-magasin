@@ -1,7 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -149,24 +147,22 @@ class Glass extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
-        child: _maybeBlur(
-          blur,
-          DecoratedBox(
-            decoration: BoxDecoration(
-              // Clair : voile blanc ; sombre : voile de la surface. Sans flou
-              // (navigateur), le voile est plus couvrant.
-              color: (dark ? colors.surface : Colors.white).withValues(
-                alpha: ((dark ? opacity + 0.15 : opacity) + (kIsWeb ? 0.25 : 0))
-                    .clamp(0, 1)
-                    .toDouble(),
-              ),
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: dark ? 0.08 : 0.8),
-              ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            // Clair : voile blanc ; sombre : voile de la surface. Pas de flou
+            // d'arrière-plan (il faisait saccader, 2026-11-07) : le voile
+            // est plus couvrant.
+            color: (dark ? colors.surface : Colors.white).withValues(
+              alpha: ((dark ? opacity + 0.15 : opacity) + 0.25)
+                  .clamp(0, 1)
+                  .toDouble(),
             ),
-            child: child,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: dark ? 0.08 : 0.8),
+            ),
           ),
+          child: child,
         ),
       ),
     );
@@ -522,18 +518,13 @@ class _Frosted extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: radius,
-        child: _maybeBlur(
-          20,
-          DecoratedBox(
-            decoration: _frost(dark, radius: radius).copyWith(
-              boxShadow: [],
-              // Sans flou (navigateur) : un fond qui couvre davantage.
-              color: kIsWeb
-                  ? (dark ? const Color(0xE6161A22) : const Color(0xEBF4F6FA))
-                  : null,
-            ),
-            child: child,
+        child: DecoratedBox(
+          decoration: _frost(dark, radius: radius).copyWith(
+            boxShadow: [],
+            // Sans flou d'arrière-plan (2026-11-07) : un fond plus couvrant.
+            color: dark ? const Color(0xE6161A22) : const Color(0xEBF4F6FA),
           ),
+          child: child,
         ),
       ),
     );
@@ -658,13 +649,3 @@ class BottomIsland extends StatelessWidget {
     );
   }
 }
-
-/// Flou d'arrière-plan, sauf dans le navigateur : il y recalcule tout ce qui
-/// passe derrière à chaque image (barre du bas sur une liste qui défile) et
-/// rendait la version web lente (2026-11-07). Un voile plus couvrant le remplace.
-Widget _maybeBlur(double sigma, Widget child) => kIsWeb
-    ? child
-    : BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: child,
-      );

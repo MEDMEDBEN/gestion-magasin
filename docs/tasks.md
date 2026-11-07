@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Ticket : remise, montant reçu, monnaie rendue ; lenteurs (3e passe) — 2026-11-07 (MEDMEDBEN, Claude)
+
+- **Ticket** : `Sale.receivedAmount Int?` (migration `20261107120000_sale_received_amount`, colonne facultative)
+  ; `CreateSaleDto.receivedAmount` (ignoré s'il est < `paidAmount`) ; l'app envoie les espèces remises.
+  Documents : « Montant avant remise » + « Remise » (somme des remises de lignes, remise sur facture
+  comprise) ; ticket : « Montant reçu » + « Monnaie rendue » ; une seule signature (« Le vendeur »), à droite.
+  Colonnes élargies (prix unitaire, remise, référence). Ticket d'exemple généré et vérifié.
+- **Lenteurs** : transitions de page 800 ms (« fade forwards ») → fondu de 300 ms (`_QuickFade`) ; plus de flou
+  d'arrière-plan NULLE PART (tuiles de l'accueil, barres) — voile plus couvrant ; version web compilée en
+  **WebAssembly** (`--wasm`, Dockerfile.web) — vérifié : skwasm chargé, écran de connexion sans erreur.
+- Preuves : app analyze 0, 558 tests ; backend tsc + eslint OK, jest 184. e2e non exécutés (Docker arrêté).
+
 ### Identité Shino Lighting par défaut sur les documents — 2026-11-07 (MEDMEDBEN, Claude)
 
 - Le ticket sortait avec « Magasin » sans adresse ni téléphone : ni Paramètres ni `.env` n'étaient remplis.
