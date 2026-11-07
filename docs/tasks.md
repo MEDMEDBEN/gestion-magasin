@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Codes-barres internes en EAN-8, étiquettes lisibles au téléphone — 2026-11-07 (MEDMEDBEN, Claude)
+
+- `internalBarcode` : EAN-8 `2` + séquence sur 6 chiffres + clé (ex. 20000011) au lieu de l'EAN-13
+  2000000000015 ; les anciens codes EAN-13 internes restent valables (lus, imprimés en EAN-13).
+  `symbology` reconnaît l'EAN-8. Image à 6 px par barre (nette).
+- Étiquettes (`labels.ts`) : barres à 0,4 mm par barre élémentaire (moins si l'étiquette l'impose),
+  CENTRÉES avec du blanc de part et d'autre, proportions d'un vrai code-barres, posées au-dessus du code.
+  Vérifié sur des étiquettes d'exemple (rouleau 50 × 30 mm et planche A4).
+- Preuves : backend tsc + eslint + jest. e2e produits (code 20… à 13 chiffres attendu) à adapter avec le
+  reste des e2e (Docker).
+
 ### Vente : moins de refus, caisse UNIQUE partagée — 2026-11-07 (MEDMEDBEN, Claude)
 
 - **Caisse unique** (CLAUDE.md règle 12 amendée) : `lockOpenSession` ne filtre plus par compte ; ouverture =

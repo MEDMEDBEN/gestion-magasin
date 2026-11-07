@@ -60,8 +60,12 @@ export interface RollSize {
 
 export const DEFAULT_ROLL: RollSize = { widthMm: 50, heightMm: 30 };
 
-/// Pixels par barre élémentaire dans les images de `barcodePng` (`scale: 3`).
-const PX_PER_MODULE = 3;
+/// Pixels par barre élémentaire dans les images de `barcodePng` (`scale: 6`).
+const PX_PER_MODULE = 6;
+
+/// Barre élémentaire visée (mm) : assez large pour l'appareil photo d'un
+/// téléphone (2026-11-07) ; plus petite seulement si l'étiquette l'impose.
+const TARGET_MODULE_MM = 0.4;
 
 /// En dessous, une douchette ordinaire ne lit plus le code (barres trop fines).
 export const MIN_MODULE_MM = 0.25;
@@ -134,6 +138,8 @@ export async function renderLabels(
       );
       labels.forEach((label, i) => {
         const image = opened.get(label.barcode)!;
+        const modules =
+          images.get(label.barcode)!.readUInt32BE(16) / PX_PER_MODULE;
         if (format === 'A4') {
           const slot = i % perSheet;
           if (i > 0 && slot === 0) doc.addPage({ size: 'A4', margin: 0 });
@@ -141,6 +147,7 @@ export async function renderLabels(
             doc,
             label,
             image,
+            modules,
             (slot % SHEET.cols) * SHEET.width,
             Math.floor(slot / SHEET.cols) * SHEET.height,
             SHEET.width,
@@ -150,7 +157,7 @@ export async function renderLabels(
           if (i > 0) {
             doc.addPage({ size: [ROLL.width, ROLL.height], margin: 0 });
           }
-          drawLabel(doc, label, image, 0, 0, ROLL.width, ROLL.height);
+          drawLabel(doc, label, image, modules, 0, 0, ROLL.width, ROLL.height);
         }
       });
     },
@@ -164,6 +171,8 @@ function drawLabel(
   doc: PdfDoc,
   label: Label,
   barcode: PDFKit.Mixins.ImageSrc,
+  /// Nombre de barres élémentaires du code (largeur de l'image / px par barre).
+  modules: number,
   x: number,
   y: number,
   width: number,
@@ -217,13 +226,19 @@ function drawLabel(
   cy += skuSize * 1.3 + 0.8 * MM;
 
   // En bas : le code en clair, puis au-dessus — séparées par un vrai blanc —
-  // les barres, étirées sur toute la largeur utile.
+  // les barres, à une taille LISIBLE au téléphone (barre élémentaire de
+  // 0,4 mm, moins si l'étiquette est étroite) et CENTRÉES, avec du blanc de
+  // part et d'autre (2026-11-07 : étirées, elles se lisaient mal).
   const digitsY = y + height - PAD - digitsSize * 1.1;
   const barsBottom = digitsY - 1.2 * MM;
   const barsH = Math.max(barsBottom - cy, 3 * MM);
-  doc.image(barcode, x + PAD + QUIET, barsBottom - barsH, {
-    width: barsWidth(width),
-    height: barsH,
+  const barsW = Math.min(barsWidth(width), modules * TARGET_MODULE_MM * MM);
+  // Hauteur : au plus un peu plus de la moitié de la largeur (proportions d'un
+  // vrai code-barres) ; les barres restent posées juste au-dessus du code.
+  const barsDrawnH = Math.min(barsH, Math.max(barsW * 0.55, 6 * MM));
+  doc.image(barcode, x + (width - barsW) / 2, barsBottom - barsDrawnH, {
+    width: barsW,
+    height: barsDrawnH,
   });
   doc
     .font('Helvetica')

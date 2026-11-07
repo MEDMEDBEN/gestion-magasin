@@ -3,9 +3,11 @@ import { toBuffer } from 'bwip-js';
 import { BusinessException } from '../business.exception';
 import { ErrorCode } from '../error-codes';
 
-/// Préfixe GS1 « usage interne » (20-29) : jamais porté par un produit fabricant,
-/// donc un code interne ne peut pas entrer en conflit avec un vrai code scanné.
-export const INTERNAL_BARCODE_PREFIX = '20';
+/// Préfixe GS1 « diffusion restreinte » d'un EAN-8 (2) : jamais porté par un
+/// produit fabricant, donc un code interne ne peut pas entrer en conflit avec
+/// un vrai code scanné. EAN-8 depuis le 2026-11-07 (demande MEDMEDBEN : un code
+/// court) ; les codes EAN-13 internes déjà attribués (20…) restent valables.
+export const INTERNAL_BARCODE_PREFIX = '2';
 
 const GTIN_LENGTHS = [8, 12, 13, 14];
 
@@ -24,10 +26,11 @@ export function gs1CheckDigit(digits: string): number {
   return (10 - (sum % 10)) % 10;
 }
 
-/// EAN-13 interne : `20` + séquence sur 10 chiffres + clé.
+/// EAN-8 interne : `2` + séquence sur 6 chiffres + clé (8 chiffres en tout,
+/// 999 999 produits).
 export function internalBarcode(sequence: bigint | number): string {
-  const body = INTERNAL_BARCODE_PREFIX + String(sequence).padStart(10, '0');
-  if (body.length !== 12) {
+  const body = INTERNAL_BARCODE_PREFIX + String(sequence).padStart(6, '0');
+  if (body.length !== 7) {
     throw new Error(`Séquence de code-barres interne épuisée (${sequence})`);
   }
   return body + gs1CheckDigit(body);
@@ -58,13 +61,15 @@ export function normalizeBarcode(raw: string): string {
   return code;
 }
 
-/// Symbologie imprimée : EAN-13 pour un code de 13 chiffres à clé juste, Code128
-/// pour tout le reste.
-export function symbology(code: string): 'ean13' | 'code128' {
-  return /^\d{13}$/.test(code) &&
-    Number(code[12]) === gs1CheckDigit(code.slice(0, 12))
-    ? 'ean13'
-    : 'code128';
+/// Symbologie imprimée : EAN-13 ou EAN-8 pour un code de 13 ou 8 chiffres à
+/// clé juste, Code128 pour tout le reste.
+export function symbology(code: string): 'ean13' | 'ean8' | 'code128' {
+  const gtin =
+    /^\d+$/.test(code) &&
+    Number(code[code.length - 1]) === gs1CheckDigit(code.slice(0, -1));
+  if (gtin && code.length === 13) return 'ean13';
+  if (gtin && code.length === 8) return 'ean8';
+  return 'code128';
 }
 
 /// Image PNG d'un code-barres, pour une étiquette imprimée (CONVENTIONS.md :
@@ -79,7 +84,8 @@ export async function barcodePng(code: string): Promise<Buffer> {
   return toBuffer({
     bcid: symbology(code),
     text: code,
-    scale: 3,
+    // Image fine (6 px par barre) : nette une fois imprimée.
+    scale: 6,
     height: 12,
     includetext: false,
   });

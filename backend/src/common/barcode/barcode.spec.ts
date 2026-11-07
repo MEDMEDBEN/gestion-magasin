@@ -1,4 +1,9 @@
-import { gs1CheckDigit, internalBarcode, normalizeBarcode } from './barcode';
+import {
+  gs1CheckDigit,
+  internalBarcode,
+  normalizeBarcode,
+  symbology,
+} from './barcode';
 
 describe('codes-barres (règle 15)', () => {
   it('calcule la clé GS1 d’un EAN-13 réel', () => {
@@ -8,15 +13,19 @@ describe('codes-barres (règle 15)', () => {
     expect(gs1CheckDigit('9638507')).toBe(4);
   });
 
-  it('génère un EAN-13 interne préfixé 20, clé valide', () => {
+  // EAN-8 depuis le 2026-11-07 : un code court.
+  it('génère un EAN-8 interne préfixé 2, clé valide', () => {
     const code = internalBarcode(42);
-    expect(code).toMatch(/^20\d{11}$/);
-    expect(code.slice(2, 12)).toBe('0000000042');
+    expect(code).toMatch(/^2\d{7}$/);
+    expect(code.slice(1, 7)).toBe('000042');
     expect(normalizeBarcode(code)).toBe(code);
+    expect(symbology(code)).toBe('ean8');
+    // Un ancien code interne EAN-13 reste lu et imprimé en EAN-13.
+    expect(symbology('2000000000015')).toBe('ean13');
   });
 
-  it('refuse une séquence qui déborderait 10 chiffres', () => {
-    expect(() => internalBarcode(10_000_000_000)).toThrow();
+  it('refuse une séquence qui déborderait 6 chiffres', () => {
+    expect(() => internalBarcode(1_000_000)).toThrow();
   });
 
   it('accepte un GTIN correct et un code alphanumérique, espaces retirés', () => {
