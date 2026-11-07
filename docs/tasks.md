@@ -4,6 +4,15 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Ticket de caisse = document A4 « TICKET » — 2026-11-07 (MEDMEDBEN, Claude)
+
+- `renderSaleDocument` : plus de rouleau thermique ; le ticket est un document complet au gabarit du devis,
+  titré « TICKET » (le distingue de la FACTURE), au format des documents (A4 par défaut). `renderTicket`
+  supprimé. Paramètres : le choix « Tickets de caisse » est retiré (le ticket suit les documents) ; le champ
+  `ticketPaper` reste dans l'API, ignoré.
+- Preuves : backend tsc + eslint OK, jest 184 tests ; app analyze 0, settings_screen_test OK ; ticket
+  d'exemple généré et vérifié.
+
 ### Fluidité, vente au-delà du stock, documents A4 modernes, nom Shino Lighting — 2026-11-07 (MEDMEDBEN, Claude)
 
 - **Fluidité** (l'app ralentissait depuis les animations) : fonds animés (liquide, signal) redessinés à

@@ -92,11 +92,11 @@ void main() {
     tester,
   ) async {
     final api = await _pump(tester);
-    await tester.ensureVisible(find.text('Tickets de caisse'));
-    await tester.tap(find.text('Rouleau thermique 80 mm'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Rouleau thermique 58 mm').last);
-    await tester.pumpAndSettle();
+    // Plus de format de ticket (2026-11-07) : le ticket suit les documents.
+    expect(find.text('Tickets de caisse'), findsNothing);
+    await tester.ensureVisible(
+      find.widgetWithText(TextField, 'Étiquette : largeur'),
+    );
     await tester.enterText(
       find.widgetWithText(TextField, 'Étiquette : largeur'),
       '60',
@@ -110,7 +110,6 @@ void main() {
     await tester.tap(save);
     await tester.pumpAndSettle();
     expect(api.storeSaves.last, {
-      'ticketPaper': 'TICKET_58',
       'documentPaper': 'A4',
       'labelWidthMm': 60,
       'labelHeightMm': 40,

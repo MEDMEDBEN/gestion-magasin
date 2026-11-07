@@ -3,14 +3,7 @@ import {
   DocumentColumn,
   renderBusinessDocument,
 } from '../common/pdf/business-document';
-import {
-  formatDA,
-  formatDateTime,
-  PdfDoc,
-  renderPdf,
-  UNIT_LABEL,
-} from '../common/pdf/pdf';
-import { Prisma } from '../generated/prisma/client';
+import { formatDA, formatDateTime, UNIT_LABEL } from '../common/pdf/pdf';
 import { DocumentPaper, StoreIdentity } from '../settings/store-settings';
 import { SaleDto } from './dto/sale.dto';
 
@@ -44,150 +37,21 @@ function designation(
   };
 }
 
-/// Facture (numéro légal attribué) → document A4/A5 ; sinon le ticket, au
-/// format choisi dans Paramètres : rouleau 80 ou 58 mm, ou bon de vente A5/A4
-/// pour qui imprime ses tickets sur une imprimante de bureau.
+/// Facture (numéro légal attribué) → FACTURE ; sinon le TICKET. Les deux sont
+/// des documents complets au gabarit du devis (demande MEDMEDBEN du
+/// 2026-11-07 : plus de ticket en rouleau thermique ; « TICKET » reste écrit
+/// pour le distinguer d'une facture).
 export function renderSaleDocument(data: SaleDocumentData): Promise<Buffer> {
   if (data.sale.invoiceNumber) return renderInvoice(data);
-  const paper = data.store.ticketPaper ?? 'TICKET_80';
-  if (paper === 'A4' || paper === 'A5') return renderSaleSlip(data, paper);
-  return renderTicket(data, paper === 'TICKET_58' ? 58 : 80);
+  return renderSaleSlip(data);
 }
 
-/// Mention en rouge, centrée (vente annulée…).
-function stamp(doc: PdfDoc, text: string, x: number, width: number) {
-  doc
-    .moveDown(0.5)
-    .font('Helvetica-Bold')
-    .fillColor('#b00020')
-    .text(text, x, doc.y, { width, align: 'center' })
-    .fillColor('black');
-}
-
-const MM = 72 / 25.4;
-
-/// Ticket de caisse en rouleau thermique (80 ou 58 mm de large).
-async function renderTicket(
-  data: SaleDocumentData,
-  mm: 58 | 80,
-): Promise<Buffer> {
-  const { sale, store } = data;
-  const narrow = mm === 58;
-  const width = mm * MM;
-  const margin = narrow ? 6 : 10;
-  const k = narrow ? 0.85 : 1;
-  const draw = (doc: PdfDoc) => {
-    const w = width - 2 * margin;
-    const x = margin;
-    const row = (left: string, right: string, bold = false) => {
-      const y = doc.y;
-      doc.font(bold ? 'Helvetica-Bold' : 'Helvetica');
-      doc.text(left, x, y, { width: w * 0.55 });
-      const after = doc.y;
-      doc.text(right, x, y, { width: w, align: 'right' });
-      doc.y = Math.max(after, doc.y);
-    };
-    const rule = (strong = false) => {
-      doc.moveDown(0.3);
-      doc.moveTo(x, doc.y).lineTo(x + w, doc.y);
-      if (strong) doc.lineWidth(1.2).stroke().lineWidth(1);
-      else doc.dash(2, { space: 2 }).stroke().undash();
-      doc.moveDown(0.3);
-    };
-
-    doc.font('Helvetica-Bold').fontSize(12 * k);
-    doc.text(store.name.toUpperCase(), x, doc.y, {
-      width: w,
-      align: 'center',
-    });
-    doc.font('Helvetica').fontSize(7.5 * k);
-    for (const line of [
-      store.address,
-      store.phone ? `Tél : ${store.phone}` : undefined,
-      ...store.legal,
-    ]) {
-      if (line) doc.text(line, { width: w, align: 'center' });
-    }
-    rule(true);
-    doc.fontSize(8 * k);
-    row(`Ticket ${sale.number}`, formatDateTime(new Date(sale.soldAt)), true);
-    doc.font('Helvetica').text(`Vendeur : ${data.sellerName}`, x, doc.y, {
-      width: w,
-    });
-    if (data.customer) doc.text(`Client : ${data.customer.name}`, { width: w });
-    rule();
-
-    for (const line of sale.lines) {
-      const d = designation(data.products, line.productId);
-      doc.font('Helvetica-Bold').text(d.name, x, doc.y, { width: w });
-      // Prix unitaire TTC affiché (le total de ligne, lui, vient du serveur).
-      const unitTtc = new Prisma.Decimal(line.unitPriceHt)
-        .mul(new Prisma.Decimal(line.taxRate).add(100))
-        .div(100)
-        .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
-        .toNumber();
-      row(
-        `${qty(line.quantity)} ${d.unit} × ${formatDA(unitTtc)}`,
-        formatDA(line.lineTotalTtc),
-      );
-      if (line.discountAmount > 0) {
-        row('  dont remise', `-${formatDA(line.discountAmount)}`);
-      }
-    }
-    rule(true);
-    // Sans TVA (retirée le 2026-10-05) : un seul total. Un ticket d'avant
-    // garde sa ventilation HT / TVA / TTC.
-    const taxed = sale.totalTax > 0;
-    if (taxed) {
-      row('Total HT', formatDA(sale.totalHt));
-      row('TVA', formatDA(sale.totalTax));
-    }
-    if (sale.discountAmount > 0) {
-      row('Remise sur facture', `-${formatDA(sale.discountAmount)}`);
-    }
-    doc.fontSize(11 * k);
-    row(taxed ? 'TOTAL TTC' : 'TOTAL', formatDA(sale.totalTtc), true);
-    doc.fontSize(8 * k);
-    row('Payé (espèces)', formatDA(sale.paidAmount));
-    if (sale.remainingAmount > 0) {
-      row('Reste dû (crédit)', formatDA(sale.remainingAmount), true);
-    }
-    if (sale.status === 'ANNULEE') stamp(doc, 'VENTE ANNULÉE', x, w);
-    rule();
-    doc
-      .font('Helvetica')
-      .fontSize(7.5 * k)
-      .text(store.footer ?? 'Merci de votre visite', x, doc.y, {
-        width: w,
-        align: 'center',
-      });
-  };
-  // Hauteur EXACTE du rouleau : un premier rendu mesure où s'arrête le
-  // ticket, le second coupe juste après — pas de papier perdu, jamais coupé.
-  let end = 0;
-  await renderPdf({ size: [width, 200_000], margin }, (doc) => {
-    draw(doc);
-    end = doc.y;
-  });
-  return renderPdf(
-    {
-      size: [width, Math.ceil(end + margin + 4)],
-      margin,
-      info: { Title: `Ticket ${sale.number}` },
-    },
-    draw,
-  );
-}
-
-/// Ticket imprimé sur une imprimante de bureau : un BON DE VENTE A5/A4.
-function renderSaleSlip(
-  data: SaleDocumentData,
-  paper: DocumentPaper,
-): Promise<Buffer> {
+/// Le ticket de caisse : un document complet, au format des documents.
+function renderSaleSlip(data: SaleDocumentData): Promise<Buffer> {
   const { sale } = data;
   return renderA4Document({
-    title: 'BON DE VENTE',
-    pdfTitle: `Bon de vente ${sale.number}`,
+    title: 'TICKET',
+    pdfTitle: `Ticket ${sale.number}`,
     number: sale.number,
     meta: [
       ['Date', formatDateTime(new Date(sale.soldAt))],
@@ -210,8 +74,8 @@ function renderSaleSlip(
         : []),
     ],
     stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
+    wordsSubject: 'le présent ticket',
     signatures: ['Le client', 'Le vendeur'],
-    paper,
   });
 }
 

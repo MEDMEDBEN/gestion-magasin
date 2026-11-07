@@ -139,12 +139,14 @@ function header(
       characterSpacing: 1.2,
     });
   font(false, 8.5).fillColor(MUTED);
-  if (store.address) doc.text(store.address, textX, doc.y + 2 * k, { width: leftWidth });
+  if (store.address)
+    doc.text(store.address, textX, doc.y + 2 * k, { width: leftWidth });
   const contact = [
     store.phone ? `Tél. ${store.phone}` : null,
     store.email ?? null,
   ].filter(Boolean);
-  if (contact.length) doc.text(contact.join('   ·   '), textX, doc.y, { width: leftWidth });
+  if (contact.length)
+    doc.text(contact.join('   ·   '), textX, doc.y, { width: leftWidth });
   if (store.legal.length) {
     font(false, 7).text(store.legal.join('   '), textX, doc.y + 2 * k, {
       width: leftWidth,
@@ -252,11 +254,14 @@ function parties(
         width: boxW - 10,
         characterSpacing: 0.8,
       });
-    font(true, 11).fillColor(INK).text(party.name, x, doc.y + 3 * k, {
-      width: boxW - 10,
-    });
+    font(true, 11)
+      .fillColor(INK)
+      .text(party.name, x, doc.y + 3 * k, {
+        width: boxW - 10,
+      });
     font(false, 8.5).fillColor(MUTED);
-    for (const line of party.lines) doc.text(line, x, doc.y + 1, { width: boxW - 10 });
+    for (const line of party.lines)
+      doc.text(line, x, doc.y + 1, { width: boxW - 10 });
     maxBottom = Math.max(maxBottom, doc.y);
   });
   // Filet noir à gauche de chaque partie.
@@ -371,7 +376,9 @@ function totals(
   const rowH = 18 * k;
   const strongH = 28 * k;
   const needed =
-    rows.length * rowH + strongH + (input.amountInWords !== undefined ? 44 * k : 0);
+    rows.length * rowH +
+    strongH +
+    (input.amountInWords !== undefined ? 44 * k : 0);
   if (doc.y + needed > bottom()) doc.addPage();
   const boxW = width * 0.42;
   const boxX = left + width - boxW;
@@ -425,7 +432,11 @@ function totals(
   const noteW = width - boxW - 24;
   if (input.stamp) {
     const stampH = 22 * k;
-    doc.rect(left, noteY, noteW, stampH).lineWidth(1.5).strokeColor(BLACK).stroke();
+    doc
+      .rect(left, noteY, noteW, stampH)
+      .lineWidth(1.5)
+      .strokeColor(BLACK)
+      .stroke();
     font(true, 11)
       .fillColor(BLACK)
       .text(input.stamp, left, noteY + 6 * k, {
@@ -485,9 +496,10 @@ function signatures(
   const boxW = (width - gap * (labels.length - 1)) / labels.length;
   labels.forEach((label, i) => {
     const x = left + i * (boxW + gap);
-    font(true, 6.5)
-      .fillColor(MUTED)
-      .text(label.toUpperCase(), x, top, { width: boxW, characterSpacing: 0.8 });
+    font(true, 6.5).fillColor(MUTED).text(label.toUpperCase(), x, top, {
+      width: boxW,
+      characterSpacing: 0.8,
+    });
     // Une ligne de signature, pas une boîte : plus sobre.
     doc
       .moveTo(x, top + h - 8 * k)

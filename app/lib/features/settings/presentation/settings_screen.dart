@@ -211,18 +211,12 @@ class _StoreCardState extends ConsumerState<_StoreCard> {
 
 // ── Impression ───────────────────────────────────────────────────────────────
 
-const _ticketPapers = {
-  'TICKET_80': 'Rouleau thermique 80 mm',
-  'TICKET_58': 'Rouleau thermique 58 mm',
-  'A5': 'Feuille A5 (bon de vente)',
-  'A4': 'Feuille A4 (bon de vente)',
-};
-
 const _documentPapers = {'A4': 'Feuille A4', 'A5': 'Feuille A5'};
 
 /// Formats d'impression, selon les imprimantes du magasin (décision MEDMEDBEN
-/// du 2026-10-12) : ticket, documents (factures, devis, bons, bordereaux) et
-/// taille de l'étiquette en rouleau.
+/// du 2026-10-12) : documents (tickets, factures, devis, bons, bordereaux —
+/// le ticket est un document complet depuis le 2026-11-07) et taille de
+/// l'étiquette en rouleau.
 class _PrintCard extends ConsumerStatefulWidget {
   const _PrintCard();
 
@@ -234,7 +228,6 @@ class _PrintCardState extends ConsumerState<_PrintCard> {
   final _width = TextEditingController();
   final _height = TextEditingController();
   StoreSettings? _loaded;
-  String _ticket = 'TICKET_80';
   String _document = 'A4';
   bool _saving = false;
 
@@ -248,7 +241,6 @@ class _PrintCardState extends ConsumerState<_PrintCard> {
   void _fill(StoreSettings store) {
     if (identical(store, _loaded)) return;
     _loaded = store;
-    _ticket = store.ticketPaper;
     _document = store.documentPaper;
     _width.text = '${store.labelWidthMm}';
     _height.text = '${store.labelHeightMm}';
@@ -268,7 +260,6 @@ class _PrintCardState extends ConsumerState<_PrintCard> {
     setState(() => _saving = true);
     try {
       await ref.read(settingsApiProvider).saveStore({
-        'ticketPaper': _ticket,
         'documentPaper': _document,
         'labelWidthMm': width,
         'labelHeightMm': height,
@@ -300,21 +291,9 @@ class _PrintCardState extends ConsumerState<_PrintCard> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              initialValue: _ticket,
-              decoration: const InputDecoration(labelText: 'Tickets de caisse'),
-              items: [
-                for (final e in _ticketPapers.entries)
-                  DropdownMenuItem(value: e.key, child: Text(e.value)),
-              ],
-              onChanged: _saving
-                  ? null
-                  : (v) => setState(() => _ticket = v ?? _ticket),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
               initialValue: _document,
               decoration: const InputDecoration(
-                labelText: 'Factures, devis, bons et bordereaux',
+                labelText: 'Tickets, factures, devis, bons et bordereaux',
               ),
               items: [
                 for (final e in _documentPapers.entries)

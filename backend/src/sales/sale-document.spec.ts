@@ -60,25 +60,15 @@ function data(
   };
 }
 
-describe('tickets en rouleau (80 et 58 mm)', () => {
-  // Un rouleau coupé au milieu du ticket est inutilisable : UNE page, toujours.
-  it.each([
-    [1, 10],
-    [10, 150],
-    [40, 60],
-    [200, 150],
-  ])('%i lignes, désignations de %i caractères → 1 page', async (n, len) => {
-    expect(pages(await renderSaleDocument(data(n, len)))).toBe(1);
-    expect(pages(await renderSaleDocument(data(n, len, 'TICKET_58')))).toBe(1);
-  });
-});
-
-describe('ticket imprimé en bon de vente (A5 / A4)', () => {
-  it('format de page choisi, plusieurs pages si besoin, en-tête répété', async () => {
-    const a5 = await renderSaleDocument(data(3, 20, 'A5'));
-    // A5 = 419,53 × 595,28 pt.
-    expect(a5.toString('latin1')).toMatch(/MediaBox \[0 0 419\.5/);
-    expect(pages(a5)).toBe(1);
+// Le ticket de caisse est un document complet, au gabarit du devis
+// (demande MEDMEDBEN du 2026-11-07) : plus de rouleau thermique.
+describe('ticket de caisse (document A4/A5)', () => {
+  it('titré TICKET, au format des documents, plusieurs pages si besoin', async () => {
+    const short = await renderSaleDocument(data(3, 20, 'A4'));
+    expect(short.toString('latin1')).toMatch(/Ticket TK-2026-000001/);
+    // A4 = 595,28 × 841,89 pt.
+    expect(short.toString('latin1')).toMatch(/MediaBox \[0 0 595\.2/);
+    expect(pages(short)).toBe(1);
     expect(pages(await renderSaleDocument(data(80, 40, 'A4')))).toBeGreaterThan(
       1,
     );
