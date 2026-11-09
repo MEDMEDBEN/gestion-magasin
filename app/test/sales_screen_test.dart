@@ -1316,13 +1316,28 @@ void main() {
   });
 
   /// P1 bis n°21k : entrée / sortie / prélèvement, avec motif, en ligne.
+  // Demande MEDMEDBEN du 2026-11-09 : « c'est bien moi » avant de vendre.
+  testWidgets('Ma session : la fiche du vendeur s’ouvre depuis le panier', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1300, 900));
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await tester.tap(
+      find.byTooltip('Ma session : vérifier que c’est bien moi'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Ma session'), findsOneWidget);
+    expect(find.text('Ventes du jour'), findsOneWidget);
+    expect(find.text('Changer de compte'), findsOneWidget);
+  });
+
   testWidgets('caisse : prélèvement avec motif, clé d’idempotence envoyée', (
     tester,
   ) async {
     useScreenSize(tester, const Size(900, 1400));
     final api = _FakeSalesApi(cash: _openCash);
     await _pumpScreen(tester, api, []);
-    await tester.tap(find.byTooltip('Mouvement de caisse'));
+    await tester.tap(find.byTooltip('Caisse'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Prélèvement (coffre, banque)'));
     await tester.pumpAndSettle();
@@ -1335,7 +1350,7 @@ void main() {
     expect(find.text('Motif obligatoire'), findsOneWidget);
     expect(api.movements, isEmpty);
 
-    await tester.tap(find.byTooltip('Mouvement de caisse'));
+    await tester.tap(find.byTooltip('Caisse'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Prélèvement (coffre, banque)'));
     await tester.pumpAndSettle();

@@ -130,6 +130,8 @@ export class AuthUserDto {
     description: 'Si vrai, seul /auth/change-password est accessible',
   })
   mustChangePassword!: boolean;
+  @ApiProperty({ description: 'Une photo est posée (GET /auth/me/photo)' })
+  hasPhoto!: boolean;
 }
 
 export class TokensDto {

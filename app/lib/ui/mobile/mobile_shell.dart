@@ -83,11 +83,9 @@ class _MobileShellState extends ConsumerState<MobileShell> {
                 onPressed: () => setState(() => _more = true),
               )
             : null,
-        // Rubriques (Vente / Devis…) : choisies depuis le TITRE, plus de
-        // rangée d'onglets en tête de page (2026-10-29).
-        title: showMore || current.sections.isEmpty
-            ? Text(showMore ? 'Plus' : current.label)
-            : _SectionTitle(group: current.label, sections: current.sections),
+        // Rubriques (Vente / Devis…) : en boutons sous la barre, toujours
+        // visibles (2026-11-09) — plus cachées dans le titre.
+        title: Text(showMore ? 'Plus' : current.label),
         actions: [
           // Assistant (2026-10-05) : actions préparées, en mots simples.
           IconButton(
@@ -512,59 +510,6 @@ class _MoreRow extends StatelessWidget {
             Icon(LucideIcons.chevronRight, size: 17, color: colors.ink3),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Titre-sélecteur des rubriques : « Vente ▾ » ouvre Vente / Devis.
-class _SectionTitle extends ConsumerWidget {
-  const _SectionTitle({required this.group, required this.sections});
-
-  final String group;
-  final List<AppDestination> sections;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final colors = AmpereColors.of(context);
-    final index = (ref.watch(sectionIndexProvider)[group] ?? 0).clamp(
-      0,
-      sections.length - 1,
-    );
-    String name(AppDestination d) => sectionTabLabels[d.label] ?? d.label;
-    return PopupMenuButton<int>(
-      tooltip: 'Changer de rubrique',
-      position: PopupMenuPosition.under,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onSelected: (i) => ref.read(sectionIndexProvider.notifier).set(group, i),
-      itemBuilder: (_) => [
-        for (final (i, d) in sections.indexed)
-          PopupMenuItem(
-            value: i,
-            child: Row(
-              children: [
-                Icon(d.icon, size: 18, color: colors.ink2),
-                const SizedBox(width: 10),
-                Expanded(child: Text(name(d))),
-                if (i == index)
-                  Icon(LucideIcons.check, size: 16, color: colors.accent),
-              ],
-            ),
-          ),
-      ],
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(
-              name(sections[index]),
-              overflow: TextOverflow.ellipsis,
-              style: AmpereType.h4.copyWith(color: colors.ink),
-            ),
-          ),
-          const SizedBox(width: 4),
-          Icon(LucideIcons.chevronDown, size: 18, color: colors.ink2),
-        ],
       ),
     );
   }

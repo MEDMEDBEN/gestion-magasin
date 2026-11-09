@@ -4,7 +4,7 @@ import 'package:dio/dio.dart';
 
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart' show ValueKey;
+import 'package:flutter/foundation.dart' show Uint8List, ValueKey;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
@@ -84,6 +84,19 @@ class FakeUsersApi implements UsersApi {
   final List<(String, Map<String, dynamic>)> updates = [];
   final List<CreateCall> creates = [];
   final List<int> requestedPages = [];
+  final List<String> photoCalls = [];
+
+  @override
+  Future<ManagedUser> uploadPhoto(String id, Uint8List jpeg) async {
+    photoCalls.add('set:$id');
+    return users.firstWhere((u) => u.id == id).copyWith(hasPhoto: true);
+  }
+
+  @override
+  Future<ManagedUser> removePhoto(String id) async {
+    photoCalls.add('remove:$id');
+    return users.firstWhere((u) => u.id == id).copyWith(hasPhoto: false);
+  }
 
   @override
   Future<UserPage> list({int page = 1, int limit = 50, String? query}) async {

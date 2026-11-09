@@ -142,6 +142,8 @@ export class UserDto {
   permissions!: string[];
   @ApiProperty({ nullable: true }) lastLoginAt!: Date | null;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty({ description: 'Une photo est posée (GET /users/:id/photo)' })
+  hasPhoto!: boolean;
 }
 
 export class UserListDto {

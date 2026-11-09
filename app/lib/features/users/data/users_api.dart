@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -59,6 +61,28 @@ class UsersApi {
       final response = await _dio.patch<Map<String, dynamic>>(
         '/users/$id',
         data: changes.toJson(),
+      );
+      return ManagedUser.fromJson(response.data!);
+    });
+  }
+
+  /// Photo du compte (JPEG déjà compressé par l'app, 2026-11-09).
+  Future<ManagedUser> uploadPhoto(String id, Uint8List jpeg) {
+    return guardApi(() async {
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/users/$id/photo',
+        data: FormData.fromMap({
+          'image': MultipartFile.fromBytes(jpeg, filename: 'photo.jpg'),
+        }),
+      );
+      return ManagedUser.fromJson(response.data!);
+    });
+  }
+
+  Future<ManagedUser> removePhoto(String id) {
+    return guardApi(() async {
+      final response = await _dio.delete<Map<String, dynamic>>(
+        '/users/$id/photo',
       );
       return ManagedUser.fromJson(response.data!);
     });

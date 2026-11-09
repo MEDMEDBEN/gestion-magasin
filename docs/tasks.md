@@ -4,6 +4,26 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente façon logiciel de caisse ; photo du vendeur ; pages visibles — 2026-11-09 (MEDMEDBEN, Claude)
+
+- **Photo du compte** : `User.photoKey` (migration `20261109090000_user_photo`), `hasPhoto` dans
+  `AuthUserDto`/`UserDto`. Admin : `POST|DELETE|GET /users/:id/photo` (type vérifié sur les octets,
+  audité) ; chacun : `GET /auth/me/photo`. App : « Ajouter / Changer / Retirer la photo » dans le menu
+  d'un compte (Utilisateurs), `UserAvatar` (photo ou initiales).
+- **Vente** : bouton vendeur (photo + prénom + ⓘ) en tête du panier → fiche « Ma session » (photo en
+  grand, rôles, contact, ventes et total du jour, caisse, « Changer de compte ») — `seller_card.dart`.
+- **Panier** : un seul panneau de haut en bas, plus large (40 % de l'écran, 440–680 px) : vendeur +
+  caisse (pastille) en tête, acheteur, lignes sur UNE bande dès 360 px, puis total et encaissement.
+  Grille produits plus dense (tuiles 172 × 134), légende de stock retirée (le point de couleur suffit).
+- **Pages visibles** : `SectionTabs` (Vente/Devis, Stock/Inventaire, Achats/…) en boutons à contour,
+  toujours visibles, téléphone compris (plus de menu caché dans le titre) ; `PillTabs` (onglets
+  internes) : onglet actif plein en couleur d'accent, téléphone en segments icône + libellé.
+- Preuves : backend tsc + eslint + jest 184/184 ; app analyze propre + flutter test 560 (un test
+  « Ma session » ajouté, un test caisse adapté à la pastille) ; captures 21/22 (vente PC et téléphone)
+  relues.
+- **Prochaine étape** : même traitement pour les autres écrans (Stock, Catalogue, Achats, Transferts,
+  Inventaire, Clients).
+
 ### Caisse : plus de blocage ; revue hors ligne / en ligne — 2026-11-08 (MEDMEDBEN, Claude)
 
 Problème : « la caisse s'ouvre (notif) mais l'état ne change pas, je ne peux pas vendre ».

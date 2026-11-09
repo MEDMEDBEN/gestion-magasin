@@ -6,13 +6,17 @@ import {
   HttpStatus,
   Ip,
   Post,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { sendPhoto } from '../common/uploads';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiProduces,
   ApiTags,
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
@@ -166,5 +170,17 @@ export class AuthController {
   @ApiOkResponse({ type: AuthUserDto })
   me(@CurrentUser() user: AuthenticatedUser): Promise<AuthUserDto> {
     return this.authService.me(user.id);
+  }
+
+  /// SA photo, pour vérifier à la caisse que la session est bien la sienne.
+  @Get('me/photo')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Photo du compte connecté' })
+  @ApiProduces('image/jpeg', 'image/png', 'image/webp')
+  async myPhoto(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    sendPhoto(await this.authService.openPhoto(user.id), res);
   }
 }

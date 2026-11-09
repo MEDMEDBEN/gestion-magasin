@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers.dart';
 import '../data/user_models.dart';
 import '../data/users_api.dart';
+import '../presentation/user_photo.dart';
 
 /// Terme de recherche courant (barre de recherche de la liste).
 class UserSearchController extends Notifier<String> {
@@ -129,6 +130,16 @@ class UsersController extends AsyncNotifier<UsersListState> {
     final updated = await ref.read(usersApiProvider).update(id, changes);
     await refresh();
     return updated;
+  }
+
+  /// Photo du compte : `jpeg` null la retire.
+  Future<void> setPhoto(String id, Uint8List? jpeg) async {
+    final api = ref.read(usersApiProvider);
+    jpeg == null ? await api.removePhoto(id) : await api.uploadPhoto(id, jpeg);
+    ref
+      ..invalidate(userPhotoProvider(id))
+      ..invalidate(userPhotoProvider(null));
+    await refresh();
   }
 
   Future<void> setActive(String id, {required bool isActive}) async {

@@ -14,6 +14,7 @@ import {
 } from '../common/user-access';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import {
   AuthUserDto,
   ChangePasswordDto,
@@ -44,6 +45,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   /// Le refresh token est opaque (256 bits aléatoires) et n'est stocké que sous forme de
@@ -78,6 +80,7 @@ export class AuthService {
       roles: user.roles.map((role) => role.code),
       permissions: resolvePermissions(user),
       mustChangePassword: user.mustChangePassword,
+      hasPhoto: user.photoKey !== null,
     };
   }
 
@@ -493,5 +496,21 @@ export class AuthService {
       throw AuthService.accountDisabled();
     }
     return AuthService.toAuthUser(user);
+  }
+
+  /// Photo d'un compte, par la route authentifiée (stockage privé).
+  async openPhoto(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { photoKey: true },
+    });
+    if (!user?.photoKey) {
+      throw new BusinessException(
+        ErrorCode.NOT_FOUND,
+        'Ce compte n’a pas de photo',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    return this.storage.get(user.photoKey);
   }
 }

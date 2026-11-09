@@ -10,7 +10,13 @@ import {
   Post,
   Delete,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { IMAGE_UPLOAD_LIMITS, sendPhoto } from '../common/uploads';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
@@ -20,6 +26,8 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiTags,
+  ApiConsumes,
+  ApiProduces,
 } from '@nestjs/swagger';
 import { ActorContext } from '../audit/audit-writer';
 import {
@@ -164,6 +172,51 @@ export class UsersController {
   /// L'acteur d'une action sensible : QUI, depuis OÙ (spec §24).
   private static actorOf(user: AuthenticatedUser, ip?: string): ActorContext {
     return { userId: user.id, ipAddress: ip };
+  }
+
+  /// Photo du compte (2026-11-09) : le vendeur la voit à la caisse pour
+  /// vérifier que la session ouverte est bien la sienne.
+  @Post(':id/photo')
+  @HttpCode(HttpStatus.OK)
+  @UseInterceptors(FileInterceptor('image', { limits: IMAGE_UPLOAD_LIMITS }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Pose ou remplace la photo du compte' })
+  @ApiOkResponse({ type: UserDto })
+  setPhoto(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<UserDto> {
+    return this.usersService.setPhoto(
+      id,
+      file,
+      UsersController.actorOf(actor, ip),
+    );
+  }
+
+  @Delete(':id/photo')
+  @ApiOperation({ summary: 'Retire la photo du compte' })
+  @ApiOkResponse({ type: UserDto })
+  removePhoto(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<UserDto> {
+    return this.usersService.removePhoto(
+      id,
+      UsersController.actorOf(actor, ip),
+    );
+  }
+
+  @Get(':id/photo')
+  @ApiOperation({ summary: 'Photo du compte (authentifiée)' })
+  @ApiProduces('image/jpeg', 'image/png', 'image/webp')
+  async photo(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    sendPhoto(await this.usersService.openPhoto(id), res);
   }
 
   @Delete(':id')

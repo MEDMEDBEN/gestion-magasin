@@ -1,3 +1,6 @@
+import type { Response } from 'express';
+import type { Readable } from 'stream';
+
 /// Bornes des fichiers envoyés — partagées par TOUTES les routes d'upload.
 ///
 /// Le corps JSON est borné par Express (128 ko), mais un envoi `multipart` y
@@ -30,3 +33,16 @@ export const IMPORT_UPLOAD_LIMITS = {
   files: 1,
   fields: 0,
 } as const;
+
+/// Envoie une photo du stockage privé (même en-têtes que la photo produit).
+export function sendPhoto(
+  { stream, contentType }: { stream: Readable; contentType: string },
+  res: Response,
+): void {
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Erreur de lecture : on coupe la réponse (sinon exception non rattrapée).
+  stream.on('error', () => res.destroy());
+  stream.pipe(res);
+}

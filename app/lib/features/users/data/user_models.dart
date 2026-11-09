@@ -23,6 +23,7 @@ abstract class ManagedUser with _$ManagedUser {
     required List<String> permissions,
     DateTime? lastLoginAt,
     required DateTime createdAt,
+    @Default(false) bool hasPhoto,
   }) = _ManagedUser;
 
   factory ManagedUser.fromJson(Map<String, dynamic> json) =>

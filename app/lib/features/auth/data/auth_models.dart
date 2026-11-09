@@ -15,6 +15,7 @@ abstract class AuthUser with _$AuthUser {
     required List<String> roles,
     required List<String> permissions,
     required bool mustChangePassword,
+    @Default(false) bool hasPhoto,
   }) = _AuthUser;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) =>

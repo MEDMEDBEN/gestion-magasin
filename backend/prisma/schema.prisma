@@ -289,6 +289,9 @@ model User {
   /// Force le changement de mot de passe à la première connexion (spec §2bis).
   mustChangePassword Boolean   @default(true)
   lastLoginAt        DateTime?
+  /// Photo du compte (clé du stockage privé), posée par l'admin : le vendeur
+  /// vérifie à la caisse que c'est bien SA session (2026-11-09).
+  photoKey           String?
   /// Compte SUPPRIMÉ par l'admin (2026-10-07) : inactif, sans rôle, identifiants
   /// libérés, absent de la liste — mais gardé, car l'historique (ventes,
   /// mouvements, audit) le désigne toujours (règle 7).

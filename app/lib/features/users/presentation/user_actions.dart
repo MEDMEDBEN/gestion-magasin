@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/photos.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/ampere_controls.dart';
@@ -11,7 +14,7 @@ import '../application/users_controller.dart';
 import '../data/user_models.dart';
 import 'user_form.dart';
 
-enum _UserAction { edit, toggle, reset, revoke, delete }
+enum _UserAction { edit, photo, removePhoto, toggle, reset, revoke, delete }
 
 /// Menu d'actions d'un compte (ligne de liste mobile, cellule de tableau
 /// desktop). Sur SON propre compte, l'admin n'a que « Modifier » : son
@@ -44,6 +47,22 @@ class UserActionsMenu extends ConsumerWidget {
           value: _UserAction.edit,
           child: _MenuRow(icon: LucideIcons.pencil, label: 'Modifier'),
         ),
+        // Photo du compte (2026-11-09) : le vendeur la voit à la caisse.
+        PopupMenuItem(
+          value: _UserAction.photo,
+          child: _MenuRow(
+            icon: LucideIcons.camera,
+            label: user.hasPhoto ? 'Changer la photo' : 'Ajouter une photo',
+          ),
+        ),
+        if (user.hasPhoto)
+          const PopupMenuItem(
+            value: _UserAction.removePhoto,
+            child: _MenuRow(
+              icon: LucideIcons.imageOff,
+              label: 'Retirer la photo',
+            ),
+          ),
         if (!isSelf) ...[
           PopupMenuItem(
             value: _UserAction.toggle,
@@ -97,6 +116,22 @@ class UserActionsMenu extends ConsumerWidget {
           if (updated != null && updated != user) {
             onMessage('${updated.fullName} mis à jour.');
           }
+
+        case _UserAction.photo:
+          final Uint8List? jpeg;
+          try {
+            jpeg = await ref.read(pickPhotoProvider)();
+          } on FormatException {
+            onMessage('Image illisible : choisissez un JPEG ou un PNG.');
+            return;
+          }
+          if (jpeg == null) return;
+          await controller.setPhoto(user.id, jpeg);
+          onMessage('Photo de ${user.fullName} enregistrée.');
+
+        case _UserAction.removePhoto:
+          await controller.setPhoto(user.id, null);
+          onMessage('Photo de ${user.fullName} retirée.');
 
         case _UserAction.toggle:
           // Désactiver coupe l'accès : action destructive, on confirme (§12.7).

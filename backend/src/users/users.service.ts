@@ -13,6 +13,9 @@ import {
 } from '../common/user-access';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
+import { detectImageFormat } from '../common/image-format';
+import { randomUUID } from 'node:crypto';
 import {
   CreateUserDto,
   ResetPasswordDto,
@@ -42,6 +45,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly storage: StorageService,
   ) {}
 
   private static toDto(user: UserWithAccess): UserDto {
@@ -56,7 +60,68 @@ export class UsersService {
       permissions: resolvePermissions(user),
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
+      hasPhoto: user.photoKey !== null,
     };
+  }
+
+  /// Pose ou remplace la photo d'un compte (ADMIN). Type vérifié sur les
+  /// OCTETS ; l'ancienne photo est supprimée une fois la base à jour.
+  async setPhoto(
+    id: string,
+    file: { buffer: Buffer } | undefined,
+    actor: ActorContext,
+  ): Promise<UserDto> {
+    const format = file?.buffer?.length ? detectImageFormat(file.buffer) : null;
+    if (!format) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Photo refusée : JPEG, PNG ou WebP uniquement',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    await this.findOne(id);
+    const key = `users/${id}/${randomUUID()}.${format.extension}`;
+    await this.storage.put(key, file!.buffer, format.contentType);
+    try {
+      return await this.replacePhoto(id, key, actor);
+    } catch (error) {
+      await this.storage.remove(key);
+      throw error;
+    }
+  }
+
+  async removePhoto(id: string, actor: ActorContext): Promise<UserDto> {
+    await this.findOne(id);
+    return this.replacePhoto(id, null, actor);
+  }
+
+  openPhoto(id: string) {
+    return this.authService.openPhoto(id);
+  }
+
+  private async replacePhoto(
+    id: string,
+    key: string | null,
+    actor: ActorContext,
+  ): Promise<UserDto> {
+    const { user, previous } = await this.prisma.$transaction(async (tx) => {
+      const before = await tx.user.findUniqueOrThrow({ where: { id } });
+      const user = await tx.user.update({
+        where: { id },
+        data: { photoKey: key },
+        include: USER_ACCESS_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'User',
+        entityId: id,
+        oldValue: { photoKey: before.photoKey },
+        newValue: { photoKey: key },
+      });
+      return { user, previous: before.photoKey };
+    });
+    if (previous && previous !== key) await this.storage.remove(previous);
+    return UsersService.toDto(user);
   }
 
   /// Instantané d'un compte destiné à `AuditLog`.
