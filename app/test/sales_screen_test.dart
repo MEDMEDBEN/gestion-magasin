@@ -915,7 +915,7 @@ void main() {
       useScreenSize(tester, const Size(1300, 900));
       await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
       expect(find.text('Panier vide'), findsOneWidget);
-      expect(find.text('TOTAL À PAYER'), findsOneWidget);
+      expect(find.text('TOTAL'), findsOneWidget);
 
       // Tuile du catalogue : un toucher = une unité de plus.
       await tester.tap(find.text('Câble 3G2,5'));
@@ -1316,19 +1316,20 @@ void main() {
   });
 
   /// P1 bis n°21k : entrée / sortie / prélèvement, avec motif, en ligne.
-  // Demande MEDMEDBEN du 2026-11-09 : « c'est bien moi » avant de vendre.
-  testWidgets('Ma session : la fiche du vendeur s’ouvre depuis le panier', (
+  // Demande MEDMEDBEN du 2026-11-10 : un bouton infos sur chaque produit.
+  testWidgets('infos produit : la fiche s’ouvre sans ajouter au panier', (
     tester,
   ) async {
     useScreenSize(tester, const Size(1300, 900));
-    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
-    await tester.tap(
-      find.byTooltip('Ma session : vérifier que c’est bien moi'),
-    );
+    final api = _FakeSalesApi(cash: _openCash);
+    await _pumpScreen(tester, api, []);
+    await tester.tap(find.byTooltip('Infos produit').first);
     await tester.pumpAndSettle();
-    expect(find.text('Ma session'), findsOneWidget);
-    expect(find.text('Ventes du jour'), findsOneWidget);
-    expect(find.text('Changer de compte'), findsOneWidget);
+    expect(find.text('Infos produit'), findsWidgets);
+    expect(find.text('Prix d’achat'), findsOneWidget);
+    expect(find.text('Code-barres'), findsOneWidget);
+    expect(find.text('Fournisseur'), findsOneWidget);
+    expect(find.text('Nouveau ticket'), findsOneWidget);
   });
 
   testWidgets('caisse : prélèvement avec motif, clé d’idempotence envoyée', (

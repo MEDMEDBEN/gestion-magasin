@@ -23,7 +23,9 @@ abstract final class CatalogKind {
 class CatalogRepository {
   CatalogRepository(this._db, this._settings, this._api);
 
-  static const cursorKey = 'catalog.cursor';
+  /// `v2` (2026-11-10) : un nouveau champ (nom du fournisseur) — le catalogue
+  /// local est re-téléchargé en entier une fois.
+  static const cursorKey = 'catalog.cursor.v2';
 
   final AppDatabase _db;
   final LocalSettingsStore _settings;

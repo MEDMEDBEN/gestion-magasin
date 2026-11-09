@@ -38,9 +38,12 @@ type Db = Prisma.TransactionClient;
 /// Prix de vente par tarif, embarqués dans chaque produit renvoyé (règle 13).
 export const PRODUCT_INCLUDE = {
   prices: { select: { priceTierId: true, priceHt: true } },
+  // Nom du fournisseur : fiche « infos » du produit à la caisse (2026-11-10).
+  mainSupplier: { select: { name: true } },
 } as const;
 type ProductWithPrices = Product & {
   prices?: { priceTierId: string; priceHt: number }[];
+  mainSupplier?: { name: string } | null;
 };
 type Viewer = Pick<AuthenticatedUser, 'permissions'>;
 
@@ -508,6 +511,9 @@ export class ProductsService {
       categoryId: product.categoryId,
       taxRateId: product.taxRateId,
       mainSupplierId: product.mainSupplierId,
+      // ponytail: un fournisseur renommé n'atteint le catalogue local qu'à la
+      // prochaine modification du produit (delta par `updatedAt`).
+      mainSupplierName: product.mainSupplier?.name ?? null,
       storageLocationId: product.storageLocationId,
       minThreshold: formatQuantity(product.minThreshold),
       safetyStock: formatQuantity(product.safetyStock),

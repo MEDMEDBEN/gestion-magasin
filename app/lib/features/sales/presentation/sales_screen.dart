@@ -47,7 +47,7 @@ import '../../stock/application/stock_controller.dart';
 import 'customer_form.dart';
 import 'payment_dialog.dart';
 import 'sales_history.dart';
-import 'seller_card.dart';
+import 'product_info_panel.dart';
 
 /// Droits de la vente, MIROIRS des guards serveur (`docs/permissions.md`).
 class SalesRights {
@@ -187,12 +187,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     // onglets vont en tête de la colonne des produits, et le PANIER monte
     // jusqu'à la barre du haut.
     if (_section == _Section.sale) {
-      return _SaleSection(
-        margin: margin,
-        rights: rights,
-        tabs: tabs,
-        user: widget.user,
-      );
+      return _SaleSection(margin: margin, rights: rights, tabs: tabs);
     }
 
     return Column(
@@ -747,14 +742,10 @@ class _SaleSection extends ConsumerStatefulWidget {
     required this.margin,
     required this.rights,
     required this.tabs,
-    required this.user,
   });
 
   final double margin;
   final SalesRights rights;
-
-  /// Compte connecté : sa photo en tête du panier (« c'est bien moi »).
-  final AuthUser user;
 
   /// Onglets de l'écran, posés en tête de la colonne des produits.
   final Widget tabs;
@@ -1253,6 +1244,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                                 _add(p);
                                 _searchFocus.requestFocus();
                               },
+                              onInfo: (p) => openFormPanel<void>(
+                                context,
+                                ProductInfoPanel(
+                                  product: p,
+                                  onAdd: () => _add(p),
+                                ),
+                              ),
                             ),
                           ),
                         ],
@@ -1284,8 +1282,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     ),
                     child: Row(
                       children: [
-                        SellerButton(user: widget.user),
-                        const SizedBox(width: 10),
+                        Icon(LucideIcons.receipt, size: 17, color: colors.ink2),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             articles == 0
@@ -1436,15 +1434,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             children: [
               widget.tabs,
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  SellerButton(user: widget.user),
-                  const Spacer(),
-                  if (widget.rights.canManageCash && _phone)
-                    const _CashBar(compact: true),
-                ],
-              ),
-              const SizedBox(height: 10),
+              if (widget.rights.canManageCash && _phone) ...[
+                const Align(
+                  alignment: Alignment.centerRight,
+                  child: _CashBar(compact: true),
+                ),
+                const SizedBox(height: 10),
+              ],
               ?catalogAlert,
               if (catalogAlert != null) const SizedBox(height: 12),
               Autocomplete<Product>(
@@ -1686,11 +1682,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _TotalDisplay(
-            total: estimate.totalTtc,
-            articles: cart.lines.length,
-            compact: compact,
-          ),
+          if (compact)
+            _TotalDisplay(
+              total: estimate.totalTtc,
+              articles: cart.lines.length,
+              compact: true,
+            ),
           if (!cart.isEmpty &&
               cart.quote == null &&
               (cart.discountHt > 0 || widget.rights.canSeeProfit))
@@ -1822,12 +1819,25 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                 _moreCartActions(estimate, blocked),
                 const SizedBox(width: 8),
               ],
+              // Poste : le total à gauche du bouton, comme un terminal de
+              // caisse — une rangée de moins, plus de place aux lignes.
+              if (!compact) ...[
+                Expanded(
+                  flex: 5,
+                  child: _TotalDisplay(
+                    total: estimate.totalTtc,
+                    articles: cart.lines.length,
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               Expanded(
+                flex: 6,
                 child: noBuyer
                     ? _PayButton(
                         icon: LucideIcons.userRoundSearch,
                         label: 'Choisir l’acheteur',
-                        height: 42,
+                        height: compact ? 42 : 52,
                         tone: AmpereColors.of(context).accent,
                         onPressed: cart.isEmpty ? null : _chooseBuyer,
                       )
@@ -1838,14 +1848,14 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                       _PayButton(
                         icon: LucideIcons.fileText,
                         label: 'Mettre à jour le devis ${cart.quote!.number}',
-                        height: 42,
+                        height: compact ? 42 : 52,
                         onPressed: blocked ? null : _updateQuote,
                       )
                     : _PayButton(
                         icon: LucideIcons.banknote,
                         label: 'Encaisser ${formatDA(estimate.totalTtc)}',
                         shortcut: compact ? null : 'F9',
-                        height: 42,
+                        height: compact ? 42 : 52,
                         onPressed: blocked ? null : () => _checkout(estimate),
                       ),
               ),
@@ -1907,23 +1917,27 @@ class _TotalDisplay extends StatelessWidget {
       decoration: screen,
       child: Row(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                compact ? 'TOTAL' : 'TOTAL À PAYER',
-                style: AmpereType.label.copyWith(
-                  color: colors.ink3,
-                  letterSpacing: 1.2,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TOTAL',
+                  style: AmpereType.label.copyWith(
+                    color: colors.ink3,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              ),
-              Text(
-                '$articles article(s)',
-                style: AmpereType.meta.copyWith(color: colors.ink3),
-              ),
-            ],
+                Text(
+                  '$articles art.',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: FittedBox(
               alignment: Alignment.centerRight,
@@ -2062,11 +2076,15 @@ class _ProductGrid extends ConsumerWidget {
     required this.products,
     required this.query,
     required this.onPick,
+    required this.onInfo,
   });
 
   final List<Product> products;
   final String query;
   final ValueChanged<Product> onPick;
+
+  /// Bouton ⓘ de la tuile : la fiche infos du produit (2026-11-10).
+  final ValueChanged<Product> onInfo;
 
   /// Au-delà, on demande d'affiner : une grille de 2 000 tuiles ne se lit pas.
   static const _shown = 120;
@@ -2122,6 +2140,7 @@ class _ProductGrid extends ConsumerWidget {
                 price: p.salePriceHt(defaultTier),
                 inCart: inCart[p.id],
                 onTap: () => onPick(p),
+                onInfo: () => onInfo(p),
               );
             },
           ),
@@ -2147,9 +2166,11 @@ class _ProductTile extends StatelessWidget {
     required this.price,
     required this.inCart,
     required this.onTap,
+    required this.onInfo,
   });
 
   final Product product;
+  final VoidCallback onInfo;
   final int? price;
   final Quantity? inCart;
 
@@ -2223,6 +2244,23 @@ class _ProductTile extends StatelessWidget {
                           ),
                         ),
                       ),
+                    // Infos du produit (photo, prix d'achat, stock, code,
+                    // fournisseur) SANS l'ajouter au panier.
+                    Tooltip(
+                      message: 'Infos produit',
+                      child: InkResponse(
+                        onTap: onInfo,
+                        radius: 18,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 6),
+                          child: Icon(
+                            LucideIcons.info,
+                            size: 18,
+                            color: colors.ink2,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -2422,11 +2460,20 @@ class _CartLineRow extends ConsumerWidget {
     final info = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          line.product.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+        InkWell(
+          onTap: () => openFormPanel<void>(
+            context,
+            ProductInfoPanel(product: line.product),
+          ),
+          child: Tooltip(
+            message: 'Infos produit',
+            child: Text(
+              line.product.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+            ),
+          ),
         ),
         Text(
           [

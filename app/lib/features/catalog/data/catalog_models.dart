@@ -86,6 +86,9 @@ abstract class Product with _$Product {
     String? categoryId,
     String? taxRateId,
     String? mainSupplierId,
+
+    /// Nom du fournisseur principal (fiche « infos » en vente, 2026-11-10).
+    String? mainSupplierName,
     String? storageLocationId,
 
     /// Version opaque de la photo ; `null` = pas de photo.

@@ -2044,6 +2044,23 @@ void main() {
     ),
   );
   testWidgets(
+    '21b infos produit desktop vendeuse',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '21b_infos_produit_desktop',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      interact: (t) async {
+        await _fillCart(t);
+        await t.tap(find.byTooltip('Infos produit').first);
+        await t.pumpAndSettle();
+      },
+    ),
+  );
+  testWidgets(
     '21c encaissement desktop vendeuse',
     skip: skip,
     (t) => _capture(

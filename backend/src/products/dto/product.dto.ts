@@ -302,6 +302,12 @@ export class ProductDto {
   @ApiProperty({ nullable: true }) taxRateId!: string | null;
   @ApiProperty({ nullable: true, description: '`null` sans `supplier.read`' })
   mainSupplierId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Nom du fournisseur principal, lisible par tous (fiche produit en vente, décision MEDMEDBEN du 2026-11-10)',
+  })
+  mainSupplierName!: string | null;
   @ApiProperty({ nullable: true }) storageLocationId!: string | null;
   @ApiProperty({ example: '10.000' }) minThreshold!: string;
   @ApiProperty({ example: '5.000' }) safetyStock!: string;

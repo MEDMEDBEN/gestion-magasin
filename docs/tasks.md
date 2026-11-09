@@ -4,6 +4,21 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : bouton « infos » sur chaque produit ; panier encore plus compact — 2026-11-10 (MEDMEDBEN, Claude)
+
+- Correction de la demande du 09/11 : c'était un bouton INFOS PRODUIT, pas un bouton vendeur. Le
+  bouton vendeur (`seller_card.dart`) est retiré de la Vente ; la photo des comptes (admin) reste.
+- Tuile produit : ⓘ en haut à droite → `ProductInfoPanel` (photo, prix de vente / d'achat / marge,
+  stock Magasin et Dépôt, emplacement, seuil, code-barres copiable, fournisseur) + « Ajouter au
+  panier ». Toucher le nom d'une ligne du panier ouvre la même fiche (téléphone compris).
+- Serveur : `ProductDto.mainSupplierName` (nom du fournisseur principal, lisible par tous — décision
+  du 2026-11-10). App : clé du curseur catalogue → `catalog.cursor.v2` (re-téléchargement complet une
+  fois, pour recevoir ce nom).
+- Panier (poste) : total et Encaisser sur UNE ligne en bas → une rangée de plus pour les articles.
+- Preuves : backend tsc + eslint + jest (183/184 en lot, `import.spec` passe seul : délai sous charge) ;
+  app analyze + flutter test 560 ; captures 21 et 21b (fiche infos) relues. La capture 21c échouait
+  déjà avant (n'y choisit pas l'acheteur).
+
 ### Vente façon logiciel de caisse ; photo du vendeur ; pages visibles — 2026-11-09 (MEDMEDBEN, Claude)
 
 - **Photo du compte** : `User.photoKey` (migration `20261109090000_user_photo`), `hasPhoto` dans
