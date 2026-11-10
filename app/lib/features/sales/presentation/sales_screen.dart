@@ -28,7 +28,6 @@ import '../../../ui/widgets/screen_state.dart';
 import '../../auth/data/auth_models.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
-import '../../catalog/presentation/product_photo.dart';
 import '../../scan/presentation/scanned_product_sheet.dart';
 import '../../catalog/data/catalog_repository.dart';
 import '../../payments/presentation/payment_history_dialog.dart';
@@ -162,7 +161,7 @@ class _SalesScreenState extends ConsumerState<SalesScreen> {
     final rights = SalesRights(widget.user);
     final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
     // Marges réduites (2026-10-12) : la place va aux produits et au ticket.
-    final margin = isDesktop ? 16.0 : AmpereGeometry.screenMarginMobile;
+    final margin = isDesktop ? 8.0 : AmpereGeometry.screenMarginMobile;
 
     final tabs = Align(
       alignment: Alignment.centerLeft,
@@ -761,6 +760,9 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   final _searchFocus = FocusNode();
   bool _busy = false;
 
+  /// Alertes du panier masquées par le vendeur (✕), par texte exact.
+  final Set<String> _dismissed = {};
+
   @override
   void dispose() {
     _search.dispose();
@@ -1193,7 +1195,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     // aux articles et au panier ; les onglets vivent dans la colonne de
     // gauche pour que le panier monte jusqu'en haut.
     return Padding(
-      padding: EdgeInsets.fromLTRB(m, 10, m, m),
+      padding: EdgeInsets.fromLTRB(m, 6, m, m),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1202,12 +1204,12 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 widget.tabs,
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 // Articles.
                 Expanded(
                   child: _SalePanel(
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(8),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -1224,13 +1226,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                             onSubmitted: (value) =>
                                 _submitSearch(value, products),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 6),
                           _CategoryChips(
                             products: products,
                             selected: _categoryId,
                             onSelect: (id) => setState(() => _categoryId = id),
                           ),
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 6),
                           Expanded(
                             child: _ProductGrid(
                               products: _categoryId == null
@@ -1261,7 +1263,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           // Le PANIER, cœur d'une caisse (demande MEDMEDBEN du 2026-11-09) :
           // plus large, un seul panneau de haut en bas — vendeur et caisse en
           // tête, acheteur, lignes denses, puis total et encaissement.
@@ -1727,52 +1729,45 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                 ],
               ),
             ),
-          if (estimate.invalidGlobalDiscount) ...[
-            const SizedBox(height: 6),
-            AmpereInlineAlert(
-              message:
-                  'La remise dépasse le total '
-                  '(${formatDA(estimate.maxDiscountHt)}) : réduisez-la.',
-            ),
-          ],
-          if (estimate.missingPrices.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const AmpereInlineAlert(
-              message:
-                  'Certains produits n’ont pas de prix pour ce tarif : '
-                  'la vente sera refusée.',
-            ),
-          ],
-          if (estimate.belowCost.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            AmpereInlineAlert(
-              tone: StatusTone.warn,
-              message:
-                  'Sous le prix d’achat : '
-                  '${estimate.belowCost.map((p) => p.name).join(', ')}'
-                  '. La vente passera quand même, à perte.',
-            ),
-          ],
-          if (estimate.invalidDiscounts.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const AmpereInlineAlert(
-              message:
-                  'Une remise dépasse le montant de sa ligne : '
-                  'corrigez-la avant d’encaisser.',
-            ),
-          ],
-          if (shortages.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            AmpereInlineAlert(
-              tone: StatusTone.warn,
-              icon: LucideIcons.packageX,
-              message:
-                  'Stock du magasin dépassé : '
-                  '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
-                  '. La vente passera quand même ; pensez à corriger la '
-                  'quantité en stock.',
-            ),
-          ],
+          // Alertes en UNE ligne, masquables (demande MEDMEDBEN du
+          // 2026-11-10 : elles prenaient trop de place). Le texte entier est
+          // dans l'infobulle ; une alerte qui CHANGE réapparaît.
+          for (final (error, message) in [
+            if (estimate.invalidGlobalDiscount)
+              (
+                true,
+                'Remise > total (${formatDA(estimate.maxDiscountHt)} au plus) : '
+                    'réduisez-la.',
+              ),
+            if (estimate.missingPrices.isNotEmpty)
+              (
+                true,
+                'Sans prix : '
+                    '${estimate.missingPrices.map((p) => p.name).join(', ')}'
+                    ' — vente refusée.',
+              ),
+            if (estimate.invalidDiscounts.isNotEmpty)
+              (true, 'Une remise dépasse sa ligne : corrigez-la.'),
+            if (estimate.belowCost.isNotEmpty)
+              (
+                false,
+                'À perte : '
+                    '${estimate.belowCost.map((p) => p.name).join(', ')}',
+              ),
+            if (shortages.isNotEmpty)
+              (
+                false,
+                'Rupture : '
+                    '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
+                    ' — la vente passe quand même.',
+              ),
+          ])
+            if (!_dismissed.contains(message))
+              _CartNotice(
+                message: message,
+                error: error,
+                onClose: () => setState(() => _dismissed.add(message)),
+              ),
           const SizedBox(height: 8),
           // Les gestes du panier en boutons étiquetés et colorés (demande
           // MEDMEDBEN du 2026-10-13 : « remise, devis… dans un bouton clair »).
@@ -1862,6 +1857,65 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Alerte du panier sur UNE ligne : icône, texte (entier dans l'infobulle),
+/// ✕ pour la masquer.
+class _CartNotice extends StatelessWidget {
+  const _CartNotice({
+    required this.message,
+    required this.error,
+    required this.onClose,
+  });
+
+  final String message;
+  final bool error;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final tone = error ? colors.error : colors.warn;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Container(
+        padding: const EdgeInsets.only(left: 10),
+        decoration: BoxDecoration(
+          color: tone.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: tone.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              error ? LucideIcons.circleAlert : LucideIcons.triangleAlert,
+              size: 15,
+              color: tone,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Tooltip(
+                message: message,
+                child: Text(
+                  message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AmpereType.meta.copyWith(color: colors.ink),
+                ),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Masquer',
+              visualDensity: VisualDensity.compact,
+              iconSize: 15,
+              icon: Icon(LucideIcons.x, color: colors.ink2),
+              onPressed: onClose,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2126,10 +2180,12 @@ class _ProductGrid extends ConsumerWidget {
               // Tuiles compactes, façon logiciel de caisse (2026-10-26) :
               // l'essentiel (nom, stock, prix), plus d'espace entre elles.
               // Plus de produits à l'écran (2026-11-09) : tuiles plus serrées.
-              maxCrossAxisExtent: 172,
-              mainAxisExtent: 134,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+              // Maximum de produits à l'écran (2026-11-10) : tuiles basses,
+              // photo à côté du nom, prix et stock sur une ligne.
+              maxCrossAxisExtent: 168,
+              mainAxisExtent: 76,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
             ),
             itemCount: found.length.clamp(0, _shown),
             itemBuilder: (context, i) {
@@ -2218,94 +2274,109 @@ class _ProductTile extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.fromLTRB(8, 7, 4, 7),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ProductThumbnail(product: product, size: 30),
-                    const Spacer(),
-                    if (picked)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: colors.accent,
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          formatQuantity(inCart!),
-                          style: AmpereType.label.copyWith(
-                            color: colors.onAccent,
-                          ),
-                        ),
-                      ),
-                    // Infos du produit (photo, prix d'achat, stock, code,
-                    // fournisseur) SANS l'ajouter au panier.
-                    Tooltip(
-                      message: 'Infos produit',
-                      child: InkResponse(
-                        onTap: onInfo,
-                        radius: 18,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 6),
-                          child: Icon(
-                            LucideIcons.info,
-                            size: 18,
-                            color: colors.ink2,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
                 Expanded(
-                  child: Text(
-                    product.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          product.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.bodyStrong.copyWith(
+                            color: colors.ink,
+                            fontSize: 13,
+                            height: 1.2,
+                          ),
+                        ),
+                      ),
+                      if (picked)
+                        Container(
+                          margin: const EdgeInsets.only(left: 4, top: 1),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: colors.accent,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            formatQuantity(inCart!),
+                            style: AmpereType.label.copyWith(
+                              color: colors.onAccent,
+                            ),
+                          ),
+                        ),
+                      // Infos du produit (photo, prix d'achat, stock, code,
+                      // fournisseur) SANS l'ajouter au panier.
+                      Tooltip(
+                        message: 'Infos produit',
+                        child: InkResponse(
+                          onTap: onInfo,
+                          radius: 16,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                            child: Icon(
+                              LucideIcons.info,
+                              size: 17,
+                              color: colors.ink2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Row(
                   children: [
-                    // Le stock dit sa couleur par un simple point.
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: tone,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        stockLabel,
+                        price == null
+                            ? 'Prix non fixé'
+                            : '${formatDA(price!)} / ${product.unit.short}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                        style: AmpereType.bodyStrong.copyWith(
+                          fontSize: 13,
+                          color: price == null ? colors.error : colors.ink,
+                          fontFeatures: AmpereType.tabular,
+                        ),
+                      ),
+                    ),
+                    // Le stock dit sa couleur par un point ; le détail est
+                    // dans l'infobulle.
+                    Tooltip(
+                      message: stockLabel,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: BoxDecoration(
+                                color: tone,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              level == null ? '' : formatQuantity(level),
+                              style: AmpereType.meta.copyWith(
+                                color: colors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  price == null
-                      ? 'Prix non fixé'
-                      : '${formatDA(price!)} / ${product.unit.short}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AmpereType.bodyStrong.copyWith(
-                    fontSize: 14,
-                    color: price == null ? colors.error : colors.ink,
-                    fontFeatures: AmpereType.tabular,
-                  ),
                 ),
               ],
             ),

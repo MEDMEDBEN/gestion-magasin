@@ -2092,6 +2092,9 @@ void main() {
       interact: (t) async {
         await _fillCart(t);
         await t.tap(find.text('Gaine ICTA Ø20 (couronne 100 m)'));
+        await t.pumpAndSettle();
+        await t.tap(find.text('L’ajouter quand même'));
+        await t.pumpAndSettle();
       },
     ),
   );

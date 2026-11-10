@@ -103,14 +103,14 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               curve: Curves.easeOutCubic,
               padding: glass && _islandCollapsed
                   ? const EdgeInsets.fromLTRB(
-                      SideIsland.collapsedWidth + 10,
+                      SideIsland.collapsedWidth + 4,
                       ScreenFrame.width,
                       ScreenFrame.width,
                       ScreenFrame.width,
                     )
                   : glass
                   ? const EdgeInsets.fromLTRB(
-                      SideIsland.width + 6,
+                      SideIsland.width + 2,
                       ScreenFrame.width,
                       ScreenFrame.width,
                       ScreenFrame.width,
@@ -171,13 +171,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                   collapsed: _islandCollapsed,
                   onToggle: () =>
                       setState(() => _islandCollapsed = !_islandCollapsed),
+                  // Demande MEDMEDBEN du 2026-11-10 : l'Accueil va dans la barre
+                  // du haut ; l'encoche garde réglages, couleurs et compte.
                   buttons: [
-                    (
-                      icon: LucideIcons.house,
-                      tooltip: 'Accueil',
-                      active: index == null,
-                      onTap: () => open(null),
-                    ),
                     if (settings >= 0)
                       (
                         icon: LucideIcons.settings,
@@ -185,6 +181,15 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
                         active: index == settings,
                         onTap: () => open(settings),
                       ),
+                    (
+                      icon: LucideIcons.palette,
+                      tooltip: 'Palette de couleurs',
+                      active: false,
+                      onTap: () => showDialog<void>(
+                        context: context,
+                        builder: (_) => const Dialog(child: PalettePanel()),
+                      ),
+                    ),
                     if (profile >= 0)
                       (
                         icon: LucideIcons.user,
@@ -731,12 +736,27 @@ class _TopBar extends ConsumerWidget {
     final home = onHome;
 
     final bar = Container(
-      height: 56,
+      height: 50,
       color: glass ? null : colors.bg,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           if (glass) ...[
+            if (home != null) ...[
+              Tooltip(
+                message: 'Retour à l’accueil (Alt+Origine)',
+                child: FilledButton.tonalIcon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                  ),
+                  onPressed: home,
+                  icon: const Icon(LucideIcons.house, size: 16),
+                  label: const Text('Accueil'),
+                ),
+              ),
+              const SizedBox(width: 12),
+            ],
             Container(
               width: 34,
               height: 34,
@@ -831,16 +851,17 @@ class _TopBar extends ConsumerWidget {
             onTap: () => showSyncPanel(context),
           ),
           const SizedBox(width: 6),
-          // Lumières (LED de fond) puis palettes (2026-10-28).
+          // Lumières (LED de fond) ; la palette est dans l'encoche (thème
+          // verre, 2026-11-10), sinon ici.
           const _LightsMenu(),
-          const _PaletteMenu(),
+          if (!glass) const _PaletteMenu(),
         ],
       ),
     );
     if (!glass) return bar;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 12, 16, 6),
-      child: Glass(radius: 20, child: bar),
+      padding: const EdgeInsets.fromLTRB(6, 6, 8, 4),
+      child: Glass(radius: 18, child: bar),
     );
   }
 }

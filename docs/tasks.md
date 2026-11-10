@@ -4,6 +4,18 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Vente : écran au maximum, alertes compactes ; Accueil dans la barre du haut — 2026-11-10 (MEDMEDBEN, Claude)
+
+- Alertes du panier (rupture, à perte, sans prix, remise) : UNE ligne chacune (`_CartNotice`), texte
+  entier en infobulle, ✕ pour la masquer (réapparaît si le texte change).
+- Tuiles produits : basses (76 px), sans vignette (photo dans la fiche ⓘ), nom sur 2 lignes, prix +
+  quantité au panier + point de stock ; ~5 par rangée sur un écran 1440. Marges et écarts de la page
+  Vente réduits (8 px), barre des pages (Vente/Devis) plus fine.
+- Coquille PC (thème verre) : bouton « Accueil » dans la barre du haut sur toutes les pages ; l'encoche
+  latérale porte Paramètres, Palette de couleurs, Mon profil. Barre du haut 50 px, marges réduites.
+- Preuves : app analyze + flutter test (2 tests adaptés : Accueil en haut, alerte masquable) ;
+  capture 21d (rupture) relue.
+
 ### Vente : bouton « infos » sur chaque produit ; panier encore plus compact — 2026-11-10 (MEDMEDBEN, Claude)
 
 - Correction de la demande du 09/11 : c'était un bouton INFOS PRODUIT, pas un bouton vendeur. Le

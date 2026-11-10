@@ -308,8 +308,8 @@ void main() {
       expect(find.text('Tableau de bord'), findsNothing);
       expect(find.text('Amine Benali'), findsOneWidget);
 
-      // L'encoche (thème verre) porte le retour à l'accueil.
-      await tester.tap(find.byTooltip('Accueil'));
+      // La barre du haut porte le retour à l'accueil (2026-11-10).
+      await tester.tap(find.text('Accueil'));
       await tester.pumpAndSettle();
       expect(find.text('Tableau de bord'), findsOneWidget);
       expect(tester.takeException(), isNull);

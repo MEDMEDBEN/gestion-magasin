@@ -973,10 +973,11 @@ void main() {
       await tester.tap(find.text('L’ajouter quand même'));
       await tester.pumpAndSettle();
       expect(find.text('Câble 3G2,5'), findsOneWidget);
-      expect(
-        find.textContaining('La vente passera quand même'),
-        findsOneWidget,
-      );
+      // Alerte compacte (2026-11-10) : une ligne, ✕ pour la masquer.
+      expect(find.textContaining('la vente passe quand même'), findsOneWidget);
+      await tester.tap(find.byTooltip('Masquer'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('la vente passe quand même'), findsNothing);
       await tester.tap(find.textContaining('Encaisser'));
       await tester.pumpAndSettle();
       expect(find.text('Valider la vente'), findsOneWidget);

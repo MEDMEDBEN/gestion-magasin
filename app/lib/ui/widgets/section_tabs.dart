@@ -71,7 +71,7 @@ class SectionTabs extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
-          padding: EdgeInsets.fromLTRB(phone ? 12 : 16, 8, phone ? 12 : 16, 8),
+          padding: EdgeInsets.fromLTRB(phone ? 12 : 8, 6, phone ? 12 : 8, 6),
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: colors.line)),
           ),
@@ -146,7 +146,7 @@ class _Tab extends StatelessWidget {
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: phone ? 8 : 18,
-                vertical: phone ? 9 : 10,
+                vertical: phone ? 8 : 7,
               ),
               child: Row(
                 mainAxisSize: phone ? MainAxisSize.max : MainAxisSize.min,

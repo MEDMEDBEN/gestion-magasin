@@ -345,9 +345,7 @@ void main() {
   });
 
   // Permis depuis le 2026-11-07 (transferts simplifiés).
-  testWidgets('préparer plus que demandé : envoyé', (
-    tester,
-  ) async {
+  testWidgets('préparer plus que demandé : envoyé', (tester) async {
     final api = await _pump(
       tester,
       _magasinier(),
