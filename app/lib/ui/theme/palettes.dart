@@ -13,14 +13,21 @@ enum AppPalette {
   clair('Clair', dark: false),
   menthe('Menthe', dark: false),
   rubis('Rubis', dark: false),
+  // Style INDUSTRIEL (demande MEDMEDBEN du 2026-11-10) : logiciel de gestion
+  // classique, couleurs de signalisation, formes droites (voir `industrial`).
+  atelier('Atelier', dark: false, industrial: true),
   bleuNuit('Bleu nuit', dark: true),
   neon('Néon', dark: true),
-  synthwave('Synthwave', dark: true);
+  synthwave('Synthwave', dark: true),
+  industriel('Industriel', dark: true, industrial: true);
 
-  const AppPalette(this.label, {required this.dark});
+  const AppPalette(this.label, {required this.dark, this.industrial = false});
 
   final String label;
   final bool dark;
+
+  /// Formes « industrielles » : coins quasi droits, cartes à plat.
+  final bool industrial;
 
   AmpereColors get desktop => switch (this) {
     clair => AmpereColors.desktopLight,
@@ -29,6 +36,8 @@ enum AppPalette {
     rubis => _rubis,
     neon => _neon,
     synthwave => _synthwave,
+    atelier => _atelier,
+    industriel => _industriel,
   };
 
   AmpereColors get mobile => switch (this) {
@@ -48,6 +57,12 @@ enum AppPalette {
       Color(0xFFFF3DCB),
       Color(0xFF4DC3FF),
       Color(0xFF9D5CFF),
+    ],
+    atelier => const [Color(0xFFD35400), Color(0xFF37474F), Color(0xFFF5B700)],
+    industriel => const [
+      Color(0xFFF5B700),
+      Color(0xFFFF8A1F),
+      Color(0xFF4FA3D9),
     ],
   };
 
@@ -174,6 +189,66 @@ const _synthwave = AmpereColors(
   neutralBg: Color(0xFF291E4D),
   vizAlt: Color(0xFF4DC3FF),
   scrim: Color(0xB3060310),
+);
+
+/// Atelier — clair industriel : gris béton, acier, orange de sécurité.
+const _atelier = AmpereColors(
+  bg: Color(0xFFECEDEF),
+  bgAlt: Color(0xFFECEDEF),
+  surface: Color(0xFFFFFFFF),
+  surface2: Color(0xFFF3F4F5),
+  surface3: Color(0xFFDFE1E4),
+  line: Color(0xFFC9CDD2),
+  lineSoft: Color(0xFFE2E4E7),
+  ink: Color(0xFF1B1D20),
+  ink2: Color(0xFF4A4F57),
+  ink3: Color(0xFF6B717A),
+  accent: Color(0xFFD35400),
+  accentHi: Color(0xFFB34700),
+  accentBg: Color(0xFFFDE8D9),
+  onAccent: Color(0xFFFFFFFF),
+  ok: Color(0xFF2E7D32),
+  okBg: Color(0xFFE3F1E4),
+  warn: Color(0xFFB7791F),
+  warnBg: Color(0xFFFFF3D6),
+  error: Color(0xFFC62828),
+  errorBg: Color(0xFFFDE4E4),
+  info: Color(0xFF1F5F99),
+  infoBg: Color(0xFFE1ECF7),
+  neutral: Color(0xFF4A4F57),
+  neutralBg: Color(0xFFEAECEE),
+  vizAlt: Color(0xFF37474F),
+  scrim: Color(0x991B1D20),
+);
+
+/// Industriel — sombre : graphite, acier, jaune de sécurité.
+const _industriel = AmpereColors(
+  bg: Color(0xFF16181B),
+  bgAlt: Color(0xFF16181B),
+  surface: Color(0xFF1F2227),
+  surface2: Color(0xFF26292F),
+  surface3: Color(0xFF30343B),
+  line: Color(0xFF3A3F47),
+  lineSoft: Color(0xFF2A2E34),
+  ink: Color(0xFFE8E9EB),
+  ink2: Color(0xFFA9AEB6),
+  ink3: Color(0xFF878D96),
+  accent: Color(0xFFF5B700),
+  accentHi: Color(0xFFFFCC33),
+  accentBg: Color(0xFF3A3010),
+  onAccent: Color(0xFF141414),
+  ok: Color(0xFF5CC46A),
+  okBg: Color(0xFF1C2E20),
+  warn: Color(0xFFFF8A1F),
+  warnBg: Color(0xFF33230F),
+  error: Color(0xFFFF4D4D),
+  errorBg: Color(0xFF3A1717),
+  info: Color(0xFF4FA3D9),
+  infoBg: Color(0xFF15283A),
+  neutral: Color(0xFFA9AEB6),
+  neutralBg: Color(0xFF2A2E34),
+  vizAlt: Color(0xFFFF8A1F),
+  scrim: Color(0xB3000000),
 );
 
 /// Palette choisie, **par compte** sur le poste (comme le thème). `null` :

@@ -4,6 +4,14 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Style industriel au choix (palettes Atelier et Industriel) — 2026-11-10 (MEDMEDBEN, Claude)
+
+- `AppPalette.atelier` (clair : gris béton, orange de sécurité) et `AppPalette.industriel` (sombre :
+  graphite, jaune de sécurité), drapeau `industrial` : coins quasi droits (cartes 4 px, champs et
+  boutons 3 px, `AppTheme`), fond UNI (pas de taches « liquides »). Rangée « Industriel » dans le
+  choix des palettes ; chaque compte garde SA palette.
+- Preuves : app analyze + flutter test ; captures 74 (vente, stock, atelier/industriel) et 78 relues.
+
 ### Toutes les pages au format « Vente » : dense et professionnel ; logo = Accueil — 2026-11-10 (MEDMEDBEN, Claude)
 
 - Coquille PC : le LOGO « Shino Lighting » ramène à l'accueil (au survol, l'éclair devient une maison) ;

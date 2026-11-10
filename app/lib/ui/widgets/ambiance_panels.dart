@@ -15,7 +15,7 @@ class PalettePanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
     final current = currentPalette(ref);
-    Widget row(String title, bool dark) => Column(
+    Widget row(String title, bool Function(AppPalette) keep) => Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
@@ -26,7 +26,7 @@ class PalettePanel extends ConsumerWidget {
         Wrap(
           runSpacing: 8,
           children: [
-            for (final p in AppPalette.values.where((p) => p.dark == dark))
+            for (final p in AppPalette.values.where(keep))
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: _PaletteChip(
@@ -47,9 +47,12 @@ class PalettePanel extends ConsumerWidget {
         children: [
           Text('Palette', style: AmpereType.h4.copyWith(color: colors.ink)),
           const SizedBox(height: 12),
-          row('Clairs', false),
+          row('Clairs', (p) => !p.dark && !p.industrial),
           const SizedBox(height: 14),
-          row('Sombres', true),
+          row('Sombres', (p) => p.dark && !p.industrial),
+          const SizedBox(height: 14),
+          // Style de gestion classique (2026-11-10) : formes droites.
+          row('Industriel', (p) => p.industrial),
         ],
       ),
     );

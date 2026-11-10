@@ -37,8 +37,16 @@ class GestionMagasinApp extends ConsumerWidget {
         final isDesktop = isDesktopWidth(MediaQuery.sizeOf(context).width);
         return Theme(
           data: isDesktop
-              ? AppTheme.desktop(dark: dark, colors: palette.desktop)
-              : AppTheme.mobile(dark: dark, colors: palette.mobile),
+              ? AppTheme.desktop(
+                  dark: dark,
+                  colors: palette.desktop,
+                  industrial: palette.industrial,
+                )
+              : AppTheme.mobile(
+                  dark: dark,
+                  colors: palette.mobile,
+                  industrial: palette.industrial,
+                ),
           // Les notifications deviennent des effets animés en haut de
           // l'écran (2026-10-29), plus de barre qui monte du bas.
           child: FeedbackMessenger(child: child ?? const SizedBox.shrink()),

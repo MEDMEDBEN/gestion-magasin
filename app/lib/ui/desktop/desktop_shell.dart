@@ -78,8 +78,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         body: Stack(
           children: [
             // Thème blanc « verre » (iOS/macOS, 2026-10-28) : fond liquide.
-            // Les taches bougent quand les lumières sont allumées.
-            if (glass)
+            // Les taches bougent quand les lumières sont allumées. Style
+            // industriel (2026-11-10) : fond UNI, sans taches de couleur.
+            if (glass && !currentPalette(ref).industrial)
               Positioned.fill(
                 child: LiquidBackground(
                   animate: ref.watch(signalBackgroundProvider),

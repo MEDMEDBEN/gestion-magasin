@@ -13,27 +13,35 @@ class AppTheme {
 
   /// `colors` : une palette au choix (`palettes.dart`) ; par défaut, celle
   /// d'origine du mode clair ou sombre.
-  static ThemeData mobile({required bool dark, AmpereColors? colors}) => _build(
+  static ThemeData mobile({
+    required bool dark,
+    AmpereColors? colors,
+    bool industrial = false,
+  }) => _build(
     colors:
         colors ?? (dark ? AmpereColors.mobileDark : AmpereColors.mobileLight),
     dark: dark,
+    industrial: industrial,
     cardRadius: AmpereGeometry.cardRadiusMobile,
     fieldRadius: AmpereGeometry.fieldRadiusMobile,
     fieldHeight: AmpereGeometry.fieldHeightMobile,
     bodyStyle: AmpereType.body,
   );
 
-  static ThemeData desktop({required bool dark, AmpereColors? colors}) =>
-      _build(
-        colors:
-            colors ??
-            (dark ? AmpereColors.desktopDark : AmpereColors.desktopLight),
-        dark: dark,
-        cardRadius: AmpereGeometry.cardRadiusDesktop,
-        fieldRadius: AmpereGeometry.fieldRadiusDesktop,
-        fieldHeight: AmpereGeometry.fieldHeightDesktop,
-        bodyStyle: AmpereType.bodyDesktop,
-      );
+  static ThemeData desktop({
+    required bool dark,
+    AmpereColors? colors,
+    bool industrial = false,
+  }) => _build(
+    colors:
+        colors ?? (dark ? AmpereColors.desktopDark : AmpereColors.desktopLight),
+    dark: dark,
+    industrial: industrial,
+    cardRadius: AmpereGeometry.cardRadiusDesktop,
+    fieldRadius: AmpereGeometry.fieldRadiusDesktop,
+    fieldHeight: AmpereGeometry.fieldHeightDesktop,
+    bodyStyle: AmpereType.bodyDesktop,
+  );
 
   static ThemeData _build({
     required AmpereColors colors,
@@ -42,13 +50,15 @@ class AppTheme {
     required double fieldRadius,
     required double fieldHeight,
     required TextStyle bodyStyle,
+    bool industrial = false,
   }) {
     // Formes de la maquette « shadcn » (2026-10-26), les MÊMES en clair et
     // en sombre : cartes à 12 px, champs et boutons à 8 px, filet fin.
-    cardRadius = 12;
-    fieldRadius = 8;
+    // Style industriel (2026-11-10) : coins quasi droits, 4 / 3 px.
+    cardRadius = industrial ? 4 : 12;
+    fieldRadius = industrial ? 3 : 8;
     final OutlinedBorder buttonShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(industrial ? 3 : 8),
     );
     final scheme = ColorScheme(
       brightness: dark ? Brightness.dark : Brightness.light,

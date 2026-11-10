@@ -1479,6 +1479,58 @@ void main() {
     ),
   );
   testWidgets(
+    '74 palette industriel vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '74_palette_industriel_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      palette: AppPalette.industriel,
+      interact: _fillCart,
+    ),
+  );
+  testWidgets(
+    '74 palette industriel stock',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '74_palette_industriel_stock',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.industriel,
+      interact: (t) async => t.tap(find.text('Stock').first),
+    ),
+  );
+  testWidgets(
+    '74 palette atelier vente',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '74_palette_atelier_vente',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      user: _vendeuse,
+      products: _priced,
+      palette: AppPalette.atelier,
+      interact: _fillCart,
+    ),
+  );
+  testWidgets(
+    '74 palette atelier stock',
+    skip: skip,
+    (t) => _capture(
+      t,
+      name: '74_palette_atelier_stock',
+      size: const Size(1440, 900),
+      home: const AdaptiveShell(),
+      palette: AppPalette.atelier,
+      interact: (t) async => t.tap(find.text('Stock').first),
+    ),
+  );
+  testWidgets(
     '78 menu palettes',
     skip: skip,
     (t) => _capture(

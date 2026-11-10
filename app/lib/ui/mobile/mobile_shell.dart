@@ -110,7 +110,8 @@ class _MobileShellState extends ConsumerState<MobileShell> {
         children: [
           // Ambiance lumineuse (2026-10-29), comme au poste : fond liquide du
           // thème verre, LED de fond quand les lumières sont allumées.
-          if (colors.isGlass)
+          // Style industriel (2026-11-10) : fond UNI.
+          if (colors.isGlass && !currentPalette(ref).industrial)
             Positioned.fill(
               child: LiquidBackground(
                 animate: ref.watch(signalBackgroundProvider),
