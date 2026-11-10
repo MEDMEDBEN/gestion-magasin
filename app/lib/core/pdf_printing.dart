@@ -49,6 +49,41 @@ PaperKind kindOf(PdfPageFormat format) {
   return PaperKind.document;
 }
 
+/// Pilote d'imprimante de BUREAU (jet d'encre, laser) ou générique. Posé sur
+/// une imprimante d'étiquettes ou de tickets (thermique), il lui envoie un
+/// langage qu'elle ne comprend pas : elle sort des lignes de caractères (un
+/// « dump ») au lieu de l'étiquette — cas réel du 2026-11-10 : la file
+/// « Xprinter » avec le pilote « Canon G3070 series ».
+bool isOfficeDriver(String? driver) {
+  final d = (driver ?? '').toLowerCase();
+  if (d.isEmpty) return false;
+  // Exceptions : gammes thermiques de marques « bureau ».
+  const thermal = ['tm-', 'tm ', ' ql', 'ql-', 'td-', 'zebra', 'label'];
+  if (thermal.any(d.contains)) return false;
+  const office = [
+    'canon',
+    'hp ',
+    'hewlett',
+    'epson',
+    'brother',
+    'kyocera',
+    'lexmark',
+    'ricoh',
+    'xerox',
+    'samsung',
+    'konica',
+    'sharp',
+    'pantum',
+    'ipp class',
+    'text only',
+    'xps',
+    'print to pdf',
+    'onenote',
+    'fax',
+  ];
+  return office.any(d.contains);
+}
+
 /// Poste de bureau : on peut choisir l'imprimante et imprimer sans dialogue.
 bool get desktopPrinting =>
     !kIsWeb &&

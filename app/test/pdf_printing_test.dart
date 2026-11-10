@@ -31,4 +31,15 @@ void main() {
     expect(kindOf(PdfPageFormat.a4), PaperKind.document);
     expect(pdfFormatOf(Uint8List.fromList([1, 2, 3])), isNull);
   });
+
+  // Cas réel du 2026-11-10 : la file « Xprinter » avec le pilote Canon.
+  test('pilote de bureau repéré, pilotes thermiques acceptés', () {
+    expect(isOfficeDriver('Canon G3070 series'), isTrue);
+    expect(isOfficeDriver('Generic / Text Only'), isTrue);
+    expect(isOfficeDriver('Microsoft IPP Class Driver'), isTrue);
+    expect(isOfficeDriver('Xprinter XP-365B'), isFalse);
+    expect(isOfficeDriver('EPSON TM-T20II Receipt'), isFalse);
+    expect(isOfficeDriver('Brother QL-800'), isFalse);
+    expect(isOfficeDriver(null), isFalse);
+  });
 }

@@ -7,6 +7,7 @@ import '../../../core/pdf_printing.dart';
 import '../../../core/providers.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
+import '../../../ui/widgets/ampere_controls.dart';
 
 /// Imprimantes de CE poste (décision MEDMEDBEN du 2026-10-12) : une par sorte
 /// de papier. Choisie, l'impression part DIRECTEMENT, au bon format, sans
@@ -22,6 +23,9 @@ class PrintersCard extends ConsumerStatefulWidget {
 class _PrintersCardState extends ConsumerState<PrintersCard> {
   final _chosen = <PaperKind, String?>{};
 
+  /// Pilote de chaque imprimante du poste (par url), pour le montrer.
+  Map<String, String?> _drivers = const {};
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +38,11 @@ class _PrintersCardState extends ConsumerState<PrintersCard> {
       final url = await savedPrinter(store, kind);
       if (mounted) setState(() => _chosen[kind] = url);
     }
+    if (!desktopPrinting) return;
+    final printers = await Printing.listPrinters();
+    if (mounted) {
+      setState(() => _drivers = {for (final p in printers) p.url: p.model});
+    }
   }
 
   Future<void> _choose(PaperKind kind) async {
@@ -42,6 +51,23 @@ class _PrintersCardState extends ConsumerState<PrintersCard> {
       title: 'Imprimante — ${kind.title}',
     );
     if (printer == null || !mounted) return;
+    // Mauvais pilote sur une imprimante thermique : elle sortirait un
+    // « dump » au lieu des étiquettes / tickets. On le dit AVANT.
+    if (kind != PaperKind.document && isOfficeDriver(printer.model)) {
+      final keep = await showAmpereConfirmDialog(
+        context,
+        title: 'Pilote incompatible',
+        body:
+            '« ${printer.name} » utilise le pilote « ${printer.model} », '
+            'celui d’une imprimante de bureau. Une imprimante '
+            '${kind == PaperKind.etiquette ? 'd’étiquettes' : 'de tickets'} '
+            'imprimerait des lignes de caractères (un « dump ») au lieu du '
+            'bon format.\n\nInstallez le pilote du fabricant de '
+            'l’imprimante (ex. Xprinter), puis choisissez-la à nouveau.',
+        confirmLabel: 'Garder quand même',
+      );
+      if (!keep || !mounted) return;
+    }
     await savePrinter(ref.read(localSettingsStoreProvider), kind, printer.url);
     if (mounted) setState(() => _chosen[kind] = printer.url);
   }
@@ -98,6 +124,22 @@ class _PrintersCardState extends ConsumerState<PrintersCard> {
                                 : colors.ok,
                           ),
                         ),
+                        if (_drivers[_chosen[kind]] case final driver?)
+                          Text(
+                            kind != PaperKind.document && isOfficeDriver(driver)
+                                ? 'Pilote « $driver » : incompatible, '
+                                      'installez celui du fabricant'
+                                : 'Pilote : $driver',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AmpereType.meta.copyWith(
+                              color:
+                                  kind != PaperKind.document &&
+                                      isOfficeDriver(driver)
+                                  ? colors.error
+                                  : colors.ink3,
+                            ),
+                          ),
                       ],
                     ),
                   ),

@@ -4,6 +4,17 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Étiquettes imprimées en « dump » : mauvais pilote — 2026-11-10 (MEDMEDBEN, Claude)
+
+- Cause trouvée sur le poste : la file Windows « Xprinter » utilisait le pilote « Canon G3070 series »
+  (port USB002) ; l'imprimante thermique recevait le langage d'une jet d'encre → lignes de caractères.
+  Files « Xprinter », « Smart », « Canon G3070 series » bloquées en « suppression en attente » avec des
+  travaux coincés. À faire SUR LE POSTE (admin) : vider le spouleur, supprimer ces files, installer le
+  pilote Xprinter du fabricant, régler la taille d'étiquette, calibrer, re-choisir l'imprimante dans
+  l'app.
+- App : `isOfficeDriver` (pdf_printing.dart) ; « Mon profil → Imprimantes » montre le pilote et AVERTIT
+  si une imprimante d'étiquettes/tickets a un pilote de bureau ou générique. Test ajouté.
+
 ### Vente : écran au maximum, alertes compactes ; Accueil dans la barre du haut — 2026-11-10 (MEDMEDBEN, Claude)
 
 - Alertes du panier (rupture, à perte, sans prix, remise) : UNE ligne chacune (`_CartNotice`), texte
