@@ -347,8 +347,9 @@ class GuideSteps extends StatefulWidget {
 }
 
 class _GuideStepsState extends State<GuideSteps> {
-  /// Téléphone (2026-10-29) : replié en une ligne, un toucher l'ouvre.
-  late bool _open = !_isPhone(context);
+  /// Replié en UNE ligne partout (2026-11-10 : la place va au travail), un
+  /// clic l'ouvre.
+  bool _open = false;
 
   String get title => widget.title;
   List<(String, String)> get steps => widget.steps;
@@ -357,9 +358,8 @@ class _GuideStepsState extends State<GuideSteps> {
   @override
   Widget build(BuildContext context) {
     final colors = AmpereColors.of(context);
-    final phone = _isPhone(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      padding: const EdgeInsets.fromLTRB(12, 7, 10, 7),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(12),
@@ -369,39 +369,37 @@ class _GuideStepsState extends State<GuideSteps> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           InkWell(
-            onTap: phone ? () => setState(() => _open = !_open) : null,
+            onTap: () => setState(() => _open = !_open),
             child: Row(
               children: [
                 Icon(LucideIcons.lightbulb, size: 16, color: colors.ink2),
                 const SizedBox(width: 6),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: AmpereType.label.copyWith(color: colors.ink2),
-                      ),
-                      if (!_open)
-                        Text(
-                          [for (final s in steps) s.$1].join(' → '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AmpereType.meta.copyWith(color: colors.ink3),
-                        ),
-                    ],
+                Flexible(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.label.copyWith(color: colors.ink2),
                   ),
                 ),
-                if (phone)
-                  AnimatedRotation(
-                    turns: _open ? 0.5 : 0,
-                    duration: const Duration(milliseconds: 220),
-                    child: Icon(
-                      LucideIcons.chevronDown,
-                      size: 17,
-                      color: colors.ink2,
-                    ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _open ? '' : [for (final s in steps) s.$1].join(' → '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.meta.copyWith(color: colors.ink3),
                   ),
+                ),
+                AnimatedRotation(
+                  turns: _open ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  child: Icon(
+                    LucideIcons.chevronDown,
+                    size: 17,
+                    color: colors.ink2,
+                  ),
+                ),
               ],
             ),
           ),

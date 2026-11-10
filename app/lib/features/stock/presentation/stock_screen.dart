@@ -89,7 +89,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       children: [
         if (rights.canDeclareLoss)
           Padding(
-            padding: EdgeInsets.fromLTRB(margin, 14, margin, 0),
+            padding: EdgeInsets.fromLTRB(margin, 8, margin, 0),
             child: Align(
               alignment: Alignment.centerLeft,
               child: PillTabs<_Section>(
@@ -361,7 +361,7 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
         return ListView(
           padding: withNavBar(
             context,
-            EdgeInsets.fromLTRB(widget.margin, 14, widget.margin, 24),
+            EdgeInsets.fromLTRB(widget.margin, 8, widget.margin, 16),
           ),
           children: [
             if (catalogEmpty) ...[
@@ -389,42 +389,52 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
             ],
             if (actions.isNotEmpty) ...[
               ActionGrid(children: actions),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
             ],
             if (!catalogEmpty) ...[
-              searchBar,
-              const SizedBox(height: 10),
-              // Filtres SOUS la recherche (demande MEDMEDBEN du 2026-10-26) :
-              // on agit en haut, on trie la liste juste au-dessus d'elle.
-              StatGrid(
+              // Poste : recherche et filtres sur UNE rangée (2026-11-10).
+              Flex(
+                direction: widget.isDesktop ? Axis.horizontal : Axis.vertical,
+                crossAxisAlignment: widget.isDesktop
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.stretch,
                 children: [
-                  tile(
-                    _Filter.all,
-                    LucideIcons.package,
-                    'Produits suivis',
-                    StatusTone.info,
+                  Flexible(flex: widget.isDesktop ? 1 : 0, child: searchBar),
+                  SizedBox(
+                    width: widget.isDesktop ? 12 : 0,
+                    height: widget.isDesktop ? 0 : 8,
                   ),
-                  tile(
-                    _Filter.out,
-                    LucideIcons.circleX,
-                    'En rupture',
-                    StatusTone.error,
-                  ),
-                  tile(
-                    _Filter.low,
-                    LucideIcons.triangleAlert,
-                    'Stock faible',
-                    StatusTone.warn,
-                  ),
-                  tile(
-                    _Filter.ok,
-                    LucideIcons.circleCheck,
-                    'En stock',
-                    StatusTone.ok,
+                  StatGrid(
+                    children: [
+                      tile(
+                        _Filter.all,
+                        LucideIcons.package,
+                        'Produits suivis',
+                        StatusTone.info,
+                      ),
+                      tile(
+                        _Filter.out,
+                        LucideIcons.circleX,
+                        'En rupture',
+                        StatusTone.error,
+                      ),
+                      tile(
+                        _Filter.low,
+                        LucideIcons.triangleAlert,
+                        'Stock faible',
+                        StatusTone.warn,
+                      ),
+                      tile(
+                        _Filter.ok,
+                        LucideIcons.circleCheck,
+                        'En stock',
+                        StatusTone.ok,
+                      ),
+                    ],
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               if (_filter != _Filter.all)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -464,6 +474,31 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                         },
                         message: 'Rien à traiter de ce côté : tout va bien.',
                       )
+              else if (widget.isDesktop)
+                // Poste : un TABLEAU dense, en-têtes une seule fois.
+                _LevelTable(
+                  rows: [
+                    for (final p in shown)
+                      _LevelRow(
+                        product: p,
+                        stock: byProduct[p.id] ?? const ProductStock([]),
+                        locationIds: ids,
+                        isDesktop: true,
+                        onTap: () => openFormPanel<void>(
+                          context,
+                          _ProductStockPanel(
+                            product: p,
+                            onDeclareLoss: widget.rights.canDeclareLoss
+                                ? () => _declareLoss(context, widget.rights, p)
+                                : null,
+                            onAddStock: widget.rights.canAddStock
+                                ? () => _addStock(context, p)
+                                : null,
+                          ),
+                        ),
+                      ),
+                  ],
+                )
               else
                 for (final p in shown)
                   Padding(
@@ -532,6 +567,63 @@ class _LevelRow extends StatelessWidget {
       ('Disponible', formatQuantity(stock.available)),
     ];
 
+    if (isDesktop) {
+      return InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.only(left: 12, right: 14),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(color: alert ?? Colors.transparent, width: 3),
+              bottom: BorderSide(color: colors.lineSoft),
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Text.rich(
+                  TextSpan(
+                    text: product.name,
+                    style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                    children: [
+                      TextSpan(
+                        text: '   ${product.sku}',
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 150,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: StockStatusBadge(product: product, stock: stock),
+                ),
+              ),
+              for (final (label, value) in figures)
+                Expanded(
+                  child: Text(
+                    '$value $unit',
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.bodyStrong.copyWith(
+                      color: label == 'Disponible' ? colors.ink : colors.ink2,
+                      fontFeatures: AmpereType.tabular,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return AmpereTappable(
       onTap: onTap,
       borderRadius: AmpereGeometry.cardRadiusMobile,
@@ -621,6 +713,63 @@ class _LevelRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Tableau des niveaux (poste) : en-têtes une fois, lignes fines.
+class _LevelTable extends StatelessWidget {
+  const _LevelTable({required this.rows});
+
+  final List<Widget> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    Widget head(String text, {TextAlign align = TextAlign.end}) => Text(
+      text.toUpperCase(),
+      textAlign: align,
+      style: AmpereType.label.copyWith(color: colors.ink3),
+    );
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 34,
+            padding: const EdgeInsets.only(left: 15, right: 14),
+            color: colors.surface2,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: head('Produit', align: TextAlign.start),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 150,
+                  child: head('État', align: TextAlign.start),
+                ),
+                for (final label in [
+                  'Magasin',
+                  'Dépôt',
+                  'Transit',
+                  'Total',
+                  'Disponible',
+                ])
+                  Expanded(child: head(label)),
+              ],
+            ),
+          ),
+          ...rows,
+        ],
       ),
     );
   }

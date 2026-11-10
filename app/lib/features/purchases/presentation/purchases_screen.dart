@@ -135,7 +135,6 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
   Widget build(BuildContext context) {
     final user = widget.user;
     final rights = PurchaseRights(user);
-    final colors = AmpereColors.of(context);
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
@@ -240,7 +239,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
         return ListView(
           padding: withNavBar(
             context,
-            EdgeInsets.fromLTRB(margin, 14, margin, 24),
+            EdgeInsets.fromLTRB(margin, 8, margin, 16),
           ),
           children: [
             GuideSteps(
@@ -267,19 +266,54 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (actions.isNotEmpty) ...[
               ActionGrid(children: actions),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
             ],
-            Row(
+            // Période et filtres sur UNE rangée (2026-11-10), juste au-dessus
+            // de la liste qu'ils trient.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    'COMMANDES',
-                    style: AmpereType.label.copyWith(color: colors.ink3),
+                toolbar,
+                if (items.isNotEmpty)
+                  StatGrid(
+                    children: [
+                      tile(
+                        _Filter.draft,
+                        LucideIcons.filePen,
+                        'Brouillons',
+                        StatusTone.neutral,
+                      ),
+                      tile(
+                        _Filter.waiting,
+                        LucideIcons.hourglass,
+                        'À recevoir',
+                        StatusTone.info,
+                      ),
+                      tile(
+                        _Filter.partial,
+                        LucideIcons.packageOpen,
+                        'Partiellement reçues',
+                        StatusTone.warn,
+                      ),
+                      tile(
+                        _Filter.late,
+                        LucideIcons.alarmClock,
+                        'En retard',
+                        StatusTone.error,
+                      ),
+                      tile(
+                        _Filter.done,
+                        LucideIcons.circleCheck,
+                        'Terminées',
+                        StatusTone.ok,
+                      ),
+                    ],
                   ),
-                ),
                 if (_filter != _Filter.all)
                   TextButton.icon(
                     onPressed: () => setState(() => _filter = _Filter.all),
@@ -288,48 +322,8 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                   ),
               ],
             ),
-            const SizedBox(height: 6),
-            toolbar,
-            const SizedBox(height: 10),
-            // Filtres JUSTE au-dessus de la liste (demande MEDMEDBEN du
-            // 2026-10-26) : les actions en haut, le tri près de ce qu'il trie.
-            if (items.isNotEmpty) ...[
-              StatGrid(
-                children: [
-                  tile(
-                    _Filter.draft,
-                    LucideIcons.filePen,
-                    'Brouillons',
-                    StatusTone.neutral,
-                  ),
-                  tile(
-                    _Filter.waiting,
-                    LucideIcons.hourglass,
-                    'À recevoir',
-                    StatusTone.info,
-                  ),
-                  tile(
-                    _Filter.partial,
-                    LucideIcons.packageOpen,
-                    'Partiellement reçues',
-                    StatusTone.warn,
-                  ),
-                  tile(
-                    _Filter.late,
-                    LucideIcons.alarmClock,
-                    'En retard',
-                    StatusTone.error,
-                  ),
-                  tile(
-                    _Filter.done,
-                    LucideIcons.circleCheck,
-                    'Terminées',
-                    StatusTone.ok,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
+            const SizedBox(height: 8),
+
             if (items.isEmpty)
               const AmpereInlineAlert(
                 tone: StatusTone.info,
@@ -346,7 +340,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
             else
               for (final o in shown)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 6),
                   child: _OrderCard(
                     order: o,
                     supplier: suppliers[o.supplierId] ?? 'Fournisseur',
@@ -881,6 +875,108 @@ class _OrderCard extends StatelessWidget {
         'Reste à recevoir — ou clôturer le reliquat',
       _ => null,
     };
+    final border = tone == StatusTone.neutral
+        ? colors.line
+        : tone.foreground(colors).withValues(alpha: 0.45);
+    final receive = FilledButton.icon(
+      style: FilledButton.styleFrom(
+        backgroundColor: colors.ok,
+        foregroundColor: colors.bg,
+        visualDensity: VisualDensity.compact,
+      ),
+      onPressed: onReceive,
+      icon: const Icon(LucideIcons.packageCheck, size: 16),
+      label: const Text('Réceptionner'),
+    );
+    final hint = late
+        ? 'EN RETARD (prévue le ${formatDate(o.expectedDate!.toLocal())})'
+        : next ?? '';
+    // Poste (2026-11-10) : la commande tient sur UNE ligne.
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return Material(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.truck,
+                  size: 17,
+                  color: tone.foreground(colors),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 4,
+                  child: Text.rich(
+                    TextSpan(
+                      text: '${o.number} · $supplier',
+                      style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                      children: [
+                        TextSpan(
+                          text: '   ${o.lines.length} ligne(s)',
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.meta.copyWith(
+                      color: late ? colors.error : colors.ink2,
+                      fontWeight: late ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 150,
+                  child: Text(
+                    '${formatDA(o.totalTtc)} TTC',
+                    textAlign: TextAlign.end,
+                    style: AmpereType.bodyStrong.copyWith(
+                      color: colors.ink,
+                      fontFeatures: AmpereType.tabular,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                SizedBox(
+                  width: 130,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AmpereBadge(
+                      label: o.status.label,
+                      tone: _tone(o.status),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: receivable
+                      ? Align(alignment: Alignment.centerRight, child: receive)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return Material(
       color: colors.surface,
       borderRadius: BorderRadius.circular(12),

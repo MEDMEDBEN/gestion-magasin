@@ -4,6 +4,20 @@
 > Règle stricte : `git pull` + lire ce fichier en entier AVANT de coder. Le mettre à jour + `git push` avant de fermer.
 > **Signer par NOM** (MEDMEDBEN / Ratybox), plus par rôle : on se signait tous les deux « Dev A ».
 
+### Toutes les pages au format « Vente » : dense et professionnel ; logo = Accueil — 2026-11-10 (MEDMEDBEN, Claude)
+
+- Coquille PC : le LOGO « Shino Lighting » ramène à l'accueil (au survol, l'éclair devient une maison) ;
+  plus de bouton « Accueil » séparé (`_HomeLogo`, choix MEDMEDBEN).
+- Partagé : `GuideSteps` replié en UNE ligne partout (clic pour ouvrir) ; marge d'écran PC 20 → 12.
+- Stock : vrai tableau (en-têtes une fois, lignes 42 px, liseré couleur à gauche si rupture/faible) ;
+  recherche + filtres chiffrés sur une rangée.
+- Achats : commande sur UNE ligne (≥ 900 px) ; période + filtres sur une rangée.
+- Transferts : transfert sur UNE bande (n°, produits, piste d'étapes, état, action) ; période + filtres
+  sur une rangée.
+- Catalogue et Utilisateurs : lignes de tableau resserrées, boutons de ligne compacts.
+- Reste à faire du même œil : Clients/Fournisseurs (cartes), Inventaire, Planning, Rapports.
+- Preuves : app analyze + flutter test 561 ; captures 18, 26, 32, 12, 04 relues.
+
 ### Étiquettes imprimées en « dump » : mauvais pilote — 2026-11-10 (MEDMEDBEN, Claude)
 
 - Cause trouvée sur le poste : la file Windows « Xprinter » utilisait le pilote « Canon G3070 series »

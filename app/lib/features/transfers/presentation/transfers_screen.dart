@@ -142,7 +142,6 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
   @override
   Widget build(BuildContext context) {
     final rights = TransferRights(widget.user);
-    final colors = AmpereColors.of(context);
     final margin = isDesktopWidth(MediaQuery.sizeOf(context).width)
         ? 24.0
         : 16.0;
@@ -218,7 +217,7 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
         return ListView(
           padding: withNavBar(
             context,
-            EdgeInsets.fromLTRB(margin, 14, margin, 24),
+            EdgeInsets.fromLTRB(margin, 8, margin, 16),
           ),
           children: [
             GuideSteps(
@@ -241,71 +240,65 @@ class _TransfersScreenState extends ConsumerState<TransfersScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             if (actions.isNotEmpty) ...[
               ActionGrid(children: actions),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
             ],
-            Row(
+            // Période et filtres sur UNE rangée (2026-11-10).
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Expanded(
-                  child: Text(
-                    'TRANSFERTS',
-                    style: AmpereType.label.copyWith(color: colors.ink3),
-                  ),
-                ),
                 PeriodFilter(
                   value: ref.watch(transferPeriodProvider),
                   onChanged: ref.read(transferPeriodProvider.notifier).set,
                 ),
+                if (items.isNotEmpty)
+                  StatGrid(
+                    children: [
+                      tile(
+                        _Filter.todo,
+                        LucideIcons.inbox,
+                        'À traiter',
+                        StatusTone.info,
+                      ),
+                      tile(
+                        _Filter.preparing,
+                        LucideIcons.packageOpen,
+                        'En préparation',
+                        StatusTone.warn,
+                      ),
+                      tile(
+                        _Filter.onTheWay,
+                        LucideIcons.truck,
+                        'En route',
+                        StatusTone.warn,
+                      ),
+                      tile(
+                        _Filter.received,
+                        LucideIcons.circleCheck,
+                        'Reçus',
+                        StatusTone.ok,
+                      ),
+                      tile(
+                        _Filter.shortfall,
+                        LucideIcons.triangleAlert,
+                        'Avec écart',
+                        StatusTone.error,
+                      ),
+                      tile(
+                        _Filter.stopped,
+                        LucideIcons.ban,
+                        'Refusés / annulés',
+                        StatusTone.neutral,
+                      ),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 8),
-            // Filtres JUSTE au-dessus de la liste (demande MEDMEDBEN du
-            // 2026-10-26) : les actions en haut, le tri près de ce qu'il trie.
-            if (items.isNotEmpty) ...[
-              StatGrid(
-                children: [
-                  tile(
-                    _Filter.todo,
-                    LucideIcons.inbox,
-                    'À traiter',
-                    StatusTone.info,
-                  ),
-                  tile(
-                    _Filter.preparing,
-                    LucideIcons.packageOpen,
-                    'En préparation',
-                    StatusTone.warn,
-                  ),
-                  tile(
-                    _Filter.onTheWay,
-                    LucideIcons.truck,
-                    'En route',
-                    StatusTone.warn,
-                  ),
-                  tile(
-                    _Filter.received,
-                    LucideIcons.circleCheck,
-                    'Reçus',
-                    StatusTone.ok,
-                  ),
-                  tile(
-                    _Filter.shortfall,
-                    LucideIcons.triangleAlert,
-                    'Avec écart',
-                    StatusTone.error,
-                  ),
-                  tile(
-                    _Filter.stopped,
-                    LucideIcons.ban,
-                    'Refusés / annulés',
-                    StatusTone.neutral,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-            ],
             OfflineDocumentsNotice(cachedAt: list.cachedAt),
             if (items.isEmpty)
               const AmpereInlineAlert(
@@ -651,6 +644,126 @@ class _TransferCard extends StatelessWidget {
       if (t.lines.length > 3) '+${t.lines.length - 3}',
     ].join(' · ');
     final urgent = t.priority != TransferPriority.normal;
+    final border = shortfall
+        ? colors.error.withValues(alpha: 0.6)
+        : urgent && !stopped && reached < 3
+        ? colors.warn.withValues(alpha: 0.6)
+        : colors.line;
+    final track = Row(
+      children: [
+        for (final (i, step) in const [
+          'Demandé',
+          'Préparé',
+          'Expédié',
+          'Reçu',
+        ].indexed) ...[
+          if (i > 0)
+            Expanded(
+              child: Container(
+                height: 2,
+                color: i <= reached ? colors.ok : colors.line,
+              ),
+            ),
+          _Step(
+            label: step,
+            done: i <= reached,
+            current: i == reached && reached < 3,
+          ),
+        ],
+      ],
+    );
+    final action = switch (next) {
+      (final action, final label, final icon) => FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: colors.ok,
+          foregroundColor: colors.bg,
+          visualDensity: VisualDensity.compact,
+        ),
+        onPressed: () => onNext(action),
+        icon: Icon(icon, size: 16),
+        label: Text(label, maxLines: 1),
+      ),
+      null => null,
+    };
+
+    // Poste (2026-11-10) : le transfert tient sur UNE bande.
+    if (MediaQuery.sizeOf(context).width >= 900) {
+      return Material(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: onTap,
+          child: Container(
+            height: 54,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: border),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  LucideIcons.arrowLeftRight,
+                  size: 17,
+                  color: tone.foreground(colors),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${t.number} · ${t.lines.length} ligne(s)'
+                        '${urgent ? ' · ${t.priority.label.toLowerCase()}' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.bodyStrong.copyWith(
+                          color: colors.ink,
+                        ),
+                      ),
+                      Text(
+                        names,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AmpereType.meta.copyWith(color: colors.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 4,
+                  child: stopped
+                      ? Text(
+                          _progress(t),
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        )
+                      : track,
+                ),
+                const SizedBox(width: 16),
+                SizedBox(
+                  width: 120,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: AmpereBadge(
+                      label: shortfall ? 'Reçue · écart' : t.status.label,
+                      tone: tone,
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 200,
+                  child: Align(alignment: Alignment.centerRight, child: action),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Material(
       color: colors.surface,
@@ -662,13 +775,7 @@ class _TransferCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: shortfall
-                  ? colors.error.withValues(alpha: 0.6)
-                  : urgent && !stopped && reached < 3
-                  ? colors.warn.withValues(alpha: 0.6)
-                  : colors.line,
-            ),
+            border: Border.all(color: border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -707,47 +814,10 @@ class _TransferCard extends StatelessWidget {
                   color: shortfall ? colors.error : colors.ink3,
                 ),
               ),
-              if (!stopped) ...[
+              if (!stopped) ...[const SizedBox(height: 10), track],
+              if (action != null) ...[
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    for (final (i, step) in const [
-                      'Demandé',
-                      'Préparé',
-                      'Expédié',
-                      'Reçu',
-                    ].indexed) ...[
-                      if (i > 0)
-                        Expanded(
-                          child: Container(
-                            height: 2,
-                            color: i <= reached ? colors.ok : colors.line,
-                          ),
-                        ),
-                      _Step(
-                        label: step,
-                        done: i <= reached,
-                        current: i == reached && reached < 3,
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-              if (next case (final action, final label, final icon)?) ...[
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: colors.ok,
-                      foregroundColor: colors.bg,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                    onPressed: () => onNext(action),
-                    icon: Icon(icon, size: 16),
-                    label: Text(label),
-                  ),
-                ),
+                Align(alignment: Alignment.centerRight, child: action),
               ],
             ],
           ),

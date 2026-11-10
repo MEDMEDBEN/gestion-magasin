@@ -62,18 +62,21 @@ class ProductRowActions extends StatelessWidget {
       children: [
         if (onLabel != null && product.isActive)
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Étiquette',
             icon: Icon(LucideIcons.tag, size: 17, color: colors.ink2),
             onPressed: () => onLabel!(product),
           ),
         if (onEdit != null)
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Modifier',
             icon: Icon(LucideIcons.pencil, size: 17, color: colors.ink2),
             onPressed: () => onEdit!(product),
           ),
         if (onDelete != null && product.isActive)
           IconButton(
+            visualDensity: VisualDensity.compact,
             tooltip: 'Supprimer',
             icon: Icon(LucideIcons.trash2, size: 17, color: colors.error),
             onPressed: () => onDelete!(product),

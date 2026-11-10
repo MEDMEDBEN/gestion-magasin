@@ -174,7 +174,8 @@ class AmpereGeometry {
   static const double buttonHeightForm = 40;
 
   // Marges (§4).
-  static const double screenMarginDesktop = 20;
+  // Écran exploité au maximum (2026-11-10).
+  static const double screenMarginDesktop = 12;
   static const double screenMarginMobile = 16;
   static const double cardPaddingDesktop = 16;
   static const double cardPaddingMobile = 14;

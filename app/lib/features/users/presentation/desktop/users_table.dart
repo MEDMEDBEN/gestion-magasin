@@ -114,7 +114,7 @@ class _HeaderRow extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       child: Row(
         children: [
           cell('Compte', _Columns.account),
@@ -152,8 +152,8 @@ class _UserTableRow extends StatelessWidget {
       onTap: onTap,
       borderRadius: 0,
       child: Padding(
-        // Densité « normal » (§6) : py 10, texte 13,5.
-        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        // Densité « compacte » (2026-11-10) : py 4, texte 13,5.
+        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
         child: Row(
           children: [
             Expanded(

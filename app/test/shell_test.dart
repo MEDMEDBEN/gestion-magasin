@@ -308,8 +308,8 @@ void main() {
       expect(find.text('Tableau de bord'), findsNothing);
       expect(find.text('Amine Benali'), findsOneWidget);
 
-      // La barre du haut porte le retour à l'accueil (2026-11-10).
-      await tester.tap(find.text('Accueil'));
+      // Le logo de la barre du haut ramène à l'accueil (2026-11-10).
+      await tester.tap(find.byTooltip('Accueil (Alt+Origine)'));
       await tester.pumpAndSettle();
       expect(find.text('Tableau de bord'), findsOneWidget);
       expect(tester.takeException(), isNull);

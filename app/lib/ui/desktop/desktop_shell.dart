@@ -720,8 +720,7 @@ class _TopBar extends ConsumerWidget {
   final String title;
   final AuthUser user;
 
-  /// Thème blanc « verre » : barre flottante translucide, logo en dégradé,
-  /// le retour à l'accueil passe par l'encoche.
+  /// Thème blanc « verre » : barre flottante translucide, logo en dégradé.
   final bool glass;
 
   /// Retour aux tuiles ; `null` quand on y est déjà.
@@ -741,97 +740,24 @@ class _TopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          if (glass) ...[
-            if (home != null) ...[
-              Tooltip(
-                message: 'Retour à l’accueil (Alt+Origine)',
-                child: FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 34),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                  ),
-                  onPressed: home,
-                  icon: const Icon(LucideIcons.house, size: 16),
-                  label: const Text('Accueil'),
-                ),
-              ),
-              const SizedBox(width: 12),
-            ],
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                gradient: colors.accentGradient,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x40000000),
-                    blurRadius: 14,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Icon(LucideIcons.zap, size: 16, color: colors.onAccent),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'Shino Lighting',
-              style: AmpereType.h4.copyWith(color: colors.ink),
-            ),
-            if (home != null) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(
-                  LucideIcons.chevronRight,
-                  size: 16,
-                  color: colors.ink3,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AmpereType.h4.copyWith(color: colors.ink2),
-                ),
-              ),
-            ],
-          ] else if (home == null) ...[
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: colors.accent,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              // `zap` est le SEUL éclair du système (§5).
-              child: Icon(LucideIcons.zap, size: 16, color: colors.onAccent),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              'Shino Lighting',
-              style: AmpereType.h4.copyWith(color: colors.ink),
-            ),
-          ] else ...[
-            Tooltip(
-              message: 'Retour à l’accueil (Alt+Origine)',
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                onPressed: home,
-                icon: const Icon(LucideIcons.house, size: 16),
-                label: const Text('Accueil'),
+          // Le LOGO est le bouton Accueil (choix MEDMEDBEN du 2026-11-10) :
+          // au survol, l'éclair devient une maison.
+          _HomeLogo(onTap: home),
+          if (home != null) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Icon(
+                LucideIcons.chevronRight,
+                size: 16,
+                color: colors.ink3,
               ),
             ),
-            const SizedBox(width: 14),
             Expanded(
               child: Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: AmpereType.h4.copyWith(color: colors.ink),
+                style: AmpereType.h4.copyWith(color: colors.ink2),
               ),
             ),
           ],
@@ -862,6 +788,68 @@ class _TopBar extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 6, 8, 4),
       child: Glass(radius: 18, child: bar),
+    );
+  }
+}
+
+/// Logo + nom du magasin, qui ramène à l'accueil (`onTap` null : on y est).
+class _HomeLogo extends StatefulWidget {
+  const _HomeLogo({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  State<_HomeLogo> createState() => _HomeLogoState();
+}
+
+class _HomeLogoState extends State<_HomeLogo> {
+  bool _hover = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final active = widget.onTap != null;
+    final house = active && _hover;
+    final logo = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: colors.accentGradient,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 160),
+            child: Icon(
+              // `zap` est le SEUL éclair du système (§5).
+              house ? LucideIcons.house : LucideIcons.zap,
+              key: ValueKey(house),
+              size: 16,
+              color: colors.onAccent,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          'Shino Lighting',
+          style: AmpereType.h4.copyWith(
+            color: house ? colors.accent : colors.ink,
+          ),
+        ),
+      ],
+    );
+    if (!active) return logo;
+    return Tooltip(
+      message: 'Accueil (Alt+Origine)',
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(onTap: widget.onTap, child: logo),
+      ),
     );
   }
 }

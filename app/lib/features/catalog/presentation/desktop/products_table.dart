@@ -142,7 +142,7 @@ class _HeaderRow extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
       child: Row(
         children: [
           cell('Produit', _Columns.name),
@@ -196,7 +196,7 @@ class _ProductRow extends StatelessWidget {
       onTap: selected != null ? onToggle : onTap,
       borderRadius: 0,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Row(
           children: [
             if (selected != null)
@@ -206,7 +206,7 @@ class _ProductRow extends StatelessWidget {
               flex: _Columns.name,
               child: Row(
                 children: [
-                  ProductThumbnail(product: product, size: 38),
+                  ProductThumbnail(product: product, size: 30),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
