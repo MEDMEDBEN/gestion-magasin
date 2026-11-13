@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
+import 'ui/keyboard/keyboard.dart';
 import 'ui/breakpoints.dart';
 import 'ui/theme/app_theme.dart';
 import 'ui/theme/palettes.dart';
@@ -49,7 +50,10 @@ class GestionMagasinApp extends ConsumerWidget {
                 ),
           // Les notifications deviennent des effets animés en haut de
           // l'écran (2026-10-29), plus de barre qui monte du bas.
-          child: FeedbackMessenger(child: child ?? const SizedBox.shrink()),
+          // Clavier : une convention pour toute l'application (2026-11-13).
+          child: KeyboardRoot(
+            child: FeedbackMessenger(child: child ?? const SizedBox.shrink()),
+          ),
         );
       },
       // Thème initial : évite un flash avant que le `builder` n'applique

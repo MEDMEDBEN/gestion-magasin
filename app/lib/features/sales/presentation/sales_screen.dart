@@ -1155,15 +1155,57 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
 
   Widget _wideLayout(List<Product> products, Widget? catalogAlert) {
     final m = widget.margin;
-    // Caisse au clavier : F2 cherche / scanne, F9 encaisse.
+    // Caisse au clavier (touches standard d'un terminal de caisse, liste
+    // complète : F1 — `ui/keyboard/keyboard.dart`).
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.f2): () =>
             _searchFocus.requestFocus(),
+        const SingleActivator(LogicalKeyboardKey.f4): () {
+          if (!ref.read(cartProvider).isEmpty && !_busy) _chooseBuyer();
+        },
+        const SingleActivator(LogicalKeyboardKey.f6): () {
+          final cart = ref.read(cartProvider);
+          if (!cart.isEmpty && cart.quote == null && !_busy) {
+            _globalDiscount(ref.read(cartEstimateProvider));
+          }
+        },
+        const SingleActivator(LogicalKeyboardKey.f7): () {
+          final cart = ref.read(cartProvider);
+          final estimate = ref.read(cartEstimateProvider);
+          if (!cart.isEmpty &&
+              cart.quote == null &&
+              !_busy &&
+              !estimate.blocked) {
+            _makeQuote();
+          }
+        },
         const SingleActivator(LogicalKeyboardKey.f9): _payShortcut,
+        const SingleActivator(LogicalKeyboardKey.delete, control: true):
+            _clearShortcut,
+        // Échap dans la recherche : on l'efface, le curseur y reste.
+        const SingleActivator(LogicalKeyboardKey.escape): () {
+          if (_searchFocus.hasFocus && _search.text.isNotEmpty) {
+            _search.clear();
+            setState(() {});
+          }
+        },
       },
       child: _wideBody(products, catalogAlert, m),
     );
+  }
+
+  /// Ctrl+Suppr : vider le panier — au clavier, on CONFIRME (Entrée / Échap),
+  /// une touche ratée ne doit pas effacer un ticket entier.
+  Future<void> _clearShortcut() async {
+    if (_busy || ref.read(cartProvider).isEmpty) return;
+    final ok = await showAmpereConfirmDialog(
+      context,
+      title: 'Vider le panier ?',
+      body: 'Toutes les lignes du ticket en cours seront retirées.',
+      confirmLabel: 'Vider',
+    );
+    if (ok && mounted) ref.read(cartProvider.notifier).clear();
   }
 
   /// F9 : le même geste que le bouton principal, s'il est actif.
@@ -1776,6 +1818,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     child: _CartAction(
                       icon: LucideIcons.percent,
                       label: cart.discountHt > 0 ? 'Changer remise' : 'Remise',
+                      shortcut: 'F6',
                       color: AmpereColors.of(context).warn,
                       onPressed: _busy ? null : () => _globalDiscount(estimate),
                     ),
@@ -1785,6 +1828,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     child: _CartAction(
                       icon: LucideIcons.fileText,
                       label: 'Devis',
+                      shortcut: 'F7',
                       color: AmpereColors.of(context).info,
                       onPressed: blocked ? null : _makeQuote,
                     ),
@@ -1795,6 +1839,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                   child: _CartAction(
                     icon: LucideIcons.trash2,
                     label: 'Vider',
+                    shortcut: 'Ctrl+Suppr',
                     color: AmpereColors.of(context).error,
                     onPressed: _busy
                         ? null
@@ -1829,6 +1874,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                     ? _PayButton(
                         icon: LucideIcons.userRoundSearch,
                         label: 'Choisir l’acheteur',
+                        shortcut: compact ? null : 'F4',
                         height: compact ? 42 : 52,
                         tone: AmpereColors.of(context).accent,
                         onPressed: cart.isEmpty ? null : _chooseBuyer,
@@ -3134,6 +3180,7 @@ class _CartAction extends StatelessWidget {
     required this.label,
     required this.color,
     required this.onPressed,
+    this.shortcut,
   });
 
   final IconData icon;
@@ -3141,16 +3188,37 @@ class _CartAction extends StatelessWidget {
   final Color color;
   final VoidCallback? onPressed;
 
+  /// Touche du geste, affichée en clair à côté du libellé (« F6 »).
+  final String? shortcut;
+
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
-    style: OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 32),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      textStyle: AmpereType.bodyStrong,
+  Widget build(BuildContext context) => Tooltip(
+    message: shortcut == null ? label : '$label ($shortcut)',
+    child: OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size(0, 32),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        textStyle: AmpereType.bodyStrong,
+      ),
+      onPressed: onPressed,
+      icon: Icon(icon, size: 14, color: onPressed == null ? null : color),
+      label: Text.rich(
+        TextSpan(
+          text: label,
+          children: [
+            if (shortcut != null)
+              TextSpan(
+                text: '  $shortcut',
+                style: AmpereType.meta.copyWith(
+                  color: AmpereColors.of(context).ink3,
+                ),
+              ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
     ),
-    onPressed: onPressed,
-    icon: Icon(icon, size: 14, color: onPressed == null ? null : color),
-    label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
   );
 }
 

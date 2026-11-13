@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:typed_data';
+import 'package:flutter/services.dart';
 
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
@@ -25,6 +25,7 @@ import 'package:gestion_magasin/features/sales/presentation/sales_screen.dart';
 import 'package:gestion_magasin/features/stock/application/stock_controller.dart';
 import 'package:gestion_magasin/features/stock/data/stock_models.dart';
 import 'package:gestion_magasin/ui/navigation.dart';
+import 'package:gestion_magasin/ui/keyboard/keyboard.dart';
 import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
@@ -430,6 +431,8 @@ Future<void> _pumpScreen(
       ],
       child: MaterialApp(
         theme: AppTheme.mobile(dark: true),
+        // Comme l'application : la convention clavier à la racine.
+        builder: (context, child) => KeyboardRoot(child: child!),
         home: Scaffold(body: SalesScreen(user: user ?? _vendeur())),
       ),
     ),
@@ -572,6 +575,58 @@ void main() {
       expect(todaysCash(null, now), isNull);
     },
   );
+
+  // 2026-11-13 : « Rupture » partout — le magasin était cherché par un id
+  // périmé du cache. Le stock du magasin se lit par TYPE de lieu.
+  testWidgets('tuile : stock du magasin lu par type, pas par l’id du cache', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 900));
+    final level = StockLevel(
+      productId: 'p1',
+      locationId: 'magasin-du-serveur',
+      locationType: 'MAGASIN',
+      quantity: Decimal.fromInt(20),
+      reservedQuantity: Decimal.zero,
+      inTransitQuantity: Decimal.zero,
+      availableQuantity: Decimal.fromInt(20),
+    );
+    await _pumpScreen(
+      tester,
+      _FakeSalesApi(cash: _openCash),
+      [],
+      withStore: true, // cache : un AUTRE id de magasin
+      stock: {
+        'p1': ProductStock([level]),
+      },
+    );
+    // La tuile porte la quantité du magasin : 20, pas « Rupture ».
+    expect(find.text('20'), findsOneWidget);
+    expect(find.text('Rupture'), findsNothing);
+  });
+
+  testWidgets('caisse au clavier : Ctrl+Suppr demande, Entrée vide le panier', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(1400, 900));
+    await _pumpScreen(tester, _FakeSalesApi(cash: _openCash), []);
+    await tester.enterText(find.byType(TextField).first, '3245060123458');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(find.text('Câble 3G2,5'), findsWidgets);
+    final lines = find.text('1 pce');
+    expect(lines, findsOneWidget);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pumpAndSettle();
+    expect(find.text('Vider le panier ?'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+    expect(find.text('Vider le panier ?'), findsNothing);
+    expect(find.text('1 pce'), findsNothing);
+  });
 
   testWidgets(
     'douchette → panier → encaissement : produit + quantité, monnaie rendue',

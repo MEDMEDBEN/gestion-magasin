@@ -115,18 +115,23 @@ class FormPanelFrame extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FilledButton(
-                    onPressed: saving ? null : onSubmit,
-                    child: saving
-                        ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: colors.onAccent,
-                            ),
-                          )
-                        : Text(submitLabel),
+                  // Ctrl+S ou Ctrl+Entrée enregistrent ; Entrée passe au
+                  // champ suivant ; Échap ferme (ui/keyboard/keyboard.dart).
+                  Tooltip(
+                    message: 'Ctrl+S',
+                    child: FilledButton(
+                      onPressed: saving ? null : onSubmit,
+                      child: saving
+                          ? SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: colors.onAccent,
+                              ),
+                            )
+                          : Text(submitLabel),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   TextButton(onPressed: close, child: const Text('Annuler')),

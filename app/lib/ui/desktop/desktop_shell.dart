@@ -65,7 +65,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     final settings = entries.indexWhere((d) => d.label == 'Paramètres');
     final profile = entries.indexWhere((d) => d.label == 'Mon profil');
 
-    // Ctrl+K : l'assistant ; Échap : retour à l'accueil.
+    // Ctrl+K : l'assistant ; Alt+Origine : l'accueil ; Alt+1…9 : les
+    // tuiles de l'accueil, dans l'ordre affiché (2026-11-13).
+    final order = launcherOrder(entries);
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): () =>
@@ -73,6 +75,8 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
         if (index != null)
           const SingleActivator(LogicalKeyboardKey.home, alt: true): () =>
               open(null),
+        for (final (n, i) in order.take(9).indexed)
+          SingleActivator(_digits[n], alt: true): () => open(i),
       },
       child: Scaffold(
         body: Stack(
@@ -253,6 +257,30 @@ const _hints = {
   'Mon profil': 'Mot de passe, sessions, thème',
 };
 
+const _digits = [
+  LogicalKeyboardKey.digit1,
+  LogicalKeyboardKey.digit2,
+  LogicalKeyboardKey.digit3,
+  LogicalKeyboardKey.digit4,
+  LogicalKeyboardKey.digit5,
+  LogicalKeyboardKey.digit6,
+  LogicalKeyboardKey.digit7,
+  LogicalKeyboardKey.digit8,
+  LogicalKeyboardKey.digit9,
+];
+
+/// Ordre des tuiles de l'accueil (l'essentiel, puis le reste), sans
+/// l'accueil lui-même : Alt+1 est la 1re tuile, Alt+2 la 2e…
+List<int> launcherOrder(List<AppDestination> entries) {
+  final indexed = [for (final (i, d) in entries.indexed) (i, d)];
+  return [
+    for (final label in _essentials)
+      ...indexed.where((e) => e.$2.label == label).map((e) => e.$1),
+    for (final e in indexed)
+      if (!_essentials.contains(e.$2.label)) e.$1,
+  ].where((i) => entries[i].label != 'Accueil').toList();
+}
+
 /// L'essentiel d'un logiciel de vente, en tête et en grand.
 const _essentials = [
   'Accueil',
@@ -293,8 +321,13 @@ class _Launcher extends ConsumerWidget {
         if (!_essentials.contains(e.$2.label)) e,
     ];
     final profile = entries.indexWhere((d) => d.label == 'Mon profil');
+    final order = launcherOrder(entries);
 
     Widget tile((int, AppDestination) e, {required bool big}) => _Tile(
+      shortcut: switch (order.indexOf(e.$1)) {
+        final n when n >= 0 && n < 9 => 'Alt+${n + 1}',
+        _ => null,
+      },
       icon: e.$2.label == 'Accueil' ? LucideIcons.layoutDashboard : e.$2.icon,
       title: _display(e.$2.label),
       hint: e.$2.sections.isEmpty
@@ -468,8 +501,11 @@ class _Tile extends StatelessWidget {
     required this.prominent,
     required this.onTap,
     this.badge = 0,
+    this.shortcut,
   });
 
+  /// « Alt+3 » : la touche qui ouvre cette tuile.
+  final String? shortcut;
   final IconData icon;
   final String title;
   final String hint;
@@ -507,13 +543,29 @@ class _Tile extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: (big ? AmpereType.h3 : AmpereType.rowTitle).copyWith(
-            color: ink,
-          ),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: (big ? AmpereType.h3 : AmpereType.rowTitle).copyWith(
+                  color: ink,
+                ),
+              ),
+            ),
+            if (shortcut != null) ...[
+              const SizedBox(width: 8),
+              Text(
+                shortcut!,
+                style: AmpereType.meta.copyWith(
+                  color: soft,
+                  fontFeatures: AmpereType.tabular,
+                ),
+              ),
+            ],
+          ],
         ),
         const SizedBox(height: 2),
         Text(

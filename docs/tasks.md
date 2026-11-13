@@ -3901,3 +3901,12 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - Cause : Vente (1er MAGASIN du cache), fiche (dernier), page Stock (map) lisaient le stock magasin par un id d'emplacement du CACHE local ; un id périmé => 0 => « Rupture » alors que le total était juste.
 - Correctif : `GET /stock` renvoie `locationType` ; app : `ProductStock.ofType(type, [repliIds])` = LE calcul unique (Vente tuiles + alertes, fiche Infos produit, page Stock, Catalogue). Test `app/test/product_stock_test.dart`.
 - Catalogue : colonnes Magasin / Dépôt (poste) et « Mag. · Dép. » (mobile) ; « — » pour le dépôt sans `stock.read.warehouse`.
+
+## 2026-11-13 (suite) — Clavier : une convention pour toute l'application
+- `app/lib/ui/keyboard/keyboard.dart` (LA référence, `kShortcuts` = liste affichée par F1), posé une fois par `KeyboardRoot` dans `main.dart` :
+  - Fenêtres : Entrée = bouton principal (dernier bouton PLEIN ou « danger » actif ; jamais « Annuler »), Échap = annuler. Un champ qui a son `onSubmitted` (recherche, montant) garde Entrée ; texte multiligne : retour à la ligne ; bouton/case focalisé : activation native.
+  - Panneaux (`FormPanelFrame`) : Entrée = champ suivant, Ctrl+S / Ctrl+Entrée = enregistrer, Échap = fermer.
+  - Pages : Ctrl+F = champ de recherche (loupe / douchette), Ctrl+N ou Inser = bouton « Nouveau… » (Chrome garde Ctrl+N : Inser au navigateur). `PageShortcuts` pour une page qui veut un autre geste.
+  - Partout : F1 aide, Ctrl+K assistant, Alt+Origine accueil, Alt+1…9 tuiles de l'accueil (touche affichée sur la tuile).
+  - Vente : F2 chercher, F4 acheteur, F6 remise, F7 devis, F9 encaisser, Ctrl+Suppr vider (confirmé), Échap efface la recherche ; touches affichées sur les boutons.
+- Tests : `test/keyboard_test.dart` (5), `test/sales_screen_test.dart` (+2 : Ctrl+Suppr→Entrée ; stock par type). 572 tests OK.
