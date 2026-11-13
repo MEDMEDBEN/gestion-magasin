@@ -9,6 +9,7 @@ import 'package:printing/printing.dart';
 
 import '../data/local/local_settings_store.dart';
 import 'providers.dart';
+import 'router/app_router.dart';
 import 'web_print.dart';
 
 /// Ce qu'on imprime, déduit du FORMAT du PDF (rendu par le serveur selon les
@@ -186,10 +187,28 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
   Future<Uint8List> layout(PdfPageFormat paper) async =>
       label ? fitLabelToPaper(bytes, paper) : bytes;
   if (desktopPrinting) {
-    final url = await savedPrinter(
-      ref.read(localSettingsStoreProvider),
-      kindOf(format),
-    );
+    final store = ref.read(localSettingsStoreProvider);
+    final kind = kindOf(format);
+    var url = await savedPrinter(store, kind);
+    // Première impression de cette sorte de papier sur ce poste : on demande
+    // l'imprimante UNE fois et on la retient (2026-11-13) ; ensuite tout part
+    // directement. Changer : Mon profil → Imprimantes de ce poste.
+    if (url == null) {
+      final context = ref
+          .read(routerProvider)
+          .routerDelegate
+          .navigatorKey
+          .currentContext;
+      if (context != null && context.mounted) {
+        final printer = await Printing.pickPrinter(
+          context: context,
+          title: 'Imprimante pour : ${kind.title} (retenue)',
+        );
+        if (printer == null) return; // annulé : rien n'est imprimé
+        await savePrinter(store, kind, printer.url);
+        url = printer.url;
+      }
+    }
     if (url != null) {
       final done = await Printing.directPrintPdf(
         printer: Printer(url: url),

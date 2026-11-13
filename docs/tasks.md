@@ -3892,3 +3892,7 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - Serveur (`labels.ts`) : marge 2,5 mm => tout le contenu dans 30 × 40 mm au centre de l'étiquette 35 × 45 (encre mesurée à 600 dpi : x 2,5–32,5, y 2,7–41,7 mm). Barres sur 30 mm, la marge sert de zone de silence (Code128 court reste ≥ 0,25 mm/barre).
 - App (`core/pdf_printing.dart`) : cause du débordement sur 2-3 étiquettes = le plugin `printing` (Windows) envoie un DEVMODE sur mesure « vide » que les pilotes d'étiquettes ignorent, puis imprime à 100 %. Désormais, étiquette sur poste = `usePrinterSettings: true` (papier du pilote) + `fitLabelToPaper` : telle quelle si le pilote a 35 × 45 (±1,5 mm), sinon rastérisée à 406 dpi et ajustée (quart de tour si pilote en paysage). Test : `test/pdf_printing_test.dart`.
 - Preuves : jest src/products 11/11, app analyze 0, 563 tests OK. Build Windows bloqué : ATL absent de VS Build Tools 2019 (voir docs/BUILD.md §1.2).
+
+## 2026-11-13 (suite) — Poste : imprimante retenue dès la 1re impression + build Windows
+- `core/pdf_printing.dart` : sur poste, sans imprimante enregistrée pour cette sorte de papier, l'app la demande UNE fois (`Printing.pickPrinter`), la retient, puis imprime directement ; ensuite plus aucune boîte. Changer : Mon profil → Imprimantes de ce poste.
+- Build : ATL installé ; `flutter build windows --release --dart-define-from-file=config/prod.json` OK → `app/build/windows/x64/runner/Release/gestion_magasin.exe`. App : analyze 0, 563 tests OK.
