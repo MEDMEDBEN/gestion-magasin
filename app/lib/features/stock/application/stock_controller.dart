@@ -17,6 +17,18 @@ class ProductStock {
   Quantity get available =>
       levels.fold(Quantity.zero, (sum, level) => sum + level.availableQuantity);
 
+  /// Stock d'un TYPE de lieu (`MAGASIN`, `DEPOT`, `TRANSIT`), tous lieux de
+  /// ce type confondus. LE calcul de toutes les pages (Vente, Catalogue,
+  /// Stock, fiche) : plus d'écart entre elles. `fallbackIds` : lieux de ce
+  /// type selon le cache, pour un serveur qui n'envoie pas encore le type.
+  Quantity ofType(String type, [Set<String?> fallbackIds = const {}]) => levels
+      .where(
+        (level) => level.locationType == null
+            ? fallbackIds.contains(level.locationId)
+            : level.locationType == type,
+      )
+      .fold(Quantity.zero, (sum, level) => sum + level.quantity);
+
   Quantity at(String locationId) => levels
       .where((level) => level.locationId == locationId)
       .fold(Quantity.zero, (sum, level) => sum + level.quantity);

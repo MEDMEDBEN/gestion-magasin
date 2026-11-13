@@ -54,6 +54,8 @@ export class StockExportQueryDto extends IntersectionType(
 export class StockDto {
   @ApiProperty() productId!: string;
   @ApiProperty() locationId!: string;
+  @ApiPropertyOptional({ enum: ['MAGASIN', 'DEPOT', 'TRANSIT', 'EMPLACEMENT'] })
+  locationType?: string;
   @ApiProperty({ example: '80.000' }) quantity!: string;
   @ApiProperty({ example: '10.000' }) reservedQuantity!: string;
   @ApiProperty({ example: '0.000' }) inTransitQuantity!: string;

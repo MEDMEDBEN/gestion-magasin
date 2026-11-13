@@ -22,6 +22,7 @@ class ProductsTable extends StatelessWidget {
     required this.categoryNames,
     required this.onTap,
     this.stock,
+    this.showDepot = true,
     this.defaultTierId,
     this.onEdit,
     this.onDelete,
@@ -29,6 +30,9 @@ class ProductsTable extends StatelessWidget {
     this.selection,
     this.onToggle,
   });
+
+  /// Sans `stock.read.warehouse`, le serveur ne donne pas le dépôt : « — ».
+  final bool showDepot;
 
   /// `null` sans le droit : le bouton n'apparaît pas.
   final void Function(Product product)? onEdit;
@@ -74,6 +78,7 @@ class ProductsTable extends StatelessWidget {
                 child: Column(
                   children: [
                     _HeaderRow(
+                      withStock: stock != null,
                       actions:
                           onEdit != null || onDelete != null || onLabel != null,
                     ),
@@ -87,6 +92,7 @@ class ProductsTable extends StatelessWidget {
                           product: products[i],
                           category: categoryNames[products[i].categoryId],
                           stock: stock,
+                          showDepot: showDepot,
                           defaultTierId: defaultTierId,
                           onTap: () => onTap(products[i]),
                           onEdit: onEdit,
@@ -119,13 +125,15 @@ class _Columns {
   static const barcode = 3;
   static const sale = 2;
   static const cost = 2;
+  static const qty = 2;
   static const status = 3;
 }
 
 class _HeaderRow extends StatelessWidget {
-  const _HeaderRow({required this.actions});
+  const _HeaderRow({required this.actions, required this.withStock});
 
   final bool actions;
+  final bool withStock;
 
   @override
   Widget build(BuildContext context) {
@@ -150,8 +158,12 @@ class _HeaderRow extends StatelessWidget {
           cell('Code-barres', _Columns.barcode),
           cell('Prix vente', _Columns.sale, end: true),
           cell('Prix achat', _Columns.cost, end: true),
+          if (withStock) ...[
+            cell('Magasin', _Columns.qty, end: true),
+            cell('Dépôt', _Columns.qty, end: true),
+          ],
           const SizedBox(width: 16),
-          cell('Stock', _Columns.status),
+          cell('État', _Columns.status),
           if (actions) const SizedBox(width: _actionsWidth),
         ],
       ),
@@ -165,6 +177,7 @@ class _ProductRow extends StatelessWidget {
     required this.category,
     required this.onTap,
     required this.stock,
+    required this.showDepot,
     this.defaultTierId,
     this.onEdit,
     this.onDelete,
@@ -178,6 +191,7 @@ class _ProductRow extends StatelessWidget {
   final VoidCallback onTap;
   final String? defaultTierId;
   final Map<String, ProductStock>? stock;
+  final bool showDepot;
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
   final void Function(Product product)? onLabel;
@@ -278,6 +292,25 @@ class _ProductRow extends StatelessWidget {
                       ),
                 ),
               ),
+            // Quantités par lieu (demande MEDMEDBEN du 2026-11-13).
+            if (stock != null)
+              for (final type in ['MAGASIN', 'DEPOT'])
+                Expanded(
+                  flex: _Columns.qty,
+                  child: Text(
+                    type == 'DEPOT' && !showDepot
+                        ? '—'
+                        : '${formatQuantity((stock![product.id] ?? const ProductStock([])).ofType(type))} '
+                              '${product.unit.short}',
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AmpereType.bodyStrong.copyWith(
+                      color: type == 'MAGASIN' ? colors.ink : colors.ink2,
+                      fontFeatures: AmpereType.tabular,
+                    ),
+                  ),
+                ),
             const SizedBox(width: 16),
             Expanded(
               flex: _Columns.status,

@@ -789,16 +789,13 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   /// ou sans le droit (rien n'est alors affirmé : le serveur jugera).
   ({Quantity store, Quantity depot})? _stockOf(Product product) {
     final stock = ref.read(stockByProductProvider).value;
+    if (stock == null) return null;
     final locations = ref.read(locationsProvider).value ?? const [];
-    if (stock == null || !locations.any((l) => l.type == 'MAGASIN')) {
-      return null;
-    }
-    Quantity at(String type) => locations
-        .where((l) => l.type == type)
-        .fold(
-          Quantity.zero,
-          (sum, l) => sum + (stock[product.id]?.at(l.id) ?? Quantity.zero),
-        );
+    final levels = stock[product.id] ?? const ProductStock([]);
+    Quantity at(String type) => levels.ofType(type, {
+      for (final l in locations)
+        if (l.type == type) l.id,
+    });
     return (store: at('MAGASIN'), depot: at('DEPOT'));
   }
 
@@ -2154,12 +2151,13 @@ class _ProductGrid extends ConsumerWidget {
     // Stock du MAGASIN (lu en ligne) : la couleur de la tuile dit s'il y en a.
     // Inconnu (hors ligne) : pas de couleur, jamais un état inventé.
     final stock = ref.watch(stockByProductProvider).value;
-    final store = (ref.watch(locationsProvider).value ?? const [])
-        .where((l) => l.type == 'MAGASIN')
-        .firstOrNull;
-    Quantity? atStore(Product p) => stock == null || store == null
+    final storeIds = <String?>{
+      for (final l in ref.watch(locationsProvider).value ?? const [])
+        if (l.type == 'MAGASIN') l.id,
+    };
+    Quantity? atStore(Product p) => stock == null
         ? null
-        : stock[p.id]?.at(store.id) ?? Quantity.zero;
+        : stock[p.id]?.ofType('MAGASIN', storeIds) ?? Quantity.zero;
     final found = query.trim().isEmpty
         ? products
         : _searchProducts(products, query);

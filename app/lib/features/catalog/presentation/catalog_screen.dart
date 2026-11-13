@@ -303,6 +303,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
               isDesktop: isDesktop,
               canCreate: rights.canWriteProducts,
               canReadStock: rights.canReadStock,
+              canReadDepot: widget.user.can('stock.read.warehouse'),
               syncing: sync.isLoading,
               onOpen: (p) => _openProduct(rights, p),
               onEdit: rights.canWriteProducts
@@ -360,6 +361,7 @@ class _ProductsSection extends ConsumerWidget {
     required this.isDesktop,
     required this.canCreate,
     required this.canReadStock,
+    required this.canReadDepot,
     required this.syncing,
     required this.onOpen,
     this.onEdit,
@@ -379,6 +381,7 @@ class _ProductsSection extends ConsumerWidget {
 
   /// Le stock est lu en ligne ; sans ce droit (ou hors ligne), aucun état affiché.
   final bool canReadStock;
+  final bool canReadDepot;
   final bool syncing;
   final void Function(Product? product) onOpen;
 
@@ -667,6 +670,7 @@ class _ProductsSection extends ConsumerWidget {
                       products: items,
                       categoryNames: categoryNames,
                       stock: stock,
+                      showDepot: canReadDepot,
                       onTap: onOpen,
                       onEdit: onEdit,
                       onDelete: onDelete,
@@ -679,6 +683,7 @@ class _ProductsSection extends ConsumerWidget {
                       products: items,
                       categoryNames: categoryNames,
                       stock: stock,
+                      showDepot: canReadDepot,
                       onTap: onOpen,
                       onEdit: onEdit,
                       onDelete: onDelete,

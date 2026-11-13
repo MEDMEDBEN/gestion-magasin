@@ -14,6 +14,10 @@ abstract class StockLevel with _$StockLevel {
   const factory StockLevel({
     required String productId,
     required String locationId,
+
+    /// `MAGASIN`, `DEPOT`, `TRANSIT`… — donné par le serveur (2026-11-13) :
+    /// « stock au magasin » se lit par TYPE, jamais par un id du cache local.
+    String? locationType,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
     required Quantity quantity,
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)

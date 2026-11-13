@@ -555,9 +555,8 @@ class _LevelRow extends StatelessWidget {
       StockState.inStock => null,
     };
 
-    String at(String type) => locationIds[type] == null
-        ? '0'
-        : formatQuantity(stock.at(locationIds[type]!));
+    String at(String type) =>
+        formatQuantity(stock.ofType(type, {locationIds[type]}));
 
     final figures = [
       ('Magasin', at('MAGASIN')),

@@ -156,6 +156,7 @@ export class StockService {
     const [rows, total] = await Promise.all([
       this.prisma.stock.findMany({
         where,
+        include: { location: { select: { type: true } } },
         skip: (query.page - 1) * query.limit,
         take: query.limit,
         orderBy: [orderBy, { id: 'asc' }],
@@ -163,7 +164,7 @@ export class StockService {
       this.prisma.stock.count({ where }),
     ]);
     return {
-      data: rows.map(StockService.stockToDto),
+      data: rows.map((row) => StockService.stockToDto(row, row.location.type)),
       meta: { page: query.page, limit: query.limit, total },
     };
   }
@@ -528,10 +529,14 @@ export class StockService {
       : { location: { type: 'MAGASIN' as const } };
   }
 
-  static stockToDto(stock: Stock) {
+  /// `locationType` : le client lit « stock au magasin / au dépôt » par TYPE,
+  /// sans dépendre des emplacements de son cache (2026-11-13 : un id périmé y
+  /// faisait afficher « Rupture » partout en Vente).
+  static stockToDto(stock: Stock, locationType?: string) {
     return {
       productId: stock.productId,
       locationId: stock.locationId,
+      ...(locationType && { locationType }),
       quantity: formatQuantity(stock.quantity),
       reservedQuantity: formatQuantity(stock.reservedQuantity),
       inTransitQuantity: formatQuantity(stock.inTransitQuantity),

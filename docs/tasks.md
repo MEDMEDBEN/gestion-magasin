@@ -3896,3 +3896,8 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 ## 2026-11-13 (suite) — Poste : imprimante retenue dès la 1re impression + build Windows
 - `core/pdf_printing.dart` : sur poste, sans imprimante enregistrée pour cette sorte de papier, l'app la demande UNE fois (`Printing.pickPrinter`), la retient, puis imprime directement ; ensuite plus aucune boîte. Changer : Mon profil → Imprimantes de ce poste.
 - Build : ATL installé ; `flutter build windows --release --dart-define-from-file=config/prod.json` OK → `app/build/windows/x64/runner/Release/gestion_magasin.exe`. App : analyze 0, 563 tests OK.
+
+## 2026-11-13 (suite) — « Rupture » en Vente : stock lu par TYPE de lieu ; quantités au Catalogue
+- Cause : Vente (1er MAGASIN du cache), fiche (dernier), page Stock (map) lisaient le stock magasin par un id d'emplacement du CACHE local ; un id périmé => 0 => « Rupture » alors que le total était juste.
+- Correctif : `GET /stock` renvoie `locationType` ; app : `ProductStock.ofType(type, [repliIds])` = LE calcul unique (Vente tuiles + alertes, fiche Infos produit, page Stock, Catalogue). Test `app/test/product_stock_test.dart`.
+- Catalogue : colonnes Magasin / Dépôt (poste) et « Mag. · Dép. » (mobile) ; « — » pour le dépôt sans `stock.read.warehouse`.

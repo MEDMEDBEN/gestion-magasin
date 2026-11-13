@@ -109,15 +109,17 @@ class ProductInfoPanel extends ConsumerWidget {
     // Stock par lieu (magasin, dépôt), lu en ligne ; hors ligne : inconnu.
     final levels = stock.value?[product.id];
     final stockRows = [
-      for (final l in locations.where(
-        (l) => l.isActive && (l.type == 'MAGASIN' || l.type == 'DEPOT'),
-      ))
+      for (final (type, icon, label) in [
+        ('MAGASIN', LucideIcons.store, 'Stock Magasin'),
+        ('DEPOT', LucideIcons.warehouse, 'Stock Dépôt'),
+      ])
         row(
-          l.type == 'MAGASIN' ? LucideIcons.store : LucideIcons.warehouse,
-          'Stock ${l.name}',
-          levels == null && stock.value == null
+          icon,
+          label,
+          stock.value == null
               ? (stock.isLoading ? '…' : 'Hors ligne')
-              : '${formatQuantity(levels?.at(l.id) ?? Quantity.zero)} $unit',
+              : '${formatQuantity(levels?.ofType(type, {for (final l in locations)
+                      if (l.type == type) l.id}) ?? Quantity.zero)} $unit',
         ),
     ];
 

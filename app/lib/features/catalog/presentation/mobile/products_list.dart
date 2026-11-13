@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../ui/widgets/page_kit.dart';
 
+import '../../../../core/quantity.dart';
 import '../../../../core/money.dart';
 import '../../../../ui/theme/ampere_colors.dart';
 import '../../../../ui/theme/ampere_typography.dart';
@@ -25,6 +26,7 @@ class ProductsList extends StatelessWidget {
     required this.onRefresh,
     this.defaultTierId,
     this.stock,
+    this.showDepot = true,
     this.onEdit,
     this.onDelete,
     this.onLabel,
@@ -43,6 +45,9 @@ class ProductsList extends StatelessWidget {
 
   /// Stock par produit — `null` si non chargé ou non autorisé.
   final Map<String, ProductStock>? stock;
+
+  /// Sans `stock.read.warehouse`, le serveur ne donne pas le dépôt : « — ».
+  final bool showDepot;
   final List<Product> products;
   final Map<String, String> categoryNames;
   final void Function(Product product) onTap;
@@ -71,6 +76,7 @@ class ProductsList extends StatelessWidget {
           product: products[i],
           category: categoryNames[products[i].categoryId],
           stock: stock,
+          showDepot: showDepot,
           defaultTierId: defaultTierId,
           onTap: () => onTap(products[i]),
           onEdit: onEdit,
@@ -91,6 +97,7 @@ class _ProductRow extends StatelessWidget {
     required this.category,
     required this.onTap,
     required this.stock,
+    required this.showDepot,
     this.onEdit,
     this.onDelete,
     this.onLabel,
@@ -103,6 +110,7 @@ class _ProductRow extends StatelessWidget {
   final String? category;
   final VoidCallback onTap;
   final Map<String, ProductStock>? stock;
+  final bool showDepot;
   final void Function(Product product)? onEdit;
   final void Function(Product product)? onDelete;
   final void Function(Product product)? onLabel;
@@ -188,11 +196,22 @@ class _ProductRow extends StatelessWidget {
                             label: 'Inactif',
                             tone: StatusTone.warn,
                           )
-                        else if (stock != null)
+                        else if (stock != null) ...[
                           StockStatusBadge(
                             product: product,
                             stock: stock![product.id],
                           ),
+                          // Quantités par lieu (2026-11-13).
+                          Text(
+                            'Mag. ${formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('MAGASIN'))}'
+                            ' · Dép. ${showDepot ? formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('DEPOT')) : '—'}'
+                            ' ${product.unit.short}',
+                            style: AmpereType.meta.copyWith(
+                              color: colors.ink2,
+                              fontFeatures: AmpereType.tabular,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
