@@ -32,7 +32,7 @@ class _IdleSync extends CatalogSyncController {
 /// Écritures branchées sur le faux client, sans base locale (les flux Drift ne
 /// se résolvent pas dans le temps simulé de `testWidgets`).
 class _ApiOnlyActions extends CatalogActions {
-  _ApiOnlyActions(this.api, CatalogRepository unused) : super(api, unused);
+  _ApiOnlyActions(this.api, CatalogRepository unused) : super(api, unused, () {});
 
   final RecordingCatalogApi api;
 

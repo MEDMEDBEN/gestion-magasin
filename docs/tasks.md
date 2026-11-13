@@ -3876,3 +3876,9 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
   propres ajustements. À confirmer (contre-audit sécurité, point 4).
 - **`CONVENTIONS.md` réécrit le 2026-09-11** (structure Flutter : `data/` dans la feature,
   `presentation/{desktop,mobile}`, `lib/data` = infrastructure partagée) : à valider par MEDMEDBEN.
+
+## 2026-11-13 — Stock « Rupture » partout après changement de VPS (corrigé)
+- Cause 1 : le catalogue local (Drift) n'était jamais purgé. Après le passage sur une nouvelle base, l'app gardait les ANCIENS emplacements (Magasin/Dépôt, anciens ids) et lisait le stock à l'ancien id => 0 => « Rupture ».
+  Correctif : le curseur `/products/changes` porte `ds` (id du plus ancien emplacement = identité de la base) ; curseur d'une autre base ou sans `ds` => `reset: true`, l'app efface `catalogEntries` avant d'enregistrer la page (`catalog_repository.dart`). Test : `backend/src/products/catalog-reset.spec.ts`, `app/test/catalog_repository_test.dart`.
+- Cause 2 : créer un produit avec stock initial ne relisait pas `stockByProductProvider` (Vente restée ouverte => « Rupture »). `CatalogActions.saveProduct` l'invalide maintenant.
+- Preuves : backend tsc OK + spec 3/3 ; app analyze 0 issue, 562 tests OK.

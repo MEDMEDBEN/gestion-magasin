@@ -8,6 +8,7 @@ import '../../../core/providers.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../data/catalog_repository.dart';
+import '../../stock/application/stock_controller.dart';
 
 /// Mise à jour du catalogue local depuis le serveur (delta).
 ///
@@ -237,10 +238,14 @@ final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
 /// aucune n'est créée hors-ligne). La réponse du serveur est enregistrée
 /// localement tout de suite : l'écran n'attend pas le prochain delta.
 class CatalogActions {
-  CatalogActions(this._api, this._repository);
+  CatalogActions(this._api, this._repository, this._onStockChanged);
 
   final CatalogApi _api;
   final CatalogRepository _repository;
+
+  /// Un produit créé avec son stock initial : les niveaux affichés (Vente,
+  /// Stock) sont relus, sinon il resterait « Rupture » jusqu'au rechargement.
+  final void Function() _onStockChanged;
 
   /// `photo` : nouvelle photo (déjà compressée) ; `removePhoto` : la retirer.
   /// La photo part APRÈS l'enregistrement du produit (il faut son id).
@@ -279,6 +284,7 @@ class CatalogActions {
       throw StateError('saveProduct appelé sans aucun changement');
     }
     await _repository.saveAll(products: [product]);
+    if (fields.containsKey('initialStock')) _onStockChanged();
     if (photoError != null) throw PhotoNotSaved(product, photoError);
     return product;
   }
@@ -310,6 +316,7 @@ final catalogActionsProvider = Provider<CatalogActions>(
   (ref) => CatalogActions(
     ref.watch(catalogApiProvider),
     ref.watch(catalogRepositoryProvider),
+    () => ref.invalidate(stockByProductProvider),
   ),
 );
 

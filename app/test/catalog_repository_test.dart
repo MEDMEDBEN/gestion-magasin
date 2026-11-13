@@ -34,7 +34,9 @@ CatalogChanges _page(
   List<Product> products = const [],
   List<ProductCategory> categories = const [],
   bool hasMore = false,
+  bool reset = false,
 }) => CatalogChanges(
+  reset: reset,
   products: products,
   categories: categories,
   locations: const [],
@@ -76,6 +78,21 @@ void main() {
 
       await repo.pull();
       expect(api.cursors.last, 'c2');
+    },
+  );
+
+  test(
+    "changement de serveur (reset) : l'ancien catalogue local est effacé",
+    () async {
+      final api = _PagedApi([
+        _page('c1', products: [product(id: 'ancien')]),
+        _page('c2', products: [product(id: 'nouveau')], reset: true),
+      ]);
+      final repo = CatalogRepository(db, settings, api);
+
+      await repo.pull();
+      await repo.pull();
+      expect((await repo.watchProducts().first).map((p) => p.id), ['nouveau']);
     },
   );
 

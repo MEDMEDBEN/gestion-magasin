@@ -44,4 +44,9 @@ export class CatalogChangesDto {
     description: 'Vrai : rappeler immédiatement avec le nouveau curseur',
   })
   hasMore!: boolean;
+  @ApiProperty({
+    description:
+      'Vrai : le curseur venait d’une autre base — effacer le catalogue local avant d’enregistrer cette page',
+  })
+  reset!: boolean;
 }

@@ -39,6 +39,9 @@ class CatalogRepository {
     while (true) {
       final page = await _api.changes(cursor: cursor);
       await _db.transaction(() async {
+        // Autre base (changement de serveur) : les anciens produits et
+        // emplacements n'existent plus là-bas — ils ne doivent plus s'afficher.
+        if (page.reset) await _db.delete(_db.catalogEntries).go();
         await saveAll(
           products: page.products,
           categories: page.categories,

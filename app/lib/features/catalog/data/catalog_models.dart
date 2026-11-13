@@ -206,6 +206,10 @@ abstract class CatalogChanges with _$CatalogChanges {
     required List<TaxRate> taxRates,
     required String cursor,
     required bool hasMore,
+
+    /// Le curseur venait d'une AUTRE base (nouveau serveur) : le catalogue
+    /// local est effacé avant d'enregistrer cette page.
+    @Default(false) bool reset,
   }) = _CatalogChanges;
 
   factory CatalogChanges.fromJson(Map<String, dynamic> json) =>

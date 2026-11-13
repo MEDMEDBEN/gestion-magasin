@@ -32,7 +32,11 @@ export const CATALOG_SETTLE_MS = 5_000;
 type Cursor = [string, string]; // [updatedAt ISO, id]
 type CatalogCursor = Partial<
   Record<'products' | 'categories' | 'locations' | 'taxRates', Cursor>
->;
+> & {
+  /// Identité de la base qui a émis le curseur : une autre base (nouveau
+  /// serveur, base remise à zéro) => le client repart de zéro (`reset`).
+  ds?: string;
+};
 
 @Injectable()
 export class CatalogService {
@@ -181,7 +185,13 @@ export class CatalogService {
     query: CatalogChangesQueryDto,
     viewer: Pick<AuthenticatedUser, 'permissions'>,
   ): Promise<CatalogChangesDto> {
-    const cursor = CatalogService.decodeCursor(query.cursor);
+    let cursor = CatalogService.decodeCursor(query.cursor);
+    const dataset = await this.datasetId();
+    // Curseur d'une AUTRE base (ou d'avant ce marquage) : son cache local
+    // contient des ids qui n'existent pas ici — tout redescendre.
+    const reset = query.cursor !== undefined && cursor.ds !== dataset;
+    if (reset) cursor = {};
+    cursor.ds = dataset;
     const settledBefore = new Date(Date.now() - CATALOG_SETTLE_MS);
     const take = query.limit + 1;
 
@@ -212,7 +222,7 @@ export class CatalogService {
     let hasMore = false;
     const page = <T extends { updatedAt: Date; id: string }>(
       rows: T[],
-      key: keyof CatalogCursor,
+      key: Exclude<keyof CatalogCursor, 'ds'>,
     ): T[] => {
       if (rows.length > query.limit) {
         hasMore = true;
@@ -234,7 +244,18 @@ export class CatalogService {
       taxRates: page(taxRates, 'taxRates').map(CatalogService.taxRateToDto),
       cursor: Buffer.from(JSON.stringify(cursor)).toString('base64url'),
       hasMore,
+      reset,
     };
+  }
+
+  /// Le plus ancien emplacement (le magasin du seed) : fixe pour une base,
+  /// différent sur une autre.
+  private async datasetId(): Promise<string> {
+    const first = await this.prisma.location.findFirst({
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true },
+    });
+    return first?.id ?? 'vide';
   }
 
   private static decodeCursor(raw: string | undefined): CatalogCursor {
@@ -252,6 +273,8 @@ export class CatalogService {
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
       throw invalid;
     const cursor: CatalogCursor = {};
+    const ds = (parsed as Record<string, unknown>).ds;
+    if (typeof ds === 'string') cursor.ds = ds;
     for (const key of [
       'products',
       'categories',
