@@ -3910,3 +3910,7 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
   - Partout : F1 aide, Ctrl+K assistant, Alt+Origine accueil, Alt+1…9 tuiles de l'accueil (touche affichée sur la tuile).
   - Vente : F2 chercher, F4 acheteur, F6 remise, F7 devis, F9 encaisser, Ctrl+Suppr vider (confirmé), Échap efface la recherche ; touches affichées sur les boutons.
 - Tests : `test/keyboard_test.dart` (5), `test/sales_screen_test.dart` (+2 : Ctrl+Suppr→Entrée ; stock par type). 572 tests OK.
+
+## 2026-11-13 (suite) — Installateur Windows (Inno Setup)
+- `installer/gestion_magasin.iss` + `installer/build-installer.ps1` : build Flutter (prod.json), télécharge `vc_redist.x64.exe` (lien Microsoft) dans `installer/redist/`, compile → `installer/Output/ShinoLighting-Setup-<version>.exe` (version = pubspec). `redist/` et `Output/` ignorés par git.
+- L'installateur : Program Files (admin), runtime Visual C++ 2015-2022 x64 installé en silence s'il manque (clé registre VC\Runtimes\x64 ≥ 14.30), raccourcis menu Démarrer + Bureau (option), désinstallation propre, AppId fixe (mise à jour par-dessus). Compilation vérifiée (Inno Setup 6.7.3). Installation réelle sur un PC vierge : NON testée ici.
