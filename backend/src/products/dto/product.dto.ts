@@ -26,7 +26,6 @@ import {
   IsCanonicalUuid,
   IsOptionalNotNull,
 } from '../../common/validation';
-import { LABEL_FORMATS, type LabelFormat } from '../labels';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 /// Unités PROPOSÉES à la saisie (décision MEDMEDBEN du 2026-10-05). Les autres
@@ -511,12 +510,12 @@ export class ProductsExportDto {
 
 /// Étiquettes à imprimer (spec §8ter) : nom, prix TTC, code-barres.
 export class LabelsDto {
-  @ApiProperty({
-    enum: LABEL_FORMATS,
-    description: 'A4 = planche de 24 (70 × 37 mm) ; ROULEAU = 50 × 30 mm.',
-  })
-  @IsIn(LABEL_FORMATS)
-  format!: LabelFormat;
+  /// Ignoré depuis le 2026-11-13 : une seule étiquette, 35 × 45 mm portrait.
+  /// Encore accepté pour les applications pas encore mises à jour.
+  @ApiPropertyOptional({ enum: ['A4', 'ROULEAU'], deprecated: true })
+  @IsIn(['A4', 'ROULEAU'])
+  @IsOptional()
+  format?: string;
 
   @ApiPropertyOptional({
     description:

@@ -32,7 +32,8 @@ class _IdleSync extends CatalogSyncController {
 /// Écritures branchées sur le faux client, sans base locale (les flux Drift ne
 /// se résolvent pas dans le temps simulé de `testWidgets`).
 class _ApiOnlyActions extends CatalogActions {
-  _ApiOnlyActions(this.api, CatalogRepository unused) : super(api, unused, () {});
+  _ApiOnlyActions(this.api, CatalogRepository unused)
+    : super(api, unused, () {});
 
   final RecordingCatalogApi api;
 
@@ -173,13 +174,13 @@ void main() {
       await tester.tap(find.text('Étiquettes'));
       await tester.pumpAndSettle();
       expect(find.text('Étiquettes — 2 produit(s)'), findsOneWidget);
-      await tester.tap(find.text('Rouleau'));
+      // Support FIXE (2026-11-13) : plus de choix A4 / rouleau.
+      expect(find.text('Planche A4'), findsNothing);
       await tester.enterText(find.byType(TextField).last, '3');
       await tester.tap(find.text('Imprimer'));
       await tester.pumpAndSettle();
 
-      final (format, items) = api.labelCalls.single;
-      expect(format, 'ROULEAU');
+      final items = api.labelCalls.single;
       expect(items.map((i) => (i.productId, i.copies)), [('p1', 3), ('p2', 3)]);
       expect(printed, ['etiquettes.pdf']);
     },
@@ -212,7 +213,7 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '2');
     await tester.tap(find.text('Imprimer'));
     await tester.pumpAndSettle();
-    expect(api.labelCalls.single.$2.map((i) => (i.productId, i.copies)), [
+    expect(api.labelCalls.single.map((i) => (i.productId, i.copies)), [
       ('p1', 2),
     ]);
   });
@@ -328,7 +329,7 @@ void main() {
     expect(find.text('Étiquettes — 1 produit(s)'), findsOneWidget);
     await tester.tap(find.text('Imprimer'));
     await tester.pumpAndSettle();
-    expect(api.labelCalls.single.$2.map((i) => i.productId), ['p2']);
+    expect(api.labelCalls.single.map((i) => i.productId), ['p2']);
   });
 
   testWidgets('sélection : cocher des produits, étiquettes de la sélection', (
@@ -362,7 +363,7 @@ void main() {
     expect(find.text('Étiquettes — 2 produit(s)'), findsOneWidget);
     await tester.tap(find.text('Imprimer'));
     await tester.pumpAndSettle();
-    expect(api.labelCalls.single.$2.map((i) => i.productId), ['p1', 'p3']);
+    expect(api.labelCalls.single.map((i) => i.productId), ['p1', 'p3']);
 
     await tester.tap(find.text('Tout sélectionner'));
     await tester.pumpAndSettle();

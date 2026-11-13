@@ -108,17 +108,15 @@ class CatalogApi {
     });
   }
 
-  /// Étiquettes (PDF rendu serveur) : `format` = `A4` ou `ROULEAU`. Prix
-  /// unitaire TTC du tarif par défaut.
+  /// Étiquettes (PDF rendu serveur) : TOUJOURS 35 × 45 mm portrait (décision
+  /// MEDMEDBEN du 2026-11-13). Prix unitaire TTC du tarif par défaut.
   Future<Uint8List> labels({
-    required String format,
     required List<({String productId, int copies})> items,
   }) async {
     final response = await guardBytes(
       () => _dio.post<List<int>>(
         '/products/labels',
         data: {
-          'format': format,
           'items': [
             for (final item in items)
               {'productId': item.productId, 'copies': item.copies},

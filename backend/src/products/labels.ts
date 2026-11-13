@@ -11,10 +11,8 @@ import {
 } from '../common/pdf/pdf';
 
 /// Étiquettes à coller sur les produits exposés (spec §8ter), par le moteur PDF
-/// unique. Deux supports : planche A4 pour l'imprimante de bureau, rouleau pour
-/// l'imprimante thermique.
-export const LABEL_FORMATS = ['A4', 'ROULEAU'] as const;
-export type LabelFormat = (typeof LABEL_FORMATS)[number];
+/// unique. UN seul support (décision MEDMEDBEN du 2026-11-13) : l'étiquette
+/// 35 × 45 mm en PORTRAIT de l'imprimante d'étiquettes, partout (poste, web).
 
 export interface Label {
   name: string;
@@ -47,25 +45,11 @@ export function labelFor(
 
 const MM = 72 / 25.4;
 
-/// Planche « 24 étiquettes » 70 × 37 mm sans marge, la plus courante en
-/// papeterie. Le ROULEAU, lui, prend la taille réglée dans Paramètres
-/// (décision MEDMEDBEN du 2026-10-12 : l'étiquette de SON imprimante).
-const SHEET = { cols: 3, rows: 8, width: 70 * MM, height: 37.125 * MM };
-
-/// Taille d'une étiquette en rouleau, en millimètres (Paramètres).
-export interface RollSize {
-  widthMm: number;
-  heightMm: number;
-}
-
-export const DEFAULT_ROLL: RollSize = { widthMm: 50, heightMm: 30 };
+/// L'étiquette du magasin : 35 mm de large, 45 mm de haut (portrait).
+export const LABEL = { width: 35 * MM, height: 45 * MM };
 
 /// Pixels par barre élémentaire dans les images de `barcodePng` (`scale: 6`).
 const PX_PER_MODULE = 6;
-
-/// Barre élémentaire visée (mm) : assez large pour l'appareil photo d'un
-/// téléphone (2026-11-07) ; plus petite seulement si l'étiquette l'impose.
-const TARGET_MODULE_MM = 0.4;
 
 /// En dessous, une douchette ordinaire ne lit plus le code (barres trop fines).
 export const MIN_MODULE_MM = 0.25;
@@ -90,13 +74,7 @@ export function moduleWidthMm(
   return barsWidth(label.width) / modules / MM;
 }
 
-export async function renderLabels(
-  labels: Label[],
-  format: LabelFormat,
-  roll: RollSize = DEFAULT_ROLL,
-): Promise<Buffer> {
-  const ROLL = { width: roll.widthMm * MM, height: roll.heightMm * MM };
-  const size = format === 'A4' ? SHEET : ROLL;
+export async function renderLabels(labels: Label[]): Promise<Buffer> {
   // Une image par code, même imprimé plusieurs fois.
   const images = new Map<string, Buffer>();
   for (const label of labels) {
@@ -109,144 +87,89 @@ export async function renderLabels(
   const unreadable = labels.filter(
     (label, i, all) =>
       all.findIndex((l) => l.barcode === label.barcode) === i &&
-      moduleWidthMm(images.get(label.barcode)!, size) < MIN_MODULE_MM,
+      moduleWidthMm(images.get(label.barcode)!, LABEL) < MIN_MODULE_MM,
   );
   if (unreadable.length > 0) {
     throw new BusinessException(
       ErrorCode.VALIDATION_FAILED,
-      `Code-barres trop long pour être lu sur ${format === 'A4' ? 'la planche A4' : 'le rouleau'} : ` +
+      'Code-barres trop long pour être lu sur l’étiquette 35 × 45 mm : ' +
         unreadable
           .slice(0, 5)
           .map((l) => `${l.name} (${l.barcode})`)
-          .join(', ') +
-        (format === 'ROULEAU' ? ' — essayez la planche A4' : ''),
+          .join(', '),
       HttpStatus.UNPROCESSABLE_ENTITY,
     );
   }
-  const perSheet = SHEET.cols * SHEET.rows;
-  return renderPdf(
-    format === 'A4'
-      ? { size: 'A4', margin: 0 }
-      : { size: [ROLL.width, ROLL.height], margin: 0 },
-    (doc) => {
-      // Chaque image est OUVERTE une seule fois par document : pdfkit ne met
-      // en cache que les images passées par un chemin, jamais un tampon — sans
-      // cela, 1 000 étiquettes du même produit décodaient et embarquaient 1 000
-      // fois la même image (~20 s de serveur bloqué, 23 Mo ; audit sécurité).
-      const opened = new Map(
-        [...images].map(([code, png]) => [code, openImage(doc, png)]),
-      );
-      labels.forEach((label, i) => {
-        const image = opened.get(label.barcode)!;
-        const modules =
-          images.get(label.barcode)!.readUInt32BE(16) / PX_PER_MODULE;
-        if (format === 'A4') {
-          const slot = i % perSheet;
-          if (i > 0 && slot === 0) doc.addPage({ size: 'A4', margin: 0 });
-          drawLabel(
-            doc,
-            label,
-            image,
-            modules,
-            (slot % SHEET.cols) * SHEET.width,
-            Math.floor(slot / SHEET.cols) * SHEET.height,
-            SHEET.width,
-            SHEET.height,
-          );
-        } else {
-          if (i > 0) {
-            doc.addPage({ size: [ROLL.width, ROLL.height], margin: 0 });
-          }
-          drawLabel(doc, label, image, modules, 0, 0, ROLL.width, ROLL.height);
-        }
-      });
-    },
-  );
+  const page = { size: [LABEL.width, LABEL.height], margin: 0 };
+  return renderPdf(page, (doc) => {
+    // Chaque image est OUVERTE une seule fois par document : pdfkit ne met
+    // en cache que les images passées par un chemin, jamais un tampon — sans
+    // cela, 1 000 étiquettes du même produit décodaient et embarquaient 1 000
+    // fois la même image (~20 s de serveur bloqué, 23 Mo ; audit sécurité).
+    const opened = new Map(
+      [...images].map(([code, png]) => [code, openImage(doc, png)]),
+    );
+    labels.forEach((label, i) => {
+      if (i > 0) doc.addPage(page);
+      drawLabel(doc, label, opened.get(label.barcode)!);
+    });
+  });
 }
 
-/// Une étiquette, mise en page selon SA taille (de 20 × 15 à 150 × 150 mm) :
-/// nom (2 lignes au plus), prix en gros, référence, puis en bas le
-/// code-barres sur toute la largeur et son code en clair, séparé des barres.
-function drawLabel(
-  doc: PdfDoc,
-  label: Label,
-  barcode: PDFKit.Mixins.ImageSrc,
-  /// Nombre de barres élémentaires du code (largeur de l'image / px par barre).
-  modules: number,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-) {
+/// Une étiquette 35 × 45 : en haut le NOM (2 lignes au plus) puis le PRIX en
+/// gros, centrés ; dessous, le code-barres sur toute la largeur utile, grand
+/// et centré, et son code en clair.
+function drawLabel(doc: PdfDoc, label: Label, barcode: PDFKit.Mixins.ImageSrc) {
+  const { width, height } = LABEL;
   const inner = width - 2 * PAD;
-  const hMm = height / MM;
-  const clamp = (v: number, lo: number, hi: number) =>
-    Math.min(hi, Math.max(lo, v));
-  const nameSize = clamp(hMm * 0.16, 5.5, 11);
-  const skuSize = clamp(hMm * 0.1, 5, 7);
-  const digitsSize = clamp(hMm * 0.12, 6.5, 11);
-  let cy = y + PAD;
+  let cy = PAD;
 
-  // Nom sur deux lignes au plus : la suite est coupée, jamais débordante.
+  // Nom : deux lignes au plus, la suite coupée, jamais débordante.
+  const nameSize = 8.5;
   doc.font('Helvetica-Bold').fontSize(nameSize);
   const nameH = Math.min(
-    doc.heightOfString(label.name, { width: inner }),
-    nameSize * 2.4,
+    doc.heightOfString(label.name, { width: inner, align: 'center' }),
+    nameSize * 2.5,
   );
-  doc.text(label.name, x + PAD, cy, {
+  doc.text(label.name, PAD, cy, {
     width: inner,
     height: nameH,
+    align: 'center',
     ellipsis: true,
   });
-  cy += nameH + 1;
+  cy += nameH + 0.6 * MM;
 
   // Prix : le plus gros possible SANS déborder (jamais d'ellipse sur un prix).
   const unit = UNIT_LABEL[label.unit];
   const price =
     formatDA(label.priceTtc) +
     (unit && label.unit !== 'PIECE' ? ` / ${unit}` : '');
-  let priceSize = clamp(hMm * 0.26, 8, 24);
+  let priceSize = 17;
   doc.font('Helvetica-Bold');
   while (
-    priceSize > 6 &&
+    priceSize > 7 &&
     doc.fontSize(priceSize).widthOfString(price) > inner
   ) {
     priceSize -= 0.5;
   }
-  doc.text(price, x + PAD, cy, { width: inner, lineBreak: false });
-  cy += priceSize * 1.05;
-  doc
-    .font('Helvetica')
-    .fontSize(skuSize)
-    .text(label.sku, x + PAD, cy, {
-      width: inner,
-      lineBreak: false,
-      ellipsis: true,
-    });
-  cy += skuSize * 1.3 + 0.8 * MM;
+  doc.text(price, PAD, cy, { width: inner, align: 'center', lineBreak: false });
+  cy += priceSize * 1.05 + 1 * MM;
 
-  // En bas : le code en clair, puis au-dessus — séparées par un vrai blanc —
-  // les barres, à une taille LISIBLE au téléphone (barre élémentaire de
-  // 0,4 mm, moins si l'étiquette est étroite) et CENTRÉES, avec du blanc de
-  // part et d'autre (2026-11-07 : étirées, elles se lisaient mal).
-  const digitsY = y + height - PAD - digitsSize * 1.1;
-  const barsBottom = digitsY - 1.2 * MM;
-  const barsH = Math.max(barsBottom - cy, 3 * MM);
-  const barsW = Math.min(barsWidth(width), modules * TARGET_MODULE_MM * MM);
-  // Hauteur : au plus un peu plus de la moitié de la largeur (proportions d'un
-  // vrai code-barres) ; les barres restent posées juste au-dessus du code.
-  const barsDrawnH = Math.min(barsH, Math.max(barsW * 0.55, 6 * MM));
-  doc.image(barcode, x + (width - barsW) / 2, barsBottom - barsDrawnH, {
+  // Code en clair tout en bas ; les barres remplissent l'espace entre le prix
+  // et lui, sur toute la largeur (zones de silence comprises), centrées.
+  const digitsSize = 8;
+  const digitsY = height - PAD - digitsSize;
+  const barsBottom = digitsY - 0.8 * MM;
+  const barsW = barsWidth(width);
+  const barsH = Math.max(barsBottom - cy, 8 * MM);
+  doc.image(barcode, (width - barsW) / 2, barsBottom - barsH, {
     width: barsW,
-    height: barsDrawnH,
+    height: barsH,
   });
-  doc
-    .font('Helvetica')
-    .fontSize(digitsSize)
-    .text(label.barcode, x + PAD, digitsY, {
-      width: inner,
-      align: 'center',
-      lineBreak: false,
-      characterSpacing: digitsSize * 0.18,
-    });
+  doc.font('Helvetica').fontSize(digitsSize).text(label.barcode, PAD, digitsY, {
+    width: inner,
+    align: 'center',
+    lineBreak: false,
+    characterSpacing: 0.8,
+  });
 }

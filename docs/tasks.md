@@ -3882,3 +3882,8 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
   Correctif : le curseur `/products/changes` porte `ds` (id du plus ancien emplacement = identité de la base) ; curseur d'une autre base ou sans `ds` => `reset: true`, l'app efface `catalogEntries` avant d'enregistrer la page (`catalog_repository.dart`). Test : `backend/src/products/catalog-reset.spec.ts`, `app/test/catalog_repository_test.dart`.
 - Cause 2 : créer un produit avec stock initial ne relisait pas `stockByProductProvider` (Vente restée ouverte => « Rupture »). `CatalogActions.saveProduct` l'invalide maintenant.
 - Preuves : backend tsc OK + spec 3/3 ; app analyze 0 issue, 562 tests OK.
+
+## 2026-11-13 — Étiquettes : UN seul format, 35 × 45 mm portrait
+- Décision MEDMEDBEN : plus de planche A4 ni de taille réglable. `backend/src/products/labels.ts` : `LABEL` 35 × 45 mm, nom (2 lignes) + prix en gros centrés en haut, code-barres sur toute la largeur utile (29 mm) et toute la hauteur restante, code en clair dessous. `format` du DTO accepté mais ignoré (anciennes apps).
+- App : le dialogue ne demande plus que les exemplaires ; Paramètres n'a plus la taille d'étiquette (colonnes `labelWidthMm/HeightMm` laissées en base, inutilisées). Web : `pdf_print.js` impose déjà `@page size` à la taille du PDF => 35 × 45 forcé.
+- Preuves : jest src/products 11/11, tsc + eslint OK, rendu relu (`npx ts-node test/tools/print-samples.ts <dossier>`) ; app analyze 0, 562 tests OK. e2e `test/labels.e2e-spec.ts` mis à jour, NON lancé (Docker requis).

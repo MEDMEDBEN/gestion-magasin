@@ -50,14 +50,13 @@ class RecordingCatalogApi extends CatalogApi {
   final List<(String? id, Map<String, Object?> fields)> productCalls = [];
 
   /// Étiquettes demandées : support, puis (produit, exemplaires).
-  final List<(String, List<({String productId, int copies})>)> labelCalls = [];
+  final List<List<({String productId, int copies})>> labelCalls = [];
 
   @override
   Future<Uint8List> labels({
-    required String format,
     required List<({String productId, int copies})> items,
   }) async {
-    labelCalls.add((format, items));
+    labelCalls.add(items);
     return Uint8List(4);
   }
 

@@ -87,33 +87,19 @@ void main() {
     ]);
   });
 
-  // Décision MEDMEDBEN du 2026-10-12 : formats des imprimantes du magasin.
-  testWidgets('impression : formats et taille d’étiquette enregistrés', (
+  // Formats des imprimantes (2026-10-12) ; étiquette FIXE depuis le 2026-11-13.
+  testWidgets('impression : format des documents ; étiquette fixe', (
     tester,
   ) async {
     final api = await _pump(tester);
     // Plus de format de ticket (2026-11-07) : le ticket suit les documents.
     expect(find.text('Tickets de caisse'), findsNothing);
-    await tester.ensureVisible(
-      find.widgetWithText(TextField, 'Étiquette : largeur'),
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Étiquette : largeur'),
-      '60',
-    );
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Étiquette : hauteur'),
-      '40',
-    );
+    expect(find.text('Étiquette : largeur'), findsNothing);
     final save = find.widgetWithText(FilledButton, 'Enregistrer').last;
     await tester.ensureVisible(save);
     await tester.tap(save);
     await tester.pumpAndSettle();
-    expect(api.storeSaves.last, {
-      'documentPaper': 'A4',
-      'labelWidthMm': 60,
-      'labelHeightMm': 40,
-    });
+    expect(api.storeSaves.last, {'documentPaper': 'A4'});
   });
 
   testWidgets('tarifs : désigner le défaut ; le défaut ne se désactive pas', (

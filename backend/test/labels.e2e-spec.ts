@@ -161,7 +161,7 @@ describe('Étiquettes (e2e)', () => {
       .expect(401);
   });
 
-  it('les trois rôles impriment : planche A4 de 24 par page', async () => {
+  it('les trois rôles impriment ; format ancien (A4) ignoré : une étiquette 35 × 45 par page', async () => {
     const p = await product({ detail: 145000 });
     for (const who of ['admin', 'vendeur', 'magasinier']) {
       const res = await labels(tokens[who], {
@@ -169,15 +169,14 @@ describe('Étiquettes (e2e)', () => {
         items: [{ productId: p, copies: 25 }],
       }).expect(200);
       expect(res.headers['content-type']).toContain('application/pdf');
-      expect(pages(res.body as Buffer)).toBe(2);
+      expect(pages(res.body as Buffer)).toBe(25);
     }
   });
 
-  it('rouleau : une étiquette par page, copies comprises', async () => {
+  it('sans format : une étiquette par page, copies comprises', async () => {
     const a = await product({ detail: 1000 });
     const b = await product({ detail: 2000 });
     const res = await labels(tokens.vendeur, {
-      format: 'ROULEAU',
       items: [
         { productId: a, copies: 2 },
         { productId: b, copies: 1 },
@@ -252,7 +251,7 @@ describe('Étiquettes (e2e)', () => {
       format: 'A4',
       items: Array.from({ length: 10 }, () => ({ productId: p, copies: 100 })),
     }).expect(200);
-    expect(pages(res.body as Buffer)).toBe(42);
+    expect(pages(res.body as Buffer)).toBe(1000);
   });
 
   it('bornes : copies, nombre total, format', async () => {

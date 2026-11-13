@@ -2,6 +2,7 @@ import { barcodePng, symbology } from '../common/barcode/barcode';
 import { Prisma } from '../generated/prisma/client';
 import {
   Label,
+  LABEL,
   labelFor,
   MIN_MODULE_MM,
   moduleWidthMm,
@@ -43,27 +44,22 @@ describe('étiquettes', () => {
 
   /// Barres trop fines = étiquette que la douchette ne lit pas : refusée en
   /// nommant le produit, au lieu d'être imprimée muette.
-  it('code trop long pour le support : refusé, en nommant le produit', async () => {
+  it('code trop long pour l’étiquette : refusé, en nommant le produit', async () => {
     const court = labelFor({ ...cable, barcode: 'DJ-16-C' }, 1000);
     const long = labelFor(
       { ...cable, name: 'Gaine ICTA', barcode: 'X'.repeat(40) },
       1000,
     );
-    await expect(renderLabels([court], 'ROULEAU')).resolves.toBeInstanceOf(
-      Buffer,
-    );
-    await expect(renderLabels([court, long], 'A4')).rejects.toMatchObject({
+    await expect(renderLabels([court])).resolves.toBeInstanceOf(Buffer);
+    await expect(renderLabels([court, long])).rejects.toMatchObject({
       response: {
         message: expect.stringContaining('Gaine ICTA') as unknown as string,
       },
     });
-    const a4 = { width: (70 * 72) / 25.4, height: (37.125 * 72) / 25.4 };
+    // Un EAN-13 (code interne ou fabricant) est TOUJOURS lisible.
     expect(
-      moduleWidthMm(await barcodePng('2000000000015'), a4),
+      moduleWidthMm(await barcodePng('2000000000015'), LABEL),
     ).toBeGreaterThanOrEqual(MIN_MODULE_MM);
-    expect(moduleWidthMm(await barcodePng('X'.repeat(40)), a4)).toBeLessThan(
-      MIN_MODULE_MM,
-    );
   });
 
   /// Audit sécurité : l'image doit être embarquée UNE fois par document.
@@ -71,30 +67,20 @@ describe('étiquettes', () => {
     const start = Date.now();
     const pdf = await renderLabels(
       Array<Label>(1000).fill(labelFor(cable, 145000)),
-      'A4',
     );
-    expect(pdf.length).toBeLessThan(200_000);
-    expect(Date.now() - start).toBeLessThan(5_000);
+    expect(pdf.length).toBeLessThan(1_000_000); // ~630 o par page, l'image une fois;
+    expect(Date.now() - start).toBeLessThan(8_000);
   });
 
-  it('planche A4 : 24 par page ; rouleau : une par page', async () => {
+  /// Décision MEDMEDBEN du 2026-11-13 : UNE étiquette par page, 35 × 45 mm
+  /// en portrait, quel que soit le poste.
+  it('une étiquette 35 × 45 mm portrait par page', async () => {
     const label: Label = labelFor(cable, 145000);
-    const many = Array<Label>(25).fill(label);
-    expect(pages(await renderLabels(many, 'A4'))).toBe(2);
-    expect(pages(await renderLabels(many.slice(0, 24), 'A4'))).toBe(1);
-    expect(pages(await renderLabels(many.slice(0, 3), 'ROULEAU'))).toBe(3);
-  });
-
-  /// Décision MEDMEDBEN du 2026-10-12 : la taille de SON rouleau.
-  it('rouleau à la taille réglée : 60 × 40 mm', async () => {
-    const label: Label = labelFor(cable, 145000);
-    const pdf = await renderLabels([label], 'ROULEAU', {
-      widthMm: 60,
-      heightMm: 40,
-    });
-    // 60 mm = 170,08 pt ; 40 mm = 113,39 pt.
+    const pdf = await renderLabels(Array<Label>(3).fill(label));
+    expect(pages(pdf)).toBe(3);
+    // 35 mm = 99,21 pt ; 45 mm = 127,56 pt.
     expect(pdf.toString('latin1')).toMatch(
-      /MediaBox \[0 0 170\.07\d* 113\.38\d*/,
+      /MediaBox \[0 0 99\.21\d* 127\.55\d*/,
     );
   });
 });

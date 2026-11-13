@@ -192,16 +192,14 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
       );
       return;
     }
-    final choice = await askLabels(context, productCount: products.length);
-    if (choice == null || !mounted) return;
+    final copies = await askLabels(context, productCount: products.length);
+    if (copies == null || !mounted) return;
     try {
       final pdf = await ref
           .read(catalogApiProvider)
           .labels(
-            format: choice.format,
             items: [
-              for (final p in products)
-                (productId: p.id, copies: choice.copies),
+              for (final p in products) (productId: p.id, copies: copies),
             ],
           );
       await ref.read(printPdfProvider)(pdf, 'etiquettes.pdf');

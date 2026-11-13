@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// Choix d'impression des étiquettes (spec §8ter) : le support et le nombre
-/// d'exemplaires par produit. Rend `null` si l'utilisateur annule.
-Future<({String format, int copies})?> askLabels(
-  BuildContext context, {
-  required int productCount,
-}) {
-  return showDialog<({String format, int copies})>(
+/// Impression des étiquettes (spec §8ter) : le nombre d'exemplaires par
+/// produit, rien d'autre — le support est FIXE, 35 × 45 mm portrait (décision
+/// MEDMEDBEN du 2026-11-13). Rend `null` si l'utilisateur annule.
+Future<int?> askLabels(BuildContext context, {required int productCount}) {
+  return showDialog<int>(
     context: context,
     builder: (context) => _LabelsDialog(productCount: productCount),
   );
@@ -22,7 +20,6 @@ class _LabelsDialog extends StatefulWidget {
 }
 
 class _LabelsDialogState extends State<_LabelsDialog> {
-  String _format = 'A4';
   final _copies = TextEditingController(text: '1');
   String? _error;
 
@@ -43,7 +40,7 @@ class _LabelsDialogState extends State<_LabelsDialog> {
       setState(() => _error = '1 000 étiquettes au plus par impression');
       return;
     }
-    Navigator.of(context).pop((format: _format, copies: copies));
+    Navigator.of(context).pop(copies);
   }
 
   @override
@@ -54,20 +51,7 @@ class _LabelsDialogState extends State<_LabelsDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'A4', label: Text('Planche A4')),
-              ButtonSegment(value: 'ROULEAU', label: Text('Rouleau')),
-            ],
-            selected: {_format},
-            onSelectionChanged: (s) => setState(() => _format = s.first),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _format == 'A4'
-                ? '24 étiquettes 70 × 37 mm par feuille'
-                : 'Imprimante thermique, étiquettes 50 × 30 mm',
-          ),
+          const Text('Imprimante d’étiquettes · 35 × 45 mm, portrait'),
           const SizedBox(height: 12),
           TextField(
             controller: _copies,

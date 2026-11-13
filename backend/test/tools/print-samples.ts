@@ -200,24 +200,6 @@ async function main() {
       ),
     ),
   );
-  write(
-    'etiquette-60x40.pdf',
-    await renderLabels(
-      [
-        labelFor(
-          {
-            name: 'Disjoncteur DX³ 16A courbe C',
-            sku: 'DIS-16C',
-            barcode: '3245064074152',
-            unit: 'PIECE',
-          },
-          89000,
-        ),
-      ],
-      'ROULEAU',
-      { widthMm: 60, heightMm: 40 },
-    ),
-  );
   const disj = labelFor(
     {
       name: 'Disjoncteur DX³ 16A courbe C',
@@ -227,15 +209,21 @@ async function main() {
     },
     89000,
   );
+  write('etiquette-35x45.pdf', await renderLabels([disj]));
   write(
-    'etiquette-35x45.pdf',
-    await renderLabels([disj], 'ROULEAU', { widthMm: 35, heightMm: 45 }),
+    'etiquette-35x45-long.pdf',
+    await renderLabels([
+      labelFor(
+        {
+          name: 'Câble rigide U-1000 R2V 3G2,5 mm² — couronne de 100 m',
+          sku: 'CAB-3G25',
+          barcode: '2000000000015',
+          unit: 'METRE',
+        },
+        14500000,
+      ),
+    ]),
   );
-  write(
-    'etiquette-45x35.pdf',
-    await renderLabels([disj], 'ROULEAU', { widthMm: 45, heightMm: 35 }),
-  );
-  write('etiquettes-a4.pdf', await renderLabels(Array(6).fill(disj), 'A4'));
 }
 
 void main();
