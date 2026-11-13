@@ -56,12 +56,14 @@ export const MIN_MODULE_MM = 0.25;
 
 /// Marge de l'étiquette et zone de silence de part et d'autre des barres (la
 /// douchette a besoin de blanc avant la première barre).
-const PAD = 1.5 * MM;
-const QUIET = 1.5 * MM;
+/// Marge de 2,5 mm : TOUT le contenu tient dans 30 × 40 mm au centre de
+/// l'étiquette (demande MEDMEDBEN du 2026-11-13), à l'abri d'un décalage.
+const PAD = 2.5 * MM;
 
-/// Largeur des barres : toute l'étiquette, moins marges et zones de silence.
+/// Largeur des barres : toute la zone de 30 mm ; la marge blanche de 2,5 mm
+/// de chaque côté sert de zone de silence à la douchette.
 function barsWidth(labelWidth: number): number {
-  return labelWidth - 2 * (PAD + QUIET);
+  return labelWidth - 2 * PAD;
 }
 
 /// Barre la plus fine (mm) une fois les barres étirées sur leur largeur.
@@ -122,7 +124,8 @@ export async function renderLabels(labels: Label[]): Promise<Buffer> {
 function drawLabel(doc: PdfDoc, label: Label, barcode: PDFKit.Mixins.ImageSrc) {
   const { width, height } = LABEL;
   const inner = width - 2 * PAD;
-  let cy = PAD;
+  // +0,3 mm : les accents des majuscules (Â, É) restent dans la zone.
+  let cy = PAD + 0.3 * MM;
 
   // Nom : deux lignes au plus, la suite coupée, jamais débordante.
   const nameSize = 8.5;

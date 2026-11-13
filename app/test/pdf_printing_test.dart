@@ -42,4 +42,17 @@ void main() {
     expect(isOfficeDriver('Brother QL-800'), isFalse);
     expect(isOfficeDriver(null), isFalse);
   });
+
+  test('étiquette : telle quelle si le pilote a sa taille, sinon ajustée', () {
+    final mm = PdfPageFormat.mm;
+    final label = PdfPageFormat(35 * mm, 45 * mm);
+    final same = labelPlacement(label, PdfPageFormat(35.8 * mm, 44.6 * mm));
+    expect(same.asIs, isTrue);
+    // Pilote en paysage 45 × 35 : un quart de tour, elle tient entière.
+    final landscape = labelPlacement(label, PdfPageFormat(45 * mm, 35 * mm));
+    expect((landscape.asIs, landscape.rotate), (false, true));
+    // Pilote sur un grand papier (A4) : pas tournée, posée au centre.
+    final a4 = labelPlacement(label, PdfPageFormat.a4);
+    expect((a4.asIs, a4.rotate), (false, false));
+  });
 }

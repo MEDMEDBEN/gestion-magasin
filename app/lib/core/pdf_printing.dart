@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../data/local/local_settings_store.dart';
@@ -47,6 +49,60 @@ PaperKind kindOf(PdfPageFormat format) {
     return PaperKind.etiquette;
   }
   return PaperKind.document;
+}
+
+/// Pose de l'étiquette sur le papier RÉGLÉ dans le pilote : telle quelle si
+/// les tailles concordent (à 1,5 mm près), sinon réduite pour tenir — tournée
+/// d'un quart de tour si le pilote est en paysage et qu'elle y tient mieux.
+({bool asIs, bool rotate}) labelPlacement(
+  PdfPageFormat label,
+  PdfPageFormat paper,
+) {
+  bool near(double a, double b) => (a - b).abs() <= 1.5 * _mm;
+  if (near(label.width, paper.width) && near(label.height, paper.height)) {
+    return (asIs: true, rotate: false);
+  }
+  double scale(double w, double h) =>
+      math.min(paper.width / w, paper.height / h);
+  final rotate =
+      scale(label.height, label.width) >
+      scale(label.width, label.height) * 1.05;
+  return (asIs: false, rotate: rotate);
+}
+
+/// Retour terrain du 2026-11-13 : le pilote d'étiquettes (Smart, Xprinter)
+/// IGNORE la taille sur mesure envoyée par le plugin et garde la sienne ;
+/// imprimée à 100 %, l'étiquette débordait sur 2 ou 3 étiquettes. On imprime
+/// donc sur le papier du pilote, et l'étiquette y est AJUSTÉE si besoin : elle
+/// ne déborde jamais.
+Future<Uint8List> fitLabelToPaper(Uint8List bytes, PdfPageFormat paper) async {
+  final label = pdfFormatOf(bytes);
+  if (label == null || paper.width <= 0 || paper.height <= 0) return bytes;
+  final plan = labelPlacement(label, paper);
+  if (plan.asIs) return bytes;
+  final doc = pw.Document();
+  final page = PdfPageFormat(paper.width, paper.height, marginAll: 0);
+  // 406 dpi : deux fois la finesse d'une tête thermique (203 dpi).
+  await for (final raster in Printing.raster(bytes, dpi: 406)) {
+    final image = pw.Image(
+      pw.MemoryImage(await raster.toPng()),
+      width: label.width,
+      height: label.height,
+    );
+    doc.addPage(
+      pw.Page(
+        pageFormat: page,
+        build: (_) => pw.Center(
+          child: pw.FittedBox(
+            child: plan.rotate
+                ? pw.Transform.rotateBox(angle: math.pi / 2, child: image)
+                : image,
+          ),
+        ),
+      ),
+    );
+  }
+  return doc.save();
 }
 
 /// Pilote d'imprimante de BUREAU (jet d'encre, laser) ou générique. Posé sur
@@ -124,6 +180,11 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
   // sur mesure — beaucoup de pilotes thermiques le refusent et la tâche reste
   // « en erreur » dans la file (retour terrain du 2026-10-13).
   final roll = kindOf(format) == PaperKind.ticket;
+  // Étiquette sur poste : le papier du PILOTE (sa taille d'étiquette), le PDF
+  // ajusté dessus — jamais la taille sur mesure que le pilote ignore.
+  final label = desktopPrinting && kindOf(format) == PaperKind.etiquette;
+  Future<Uint8List> layout(PdfPageFormat paper) async =>
+      label ? fitLabelToPaper(bytes, paper) : bytes;
   if (desktopPrinting) {
     final url = await savedPrinter(
       ref.read(localSettingsStoreProvider),
@@ -132,19 +193,19 @@ Future<void> printPdf(Ref ref, Uint8List bytes, String name) async {
     if (url != null) {
       final done = await Printing.directPrintPdf(
         printer: Printer(url: url),
-        onLayout: (_) async => bytes,
+        onLayout: layout,
         name: name,
         format: format,
-        usePrinterSettings: roll,
+        usePrinterSettings: roll || label,
       );
       if (done) return;
     }
   }
   await Printing.layoutPdf(
-    onLayout: (_) async => bytes,
+    onLayout: layout,
     name: name,
     format: format,
-    usePrinterSettings: roll,
+    usePrinterSettings: roll || label,
     // Le PDF est déjà à sa taille : pas de remise en page par le dialogue.
     dynamicLayout: false,
   );
