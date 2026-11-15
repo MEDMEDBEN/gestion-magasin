@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/error/error_codes.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -149,27 +150,49 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
     );
   }
 
-  /// « Supprimer » = RETIRER du catalogue (désactivation, décision MEDMEDBEN
-  /// du 2026-10-05) : rien n'est effacé, l'historique garde ses ventes et ses
-  /// achats ; l'admin le réactive depuis la fiche (filtre « inactifs »).
+  /// « Supprimer » (demande MEDMEDBEN du 2026-11-15) : EFFACEMENT DÉFINITIF
+  /// d'un produit sans historique — serveur, ce poste, puis les autres postes
+  /// à leur synchro. Un produit qui a des ventes, achats ou mouvements ne
+  /// s'efface jamais (règle 7) : on propose alors de le DÉSACTIVER.
   Future<void> _deleteProduct(Product product) async {
     final confirmed = await showAmpereConfirmDialog(
       context,
-      title: 'Supprimer « ${product.name} » ?',
+      title: 'Effacer « ${product.name} » ?',
       body:
-          'Le produit disparaît du catalogue, de la vente et des recherches. '
-          'Ses ventes, achats et mouvements passés restent dans l’historique. '
-          'Vous pourrez le réactiver depuis sa fiche (afficher les inactifs).',
-      confirmLabel: 'Supprimer',
+          'Le produit est effacé définitivement : catalogue, vente, recherches '
+          'et mémoire de tous les postes. Impossible de revenir en arrière.\n\n'
+          'S’il a déjà des ventes, achats ou mouvements, il ne peut pas être '
+          'effacé : vous pourrez le désactiver.',
+      confirmLabel: 'Effacer',
     );
     if (!confirmed || !mounted) return;
     try {
-      await ref.read(catalogActionsProvider).saveProduct(product.id, {
-        'isActive': false,
-      });
-      _showSnack('${product.name} retiré du catalogue.');
+      await ref.read(catalogActionsProvider).deleteProduct(product.id);
+      _showSnack('${product.name} effacé.');
     } on ApiException catch (error) {
-      _showSnack(error.userMessage);
+      if (!mounted) return;
+      if (error.code != ErrorCodes.conflict) {
+        _showSnack(error.userMessage);
+        return;
+      }
+      final disable = await showAmpereConfirmDialog(
+        context,
+        title: 'Désactiver « ${product.name} » ?',
+        body:
+            '${error.userMessage}\n\nDésactivé, il disparaît du catalogue, '
+            'de la vente et des recherches ; son historique reste. '
+            'Réactivable depuis sa fiche (afficher les inactifs).',
+        confirmLabel: 'Désactiver',
+      );
+      if (!disable || !mounted) return;
+      try {
+        await ref.read(catalogActionsProvider).saveProduct(product.id, {
+          'isActive': false,
+        });
+        _showSnack('${product.name} retiré du catalogue.');
+      } on ApiException catch (e) {
+        _showSnack(e.userMessage);
+      }
     }
   }
 

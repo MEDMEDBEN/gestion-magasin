@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
@@ -193,6 +194,22 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
               const SizedBox(height: 12),
             ],
+            // À SURVEILLER (2026-11-15) : les produits qui bougent le plus,
+            // proposés au comptage du jour — suggérés, jamais imposés.
+            if (rights.canCount)
+              if (ref.watch(countSuggestionsProvider).value case final s?
+                  when s.isNotEmpty) ...[
+                _Suggestions(
+                  items: s,
+                  onCount: () => _start(
+                    context,
+                    rights,
+                    InventoryType.cycle,
+                    productIds: [for (final x in s) x.productId],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
             if (rights.canCount) ...[
               ActionGrid(
                 children: [
@@ -317,12 +334,14 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Future<void> _start(
     BuildContext context,
     InventoryRights rights,
-    InventoryType type,
-  ) async {
+    InventoryType type, {
+    List<String> productIds = const [],
+  }) async {
     final inventory = await openFormPanel<Inventory>(
       context,
-      InventoryStartForm(initialType: type),
+      InventoryStartForm(initialType: type, initialProductIds: productIds),
     );
+    ref.invalidate(countSuggestionsProvider);
     if (inventory == null || !context.mounted) return;
     await _count(context, inventory, rights);
   }
@@ -563,6 +582,70 @@ class _InventoryDetail extends ConsumerWidget {
           ),
         TextButton(onPressed: () => pop(), child: const Text('Fermer')),
       ],
+    );
+  }
+}
+
+/// Carte « À surveiller aujourd'hui » : les produits les plus mouvementés
+/// (ventes, achats, transferts, ajouts) non comptés depuis 24 h.
+class _Suggestions extends StatelessWidget {
+  const _Suggestions({required this.items, required this.onCount});
+
+  final List<CountSuggestion> items;
+  final VoidCallback onCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.eye, size: 18, color: colors.info),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'À surveiller aujourd’hui',
+                    style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                  ),
+                ),
+                FilledButton.tonalIcon(
+                  onPressed: onCount,
+                  icon: const Icon(LucideIcons.listChecks, size: 16),
+                  label: Text('Compter ces ${items.length}'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Les produits qui bougent le plus cette semaine — un comptage '
+              'rapide évite les écarts. Conseillé, pas obligatoire.',
+              style: AmpereType.meta.copyWith(color: colors.ink3),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final s in items)
+                  Tooltip(
+                    message: s.lastCountedAt == null
+                        ? 'Jamais compté'
+                        : 'Dernier comptage : ${formatDate(s.lastCountedAt!.toLocal())}',
+                    child: Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text('${s.name} · ${s.movements} mvts'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

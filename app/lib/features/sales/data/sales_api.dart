@@ -71,8 +71,10 @@ class SalesApi {
     String? dueDate,
     int discountAmount = 0,
     int? receivedAmount,
+    bool issueInvoice = false,
   }) => {
     'clientMutationId': clientMutationId,
+    if (issueInvoice) 'issueInvoice': true,
     'id': id,
     'customerId': ?customerId,
     'cashSessionId': ?cashSessionId,

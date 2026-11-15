@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../data/local/device_reset.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -40,6 +42,39 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   /// dialogue de confirmation — contrairement aux actions ordinaires (§12.7).
   /// Un ÉCHEC est affiché et la session conservée : l'utilisateur qui croit son
   /// téléphone volé déconnecté ne doit pas se tromper (audit I3).
+  /// Vide la base locale de CE poste puis déconnecte : au retour, l'app
+  /// redescend tout du serveur — rien d'ancien ne survit.
+  Future<void> _resetDevice() async {
+    final ok = await showAmpereConfirmDialog(
+      context,
+      title: 'Réinitialiser ce poste ?',
+      body:
+          'Toute la mémoire locale de l’application est effacée : catalogue, '
+          'documents gardés hors ligne, imprimantes et réglages de ce poste. '
+          'Les données du serveur ne sont PAS touchées.\n\n'
+          'Vous serez déconnecté ; à la reconnexion, tout redescend du serveur.',
+      confirmLabel: 'Réinitialiser',
+    );
+    if (!ok || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final waiting = await resetDeviceData(ref.read(appDatabaseProvider));
+      if (!mounted) return;
+      if (waiting > 0) {
+        setState(
+          () => _error =
+              '$waiting opération(s) pas encore envoyée(s) au serveur : '
+              'reconnectez le poste et laissez la synchronisation finir avant '
+              'de le réinitialiser (sinon elles seraient perdues).',
+        );
+        return;
+      }
+      await ref.read(authControllerProvider.notifier).logout();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _logoutAllDevices() async {
     final confirmed = await showAmpereConfirmDialog(
       context,
@@ -152,6 +187,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               tone: StatusTone.warn,
               onTap: _busy ? null : _logoutAllDevices,
             ),
+            // ADMIN : remettre CE poste à neuf (2026-11-15).
+            if (widget.user.hasRole('ADMIN'))
+              _ActionTile(
+                icon: LucideIcons.eraser,
+                title: 'Réinitialiser ce poste',
+                subtitle:
+                    'Efface toute la mémoire locale de l’app (catalogue, '
+                    'documents, réglages) puis déconnecte',
+                tone: StatusTone.error,
+                onTap: _busy ? null : _resetDevice,
+              ),
             if (_error != null) ...[
               AmpereInlineAlert(message: _error!),
               const SizedBox(height: 8),

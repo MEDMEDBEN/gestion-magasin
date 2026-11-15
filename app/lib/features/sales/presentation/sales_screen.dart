@@ -902,7 +902,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
   }
 
   /// Devis du panier (spec §8quater) : validité proposée à 30 jours ; le
-  /// panier est vidé, rien ne sort du stock. En ligne uniquement.
+  /// panier est vidé, rien ne sort du stock. Hors ligne : en file, numéroté à
+  /// la synchronisation (2026-11-15).
   Future<void> _makeQuote() async {
     final today = DateUtils.dateOnly(DateTime.now());
     final validUntil = await showDatePicker(
@@ -915,14 +916,18 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     if (validUntil == null || !mounted) return;
     setState(() => _busy = true);
     try {
+      final total = ref.read(cartEstimateProvider).totalTtc;
       final quote = await ref
           .read(quoteActionsProvider)
           .createFromCart(validUntil: validUntil);
       if (mounted) {
         _snack(
           context,
-          'Devis ${quote.number} enregistré (${formatDA(quote.totalTtc)}) — '
-          'retrouvez-le dans « Devis ».',
+          quote == null
+              ? 'Devis enregistré HORS LIGNE (${formatDA(total)}) : son numéro '
+                    'sera attribué à la synchronisation.'
+              : 'Devis ${quote.number} enregistré (${formatDA(quote.totalTtc)}) — '
+                    'retrouvez-le dans « Devis ».',
         );
       }
     } on ApiException catch (error) {
@@ -955,11 +960,15 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final cart = ref.read(cartProvider);
     // Caisse fermée : la vente passe quand même, le serveur ouvre LA caisse
     // (fond 0) — plus de blocage (décision du 2026-11-08).
+    final invoice = widget.rights.canInvoice ? ValueNotifier(false) : null;
     final received = await showPaymentDialog(
       context,
       total: estimate.totalTtc,
       customerName: cart.customer?.name,
+      invoice: invoice,
     );
+    final issueInvoice = invoice?.value ?? false;
+    invoice?.dispose();
     if (received == null || !mounted) return;
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
     // Crédit : l'échéance est obligatoire (le serveur la refuse sinon).
@@ -987,6 +996,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             expectedTotalTtc: estimate.totalTtc,
             dueDate: dueDate,
             receivedAmount: received,
+            issueInvoice: issueInvoice,
           );
       if (!mounted) return;
       final change = received - kept;
@@ -1011,6 +1021,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             total: estimate.totalTtc,
             kept: kept,
             change: change,
+            invoice: issueInvoice,
           );
       }
     } on ApiException catch (error) {
@@ -1046,6 +1057,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     required int total,
     required int kept,
     required int change,
+    bool invoice = false,
   }) {
     return showDialog<void>(
       context: context,
@@ -1065,6 +1077,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               const Divider(),
               Text('Total TTC : ${formatDA(total)}'),
               Text('Encaissé : ${formatDA(kept)}'),
+              if (invoice)
+                const Text(
+                  'Facture demandée : son numéro légal sera attribué à la '
+                  'synchronisation.',
+                ),
               if (change > 0)
                 Text(
                   'Monnaie à rendre : ${formatDA(change)}',

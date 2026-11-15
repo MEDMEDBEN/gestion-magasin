@@ -79,7 +79,7 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
       );
     }
     const already = await this.sales.replay(context.tx, payload, context.user);
-    const sale =
+    const created =
       already ??
       (await this.sales.createInTx(
         context.tx,
@@ -88,12 +88,22 @@ export class SaleHandler implements SyncMutationHandler<CreateSaleDto> {
         plausibleDeviceTime(context.deviceTimestamp),
         true,
       ));
+    // Facture demandée hors ligne : son numéro légal est attribué MAINTENANT,
+    // par le serveur, en transaction (règle 11).
+    const sale = await this.sales.invoiceIfRequested(
+      context.tx,
+      created,
+      payload,
+      context.user,
+      { userId: context.user.id },
+    );
     return {
       entityId: sale.id,
       serverState: {
         number: sale.number,
         totalTtc: String(sale.totalTtc),
         soldAt: sale.soldAt.toISOString(),
+        ...(sale.invoiceNumber && { invoiceNumber: sale.invoiceNumber }),
       },
       auditNewValue: SaleHandler.audit(sale, payload, already !== null),
     };

@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { CustomersModule } from '../customers/customers.module';
+import { ProductsModule } from '../products/products.module';
 import { ReceptionsModule } from '../receptions/receptions.module';
 import { SalesModule } from '../sales/sales.module';
 import { StockModule } from '../stock/stock.module';
 import { TransfersModule } from '../transfers/transfers.module';
 import { CashSessionHandler } from './handlers/cash-session.handler';
 import { CustomerPaymentHandler } from './handlers/customer-payment.handler';
+import { ProductHandler } from './handlers/product.handler';
+import { QuoteHandler } from './handlers/quote.handler';
 import { ReceptionHandler } from './handlers/reception.handler';
 import { SaleHandler } from './handlers/sale.handler';
 import { TransferHandler } from './handlers/transfer.handler';
@@ -27,6 +30,7 @@ import { SyncService } from './sync.service';
     ReceptionsModule,
     CustomersModule,
     TransfersModule,
+    ProductsModule,
   ],
   controllers: [SyncController],
   providers: [
@@ -37,6 +41,8 @@ import { SyncService } from './sync.service';
     ReceptionHandler,
     CustomerPaymentHandler,
     TransferHandler,
+    ProductHandler,
+    QuoteHandler,
     {
       provide: SYNC_MUTATION_HANDLERS,
       useFactory: (...handlers: SyncMutationHandler[]) => handlers,
@@ -47,6 +53,8 @@ import { SyncService } from './sync.service';
         ReceptionHandler,
         CustomerPaymentHandler,
         TransferHandler,
+        ProductHandler,
+        QuoteHandler,
       ],
     },
   ],

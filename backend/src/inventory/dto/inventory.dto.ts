@@ -11,6 +11,9 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
+  Max,
+  Min,
   IsOptional,
   IsString,
   Matches,
@@ -175,4 +178,33 @@ export class InventoryExportQueryDto extends IntersectionType(
 export class InventoryListDto {
   @ApiProperty({ type: [InventoryDto] }) data!: InventoryDto[];
   @ApiProperty({ type: PaginationMetaDto }) meta!: PaginationMetaDto;
+}
+
+/// Suggestions de comptage : les produits les plus mouvementés.
+export class InventorySuggestionsQueryDto {
+  @ApiPropertyOptional({
+    description: 'Lieu (MAGASIN ou DEPOT) ; absent : tous.',
+  })
+  @IsCanonicalUuid()
+  @IsOptional()
+  locationId?: string;
+
+  @ApiPropertyOptional({
+    default: 7,
+    description: 'Fenêtre observée, en jours.',
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(90)
+  @IsOptional()
+  days?: number;
+
+  @ApiPropertyOptional({ default: 10 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  @IsOptional()
+  limit?: number;
 }

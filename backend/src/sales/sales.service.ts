@@ -70,7 +70,10 @@ export class SalesService {
       () => this.replay(this.prisma, dto, user),
       () =>
         this.prisma.$transaction(async (tx) => {
-          const sale = await this.createInTx(tx, dto, user);
+          const created = await this.createInTx(tx, dto, user);
+          const sale = await this.invoiceIfRequested(tx, created, dto, user, {
+            userId: user.id,
+          });
           const overrides = SalesService.priceOverrides(sale, dto);
           // Spec §24 : une vente normale ne pollue pas le journal ; une vente à
           // prix MODIFIÉ, si — l'admin doit la voir (décision 2026-09-22).
@@ -454,60 +457,92 @@ export class SalesService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<SaleDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const sale = await SalesService.lockSale(tx, id);
-      SalesService.assertCanSee(sale, user);
-      if (sale!.status !== 'VALIDEE') {
-        throw new BusinessException(
-          ErrorCode.INVALID_STATE_TRANSITION,
-          'Une vente annulée ne se facture pas',
-          HttpStatus.CONFLICT,
-        );
-      }
-      if (sale!.invoiceNumber) return this.toDto(tx, sale!);
-      // Des articles sont déjà revenus sur ce ticket, SANS avoir (il n'était
-      // pas facturé) : la facture porterait une TVA sur de la marchandise
-      // rendue (règle 11). Sous le verrou de la vente, comme les retours.
-      if (await tx.saleReturn.count({ where: { saleId: id } })) {
-        throw new BusinessException(
-          ErrorCode.INVALID_STATE_TRANSITION,
-          'Des articles de ce ticket ont été rendus : il ne se facture plus',
-          HttpStatus.CONFLICT,
-        );
-      }
+    return this.prisma.$transaction((tx) =>
+      this.issueInvoiceInTx(tx, id, user, actor),
+    );
+  }
 
-      // Mentions légales vérifiées AVANT d'attribuer le numéro : jamais un
-      // numéro consommé pour une facture qu'on ne pourrait pas imprimer. Puis
-      // l'identité est FIGÉE sur la facture (règle 11).
-      const issuer = await storeIdentity(tx, this.config, true);
-      // UN seul instant pour l'année du numéro ET la date de facture : à minuit
-      // le 31/12, jamais « FA-2026-… » daté de 2027.
-      const invoicedAt = new Date();
-      const invoiceNumber = await nextDocumentNumber(
-        tx,
-        'FACTURE',
-        'FA',
-        6,
-        localYear(invoicedAt),
+  /// Facture demandée AVEC la vente (`issueInvoice`) : émise dans la même
+  /// transaction. Sans le droit, ou sans les mentions légales du magasin, la
+  /// vente reste un TICKET (jamais une vente perdue pour une facture) — on
+  /// pourra la facturer ensuite.
+  async invoiceIfRequested(
+    tx: Prisma.TransactionClient,
+    sale: SaleDto,
+    dto: CreateSaleDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<SaleDto> {
+    if (!dto.issueInvoice || sale.invoiceNumber) return sale;
+    if (!user.permissions.includes(PERMISSIONS.INVOICE_ISSUE)) return sale;
+    try {
+      return await this.issueInvoiceInTx(tx, sale.id, user, actor);
+    } catch (error) {
+      // Mentions légales absentes, vente annulée ou retournée entre-temps…
+      // la vente reste un TICKET, jamais refusée pour sa facture.
+      if (error instanceof BusinessException) return sale;
+      throw error;
+    }
+  }
+
+  async issueInvoiceInTx(
+    tx: Prisma.TransactionClient,
+    id: string,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<SaleDto> {
+    const sale = await SalesService.lockSale(tx, id);
+    SalesService.assertCanSee(sale, user);
+    if (sale!.status !== 'VALIDEE') {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        'Une vente annulée ne se facture pas',
+        HttpStatus.CONFLICT,
       );
-      const invoiced = await tx.sale.update({
-        where: { id },
-        data: {
-          type: 'FACTURE',
-          invoiceNumber,
-          invoicedAt,
-          issuerSnapshot: { ...issuer },
-        },
-        include: SALE_INCLUDE,
-      });
-      await writeAudit(tx, actor, {
-        action: 'VALIDATE',
-        entityType: 'Sale',
-        entityId: id,
-        newValue: { number: invoiced.number, invoiceNumber },
-      });
-      return this.toDto(tx, invoiced);
+    }
+    if (sale!.invoiceNumber) return this.toDto(tx, sale!);
+    // Des articles sont déjà revenus sur ce ticket, SANS avoir (il n'était
+    // pas facturé) : la facture porterait une TVA sur de la marchandise
+    // rendue (règle 11). Sous le verrou de la vente, comme les retours.
+    if (await tx.saleReturn.count({ where: { saleId: id } })) {
+      throw new BusinessException(
+        ErrorCode.INVALID_STATE_TRANSITION,
+        'Des articles de ce ticket ont été rendus : il ne se facture plus',
+        HttpStatus.CONFLICT,
+      );
+    }
+
+    // Mentions légales vérifiées AVANT d'attribuer le numéro : jamais un
+    // numéro consommé pour une facture qu'on ne pourrait pas imprimer. Puis
+    // l'identité est FIGÉE sur la facture (règle 11).
+    const issuer = await storeIdentity(tx, this.config, true);
+    // UN seul instant pour l'année du numéro ET la date de facture : à minuit
+    // le 31/12, jamais « FA-2026-… » daté de 2027.
+    const invoicedAt = new Date();
+    const invoiceNumber = await nextDocumentNumber(
+      tx,
+      'FACTURE',
+      'FA',
+      6,
+      localYear(invoicedAt),
+    );
+    const invoiced = await tx.sale.update({
+      where: { id },
+      data: {
+        type: 'FACTURE',
+        invoiceNumber,
+        invoicedAt,
+        issuerSnapshot: { ...issuer },
+      },
+      include: SALE_INCLUDE,
     });
+    await writeAudit(tx, actor, {
+      action: 'VALIDATE',
+      entityType: 'Sale',
+      entityId: id,
+      newValue: { number: invoiced.number, invoiceNumber },
+    });
+    return this.toDto(tx, invoiced);
   }
 
   /// Annulation ADMIN (règle 7) : jamais de suppression — mouvements inverses,

@@ -7,6 +7,15 @@ import '../../../core/providers.dart';
 import 'inventory_models.dart';
 
 /// Accès réseau de l'inventaire. Aucune règle ici : le serveur fige le
+/// Produit suggéré au comptage (demande MEDMEDBEN du 2026-11-15).
+typedef CountSuggestion = ({
+  String productId,
+  String name,
+  String sku,
+  int movements,
+  DateTime? lastCountedAt,
+});
+
 /// théorique, calcule les écarts et n'ajuste le stock qu'à la validation.
 class InventoryApi {
   InventoryApi(this._dio);
@@ -20,6 +29,28 @@ class InventoryApi {
         queryParameters: {'limit': limit, 'status': ?status},
       );
       return InventoryPage.fromJson(response.data!);
+    });
+  }
+
+  /// Produits À SURVEILLER : les plus mouvementés, non comptés depuis 24 h.
+  Future<List<CountSuggestion>> suggestions({int days = 7, int limit = 8}) {
+    return guardApi(() async {
+      final response = await _dio.get<List<dynamic>>(
+        '/inventories/suggestions',
+        queryParameters: {'days': days, 'limit': limit},
+      );
+      return [
+        for (final row in response.data!.cast<Map<String, dynamic>>())
+          (
+            productId: row['productId'] as String,
+            name: row['name'] as String,
+            sku: row['sku'] as String,
+            movements: row['movements'] as int,
+            lastCountedAt: row['lastCountedAt'] == null
+                ? null
+                : DateTime.parse(row['lastCountedAt'] as String),
+          ),
+      ];
     });
   }
 

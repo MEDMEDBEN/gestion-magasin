@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/api_exception.dart';
+import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
@@ -238,7 +239,15 @@ final productsProvider = StreamProvider.autoDispose<List<Product>>((ref) {
 /// aucune n'est créée hors-ligne). La réponse du serveur est enregistrée
 /// localement tout de suite : l'écran n'attend pas le prochain delta.
 class CatalogActions {
-  CatalogActions(this._api, this._repository, this._onStockChanged);
+  CatalogActions(
+    this._api,
+    this._repository,
+    this._onStockChanged, [
+    this._ref,
+  ]);
+
+  /// Pour écrire hors ligne (file de synchro) ; absent dans certains tests.
+  final Ref? _ref;
 
   final CatalogApi _api;
   final CatalogRepository _repository;
@@ -256,6 +265,14 @@ class CatalogActions {
     bool removePhoto = false,
     Map<String, int> prices = const {},
   }) async {
+    // Création : en ligne, ou EN FILE hors ligne (demande MEDMEDBEN du
+    // 2026-11-15) — le produit est utilisable tout de suite sur ce poste.
+    if (id == null && _ref != null) {
+      final created = await _createOnlineOrQueue(_ref, fields, prices);
+      if (created.pending) return created.product;
+      // En ligne : la photo suit, comme avant.
+      return _afterCreate(created.product, photo: photo);
+    }
     var product = id == null
         ? await _api.createProduct(fields)
         : fields.isEmpty
@@ -289,6 +306,84 @@ class CatalogActions {
     return product;
   }
 
+  /// UNE opération (`PRODUCT`) : produit + prix. En ligne : `POST /products`
+  /// puis les prix ; hors ligne : en file, et une copie LOCALE marquée « en
+  /// attente » (date ancienne : la version du serveur la remplacera).
+  Future<({Product product, bool pending})> _createOnlineOrQueue(
+    Ref ref,
+    Map<String, Object?> fields,
+    Map<String, int> prices,
+  ) async {
+    final intent = 'product:${ref.read(uuidProvider).v4()}';
+    final outcome = await writeOnlineOrQueue<Product>(
+      ref,
+      intent: intent,
+      operationType: 'PRODUCT',
+      payload: (key) => {
+        for (final e in fields.entries)
+          if (e.value != null) e.key: e.value,
+        'id': key,
+        if (prices.isNotEmpty)
+          'prices': [
+            for (final e in prices.entries)
+              {'priceTierId': e.key, 'priceHt': e.value},
+          ],
+      },
+      online: (body) async {
+        var product = await _api.createProduct({...body}..remove('prices'));
+        for (final e in prices.entries) {
+          product = await _api.setPrice(product.id, e.key, e.value);
+        }
+        return product;
+      },
+    );
+    switch (outcome) {
+      case Applied(:final value):
+        await _repository.saveAll(products: [value]);
+        if (fields.containsKey('initialStock')) _onStockChanged();
+        return (product: value, pending: false);
+      case Queued(:final clientMutationId):
+        final local = Product.fromJson({
+          for (final e in fields.entries)
+            if (e.value != null) e.key: e.value,
+          'id': clientMutationId,
+          'barcode': fields['barcode'] ?? '',
+          'minThreshold': fields['minThreshold'] ?? '0',
+          'safetyStock': '0',
+          'allowBackorder': fields['allowBackorder'] ?? false,
+          'isActive': true,
+          'updatedAt': DateTime.utc(2000).toIso8601String(),
+          'prices': [
+            for (final e in prices.entries)
+              {'priceTierId': e.key, 'priceHt': e.value},
+          ],
+        });
+        await _repository.saveAll(products: [local]);
+        return (product: local, pending: true);
+    }
+  }
+
+  Future<Product> _afterCreate(Product product, {Uint8List? photo}) async {
+    if (photo == null) return product;
+    try {
+      final withPhoto = await _api.uploadImage(product.id, photo);
+      await _repository.saveAll(products: [withPhoto]);
+      return withPhoto;
+    } on ApiException catch (error) {
+      throw PhotoNotSaved(product, error);
+    }
+  }
+
+  /// Effacement DÉFINITIF (serveur PUIS cache de ce poste) d'un produit sans
+  /// historique. Les autres postes l'oublient à leur prochaine synchro.
+  /// 409 (il a un historique) : remonte tel quel, l'écran propose de le
+  /// désactiver.
+  Future<void> deleteProduct(String id) async {
+    await _api.deleteProduct(id);
+    await _repository.forget(CatalogKind.product, id);
+    _onStockChanged();
+  }
+
   Future<ProductCategory> saveCategory(
     String? id,
     Map<String, Object?> fields,
@@ -317,6 +412,7 @@ final catalogActionsProvider = Provider<CatalogActions>(
     ref.watch(catalogApiProvider),
     ref.watch(catalogRepositoryProvider),
     () => ref.invalidate(stockByProductProvider),
+    ref,
   ),
 );
 

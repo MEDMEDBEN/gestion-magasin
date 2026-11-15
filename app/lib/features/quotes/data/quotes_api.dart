@@ -52,12 +52,25 @@ class QuotesApi {
     String? customerId,
     String? validUntil,
     required List<QuoteLineInput> lines,
-  }) => _post('/quotes', {
+  }) => createFromBody(
+    body(id: id, customerId: customerId, validUntil: validUntil, lines: lines),
+  );
+
+  /// Corps de `POST /quotes` — le MÊME en ligne et dans la file hors ligne.
+  static Map<String, dynamic> body({
+    required String id,
+    String? customerId,
+    String? validUntil,
+    required List<QuoteLineInput> lines,
+  }) => {
     'id': id,
     'customerId': ?customerId,
     'validUntil': ?validUntil,
     'lines': _lines(lines),
-  }, Quote.fromJson);
+  };
+
+  Future<Quote> createFromBody(Map<String, dynamic> body) =>
+      _post('/quotes', body, Quote.fromJson);
 
   /// Devis BROUILLON corrigé (P1 bis n°21m) : lignes remplacées et re-tarifées
   /// par le serveur. `customerId` null : devis comptoir.

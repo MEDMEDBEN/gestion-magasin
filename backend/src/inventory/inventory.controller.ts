@@ -39,6 +39,7 @@ import {
   InventoryListDto,
   InventoryExportQueryDto,
   InventoryListQueryDto,
+  InventorySuggestionsQueryDto,
   SubmitCountDto,
 } from './dto/inventory.dto';
 import {
@@ -87,6 +88,18 @@ export class InventoryController {
   @ApiOkResponse({ type: InventoryListDto })
   findAll(@Query() query: InventoryListQueryDto): Promise<InventoryListDto> {
     return this.inventories.findAll(query);
+  }
+
+  /// Produits À SURVEILLER (demande MEDMEDBEN du 2026-11-15) : ceux qui
+  /// bougent le plus (ventes, achats, transferts, ajouts) et qui n'ont pas
+  /// été comptés depuis 24 h. Une SUGGESTION, jamais une obligation.
+  /// Déclarée AVANT `:id`.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.INVENTORY_CREATE)
+  @Get('suggestions')
+  @ApiOperation({ summary: 'Produits à compter : les plus mouvementés' })
+  suggestions(@Query() query: InventorySuggestionsQueryDto) {
+    return this.inventories.suggestions(query);
   }
 
   /// Export : MÊMES gardes que `GET /inventories`, mêmes lignes.

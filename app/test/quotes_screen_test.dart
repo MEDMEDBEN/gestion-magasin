@@ -329,7 +329,9 @@ void main() {
       cart.setPrice('p1', 150000);
       cart.setDiscount('p1', 2500);
 
-      api.failNext = const ApiException(statusCode: 0, message: 'coupure');
+      // Réponse perdue côté serveur (502) : on réessaie avec le MÊME id. Une
+      // vraie coupure (statut 0), elle, met le devis en file (2026-11-15).
+      api.failNext = const ApiException(statusCode: 502, message: 'perdue');
       final actions = container.read(quoteActionsProvider);
       await expectLater(actions.createFromCart(), throwsA(isA<ApiException>()));
       expect(container.read(cartProvider).isEmpty, isFalse);

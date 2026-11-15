@@ -17,6 +17,6 @@ import { SaleReturnsService } from './sale-returns.service';
     QuotesService,
     SaleReturnsService,
   ],
-  exports: [SalesService, CashSessionsService],
+  exports: [SalesService, CashSessionsService, QuotesService],
 })
 export class SalesModule {}

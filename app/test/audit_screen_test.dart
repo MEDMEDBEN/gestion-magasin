@@ -50,6 +50,7 @@ class _SlowAuditApi extends AuditApi {
     int limit = 50,
     String? entityType,
     AuditAction? action,
+    String? userId,
     String? from,
     String? to,
   }) async {
@@ -88,6 +89,7 @@ class _FakeAuditApi extends AuditApi {
     int limit = 50,
     String? entityType,
     AuditAction? action,
+    String? userId,
     String? from,
     String? to,
   }) async {
@@ -374,6 +376,7 @@ void main() {
       container.read(auditFilterProvider.notifier).set((
         entityType: 'Transfer',
         action: null,
+        userId: null,
         period: lastDays(7),
       ));
       final filtered = await container.read(auditProvider.future);

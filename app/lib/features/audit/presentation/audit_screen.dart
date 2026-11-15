@@ -87,6 +87,7 @@ class AuditScreen extends ConsumerWidget {
                   entityType: filter.entityType,
                   action: null,
                   period: filter.period,
+                  userId: filter.userId,
                 )),
               ),
               for (final a in AuditAction.values)
@@ -109,6 +110,7 @@ class AuditScreen extends ConsumerWidget {
                     entityType: filter.entityType,
                     action: filter.action == a ? null : a,
                     period: filter.period,
+                    userId: filter.userId,
                   )),
                 ),
             ],
@@ -143,6 +145,35 @@ class AuditScreen extends ConsumerWidget {
                     entityType: v,
                     action: filter.action,
                     period: filter.period,
+                    userId: filter.userId,
+                  )),
+                ),
+              ),
+              // Auteur : l'activité d'UN compte (2026-11-15).
+              SizedBox(
+                width: 220,
+                child: DropdownButtonFormField<String?>(
+                  icon: const Icon(LucideIcons.chevronDown, size: 17),
+                  initialValue: filter.userId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Utilisateur'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Tous les utilisateurs'),
+                    ),
+                    for (final u
+                        in ref.watch(auditUsersProvider).value ?? const [])
+                      DropdownMenuItem<String?>(
+                        value: u.id,
+                        child: Text(u.name, overflow: TextOverflow.ellipsis),
+                      ),
+                  ],
+                  onChanged: (v) => setFilter((
+                    entityType: filter.entityType,
+                    action: filter.action,
+                    period: filter.period,
+                    userId: v,
                   )),
                 ),
               ),
@@ -152,6 +183,7 @@ class AuditScreen extends ConsumerWidget {
                   entityType: filter.entityType,
                   action: filter.action,
                   period: p,
+                  userId: filter.userId,
                 )),
               ),
             ],

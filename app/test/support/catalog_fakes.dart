@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:decimal/decimal.dart';
 import 'package:dio/dio.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_api.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 
@@ -48,6 +49,16 @@ class RecordingCatalogApi extends CatalogApi {
   RecordingCatalogApi() : super(Dio());
 
   final List<(String? id, Map<String, Object?> fields)> productCalls = [];
+
+  /// Produits effacés ; `deleteError` : refus du serveur (historique → 409).
+  final List<String> deleted = [];
+  ApiException? deleteError;
+
+  @override
+  Future<void> deleteProduct(String id) async {
+    if (deleteError case final error?) throw error;
+    deleted.add(id);
+  }
 
   /// Étiquettes demandées : support, puis (produit, exemplaires).
   final List<List<({String productId, int copies})>> labelCalls = [];

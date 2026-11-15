@@ -3,12 +3,38 @@ import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
+import 'package:gestion_magasin/data/local/device_reset.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
+import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_api.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_repository.dart';
 
 import 'support/catalog_fakes.dart';
+
+/// Serveur qui ne connaît plus que `p2` (p1 effacé, ou base remise à zéro).
+class _IdsApi extends CatalogApi {
+  _IdsApi() : super(Dio());
+
+  @override
+  Future<CatalogChanges> changes({String? cursor, int limit = 500}) async =>
+      const CatalogChanges(
+        products: [],
+        categories: [],
+        locations: [],
+        taxRates: [],
+        cursor: 'c',
+        hasMore: false,
+      );
+
+  @override
+  Future<Map<String, Set<String>>> ids() async => {
+    'product': {'p2'},
+    'category': {},
+    'location': {},
+    'taxRate': {},
+  };
+}
 
 /// Faux serveur de delta : sert des pages préparées et note les curseurs reçus.
 class _PagedApi extends CatalogApi {
@@ -315,5 +341,54 @@ void main() {
     await repo.saveAll(products: [product(id: 'p1')]);
     expect(await repo.watchProducts().first, hasLength(1));
     expect(await LocalSettingsStore(migrated).read('theme'), 'dark');
+  });
+
+  // 2026-11-15 : « rien en cache qui ne soit pas dans la base ».
+  test('synchro : le cache oublie ce que le serveur n’a plus, sauf un produit '
+      'encore en file', () async {
+    final repo = CatalogRepository(db, settings, _IdsApi());
+    await repo.saveAll(
+      products: [
+        product(id: 'p1'),
+        product(id: 'p2'),
+        product(id: 'p3'),
+      ],
+    );
+    // p3 : créé hors ligne, pas encore arrivé au serveur.
+    await MutationQueue(db).enqueue(
+      authorUserId: 'u',
+      deviceId: 'd',
+      operationType: 'PRODUCT',
+      payload: const {},
+      clientMutationId: 'p3',
+    );
+    await repo.pull();
+    expect((await repo.watchProducts().first).map((p) => p.id).toSet(), {
+      'p2',
+      'p3',
+    });
+  });
+
+  test('réinitialiser le poste : refusé tant qu’une opération attend, '
+      'sinon TOUT est effacé', () async {
+    final repo = CatalogRepository(db, settings, _IdsApi());
+    await repo.saveAll(products: [product(id: 'p1')]);
+    await settings.write('k', 'v');
+    final queue = MutationQueue(db);
+    final key = await queue.enqueue(
+      authorUserId: 'u',
+      deviceId: 'd',
+      operationType: 'SALE',
+      payload: const {},
+    );
+    expect(await resetDeviceData(db), 1);
+    expect(await repo.watchProducts().first, hasLength(1));
+
+    await (db.delete(
+      db.pendingMutations,
+    )..where((t) => t.clientMutationId.equals(key))).go();
+    expect(await resetDeviceData(db), 0);
+    expect(await repo.watchProducts().first, isEmpty);
+    expect(await settings.read('k'), isNull);
   });
 }

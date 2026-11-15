@@ -203,6 +203,25 @@ export class ProductsController {
     );
   }
 
+  /// Effacement définitif d'un produit SANS historique (sinon 409 : le
+  /// désactiver). ADMIN + `product.disable`, comme la désactivation.
+  @Roles(RoleCode.ADMIN)
+  @RequirePermissions(PERMISSIONS.PRODUCT_WRITE, PERMISSIONS.PRODUCT_DISABLE)
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Efface définitivement un produit sans historique',
+    description:
+      '409 si le produit a des ventes, achats, mouvements… : le désactiver.',
+  })
+  remove(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<void> {
+    return this.productsService.remove(id, actorOf(user, ip));
+  }
+
   // Magasinier : décision MEDMEDBEN du 2026-10-11.
   @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
   @RequirePermissions(PERMISSIONS.PRODUCT_WRITE)
@@ -463,6 +482,23 @@ export class PricingController {
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
+
+  /// Identifiants EXISTANTS du catalogue : l'appareil efface de son cache
+  /// tout ce qui n'y est plus (produit effacé, base remise à zéro).
+  /// ponytail: liste complète à chaque synchro (quelques milliers d'ids,
+  /// ~40 o chacun) ; passer à des « pierres tombales » datées si ça grossit.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ)
+  @Get('ids')
+  @ApiOperation({ summary: 'Ids du catalogue (nettoyage des caches)' })
+  ids(): Promise<{
+    products: string[];
+    categories: string[];
+    locations: string[];
+    taxRates: string[];
+  }> {
+    return this.catalogService.ids();
+  }
 
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRODUCT_READ)

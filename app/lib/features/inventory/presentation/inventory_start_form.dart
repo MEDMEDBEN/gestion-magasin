@@ -16,7 +16,14 @@ import '../data/inventory_models.dart';
 /// Lancement d'un inventaire (spec §22). Le théorique est figé à cet instant :
 /// c'est la feuille de comptage. Aucun stock ne bouge avant la validation.
 class InventoryStartForm extends ConsumerStatefulWidget {
-  const InventoryStartForm({super.key, this.initialType = InventoryType.full});
+  const InventoryStartForm({
+    super.key,
+    this.initialType = InventoryType.full,
+    this.initialProductIds = const [],
+  });
+
+  /// Produits déjà cochés (suggestions « à surveiller »).
+  final List<String> initialProductIds;
 
   /// Choisi d'avance par le bouton de l'écran (complet / tournant).
   final InventoryType initialType;
@@ -31,7 +38,7 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
   /// Intention stable : tous les essais de CE lancement portent la même clé.
   late final String _intent = 'inventory:${ref.read(uuidProvider).v7()}';
   final _zone = TextEditingController();
-  final Set<String> _productIds = {};
+  late final Set<String> _productIds = {...widget.initialProductIds};
 
   /// Filtre de la liste à cocher : sur 1 000 produits, on cherche le sien.
   String _filter = '';

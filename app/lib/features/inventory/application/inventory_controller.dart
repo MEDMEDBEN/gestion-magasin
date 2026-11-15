@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/mutation_keys.dart';
+import '../../../core/providers.dart';
 import '../../../data/local/document_cache.dart';
 import '../../../data/local/offline_documents.dart';
 import '../../../core/quantity.dart';
@@ -10,6 +11,18 @@ import '../data/inventory_models.dart';
 
 /// Inventaires lus EN LIGNE : un comptage périmé ferait ajuster du stock sur
 /// une photo fausse. Liés au compte connecté (poste partagé).
+/// Les produits qui bougent le plus : à compter AUJOURD'HUI, de préférence.
+/// Une suggestion — jamais une obligation ; hors ligne : rien (pas d'erreur).
+final countSuggestionsProvider =
+    FutureProvider.autoDispose<List<CountSuggestion>>((ref) async {
+      ref.watch(currentUserIdProvider);
+      try {
+        return await ref.watch(inventoryApiProvider).suggestions();
+      } on Object {
+        return const [];
+      }
+    });
+
 final inventoriesProvider = FutureProvider.autoDispose<CachedList<Inventory>>(
   (ref) => onlineOrCached(
     ref,

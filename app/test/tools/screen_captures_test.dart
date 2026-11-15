@@ -721,6 +721,7 @@ class _CaptureAuditApi extends AuditApi {
     int limit = 50,
     String? entityType,
     AuditAction? action,
+    String? userId,
     String? from,
     String? to,
   }) async => AuditPage(

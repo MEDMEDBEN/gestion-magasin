@@ -51,9 +51,51 @@ class CatalogRepository {
         await _settings.write(cursorKey, page.cursor);
       });
       cursor = page.cursor;
-      if (!page.hasMore) return;
+      if (!page.hasMore) break;
     }
+    await reconcile();
   }
+
+  /// Efface du cache TOUT ce que le serveur n'a plus (produit effacé, base
+  /// remise à zéro) — demande MEDMEDBEN du 2026-11-15 : « rien en cache qui
+  /// ne soit pas dans la base ». Un produit créé hors ligne, encore dans la
+  /// file, est gardé : il n'est pas encore arrivé au serveur.
+  Future<void> reconcile() async {
+    final Map<String, Set<String>> server;
+    try {
+      server = await _api.ids();
+    } on Object {
+      return; // serveur ancien ou coupure : on réessaiera à la prochaine synchro
+    }
+    final pending =
+        await (_db.select(_db.pendingMutations)..where(
+              (t) =>
+                  t.operationType.equals('PRODUCT') &
+                  t.status.equalsValue(LocalMutationStatus.enAttente),
+            ))
+            .map((row) => row.clientMutationId)
+            .get();
+    final rows = await _db.select(_db.catalogEntries).get();
+    final stale = [
+      for (final row in rows)
+        if (server[row.kind] case final ids?)
+          if (!ids.contains(row.id) && !pending.contains(row.id)) row,
+    ];
+    if (stale.isEmpty) return;
+    await _db.batch((batch) {
+      for (final row in stale) {
+        batch.deleteWhere(
+          _db.catalogEntries,
+          (t) => t.kind.equals(row.kind) & t.id.equals(row.id),
+        );
+      }
+    });
+  }
+
+  /// Retire UN produit du cache (effacé depuis ce poste).
+  Future<void> forget(String kind, String id) => (_db.delete(
+    _db.catalogEntries,
+  )..where((t) => t.kind.equals(kind) & t.id.equals(id))).go();
 
   /// Écrit localement des ressources reçues du serveur (delta, ou réponse d'une
   /// création/modification — affichée tout de suite, sans attendre le delta).

@@ -77,73 +77,85 @@ export class QuotesService {
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<QuoteDto> {
+    return this.prisma.$transaction((tx) =>
+      this.createInTx(tx, dto, user, actor),
+    );
+  }
+
+  /// Cœur de la création, dans la transaction de l'appelant : la route et la
+  /// synchronisation hors ligne (`QuoteHandler`) appliquent les MÊMES règles.
+  /// Le numéro DV-… est attribué ICI, serveur, à l'enregistrement.
+  async createInTx(
+    tx: Prisma.TransactionClient,
+    dto: CreateQuoteDto,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+  ): Promise<QuoteDto> {
     const validUntil = QuotesService.validUntil(dto.validUntil);
-    return this.prisma.$transaction(async (tx) => {
-      // Renvoi (réponse perdue) : le MÊME compte retrouve SON devis, jamais un
-      // second. Un id déjà pris par un autre compte reste un conflit.
-      const existing = dto.id
-        ? await tx.quote.findUnique({
-            where: { id: dto.id },
-            include: QUOTE_INCLUDE,
-          })
-        : null;
-      if (existing) {
-        if (existing.userId !== user.id) {
-          throw new BusinessException(
-            ErrorCode.CONFLICT,
-            'Cet identifiant de devis est déjà pris',
-            HttpStatus.CONFLICT,
-          );
-        }
-        return QuotesService.toDto(existing);
-      }
-      const customer = dto.customerId
-        ? await tx.customer.findFirst({
-            where: { id: dto.customerId, isActive: true },
-          })
-        : null;
-      if (dto.customerId && !customer) {
+    // Renvoi (réponse perdue) : le MÊME compte retrouve SON devis, jamais un
+    // second. Un id déjà pris par un autre compte reste un conflit.
+    const existing = dto.id
+      ? await tx.quote.findUnique({
+          where: { id: dto.id },
+          include: QUOTE_INCLUDE,
+        })
+      : null;
+    if (existing) {
+      if (existing.userId !== user.id) {
         throw new BusinessException(
-          ErrorCode.VALIDATION_FAILED,
-          'Client introuvable ou inactif',
-          HttpStatus.UNPROCESSABLE_ENTITY,
+          ErrorCode.CONFLICT,
+          'Cet identifiant de devis est déjà pris',
+          HttpStatus.CONFLICT,
         );
       }
-      const priced = await SalesService.priceCart(
-        tx,
-        customer,
-        dto.lines,
-        user.permissions.includes(PERMISSIONS.SALE_DISCOUNT),
+      return QuotesService.toDto(existing);
+    }
+    const customer = dto.customerId
+      ? await tx.customer.findFirst({
+          where: { id: dto.customerId, isActive: true },
+        })
+      : null;
+    if (dto.customerId && !customer) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        'Client introuvable ou inactif',
+        HttpStatus.UNPROCESSABLE_ENTITY,
       );
-      const quote = await tx.quote.create({
-        data: {
-          id: dto.id,
-          number: await nextDocumentNumber(tx, 'DEVIS', 'DV', 5),
-          customerId: customer?.id ?? null,
-          userId: user.id,
-          validUntil,
-          totalHt: priced.totalHt,
-          totalTax: priced.totalTax,
-          totalTtc: priced.totalTtc,
-          note: dto.note ?? null,
-          lines: { create: QuotesService.lineRows(priced.lines) },
-        },
-        include: QUOTE_INCLUDE,
-      });
-      await writeAudit(tx, actor, {
-        action: 'CREATE',
-        entityType: 'Quote',
-        entityId: quote.id,
-        newValue: {
-          number: quote.number,
-          totalTtc: quote.totalTtc,
-          // Même trace que `POST /sales` (décision 2026-09-22) : le prix
-          // promis au client, s'il n'est pas celui du tarif.
-          priceOverrides: QuotesService.overrides(priced.lines),
-        },
-      });
-      return QuotesService.toDto(quote);
+    }
+    const priced = await SalesService.priceCart(
+      tx,
+      customer,
+      dto.lines,
+      user.permissions.includes(PERMISSIONS.SALE_DISCOUNT),
+    );
+    const quote = await tx.quote.create({
+      data: {
+        id: dto.id,
+        number: await nextDocumentNumber(tx, 'DEVIS', 'DV', 5),
+        customerId: customer?.id ?? null,
+        userId: user.id,
+        validUntil,
+        totalHt: priced.totalHt,
+        totalTax: priced.totalTax,
+        totalTtc: priced.totalTtc,
+        note: dto.note ?? null,
+        lines: { create: QuotesService.lineRows(priced.lines) },
+      },
+      include: QUOTE_INCLUDE,
     });
+    await writeAudit(tx, actor, {
+      action: 'CREATE',
+      entityType: 'Quote',
+      entityId: quote.id,
+      newValue: {
+        number: quote.number,
+        totalTtc: quote.totalTtc,
+        // Même trace que `POST /sales` (décision 2026-09-22) : le prix
+        // promis au client, s'il n'est pas celui du tarif.
+        priceOverrides: QuotesService.overrides(priced.lines),
+      },
+    });
+    return QuotesService.toDto(quote);
   }
 
   /// Modification d'un BROUILLON non expiré (P1 bis n°21m) : par son auteur ou

@@ -28,20 +28,30 @@ List<int> quickAmounts(int total) {
 /// un geste), monnaie à rendre en direct — ou reste à crédit si un client est
 /// choisi. Une vente comptoir doit être soldée : le bouton reste grisé.
 /// Rend les espèces REÇUES (centimes), `null` si annulé.
+///
+/// `invoice` (compte qui facture) : case « Facture » — la vente reçoit son
+/// numéro légal FA-… attribué par le SERVEUR, tout de suite en ligne, à la
+/// synchronisation hors ligne (2026-11-15).
 Future<int?> showPaymentDialog(
   BuildContext context, {
   required int total,
   String? customerName,
+  ValueNotifier<bool>? invoice,
 }) => showDialog<int>(
   context: context,
-  builder: (_) => _PaymentDialog(total: total, customerName: customerName),
+  builder: (_) => _PaymentDialog(
+    total: total,
+    customerName: customerName,
+    invoice: invoice,
+  ),
 );
 
 class _PaymentDialog extends StatefulWidget {
-  const _PaymentDialog({required this.total, this.customerName});
+  const _PaymentDialog({required this.total, this.customerName, this.invoice});
 
   final int total;
   final String? customerName;
+  final ValueNotifier<bool>? invoice;
 
   @override
   State<_PaymentDialog> createState() => _PaymentDialogState();
@@ -227,6 +237,24 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                   ],
                 ),
               ),
+              if (widget.invoice case final invoice?) ...[
+                const SizedBox(height: 10),
+                ValueListenableBuilder<bool>(
+                  valueListenable: invoice,
+                  builder: (context, value, _) => CheckboxListTile(
+                    value: value,
+                    onChanged: (v) => invoice.value = v ?? false,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Facture (au lieu d’un ticket)'),
+                    subtitle: const Text(
+                      'Numéro légal attribué par le serveur — hors ligne : '
+                      'à la synchronisation',
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               Row(
                 children: [

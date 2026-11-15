@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/money.dart';
 import 'package:gestion_magasin/core/photos.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
@@ -39,6 +40,9 @@ class _ApiOnlyActions extends CatalogActions {
 
   Uint8List? lastPhoto;
   Map<String, int> lastPrices = const {};
+
+  @override
+  Future<void> deleteProduct(String id) => api.deleteProduct(id);
 
   @override
   Future<Product> saveProduct(
@@ -262,16 +266,32 @@ void main() {
       if (desktop) expect(find.byTooltip('Modifier'), findsOneWidget);
 
       await action('Supprimer');
-      expect(find.text('Supprimer « Câble » ?'), findsOneWidget);
+      expect(find.text('Effacer « Câble » ?'), findsOneWidget);
       // Annuler : rien ne part.
       await tester.tap(find.text('Annuler'));
       await tester.pumpAndSettle();
+      expect(api.deleted, isEmpty);
+
+      // Sans historique : effacé DÉFINITIVEMENT (2026-11-15).
+      await action('Supprimer');
+      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Effacer'));
+      await tester.pumpAndSettle();
+      expect(api.deleted, ['p1']);
       expect(api.productCalls, isEmpty);
 
+      // Avec un historique : le serveur refuse (409) → on propose de le
+      // DÉSACTIVER, jamais d'effacer ses ventes (règle 7).
+      api.deleteError = const ApiException(
+        statusCode: 409,
+        code: 'CONFLICT',
+        message: '« Câble » a déjà un historique',
+      );
       await action('Supprimer');
-      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));
+      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Effacer'));
       await tester.pumpAndSettle();
-      // Désactivation, jamais un effacement : l'historique reste.
+      expect(find.text('Désactiver « Câble » ?'), findsOneWidget);
+      await tester.tap(find.widgetWithText(AmpereDangerButton, 'Désactiver'));
+      await tester.pumpAndSettle();
       expect(api.productCalls, hasLength(1));
       expect(api.productCalls.single.$1, 'p1');
       expect(api.productCalls.single.$2, {'isActive': false});

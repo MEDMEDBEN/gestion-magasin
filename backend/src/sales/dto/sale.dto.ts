@@ -97,6 +97,16 @@ export class CreateSaleDto {
   @ClientMutationId()
   clientMutationId!: string;
 
+  /// Facture demandée à la caisse (2026-11-15) : le numéro légal FA-… est
+  /// attribué SERVEUR à l'enregistrement — tout de suite en ligne, à la
+  /// synchronisation pour une vente faite hors ligne (règle 11).
+  @ApiPropertyOptional({
+    description: 'Émettre la facture (numéro légal attribué serveur)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  issueInvoice?: boolean;
+
   @ApiPropertyOptional({
     description:
       'UUID généré par le client : un renvoi ne crée pas une seconde vente.',

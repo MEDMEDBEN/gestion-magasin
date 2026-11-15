@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers.dart';
+import '../../users/data/users_api.dart';
 import '../data/audit_api.dart';
 import '../data/audit_models.dart';
 import '../../../ui/widgets/period_filter.dart';
@@ -11,11 +12,15 @@ typedef AuditFilter = ({
   String? entityType,
   AuditAction? action,
   HistoryPeriod period,
+
+  /// Auteur des actions (demande MEDMEDBEN du 2026-11-15).
+  String? userId,
 });
 
 class AuditFilterController extends Notifier<AuditFilter> {
   @override
-  AuditFilter build() => (entityType: null, action: null, period: lastDays(7));
+  AuditFilter build() =>
+      (entityType: null, action: null, period: lastDays(7), userId: null);
 
   void set(AuditFilter filter) => state = filter;
 }
@@ -64,6 +69,7 @@ class AuditController extends AsyncNotifier<AuditListState> {
         limit: pageSize,
         entityType: filter.entityType,
         action: filter.action,
+        userId: filter.userId,
         from: filter.period.from,
         to: filter.period.to,
       );
@@ -114,3 +120,11 @@ final auditProvider =
     AsyncNotifierProvider.autoDispose<AuditController, AuditListState>(
       AuditController.new,
     );
+
+/// Comptes, pour filtrer le journal par auteur (lu en ligne, comme le journal).
+final auditUsersProvider =
+    FutureProvider.autoDispose<List<({String id, String name})>>((ref) async {
+      ref.watch(currentUserIdProvider);
+      final page = await ref.watch(usersApiProvider).list(limit: 200);
+      return [for (final u in page.data) (id: u.id, name: u.fullName)];
+    });

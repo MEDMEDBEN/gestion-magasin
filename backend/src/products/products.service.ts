@@ -681,6 +681,69 @@ export class ProductsService {
     return created;
   }
 
+  /// EFFACEMENT DÉFINITIF (demande MEDMEDBEN du 2026-11-15 : produits
+  /// d'essai). Seulement un produit SANS historique : aucune vente, devis,
+  /// achat, réception, transfert, inventaire, perte, retour, problème, ni
+  /// mouvement autre que son stock initial (règle 7 : une opération validée
+  /// ne s'efface jamais). Sinon : refus, on le DÉSACTIVE à la place.
+  /// Les caches des appareils l'oublient à leur prochaine synchro (`/catalog/ids`).
+  async remove(id: string, actor: ActorContext): Promise<void> {
+    const imageKey = await this.prisma.$transaction(async (tx) => {
+      await ProductsService.lockWrites(tx);
+      const product = await tx.product.findUnique({ where: { id } });
+      if (!product) throw ProductsService.notFound();
+      const hasHistory = () =>
+        new BusinessException(
+          ErrorCode.CONFLICT,
+          `« ${product.name} » a déjà un historique (ventes, achats, mouvements…) : ` +
+            'il ne peut pas être effacé. Désactivez-le : il disparaît du catalogue et de la vente.',
+          HttpStatus.CONFLICT,
+        );
+      const movements = await tx.stockMovement.count({
+        where: {
+          productId: id,
+          NOT: { operationType: 'PRODUCT', operationId: id },
+        },
+      });
+      // Un signalement le lie en SET NULL (pas de FK bloquante) : contrôlé
+      // ici, sinon il perdrait son produit en silence (audit du 2026-11-15).
+      const problems = await tx.problem.count({ where: { productId: id } });
+      if (movements > 0 || problems > 0) throw hasHistory();
+      // Son stock initial n'est pas une opération : il part avec lui. Tout
+      // autre mouvement reste protégé par la base.
+      await tx.stockMovement.deleteMany({
+        where: { productId: id, operationType: 'PRODUCT', operationId: id },
+      });
+      try {
+        // Prix et stock suivent (cascade) ; toute autre trace est protégée
+        // par la base (clé étrangère) : c'est un historique.
+        await tx.product.delete({ where: { id } });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2003'
+        ) {
+          throw hasHistory();
+        }
+        throw error;
+      }
+      await writeAudit(tx, actor, {
+        action: 'CANCEL',
+        entityType: 'Product',
+        entityId: id,
+        oldValue: {
+          sku: product.sku,
+          name: product.name,
+          barcode: product.barcode,
+        },
+        newValue: { deleted: true },
+      });
+      return product.imageUrl;
+    });
+    // Le produit EST effacé : une photo orpheline n'en fait pas une erreur.
+    if (imageKey) await this.storage.remove(imageKey).catch(() => undefined);
+  }
+
   async update(
     id: string,
     dto: UpdateProductDto,

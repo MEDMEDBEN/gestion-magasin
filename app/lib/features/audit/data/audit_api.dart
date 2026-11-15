@@ -17,6 +17,7 @@ class AuditApi {
     int limit = 50,
     String? entityType,
     AuditAction? action,
+    String? userId,
     String? from,
     String? to,
   }) {
@@ -28,6 +29,7 @@ class AuditApi {
           'limit': limit,
           'entityType': ?entityType,
           'action': ?action?.wire,
+          'userId': ?userId,
           'from': ?from,
           'to': ?to,
         },

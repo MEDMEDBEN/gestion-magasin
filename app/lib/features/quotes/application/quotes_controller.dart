@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/offline_write.dart';
+
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
@@ -64,16 +66,27 @@ class QuoteActions {
   /// Devis du panier en cours — même recherche, même douchette, même prix
   /// modifié que la vente. Le panier est vidé une fois le devis enregistré :
   /// un devis ne sort RIEN du stock.
-  Future<Quote> createFromCart({DateTime? validUntil}) async {
+  ///
+  /// HORS LIGNE (demande MEDMEDBEN du 2026-11-15) : le devis part dans la file
+  /// et `null` est rendu — son numéro DV-… est attribué par le serveur à la
+  /// synchronisation.
+  Future<Quote?> createFromCart({DateTime? validUntil}) async {
     final cart = _ref.read(cartProvider);
     // L'id du devis est la clé de l'intention « faire un devis de CE panier » :
-    // un renvoi après coupure ne crée pas un second devis (le serveur répond
-    // « existe déjà »).
-    final quote = await runMoneyMutation(
+    // un renvoi après coupure ne crée pas un second devis (le serveur rend le
+    // devis déjà créé ; la synchro le reconnaît aussi).
+    final outcome = await writeOnlineOrQueue<Quote>(
       _ref,
-      'quote:${cart.saleId}',
-      (id) => _api.create(
+      intent: 'quote:${cart.saleId}',
+      operationType: 'QUOTE',
+      payload: (id) => QuotesApi.body(
         id: id,
+        customerId: cart.customer?.id,
+        validUntil: validUntil == null ? null : isoDay(validUntil),
+        lines: _cartLines(cart),
+      ),
+      online: (body) => _api.create(
+        id: body['id'] as String,
         customerId: cart.customer?.id,
         validUntil: validUntil == null ? null : isoDay(validUntil),
         lines: _cartLines(cart),
@@ -81,7 +94,10 @@ class QuoteActions {
     );
     _ref.read(cartProvider.notifier).clear();
     _refresh();
-    return quote;
+    return switch (outcome) {
+      Applied(:final value) => value,
+      Queued() => null,
+    };
   }
 
   static List<QuoteLineInput> _cartLines(CartState cart) => [

@@ -18,6 +18,7 @@ import {
   InventoryListDto,
   InventoryExportQueryDto,
   InventoryListQueryDto,
+  InventorySuggestionsQueryDto,
   InventoryTypeDto,
   SubmitCountDto,
 } from './dto/inventory.dto';
@@ -57,6 +58,66 @@ const INVENTORY_SORT_FIELDS = ['startedAt', 'number'] as const;
 /// inventaires qui se chevauchent (voir `assertNotAlreadyAdjusted`).
 @Injectable()
 export class InventoryService {
+  /// Les produits qui BOUGENT le plus sur la période (nombre de mouvements :
+  /// ventes, réceptions, transferts, ajouts, pertes — pas le stock initial),
+  /// au moins 3, et non comptés depuis 24 h. Le plus actif d'abord.
+  async suggestions(query: InventorySuggestionsQueryDto) {
+    const days = query.days ?? 7;
+    const limit = query.limit ?? 10;
+    const since = new Date(Date.now() - days * 86_400_000);
+    const recent = new Date(Date.now() - 86_400_000);
+    const grouped = await this.prisma.stockMovement.groupBy({
+      by: ['productId'],
+      where: {
+        createdAt: { gte: since },
+        NOT: { operationType: 'PRODUCT' },
+        ...(query.locationId && { locationId: query.locationId }),
+        product: { isActive: true },
+      },
+      _count: { _all: true },
+      orderBy: { _count: { productId: 'desc' } },
+      take: limit * 3,
+    });
+    const busy = grouped.filter((g) => g._count._all >= 3);
+    if (busy.length === 0) return [];
+    const ids = busy.map((g) => g.productId);
+    const [products, counted] = await Promise.all([
+      this.prisma.product.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, name: true, sku: true, unit: true },
+      }),
+      this.prisma.inventoryLine.findMany({
+        where: {
+          productId: { in: ids },
+          countedQuantity: { not: null },
+          ...(query.locationId && {
+            inventory: { locationId: query.locationId },
+          }),
+        },
+        select: { productId: true, inventory: { select: { startedAt: true } } },
+        orderBy: { inventory: { startedAt: 'desc' } },
+      }),
+    ]);
+    const lastCount = new Map<string, Date>();
+    for (const line of counted) {
+      if (!lastCount.has(line.productId)) {
+        lastCount.set(line.productId, line.inventory.startedAt);
+      }
+    }
+    const byId = new Map(products.map((p) => [p.id, p]));
+    return busy
+      .filter((g) => !((lastCount.get(g.productId) ?? new Date(0)) > recent))
+      .slice(0, limit)
+      .map((g) => ({
+        productId: g.productId,
+        name: byId.get(g.productId)?.name ?? '',
+        sku: byId.get(g.productId)?.sku ?? '',
+        unit: byId.get(g.productId)?.unit ?? 'PIECE',
+        movements: g._count._all,
+        lastCountedAt: lastCount.get(g.productId)?.toISOString() ?? null,
+      }));
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: StockLedgerService,

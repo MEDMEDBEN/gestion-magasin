@@ -28,6 +28,30 @@ class CatalogApi {
     });
   }
 
+  /// Ids EXISTANTS sur le serveur, par nature (`product`, `category`,
+  /// `location`, `taxRate`) : tout le reste du cache local est à effacer.
+  Future<Map<String, Set<String>>> ids() {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>('/catalog/ids');
+      final data = response.data!;
+      // Clé absente : ce type n'est PAS nettoyé (jamais « tout effacer »).
+      return {
+        for (final (kind, key) in const [
+          ('product', 'products'),
+          ('category', 'categories'),
+          ('location', 'locations'),
+          ('taxRate', 'taxRates'),
+        ])
+          if (data[key] case final List<dynamic> ids)
+            kind: {for (final id in ids) id as String},
+      };
+    });
+  }
+
+  /// Effacement DÉFINITIF d'un produit sans historique (sinon 409).
+  Future<void> deleteProduct(String id) =>
+      guardApi(() => _dio.delete<void>('/products/$id'));
+
   /// `fields` : UNIQUEMENT les champs saisis ; sans `barcode`, le serveur
   /// génère un code interne unique (règle 15).
   Future<Product> createProduct(Map<String, Object?> fields) =>

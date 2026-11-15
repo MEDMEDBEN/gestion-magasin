@@ -178,6 +178,23 @@ export class CatalogService {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${CATEGORY_NAMES_LOCK}::int, 0)`;
   }
 
+  async ids() {
+    const select = { select: { id: true } } as const;
+    const [products, categories, locations, taxRates] = await Promise.all([
+      this.prisma.product.findMany(select),
+      this.prisma.category.findMany(select),
+      this.prisma.location.findMany(select),
+      this.prisma.taxRate.findMany(select),
+    ]);
+    const ids = (rows: { id: string }[]) => rows.map((r) => r.id);
+    return {
+      products: ids(products),
+      categories: ids(categories),
+      locations: ids(locations),
+      taxRates: ids(taxRates),
+    };
+  }
+
   /// Descente delta du catalogue (docs/context.md : catalogue complet en local,
   /// delta only). Un curseur `(updatedAt, id)` PAR TYPE : robuste aux mises à jour
   /// de masse au même instant. Inactifs compris — le client doit les masquer.
