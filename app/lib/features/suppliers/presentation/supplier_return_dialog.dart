@@ -56,10 +56,7 @@ class _SupplierReturnDialogState extends ConsumerState<_SupplierReturnDialog> {
       setState(() => _error = 'Quantité invalide');
       return;
     }
-    if (_reason.text.trim().length < 2) {
-      setState(() => _error = 'Motif obligatoire');
-      return;
-    }
+    // Motif facultatif (2026-11-15).
     setState(() {
       _saving = true;
       _error = null;

@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, MaxLength, IsOptional } from 'class-validator';
 import { ClientMutationId } from '../idempotency';
 import { PaginationMetaDto } from './pagination.dto';
 
@@ -19,9 +19,10 @@ export class ReversePaymentDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MinLength(3)
+  // Motif FACULTATIF partout (demande MEDMEDBEN du 2026-11-15).
   @MaxLength(500)
-  reason!: string;
+  @IsOptional()
+  reason?: string;
 }
 
 /// Ligne d'historique des paiements (clients ou fournisseurs).

@@ -444,7 +444,7 @@ class _CashBar extends ConsumerWidget {
     );
   }
 
-  /// Entrée, sortie ou prélèvement : montant, puis motif (obligatoire).
+  /// Entrée, sortie ou prélèvement : montant, puis motif (facultatif).
   Future<void> _cashMovement(
     BuildContext context,
     WidgetRef ref,
@@ -469,11 +469,8 @@ class _CashBar extends ConsumerWidget {
       title: '${titles[type]!} de ${formatDA(amount)}',
       fields: const [(key: 'note', label: 'Motif', initial: '')],
     ))?['note'];
+    // Motif facultatif (2026-11-15).
     if (note == null || !context.mounted) return;
-    if (note.length < 2) {
-      _snack(context, 'Motif obligatoire');
-      return;
-    }
     try {
       final after = await ref
           .read(salesActionsProvider)

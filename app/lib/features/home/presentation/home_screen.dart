@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../inventory/presentation/inventory_screen.dart';
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
@@ -78,6 +79,12 @@ class HomeScreen extends ConsumerWidget {
           _Shortcuts(user: user, desktop: desktop),
         ],
         const SizedBox(height: 20),
+        // Rôle STOCK (demande MEDMEDBEN du 2026-11-15) : ce qu'il faut
+        // compter aujourd'hui, en tête du tableau de bord.
+        if (InventoryRights(user).canCount) ...[
+          CountSuggestionsCard(rights: InventoryRights(user)),
+          const SizedBox(height: 16),
+        ],
         switch (summary) {
           // Hauteur BORNÉE : le squelette est lui-même une liste défilante,
           // et deux listes imbriquées sans borne cassent la mise en page.

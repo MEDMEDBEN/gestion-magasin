@@ -183,12 +183,8 @@ class _ReverseDialogState extends State<_ReverseDialog> {
   }
 
   void _submit() {
-    final reason = _reason.text.trim();
-    if (reason.length < 3) {
-      setState(() => _error = 'Indiquez le motif (3 caractères minimum)');
-      return;
-    }
-    Navigator.of(context).pop(reason);
+    // Motif facultatif (2026-11-15).
+    Navigator.of(context).pop(_reason.text.trim());
   }
 
   @override

@@ -151,7 +151,8 @@ void main() {
     },
   );
 
-  testWidgets('contre-passation : motif obligatoire, puis transmis', (
+  // Motif FACULTATIF depuis le 2026-11-15 ; saisi, il est transmis.
+  testWidgets('contre-passation : motif facultatif, transmis s’il est saisi', (
     tester,
   ) async {
     (String, String)? reversed;
@@ -162,11 +163,6 @@ void main() {
     );
     await tester.tap(find.text('Contre-passer'));
     await tester.pumpAndSettle();
-
-    await tester.tap(find.widgetWithText(FilledButton, 'Contre-passer'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('motif'), findsOneWidget);
-    expect(reversed, isNull);
 
     await tester.enterText(find.byType(TextField), 'Erreur de saisie');
     await tester.tap(find.widgetWithText(FilledButton, 'Contre-passer'));

@@ -278,7 +278,7 @@ export class SupplierReturnsService {
         totalHt,
         totalTax,
         totalTtc: totalHt + totalTax,
-        reason: dto.reason,
+        reason: dto.reason ?? '',
         clientMutationId: dto.clientMutationId,
         lines: { create: lines },
       },

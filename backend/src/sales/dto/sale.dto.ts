@@ -23,7 +23,6 @@ import {
   Max,
   MaxLength,
   Min,
-  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { ClientGeneratedId, IsCanonicalUuid } from '../../common/validation';
@@ -376,9 +375,10 @@ export class CreateCashMovementDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MinLength(2, { message: 'note : motif obligatoire (2 caractères au moins)' })
+  // Motif FACULTATIF partout (demande MEDMEDBEN du 2026-11-15).
   @MaxLength(200)
-  note!: string;
+  @IsOptional()
+  note?: string;
 }
 
 /// Mouvement hors vente d'une caisse (entrée, sortie, prélèvement), montré

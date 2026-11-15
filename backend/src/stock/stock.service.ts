@@ -142,6 +142,35 @@ export class StockService {
     };
   }
 
+  /// Vendu net par produit : lignes des ventes VALIDÉES moins les retours.
+  async soldTotals(): Promise<Record<string, string>> {
+    const [sold, returned] = await Promise.all([
+      this.prisma.saleLine.groupBy({
+        by: ['productId'],
+        where: { sale: { status: 'VALIDEE' } },
+        _sum: { quantity: true },
+      }),
+      this.prisma.saleReturnLine.groupBy({
+        by: ['productId'],
+        _sum: { quantity: true },
+      }),
+    ]);
+    const back = new Map(
+      returned.map((r) => [
+        r.productId,
+        r._sum.quantity ?? new Prisma.Decimal(0),
+      ]),
+    );
+    const totals: Record<string, string> = {};
+    for (const row of sold) {
+      const net = (row._sum.quantity ?? new Prisma.Decimal(0)).minus(
+        back.get(row.productId) ?? 0,
+      );
+      totals[row.productId] = formatQuantity(net);
+    }
+    return totals;
+  }
+
   /// Stock par produit × emplacement. Le stock du dépôt (tout ce qui n'est pas le
   /// MAGASIN) exige en plus `stock.read.warehouse` (docs/permissions.md).
   async findStock(query: StockQueryDto, viewer: Viewer): Promise<StockListDto> {

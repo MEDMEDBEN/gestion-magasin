@@ -1,3 +1,4 @@
+import '../../../core/quantity.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +13,17 @@ class StockApi {
   StockApi(this._dio);
 
   final Dio _dio;
+
+  /// Quantité VENDUE par produit depuis sa création (retours déduits).
+  Future<Map<String, Quantity>> sold() {
+    return guardApi(() async {
+      final response = await _dio.get<Map<String, dynamic>>('/stock/sold');
+      return {
+        for (final e in response.data!.entries)
+          e.key: quantityFromJson(e.value),
+      };
+    });
+  }
 
   Future<StockLevelPage> levels({
     String? productId,

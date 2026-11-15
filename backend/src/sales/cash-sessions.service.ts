@@ -312,7 +312,7 @@ export class CashSessionsService {
         const movement = {
           userId: user.id,
           amount: dto.amount,
-          note: dto.note,
+          note: dto.note ?? '',
           clientMutationId: dto.clientMutationId,
         };
         if (dto.type === 'ENTREE') {

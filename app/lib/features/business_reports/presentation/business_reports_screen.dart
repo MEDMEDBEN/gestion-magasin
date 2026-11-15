@@ -19,6 +19,10 @@ import '../data/business_report_models.dart';
 import '../data/business_reports_api.dart';
 import '../../../ui/widgets/period_filter.dart';
 
+import '../../auth/application/auth_controller.dart';
+import '../../sales/presentation/sales_history.dart';
+import '../../sales/presentation/sales_screen.dart';
+
 /// Rapports ventes / stock / achats (spec §21).
 ///
 /// ADMIN seul — le serveur le revérifie. L'écran reste un RÉSUMÉ : la spec dit
@@ -319,7 +323,9 @@ class _SalesCard extends ConsumerWidget {
     return _ReportCard<SalesReport>(
       icon: LucideIcons.shoppingCart,
       tone: StatusTone.info,
-      explain: 'Ce qui s’est vendu et ce que ça a rapporté.',
+      explain:
+          'Ce qui s’est vendu et ce que ça a rapporté — touchez un chiffre '
+          'pour voir chaque vente.',
       title: 'Ventes',
       value: ref.watch(salesReportProvider),
       onRetry: () => ref.invalidate(salesReportProvider),
@@ -341,14 +347,17 @@ class _SalesCard extends ConsumerWidget {
                 label: 'Ventes',
                 value: '${data.totals.count}',
                 tone: StatusTone.info,
+                onTap: () => _openSalesHistory(context, ref),
               ),
               _Figure(
                 tone: StatusTone.info,
                 label: 'Chiffre d’affaires HT',
                 value: formatDA(data.totals.revenueHt),
                 hint: '${formatDA(data.totals.revenueTtc)} TTC',
+                onTap: () => _openSalesHistory(context, ref),
               ),
               _Figure(
+                onTap: () => _openSalesHistory(context, ref),
                 label: 'Marge HT',
                 tone: switch (data.totals.marginHt) {
                   null => StatusTone.neutral,
@@ -370,6 +379,7 @@ class _SalesCard extends ConsumerWidget {
                 ),
               if (data.totals.discountAmount > 0)
                 _Figure(
+                  onTap: () => _openSalesHistory(context, ref),
                   tone: StatusTone.warn,
                   label: 'Remises',
                   value: formatDA(data.totals.discountAmount),
@@ -431,6 +441,7 @@ class _StockCard extends ConsumerWidget {
             spacing: 24,
             children: [
               _Figure(
+                onTap: toStock,
                 tone: StatusTone.info,
                 label: 'Valeur au dernier prix d’achat',
                 value: _moneyOrDash(data.valueHt),
@@ -442,6 +453,7 @@ class _StockCard extends ConsumerWidget {
               _Figure(
                 label: 'Références en stock',
                 value: '${data.referenceCount}',
+                onTap: toStock,
               ),
               _Figure(
                 label: 'Stock faible',
@@ -489,7 +501,9 @@ class _PurchasesCard extends ConsumerWidget {
     return _ReportCard<PurchasesReport>(
       icon: LucideIcons.truck,
       tone: StatusTone.ok,
-      explain: 'Ce qui a été commandé aux fournisseurs, et ce qui est arrivé.',
+      explain:
+          'Ce qui a été commandé et ce qui est arrivé — touchez pour voir '
+          'les commandes.',
       title: 'Achats',
       value: ref.watch(purchasesReportProvider),
       onRetry: () => ref.invalidate(purchasesReportProvider),
@@ -501,12 +515,14 @@ class _PurchasesCard extends ConsumerWidget {
             spacing: 24,
             children: [
               _Figure(
+                onTap: () => goToDestination(ref, 'Achats'),
                 tone: StatusTone.info,
                 label: 'Commandé HT',
                 value: formatDA(data.orderedHt),
                 hint: '${data.orderCount} commande(s)',
               ),
               _Figure(
+                onTap: () => goToDestination(ref, 'Achats'),
                 tone: StatusTone.ok,
                 label: 'Réceptionné HT',
                 value: formatDA(data.receivedHt),
@@ -537,4 +553,27 @@ class _PurchasesCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// Détail des ventes de la période du rapport (demande MEDMEDBEN du
+/// 2026-11-15 : « je clique sur Ventes et je vois l'historique »).
+void _openSalesHistory(BuildContext context, WidgetRef ref) {
+  final user = switch (ref.read(authControllerProvider).value) {
+    AuthSignedIn(:final user) => user,
+    _ => null,
+  };
+  if (user == null) return;
+  final period = ref.read(reportRangeProvider);
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: const Text('Ventes — détail')),
+        body: SalesHistorySection(
+          margin: 16,
+          rights: SalesRights(user),
+          initialPeriod: period,
+        ),
+      ),
+    ),
+  );
 }

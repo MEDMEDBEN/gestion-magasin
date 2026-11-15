@@ -197,7 +197,8 @@ void main() {
     },
   );
 
-  testWidgets('quelques produits : zone et produits cochés partent', (
+  // Plus de zone (2026-11-15) : seuls les produits cochés comptent.
+  testWidgets('quelques produits : les produits cochés partent, sans zone', (
     tester,
   ) async {
     final api = await _pump(tester, _magasinier());
@@ -217,17 +218,14 @@ void main() {
     expect(find.textContaining('au moins un produit'), findsOneWidget);
     expect(api.created, isNull);
 
-    await tester.enterText(
-      find.widgetWithText(TextFormField, 'Zone A, rayon câbles…'),
-      'Zone A',
-    );
+    expect(find.text('Zone comptée'), findsNothing);
     await tester.tap(find.byType(CheckboxListTile).first);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Commencer le comptage'));
     await tester.pumpAndSettle();
     expect(api.created, containsPair('type', 'TOURNANT'));
     expect(api.created, containsPair('locationId', 'depot'));
-    expect(api.created, containsPair('zone', 'Zone A'));
+    expect(api.created!.containsKey('zone'), isFalse);
     expect(api.created!['productIds'], ['p1']);
     expect(api.created!['clientMutationId'], isA<String>());
   });

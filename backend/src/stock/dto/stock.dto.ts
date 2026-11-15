@@ -11,7 +11,6 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
 } from 'class-validator';
 import {
   PaginationMetaDto,
@@ -174,9 +173,10 @@ export class ManualEntryDto {
   @ApiProperty({ description: 'Pourquoi ce stock entre (obligatoire).' })
   @Transform(trimOrNull)
   @IsString()
-  @MinLength(3)
+  // Motif FACULTATIF partout (demande MEDMEDBEN du 2026-11-15).
   @MaxLength(500)
-  comment!: string;
+  @IsOptional()
+  comment?: string;
 }
 
 export class RejectLossDto {

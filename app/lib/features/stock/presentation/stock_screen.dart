@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../home/presentation/home_screen.dart';
+import '../../catalog/presentation/catalog_screen.dart';
 import '../../../core/dates.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/quantity.dart';
@@ -215,6 +217,15 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
   /// Les actions du stock, chacune vers l'écran qui la fait — seulement
   /// celles que le menu de ce compte propose (mêmes droits).
   List<Widget> _actions(Set<String> menu) => [
+    // Nouveau produit ici aussi (2026-11-15) : on le crée là où on range.
+    if (CatalogRights(widget.user).canWriteProducts)
+      ActionTile(
+        icon: LucideIcons.packageOpen,
+        title: 'Nouveau produit',
+        subtitle: 'Nom, prix d’achat et de vente, stock de départ.',
+        tone: StatusTone.info,
+        onTap: () => quickAddProduct(context, ref, CatalogRights(widget.user)),
+      ),
     if (widget.rights.canAddStock)
       ActionTile(
         icon: LucideIcons.packagePlus,
@@ -274,6 +285,7 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
     final products = ref.watch(productsProvider).value ?? const <Product>[];
     final locations = ref.watch(locationsProvider).value ?? const [];
     final ids = _stockLocationIds(locations);
+    final sold = ref.watch(soldByProductProvider).value ?? const {};
     final search = ref.watch(productFilterProvider).search;
     final menu = {for (final d in destinationsFor(widget.user)) d.label};
 
@@ -482,6 +494,7 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                       _LevelRow(
                         product: p,
                         stock: byProduct[p.id] ?? const ProductStock([]),
+                        sold: sold[p.id],
                         locationIds: ids,
                         isDesktop: true,
                         onTap: () => openFormPanel<void>(
@@ -506,6 +519,7 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                     child: _LevelRow(
                       product: p,
                       stock: byProduct[p.id] ?? const ProductStock([]),
+                      sold: sold[p.id],
                       locationIds: ids,
                       isDesktop: widget.isDesktop,
                       onTap: () => openFormPanel<void>(
@@ -537,10 +551,14 @@ class _LevelRow extends StatelessWidget {
     required this.locationIds,
     required this.isDesktop,
     required this.onTap,
+    this.sold,
   });
 
   final Product product;
   final ProductStock stock;
+
+  /// Vendu depuis sa création ; `null` = aucune vente (ou hors ligne).
+  final Quantity? sold;
   final Map<String, String> locationIds;
   final bool isDesktop;
   final VoidCallback onTap;
@@ -564,6 +582,7 @@ class _LevelRow extends StatelessWidget {
       ('Transit', at('TRANSIT')),
       ('Total', formatQuantity(stock.total)),
       ('Disponible', formatQuantity(stock.available)),
+      ('Vendu', formatQuantity(sold ?? Quantity.zero)),
     ];
 
     if (isDesktop) {
@@ -762,6 +781,7 @@ class _LevelTable extends StatelessWidget {
                   'Transit',
                   'Total',
                   'Disponible',
+                  'Vendu',
                 ])
                   Expanded(child: head(label)),
               ],

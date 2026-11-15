@@ -3923,3 +3923,14 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - **Historique** : filtre « Utilisateur » (`userId`, déjà accepté par `/audit-logs`).
 - Preuves : backend tsc + eslint OK, jest 188/188 (hors `import.spec`, lent en suite complète, 4/4 seul) ; app analyze 0, 574 tests. e2e non lancés (Docker).
 - Audit sécurité (security-reviewer) : BLOQUANT corrigé — un `Problem` lié au produit (FK SET NULL) bloque désormais l'effacement ; deleteMany restreint au stock initial ; photo orpheline sans 500 ; facture impossible → ticket (jamais vente rejetée) ; `/catalog/ids` sans une clé ne vide pas ce type ; reset du poste compté dans la transaction. RISQUE ACCEPTÉ (I1) : une vente hors ligne d'un produit EFFACÉ entre-temps est rejetée à la sync (comme pour un produit désactivé) — n'effacer que des produits d'essai.
+
+## 2026-11-15 (suite) — Produit, fournisseur, motifs, vendu, rapports, inventaire lisible
+- **Ajout de produit accessible** : bouton « Ajouter un produit » dans la barre du haut (poste) et action « Nouveau produit » dans Stock (`quickAddProduct`), pour qui a `product.write`.
+- **Fournisseur tapé** (fiche produit) : champ texte avec propositions ; nom inconnu → fournisseur CRÉÉ (nom seul) à l'enregistrement, à compléter dans Fournisseurs ; changeable à tout moment. Hors ligne : nouveau fournisseur refusé (vider le champ).
+- **Emplacement au dépôt** : le champ n'apparaît que si des emplacements existent (1 magasin + 1 dépôt).
+- **Prix d'achat obligatoire** à la création (si le compte peut le saisir).
+- **Motifs FACULTATIFS partout** (DTO serveur + écrans : contre-passation, clôture de reliquat, mouvement de caisse, retours client/fournisseur, ajout de stock) ; perte : liste de motifs proposés (`lossReasons`).
+- **Stock** : colonne « Vendu » (net des retours, depuis la création) — `GET /stock/sold`.
+- **Rapports** : « Activité » est le 1er onglet (section toujours nommée Rapports) ; chiffres cliquables : Ventes/CA/Marge/Remises → historique des ventes de la période, Stock → Stock, Achats → Achats.
+- **Inventaire** : zone retirée ; carte « À compter aujourd'hui » grande et lisible (≥ 2 mouvements / 7 j, non comptés depuis 24 h) en tête de l'Inventaire ET du tableau de bord (rôle stock), bouton « Compter ces N produits » → comptage tournant lancé et saisie ouverte.
+- Preuves : backend tsc + eslint OK, jest 188 + import 13 ; app analyze 0, 574 tests.

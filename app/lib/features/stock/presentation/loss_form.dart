@@ -20,8 +20,19 @@ import '../data/stock_models.dart';
 /// le libellé ; c'est le serveur qui en décide.
 ///
 /// `LossForm.entry` : le même formulaire pour AJOUTER du stock sans achat
-/// (décision du 2026-10-13) — motif obligatoire, auteur tracé ; rend le
+/// (décision du 2026-10-13) — motif facultatif (2026-11-15), auteur tracé ; rend le
 /// mouvement créé.
+/// Motifs de perte proposés (demande MEDMEDBEN du 2026-11-15).
+const lossReasons = [
+  'Casse',
+  'Défectueux',
+  'Périmé / abîmé',
+  'Vol / disparu',
+  'Erreur de stock',
+  'Échantillon / démonstration',
+  'Usage interne',
+];
+
 class LossForm extends ConsumerStatefulWidget {
   const LossForm({super.key, required this.appliesImmediately, this.product})
     : entry = false;
@@ -223,7 +234,26 @@ class _LossFormState extends ConsumerState<LossForm> {
           validator: _validateQuantity,
         ),
         formFieldGap,
-        AmpereFieldLabel(widget.entry ? 'Motif (obligatoire)' : 'Constat'),
+        AmpereFieldLabel(widget.entry ? 'Motif (facultatif)' : 'Motif'),
+        // Perte : les motifs courants en un geste (2026-11-15) ; le champ
+        // reste libre et facultatif.
+        if (!widget.entry) ...[
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final reason in lossReasons)
+                ActionChip(
+                  label: Text(reason),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() => _comment.text = reason),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+        ],
         TextFormField(
           controller: _comment,
           enabled: !_saving,
@@ -236,11 +266,6 @@ class _LossFormState extends ConsumerState<LossForm> {
                 ? 'Ex. stock déjà en rayon, retrouvé au dépôt'
                 : 'Ex. carton écrasé à la réception',
           ),
-          validator: widget.entry
-              ? (v) => (v ?? '').trim().length < 3
-                    ? 'Dites pourquoi ce stock entre'
-                    : null
-              : null,
         ),
       ],
     );

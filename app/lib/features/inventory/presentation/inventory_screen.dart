@@ -194,22 +194,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            // À SURVEILLER (2026-11-15) : les produits qui bougent le plus,
-            // proposés au comptage du jour — suggérés, jamais imposés.
-            if (rights.canCount)
-              if (ref.watch(countSuggestionsProvider).value case final s?
-                  when s.isNotEmpty) ...[
-                _Suggestions(
-                  items: s,
-                  onCount: () => _start(
-                    context,
-                    rights,
-                    InventoryType.cycle,
-                    productIds: [for (final x in s) x.productId],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
+            // À COMPTER AUJOURD'HUI (2026-11-15), en tête et en grand.
+            if (rights.canCount) ...[
+              CountSuggestionsCard(rights: rights),
+              const SizedBox(height: 14),
+            ],
             if (rights.canCount) ...[
               ActionGrid(
                 children: [
@@ -334,12 +323,11 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   Future<void> _start(
     BuildContext context,
     InventoryRights rights,
-    InventoryType type, {
-    List<String> productIds = const [],
-  }) async {
+    InventoryType type,
+  ) async {
     final inventory = await openFormPanel<Inventory>(
       context,
-      InventoryStartForm(initialType: type, initialProductIds: productIds),
+      InventoryStartForm(initialType: type),
     );
     ref.invalidate(countSuggestionsProvider);
     if (inventory == null || !context.mounted) return;
@@ -411,7 +399,7 @@ class _InventoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -586,63 +574,142 @@ class _InventoryDetail extends ConsumerWidget {
   }
 }
 
-/// Carte « À surveiller aujourd'hui » : les produits les plus mouvementés
-/// (ventes, achats, transferts, ajouts) non comptés depuis 24 h.
-class _Suggestions extends StatelessWidget {
-  const _Suggestions({required this.items, required this.onCount});
+/// Lance un comptage TOURNANT des produits donnés, puis ouvre AUSSITÔT la
+/// saisie — depuis l'accueil comme depuis la page Inventaire.
+Future<void> startSuggestedCount(
+  BuildContext context,
+  WidgetRef ref,
+  InventoryRights rights,
+  List<String> productIds,
+) async {
+  final inventory = await openFormPanel<Inventory>(
+    context,
+    InventoryStartForm(
+      initialType: InventoryType.cycle,
+      initialProductIds: productIds,
+    ),
+  );
+  ref.invalidate(countSuggestionsProvider);
+  if (inventory == null || !context.mounted) return;
+  await openFormPanel<void>(
+    context,
+    InventoryCountForm(
+      inventory: inventory,
+      canAdjust: rights.canValidate,
+      canDelete: rights.canModify(inventory),
+    ),
+  );
+}
 
-  final List<CountSuggestion> items;
-  final VoidCallback onCount;
+/// « À COMPTER AUJOURD'HUI » (demande MEDMEDBEN du 2026-11-15) : les produits
+/// qui bougent le plus (ventes, achats, transferts, ajouts) et pas comptés
+/// depuis 24 h. Grand et lisible, en tête du tableau de bord du stock et de
+/// l'Inventaire. Une SUGGESTION : rien n'est bloqué si on ne compte pas.
+class CountSuggestionsCard extends ConsumerWidget {
+  const CountSuggestionsCard({super.key, required this.rights});
+
+  final InventoryRights rights;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final colors = AmpereColors.of(context);
+    final items = ref.watch(countSuggestionsProvider).value;
+    if (items == null) return const SizedBox.shrink();
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
-                Icon(LucideIcons.eye, size: 18, color: colors.info),
-                const SizedBox(width: 8),
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: colors.infoBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(LucideIcons.listChecks, color: colors.info),
+                ),
+                const SizedBox(width: 14),
                 Expanded(
-                  child: Text(
-                    'À surveiller aujourd’hui',
-                    style: AmpereType.rowTitle.copyWith(color: colors.ink),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'À compter aujourd’hui',
+                        style: AmpereType.h3.copyWith(color: colors.ink),
+                      ),
+                      Text(
+                        items.isEmpty
+                            ? 'Rien d’urgent : aucun produit n’a beaucoup bougé '
+                                  'cette semaine.'
+                            : 'Les produits qui bougent le plus cette semaine. '
+                                  'Conseillé, pas obligatoire.',
+                        style: AmpereType.body.copyWith(color: colors.ink3),
+                      ),
+                    ],
                   ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: onCount,
-                  icon: const Icon(LucideIcons.listChecks, size: 16),
-                  label: Text('Compter ces ${items.length}'),
                 ),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              'Les produits qui bougent le plus cette semaine — un comptage '
-              'rapide évite les écarts. Conseillé, pas obligatoire.',
-              style: AmpereType.meta.copyWith(color: colors.ink3),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final s in items)
-                  Tooltip(
-                    message: s.lastCountedAt == null
-                        ? 'Jamais compté'
-                        : 'Dernier comptage : ${formatDate(s.lastCountedAt!.toLocal())}',
-                    child: Chip(
-                      visualDensity: VisualDensity.compact,
-                      label: Text('${s.name} · ${s.movements} mvts'),
-                    ),
+            if (items.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              for (final s in items)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: colors.lineSoft)),
                   ),
-              ],
-            ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              s.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AmpereType.h4.copyWith(color: colors.ink),
+                            ),
+                            Text(
+                              'Réf. ${s.sku} · ${s.lastCountedAt == null ? 'jamais compté' : 'compté le ${formatDate(s.lastCountedAt!.toLocal())}'}',
+                              style: AmpereType.meta.copyWith(
+                                color: colors.ink3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      AmpereBadge(
+                        label: '${s.movements} mouvements',
+                        tone: s.movements >= 10
+                            ? StatusTone.warn
+                            : StatusTone.info,
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 12),
+              if (rights.canCount)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    textStyle: AmpereType.h4,
+                  ),
+                  onPressed: () => startSuggestedCount(context, ref, rights, [
+                    for (final x in items) x.productId,
+                  ]),
+                  icon: const Icon(LucideIcons.play, size: 18),
+                  label: Text(
+                    'Compter ces ${items.length} produit'
+                    '${items.length > 1 ? 's' : ''}',
+                  ),
+                ),
+            ],
           ],
         ),
       ),

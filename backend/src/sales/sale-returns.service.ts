@@ -240,7 +240,7 @@ export class SaleReturnsService {
         totalHt,
         totalTax,
         totalTtc,
-        reason: dto.reason,
+        reason: dto.reason ?? '',
         issuerSnapshot: issuer ? { ...issuer } : Prisma.JsonNull,
         clientMutationId: dto.clientMutationId,
         createdAt,

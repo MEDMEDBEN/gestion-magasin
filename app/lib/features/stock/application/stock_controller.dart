@@ -58,6 +58,19 @@ final stockByProductProvider =
       };
     });
 
+/// Vendu depuis toujours, par produit (demande MEDMEDBEN du 2026-11-15).
+/// Hors ligne : vide (la colonne affiche « — »).
+final soldByProductProvider = FutureProvider.autoDispose<Map<String, Quantity>>(
+  (ref) async {
+    ref.watch(currentUserIdProvider);
+    try {
+      return await ref.watch(stockApiProvider).sold();
+    } on Object {
+      return const {};
+    }
+  },
+);
+
 /// Stock d'UN produit (scan, fiche) : une requête au lieu de tout le stock.
 final productStockProvider = FutureProvider.autoDispose
     .family<ProductStock, String>((ref, productId) async {

@@ -18,7 +18,6 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
   Max,
   Min,
   ValidateNested,
@@ -157,9 +156,10 @@ export class ClosePurchaseOrderDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MinLength(3)
+  // Motif FACULTATIF partout (demande MEDMEDBEN du 2026-11-15).
   @MaxLength(500)
-  reason!: string;
+  @IsOptional()
+  reason?: string;
 }
 
 export class PurchaseLineDto {

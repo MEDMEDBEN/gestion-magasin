@@ -29,11 +29,15 @@ class SalesHistorySection extends ConsumerStatefulWidget {
   const SalesHistorySection({
     required this.margin,
     required this.rights,
+    this.initialPeriod,
     super.key,
   });
 
   final double margin;
   final SalesRights rights;
+
+  /// Période ouverte d'emblée (détail d'un rapport) ; sinon 7 jours.
+  final HistoryPeriod? initialPeriod;
 
   @override
   ConsumerState<SalesHistorySection> createState() =>
@@ -43,7 +47,7 @@ class SalesHistorySection extends ConsumerStatefulWidget {
 class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
   final _search = SearchField();
   String _query = '';
-  HistoryPeriod _period = lastDays(7);
+  late HistoryPeriod _period = widget.initialPeriod ?? lastDays(7);
 
   @override
   void dispose() {

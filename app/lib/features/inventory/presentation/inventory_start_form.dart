@@ -37,7 +37,6 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
 
   /// Intention stable : tous les essais de CE lancement portent la même clé.
   late final String _intent = 'inventory:${ref.read(uuidProvider).v7()}';
-  final _zone = TextEditingController();
   late final Set<String> _productIds = {...widget.initialProductIds};
 
   /// Filtre de la liste à cocher : sur 1 000 produits, on cherche le sien.
@@ -46,12 +45,6 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
   String? _locationId;
   bool _saving = false;
   String? _error;
-
-  @override
-  void dispose() {
-    _zone.dispose();
-    super.dispose();
-  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -72,7 +65,6 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
             locationId: _locationId!,
             type: _type,
             productIds: cycle ? _productIds.toList() : null,
-            zone: _zone.text.trim().isEmpty ? null : _zone.text.trim(),
           );
       // La saisie s'ouvre aussitôt (l'écran reçoit l'inventaire lancé).
       if (mounted) Navigator.of(context).pop(inventory);
@@ -154,15 +146,6 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
         ),
         if (_type == InventoryType.cycle) ...[
           const SizedBox(height: 16),
-          const AmpereFieldLabel('Zone comptée'),
-          TextFormField(
-            controller: _zone,
-            enabled: !_saving,
-            maxLength: 100,
-            decoration: const InputDecoration(
-              hintText: 'Zone A, rayon câbles…',
-            ),
-          ),
           const AmpereFieldLabel('Produits à compter'),
           TextField(
             enabled: !_saving,

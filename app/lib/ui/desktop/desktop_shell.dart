@@ -6,6 +6,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
+import '../../features/home/presentation/home_screen.dart';
+import '../../features/catalog/presentation/catalog_screen.dart';
 import '../../features/auth/data/auth_models.dart';
 import '../../features/home/application/dashboard_controller.dart';
 import '../../features/messaging/application/conversations_controller.dart';
@@ -815,6 +817,18 @@ class _TopBar extends ConsumerWidget {
             ),
           ],
           if (home == null) const Spacer(),
+          // Ajout d'un produit TOUJOURS à portée (demande MEDMEDBEN du
+          // 2026-11-15), pour qui a le droit de créer.
+          if (CatalogRights(user).canWriteProducts) ...[
+            TextButton.icon(
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () =>
+                  quickAddProduct(context, ref, CatalogRights(user)),
+              icon: const Icon(LucideIcons.packagePlus, size: 17),
+              label: const Text('Ajouter un produit'),
+            ),
+            const SizedBox(width: 4),
+          ],
           // Assistant (2026-10-05) : actions préparées, Ctrl+K au clavier.
           IconButton(
             visualDensity: VisualDensity.compact,

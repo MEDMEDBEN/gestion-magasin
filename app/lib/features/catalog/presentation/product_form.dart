@@ -20,9 +20,9 @@ import '../../stock/presentation/stock_status.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../../suppliers/application/suppliers_controller.dart';
+import '../../suppliers/data/suppliers_api.dart';
 import '../../suppliers/data/suppliers_models.dart';
 import '../../scan/presentation/scan_screen.dart';
-import '../../../ui/widgets/search_picker.dart';
 import 'product_photo.dart';
 import 'prospects_dialog.dart';
 
@@ -136,6 +136,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     _categoryId = p?.categoryId;
     _storageLocationId = p?.storageLocationId;
     _mainSupplierId = p?.mainSupplierId;
+    _supplierName.text = p?.mainSupplierName ?? '';
     _allowBackorder = p?.allowBackorder ?? false;
     _isActive = p?.isActive ?? true;
   }
@@ -152,6 +153,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _minThreshold,
       _storeStock,
       _depotStock,
+      _supplierName,
       ..._prices.values,
     ]) {
       c.dispose();
@@ -164,23 +166,63 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     return value.isEmpty ? null : value;
   }
 
-  /// Fournisseur principal : liste chargée EN LIGNE (pas de cache), tolérante
-  /// à une panne réseau — une fiche produit reste modifiable sans elle.
+  /// Nom tapé du fournisseur (demande MEDMEDBEN du 2026-11-15).
+  final _supplierName = TextEditingController();
+
+  /// Fournisseur : on TAPE son nom, les fournisseurs connus sont proposés.
+  /// Un nom inconnu crée le fournisseur (son nom seulement) à l'enregistrement
+  /// — ses coordonnées se complètent ensuite dans « Fournisseurs ». Le
+  /// fournisseur se change à tout moment (achat suivant chez un autre).
   Widget _supplierField(InputDecoration Function(IconData) deco) {
-    final suppliers = ref.watch(supplierSearchProvider(''));
-    final items = suppliers.value ?? const <Supplier>[];
-    return SearchPickerField<Supplier>(
-      options: items,
-      idOf: (s) => s.id,
-      labelOf: (s) => s.name,
-      value: _mainSupplierId,
-      hint: 'Fournisseur principal',
-      noneLabel: 'Non précisé',
-      decoration: deco(LucideIcons.truck),
-      onChanged: _locked || suppliers.isLoading
-          ? null
-          : (v) => setState(() => _mainSupplierId = v),
+    final items =
+        ref.watch(supplierSearchProvider('')).value ?? const <Supplier>[];
+    return Autocomplete<Supplier>(
+      initialValue: TextEditingValue(text: _supplierName.text),
+      displayStringForOption: (s) => s.name,
+      optionsBuilder: (value) {
+        final q = value.text.trim().toLowerCase();
+        return q.isEmpty
+            ? items.take(8)
+            : items.where((s) => s.name.toLowerCase().contains(q)).take(8);
+      },
+      onSelected: (s) {
+        _supplierName.text = s.name;
+        _mainSupplierId = s.id;
+      },
+      fieldViewBuilder: (context, controller, focus, onSubmit) => TextFormField(
+        key: const ValueKey('champ-fournisseur'),
+        controller: controller,
+        focusNode: focus,
+        enabled: !_locked,
+        maxLength: 120,
+        decoration: deco(LucideIcons.truck).copyWith(
+          hintText: 'Nom du fournisseur',
+          helperText: 'Nouveau nom : le fournisseur est créé',
+          counterText: '',
+        ),
+        onChanged: (v) {
+          _supplierName.text = v;
+          _mainSupplierId = null;
+        },
+        onFieldSubmitted: (_) => onSubmit(),
+      ),
     );
+  }
+
+  /// Fournisseur tapé → son id : connu (même nom), sinon CRÉÉ avec ce nom.
+  /// Vide : aucun fournisseur.
+  Future<String?> _resolveSupplier() async {
+    final name = _supplierName.text.trim();
+    if (name.isEmpty) return null;
+    if (_mainSupplierId != null) return _mainSupplierId;
+    final known =
+        (ref.read(supplierSearchProvider('')).value ?? const <Supplier>[])
+            .where((s) => s.name.trim().toLowerCase() == name.toLowerCase())
+            .firstOrNull;
+    if (known != null) return known.id;
+    final created = await ref.read(suppliersApiProvider).create({'name': name});
+    ref.invalidate(supplierSearchProvider);
+    return created.id;
   }
 
   static String _quantity(TextEditingController c) =>
@@ -221,6 +263,21 @@ class _ProductFormState extends ConsumerState<ProductForm> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (widget.canReadSuppliers) {
+      try {
+        _mainSupplierId = await _resolveSupplier();
+      } on ApiException catch (error) {
+        if (!mounted) return;
+        setState(
+          () => _error = error.isOffline
+              ? 'Nouveau fournisseur : à créer en ligne. Videz le champ '
+                    'fournisseur pour enregistrer le produit hors ligne.'
+              : error.userMessage,
+        );
+        return;
+      }
+      if (!mounted) return;
+    }
     final existing = widget.existing;
     final values = _values();
     final Map<String, Object?> payload;
@@ -352,7 +409,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const AmpereFieldLabel('Prix d’achat'),
+        AmpereFieldLabel(
+          _isEdit ? 'Prix d’achat' : 'Prix d’achat (obligatoire)',
+        ),
         TextFormField(
           key: const ValueKey('champ-prix-achat'),
           controller: _cost,
@@ -362,7 +421,9 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           decoration: const InputDecoration(suffixText: 'DA'),
           validator: (v) {
             final raw = v?.trim() ?? '';
-            if (raw.isEmpty) return null;
+            // Obligatoire à la création : c'est le coût de la marge et le
+            // plancher du prix de vente (demande MEDMEDBEN du 2026-11-15).
+            if (raw.isEmpty) return _isEdit ? null : 'Prix d’achat obligatoire';
             final amount = parseDA(raw);
             return amount == null || amount < 0 ? 'Montant invalide' : null;
           },
@@ -757,27 +818,30 @@ class _ProductFormState extends ConsumerState<ProductForm> {
         field('Photo', _photoSection(colors)),
       if (widget.canReadSuppliers)
         field('Fournisseur principal', _supplierField(deco)),
-      field(
-        'Emplacement au dépôt',
-        DropdownButtonFormField<String?>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: _storageLocationId,
-          isExpanded: true,
-          decoration: deco(LucideIcons.mapPin),
-          items: [
-            const DropdownMenuItem(value: null, child: Text('Non rangé')),
-            for (final bin in bins)
-              if (bin.isActive || bin.id == _storageLocationId)
-                DropdownMenuItem(
-                  value: bin.id,
-                  child: Text('${bin.code} — ${bin.name}'),
-                ),
-          ],
-          onChanged: _locked
-              ? null
-              : (v) => setState(() => _storageLocationId = v),
+      // Un magasin et un dépôt (2026-11-15) : la liste des rangements ne
+      // s'affiche que si des emplacements ont été créés.
+      if (bins.isNotEmpty || _storageLocationId != null)
+        field(
+          'Emplacement au dépôt',
+          DropdownButtonFormField<String?>(
+            icon: const Icon(LucideIcons.chevronDown, size: 17),
+            initialValue: _storageLocationId,
+            isExpanded: true,
+            decoration: deco(LucideIcons.mapPin),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Non rangé')),
+              for (final bin in bins)
+                if (bin.isActive || bin.id == _storageLocationId)
+                  DropdownMenuItem(
+                    value: bin.id,
+                    child: Text('${bin.code} — ${bin.name}'),
+                  ),
+            ],
+            onChanged: _locked
+                ? null
+                : (v) => setState(() => _storageLocationId = v),
+          ),
         ),
-      ),
       // UN seul seuil (décision MEDMEDBEN du 2026-10-05) : il déclenche
       // l'alerte et la proposition de réapprovisionnement.
       field(

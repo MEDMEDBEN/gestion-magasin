@@ -108,6 +108,17 @@ export class StockController {
     );
   }
 
+  /// Quantité VENDUE de chaque produit depuis sa création (ventes validées,
+  /// retours déduits) — demande MEDMEDBEN du 2026-11-15. Déclarée avant les
+  /// routes à paramètre.
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
+  @Get('sold')
+  @ApiOperation({ summary: 'Quantité vendue par produit, depuis toujours' })
+  sold(): Promise<Record<string, string>> {
+    return this.stockService.soldTotals();
+  }
+
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.STOCK_READ_STORE)
   @Get('movements')

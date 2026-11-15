@@ -1401,19 +1401,6 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '500');
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
-    // Sans motif : refusé à l'écran, rien d'envoyé.
-    await tester.tap(find.text('Enregistrer'));
-    await tester.pumpAndSettle();
-    expect(find.text('Motif obligatoire'), findsOneWidget);
-    expect(api.movements, isEmpty);
-
-    await tester.tap(find.byTooltip('Caisse'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Prélèvement (coffre, banque)'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField).last, '500');
-    await tester.tap(find.text('Continuer'));
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Dépôt banque');
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();

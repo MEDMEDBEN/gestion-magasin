@@ -258,7 +258,9 @@ const _sections = {
   'Vente': ['Vente', 'Devis'],
   'Stock': ['Stock', 'Inventaire'],
   'Achats': ['Achats', 'Réappro', 'Fournisseurs'],
-  'Rapports': ['Rapports', 'Activité'],
+  // Activité EN PREMIER (demande MEDMEDBEN du 2026-11-15) ; la section
+  // garde son nom « Rapports ».
+  'Rapports': ['Activité', 'Rapports'],
   'Utilisateurs': ['Utilisateurs', 'Historique'],
   'Notifications': ['Notifications', 'Signalements'],
 };
@@ -292,7 +294,12 @@ List<AppDestination> menuFor(AuthUser user) {
       menu.add(members.single);
       continue;
     }
-    final head = members.first;
+    // La section porte le nom de sa CLÉ (« Rapports »), même si son premier
+    // onglet est une autre rubrique (« Activité »).
+    final name = _sections.entries
+        .firstWhere((e) => identical(e.value, group))
+        .key;
+    final head = byLabel[name] ?? members.first;
     menu.add(
       AppDestination(
         icon: head.icon,

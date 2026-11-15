@@ -445,7 +445,7 @@ void main() {
     expect(find.textContaining(r'${'), findsNothing);
   });
 
-  testWidgets('clôture du reliquat : ADMIN seul, motif obligatoire', (
+  testWidgets('clôture du reliquat : ADMIN seul, motif facultatif', (
     tester,
   ) async {
     // Le magasinier ne voit pas l'action.
@@ -478,15 +478,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Clôturer le reliquat'));
     await tester.pumpAndSettle();
-
-    // Sans motif, rien ne part.
-    await tester.tap(find.widgetWithText(FilledButton, 'Clôturer'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Indiquez le motif (3 caractères minimum)'),
-      findsOneWidget,
-    );
-    expect(_lastPurchases.closed, isNull);
 
     await tester.enterText(find.byType(TextField), 'Rupture définitive');
     await tester.tap(find.widgetWithText(FilledButton, 'Clôturer'));

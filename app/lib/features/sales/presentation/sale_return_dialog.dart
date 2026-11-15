@@ -76,10 +76,7 @@ class _SaleReturnDialogState extends ConsumerState<_SaleReturnDialog> {
       setState(() => _error = 'Indiquez au moins une quantité rendue');
       return;
     }
-    if (_reason.text.trim().length < 2) {
-      setState(() => _error = 'Motif obligatoire');
-      return;
-    }
+    // Motif facultatif (2026-11-15).
     setState(() {
       _saving = true;
       _error = null;

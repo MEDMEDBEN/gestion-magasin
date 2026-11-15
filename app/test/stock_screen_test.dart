@@ -263,7 +263,7 @@ void main() {
 
   /// Décision MEDMEDBEN du 2026-10-13 : ajouter du stock sans passer par un
   /// achat — motif obligatoire, auteur tracé par le serveur.
-  testWidgets('MAGASINIER (stock.adjust) : ajoute du stock, motif exigé', (
+  testWidgets('MAGASINIER (stock.adjust) : ajoute du stock, motif transmis', (
     tester,
   ) async {
     useScreenSize(tester, const Size(400, 1400));
@@ -293,12 +293,6 @@ void main() {
     await tester.tap(find.text('Dépôt').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).at(0), '12');
-
-    // Sans motif : refusé avant le serveur.
-    await tester.tap(find.text('Ajouter au stock'));
-    await tester.pumpAndSettle();
-    expect(find.text('Dites pourquoi ce stock entre'), findsOneWidget);
-    expect(api.entered, isNull);
 
     await tester.enterText(
       find.byType(TextFormField).at(1),

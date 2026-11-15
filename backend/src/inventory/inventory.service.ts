@@ -60,7 +60,7 @@ const INVENTORY_SORT_FIELDS = ['startedAt', 'number'] as const;
 export class InventoryService {
   /// Les produits qui BOUGENT le plus sur la période (nombre de mouvements :
   /// ventes, réceptions, transferts, ajouts, pertes — pas le stock initial),
-  /// au moins 3, et non comptés depuis 24 h. Le plus actif d'abord.
+  /// au moins 2, et non comptés depuis 24 h. Le plus actif d'abord.
   async suggestions(query: InventorySuggestionsQueryDto) {
     const days = query.days ?? 7;
     const limit = query.limit ?? 10;
@@ -78,7 +78,7 @@ export class InventoryService {
       orderBy: { _count: { productId: 'desc' } },
       take: limit * 3,
     });
-    const busy = grouped.filter((g) => g._count._all >= 3);
+    const busy = grouped.filter((g) => g._count._all >= 2);
     if (busy.length === 0) return [];
     const ids = busy.map((g) => g.productId);
     const [products, counted] = await Promise.all([

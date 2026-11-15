@@ -562,6 +562,11 @@ void main() {
       await tester.tap(find.text('Plus de détails'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('champ-seuil')), '12,5');
+      // Prix d'achat obligatoire à la création (2026-11-15).
+      await tester.enterText(
+        find.byKey(const ValueKey('champ-prix-achat')),
+        '900',
+      );
       await tester.ensureVisible(find.text('Créer le produit'));
       await tester.tap(find.text('Créer le produit'));
       await tester.pumpAndSettle();
@@ -602,6 +607,11 @@ void main() {
     await tester.tap(find.text('Plus de détails'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const ValueKey('champ-seuil')), '-3');
+    // Prix d'achat obligatoire à la création (2026-11-15).
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-prix-achat')),
+      '900',
+    );
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));
     await tester.pumpAndSettle();
@@ -670,6 +680,11 @@ void main() {
     await tester.enterText(
       find.byKey(const ValueKey('champ-reference')),
       'DIS-PHOTO',
+    );
+    // Prix d'achat obligatoire à la création (2026-11-15).
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-prix-achat')),
+      '900',
     );
     await tester.ensureVisible(find.text('Créer le produit'));
     await tester.tap(find.text('Créer le produit'));

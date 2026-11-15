@@ -7,7 +7,6 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { ClientMutationId } from '../../common/idempotency';
@@ -59,11 +58,10 @@ export class CreateSupplierReturnDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @IsString()
-  @MinLength(2, {
-    message: 'reason : motif obligatoire (2 caractères au moins)',
-  })
+  // Motif FACULTATIF partout (demande MEDMEDBEN du 2026-11-15).
   @MaxLength(300)
-  reason!: string;
+  @IsOptional()
+  reason?: string;
 }
 
 export class SupplierReturnDto {

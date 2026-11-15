@@ -786,10 +786,7 @@ class _CloseRemainderDialogState extends State<_CloseRemainderDialog> {
 
   void _submit() {
     final reason = _reason.text.trim();
-    if (reason.length < 3) {
-      setState(() => _error = 'Indiquez le motif (3 caractères minimum)');
-      return;
-    }
+    // Motif facultatif (2026-11-15).
     Navigator.of(context).pop(reason);
   }
 
