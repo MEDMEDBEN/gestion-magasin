@@ -10,6 +10,7 @@ import 'package:gestion_magasin/core/offline_write.dart';
 import 'package:gestion_magasin/core/providers.dart';
 import 'package:gestion_magasin/data/local/mutation_queue.dart';
 import 'package:gestion_magasin/data/models/page_meta.dart';
+import 'package:gestion_magasin/features/auth/application/auth_controller.dart';
 import 'package:gestion_magasin/features/auth/data/auth_models.dart';
 import 'package:gestion_magasin/features/catalog/application/catalog_controller.dart';
 import 'package:gestion_magasin/features/catalog/data/catalog_models.dart';
@@ -170,6 +171,15 @@ AuthUser _magasinier({
 
 late _FakePurchasesApi _lastPurchases;
 
+/// Compte connecté (la réception lit le droit de payer le fournisseur).
+class _SignedIn extends AuthController {
+  _SignedIn(this.user);
+  final AuthUser user;
+
+  @override
+  Future<AuthState> build() async => AuthSignedIn(user);
+}
+
 Future<_FakeReceptionsApi> _pump(
   WidgetTester tester,
   AuthUser user, {
@@ -184,6 +194,7 @@ Future<_FakeReceptionsApi> _pump(
       overrides: [
         purchasesApiProvider.overrideWithValue(_lastPurchases),
         receptionsApiProvider.overrideWithValue(receptions),
+        authControllerProvider.overrideWith(() => _SignedIn(user)),
         // Une écriture (en ligne ou en file) appartient au compte connecté.
         currentUserIdProvider.overrideWithValue('magasinier'),
         documentCacheProvider.overrideWithValue(MemoryDocumentCache()),
@@ -363,6 +374,62 @@ void main() {
   });
 
   // Surlivraison acceptée depuis le 2026-11-07 (réception libre).
+  // Demande MEDMEDBEN du 2026-11-15 : payé au fournisseur À LA LIVRAISON ;
+  // le reste devient sa dette. Réservé à qui peut payer (ADMIN).
+  testWidgets('réception : paiement au fournisseur envoyé avec elle (ADMIN)', (
+    tester,
+  ) async {
+    final api = await _pump(
+      tester,
+      authUser(
+        id: 'a',
+        roles: const ['ADMIN'],
+        permissions: const [
+          'purchase.create',
+          'reception.create',
+          'supplier.payment.create',
+        ],
+      ),
+      orders: [_order(PurchaseStatus.confirmed)],
+    );
+    await _openReceptionForm(tester);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dépôt').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextFormField, 'Quantité reçue'),
+      '10',
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('champ-paye-fournisseur')),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-paye-fournisseur')),
+      '500',
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Reste en dette'), findsOneWidget);
+    await tester.tap(find.text('Enregistrer la réception'));
+    await tester.pumpAndSettle();
+    expect(api.sent.single['payment'], {
+      'amount': 50000,
+      'fromCash': false,
+      'method': 'AUTRE',
+    });
+  });
+
+  testWidgets('réception : pas de paiement pour le magasinier', (tester) async {
+    await _pump(
+      tester,
+      _magasinier(),
+      orders: [_order(PurchaseStatus.confirmed)],
+    );
+    await _openReceptionForm(tester);
+    expect(find.text('Paiement au fournisseur'), findsNothing);
+  });
+
   testWidgets('surlivraison acceptée et envoyée', (tester) async {
     final api = await _pump(
       tester,

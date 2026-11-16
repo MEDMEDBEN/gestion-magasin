@@ -10,6 +10,8 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -63,6 +65,24 @@ export class ReceptionLineInputDto {
   unitPriceHt!: number;
 }
 
+/// Payé au fournisseur à la livraison (2026-11-15).
+export class ReceptionPaymentDto {
+  @ApiProperty({ description: 'Montant payé, centimes de DA (> 0).' })
+  @IsInt()
+  @Min(1)
+  @Max(MAX_MONEY)
+  amount!: number;
+
+  @ApiProperty({ description: 'true : sorti de la caisse du magasin.' })
+  @IsBoolean()
+  fromCash!: boolean;
+
+  @ApiPropertyOptional({ enum: ['ESPECES', 'VIREMENT', 'CARTE', 'AUTRE'] })
+  @IsIn(['ESPECES', 'VIREMENT', 'CARTE', 'AUTRE'])
+  @IsOptional()
+  method?: 'ESPECES' | 'VIREMENT' | 'CARTE' | 'AUTRE';
+}
+
 export class CreateReceptionDto {
   @ApiPropertyOptional({ description: 'UUID généré par le client.' })
   @ClientGeneratedId()
@@ -98,6 +118,14 @@ export class CreateReceptionDto {
 
   /// La réception augmente le stock ET la dette fournisseur : clé obligatoire.
   @ClientMutationId() clientMutationId!: string;
+
+  /// Payé au fournisseur À LA LIVRAISON (demande MEDMEDBEN du 2026-11-15) :
+  /// le reste devient sa dette, réglée ensuite par versements.
+  @ApiPropertyOptional({ type: () => ReceptionPaymentDto })
+  @ValidateNested()
+  @Type(() => ReceptionPaymentDto)
+  @IsOptional()
+  payment?: ReceptionPaymentDto;
 }
 
 export class ReceptionLineDto {

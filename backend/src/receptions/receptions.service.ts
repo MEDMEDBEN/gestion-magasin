@@ -13,6 +13,8 @@ import { Prisma, Reception, ReceptionLine } from '../generated/prisma/client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PurchaseOrdersService } from '../purchases/purchase-orders.service';
+import { SuppliersService } from '../suppliers/suppliers.service';
+import { PERMISSIONS } from '../common/permissions';
 import { MAX_MONEY } from '../sales/dto/sale.dto';
 import { StockLedgerService } from '../stock/stock-ledger.service';
 import {
@@ -262,6 +264,48 @@ export class ReceptionsService {
         entityId: reception.id,
         newValue: ReceptionsService.audit(reception),
       });
+    }
+    // Payé à la livraison : MÊME transaction (règle 3) — la réception et son
+    // paiement passent ensemble ou pas du tout. Même droit que
+    // `POST /payments/supplier` : ADMIN + supplier.payment.create.
+    if (dto.payment) {
+      if (
+        !user.roles.includes(RoleCode.ADMIN) ||
+        !user.permissions.includes(PERMISSIONS.SUPPLIER_PAYMENT_CREATE)
+      ) {
+        throw new BusinessException(
+          ErrorCode.FORBIDDEN_PERMISSION,
+          'Payer un fournisseur est réservé à l’administrateur',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+      // Clé déjà prise par un paiement : conflit clair (409), pas une 500.
+      if (
+        await tx.supplierPayment.count({
+          where: { clientMutationId: dto.clientMutationId },
+        })
+      ) {
+        throw new BusinessException(
+          ErrorCode.CONFLICT,
+          'Cette réception a déjà un paiement enregistré : vérifiez avant de refaire',
+          HttpStatus.CONFLICT,
+        );
+      }
+      await SuppliersService.payInTx(
+        tx,
+        {
+          // La clé de la réception, unique aussi parmi les paiements.
+          clientMutationId: dto.clientMutationId,
+          supplierId: dto.supplierId,
+          amount: dto.payment.amount,
+          fromCash: dto.payment.fromCash,
+          method: dto.payment.method,
+          note: `Payé à la réception ${reception.number}`,
+        },
+        user,
+        actor ?? { userId: user.id },
+        { purchaseOrderId: dto.purchaseOrderId ?? null, autoOpenCash: true },
+      );
     }
     return ReceptionsService.toDto(reception);
   }

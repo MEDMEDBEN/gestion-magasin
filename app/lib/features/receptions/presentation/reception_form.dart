@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../auth/data/auth_models.dart';
+import '../../auth/application/auth_controller.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/offline_write.dart';
@@ -55,8 +57,21 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
   bool _saving = false;
   String? _error;
 
+  /// Payé au fournisseur à la livraison (2026-11-15) — ADMIN qui paie.
+  final _paid = TextEditingController();
+  bool _paidFromCash = false;
+
+  bool get _canPay => switch (ref.read(authControllerProvider).value) {
+    AuthSignedIn(:final user) =>
+      user.hasRole('ADMIN') && user.can('supplier.payment.create'),
+    _ => false,
+  };
+
+  int get _paidAmount => parseDA(_paid.text) ?? 0;
+
   @override
   void dispose() {
+    _paid.dispose();
     for (final l in _lines) {
       l.dispose();
     }
@@ -131,6 +146,8 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
             supplierId: widget.order.supplierId,
             locationId: _locationId!,
             lines: lines,
+            paidAmount: _canPay ? _paidAmount : 0,
+            paidFromCash: _paidFromCash,
           );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -138,8 +155,13 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
         SnackBar(
           content: Text(switch (outcome) {
             Applied(value: final reception) =>
-              '${reception.number} : marchandise entrée en stock — '
-                  '${formatDA(reception.totalTtc)} TTC ajoutés à la dette.',
+              _paidAmount > 0
+                  ? '${reception.number} : marchandise en stock — payé '
+                        '${formatDA(_paidAmount)}, reste '
+                        '${formatDA((reception.totalTtc - _paidAmount).clamp(0, reception.totalTtc))} '
+                        'à la dette.'
+                  : '${reception.number} : marchandise entrée en stock — '
+                        '${formatDA(reception.totalTtc)} TTC ajoutés à la dette.',
             // Rien n'est encore entré : le serveur jugera à la synchro.
             Queued() =>
               'Réception enregistrée sur cet appareil — en attente de '
@@ -224,7 +246,110 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
           'le coût du produit.',
           style: AmpereType.meta.copyWith(color: colors.ink3),
         ),
+        if (_canPay) ...[const SizedBox(height: 16), _paymentSection(colors)],
       ],
+    );
+  }
+
+  /// Ce qu'on donne au fournisseur à la livraison ; le reste devient sa dette,
+  /// réglée ensuite par « Versement » sur sa fiche.
+  Widget _paymentSection(AmpereColors colors) {
+    final total = _estimateHt;
+    final paid = _paidAmount;
+    final rest = (total - paid).clamp(0, total);
+    void setPaid(int amount) => setState(
+      () => _paid.text = amount == 0 ? '' : formatDA(amount, withSymbol: false),
+    );
+    // Material (pas un simple fond) : la case à cocher garde son effet.
+    return Material(
+      color: colors.surface2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colors.line),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(LucideIcons.handCoins, size: 18, color: colors.accent),
+                const SizedBox(width: 8),
+                Text(
+                  'Paiement au fournisseur',
+                  style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving ? null : () => setPaid(0),
+                    child: const Text('Rien payé'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _saving || total == 0
+                        ? null
+                        : () => setPaid(total),
+                    child: Text('Tout (${formatDA(total)})'),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              key: const ValueKey('champ-paye-fournisseur'),
+              controller: _paid,
+              enabled: !_saving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Montant donné au fournisseur',
+                suffixText: 'DA',
+              ),
+              onChanged: (_) => setState(() {}),
+              validator: (v) {
+                final raw = v?.trim() ?? '';
+                if (raw.isEmpty) return null;
+                final amount = parseDA(raw);
+                if (amount == null || amount < 0) return 'Montant invalide';
+                return amount > total
+                    ? 'Au plus ${formatDA(total)} (le reçu de cette livraison)'
+                    : null;
+              },
+            ),
+            CheckboxListTile(
+              value: _paidFromCash,
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _paidFromCash = v ?? false),
+              title: const Text('Sorti de la caisse du magasin'),
+              subtitle: const Text('Sinon : hors caisse (virement, poche…)'),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              paid == 0
+                  ? 'Tout passe en dette : ${formatDA(total)}'
+                  : rest == 0
+                  ? 'Payé en entier — aucune dette'
+                  : 'Reste en dette : ${formatDA(rest)}',
+              style: AmpereType.bodyStrong.copyWith(
+                color: rest == 0 ? colors.ok : colors.warn,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

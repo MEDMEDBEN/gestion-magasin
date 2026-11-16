@@ -273,7 +273,7 @@ void main() {
 
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Enregistrer un paiement'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Versement'));
     await tester.pumpAndSettle();
 
     // Le dialogue propose le reste dû ; le paiement part hors caisse.
@@ -302,7 +302,7 @@ void main() {
       Future<void> payOnce() async {
         await tester.tap(find.text('Sonelec'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Enregistrer un paiement'));
+        await tester.tap(find.widgetWithText(FilledButton, 'Versement'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).last, '1000');
         await tester.tap(find.text('Enregistrer'));
@@ -326,7 +326,7 @@ void main() {
 
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Enregistrer un paiement'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Versement'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '9999');
     await tester.tap(find.text('Enregistrer'));
@@ -357,7 +357,7 @@ void main() {
     expect(find.text('Nouveau'), findsNothing);
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
-    expect(find.text('Enregistrer un paiement'), findsNothing);
+    expect(find.widgetWithText(FilledButton, 'Versement'), findsNothing);
     expect(find.text('Modifier la fiche'), findsNothing);
     expect(find.byTooltip('Importer'), findsNothing);
     // Supprimer : réservé à l'admin.
@@ -396,17 +396,14 @@ void main() {
     await tester.tap(find.text('Sonelec'));
     await tester.pumpAndSettle();
 
-    // Dans la FICHE ouverte (la carte de la liste, derrière, montre aussi
-    // nom, initiales et téléphone depuis le 2026-10-13).
-    Finder inProfile(String text) =>
-        find.descendant(of: find.byType(Dialog), matching: find.text(text));
-    expect(inProfile('Fournisseur'), findsOneWidget);
-    expect(inProfile('S'), findsOneWidget); // initiales (un seul mot)
-    expect(inProfile('M. Rahmani'), findsOneWidget);
-    expect(inProfile('0550 11 22 33'), findsOneWidget);
-    expect(inProfile('Reste dû'), findsOneWidget);
+    // FICHE COMPTE (2026-11-15) : la dette en grand, le contact copiable.
+    expect(find.text('VOUS LUI DEVEZ'), findsOneWidget);
+    // Contact en puce copiable (et sur la carte de la liste, derrière).
+    expect(find.widgetWithText(ActionChip, 'M. Rahmani'), findsOneWidget);
+    expect(find.widgetWithText(ActionChip, '0550 11 22 33'), findsOneWidget);
+    expect(find.text('Déjà payé'), findsOneWidget);
 
-    await tester.tap(find.text('Supprimer'));
+    await tester.tap(find.text('Supprimer ce fournisseur'));
     await tester.pumpAndSettle();
     expect(find.text('Supprimer « Sonelec » ?'), findsOneWidget);
     await tester.tap(find.widgetWithText(AmpereDangerButton, 'Supprimer'));

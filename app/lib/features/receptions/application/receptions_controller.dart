@@ -44,6 +44,8 @@ class ReceptionsActions {
     required String locationId,
     required List<ReceptionLineDraft> lines,
     String? note,
+    int paidAmount = 0,
+    bool paidFromCash = false,
   }) async {
     final outcome = await writeOnlineOrQueue<Reception>(
       _ref,
@@ -58,6 +60,13 @@ class ReceptionsActions {
         'supplierId': supplierId,
         'locationId': locationId,
         'note': ?note,
+        // Payé à la livraison (2026-11-15) : le reste devient la dette.
+        if (paidAmount > 0)
+          'payment': {
+            'amount': paidAmount,
+            'fromCash': paidFromCash,
+            'method': paidFromCash ? 'ESPECES' : 'AUTRE',
+          },
         'lines': [
           for (final l in lines)
             {

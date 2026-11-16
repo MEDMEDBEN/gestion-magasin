@@ -3934,3 +3934,9 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - **Rapports** : « Activité » est le 1er onglet (section toujours nommée Rapports) ; chiffres cliquables : Ventes/CA/Marge/Remises → historique des ventes de la période, Stock → Stock, Achats → Achats.
 - **Inventaire** : zone retirée ; carte « À compter aujourd'hui » grande et lisible (≥ 2 mouvements / 7 j, non comptés depuis 24 h) en tête de l'Inventaire ET du tableau de bord (rôle stock), bouton « Compter ces N produits » → comptage tournant lancé et saisie ouverte.
 - Preuves : backend tsc + eslint OK, jest 188 + import 13 ; app analyze 0, 574 tests.
+
+## 2026-11-16 — Paiement fournisseur à la réception + fiche fournisseur « compte »
+- Serveur : `CreateReceptionDto.payment {amount, fromCash, method}` ; `ReceptionsService.createInTx` paie dans la MÊME transaction (règle 3) via `SuppliersService.payInTx` (cœur extrait de `pay()`, comportement de `POST /payments/supplier` inchangé) — ADMIN + supplier.payment.create (403 sinon, en ligne comme en synchro), plafond au reste dû, caisse ouverte d'office si besoin (règle 12), clé = celle de la réception (409 si déjà prise).
+- App : section « Paiement au fournisseur » dans la réception (Rien / Tout / montant, « sorti de la caisse », reste en dette en direct) ; fiche fournisseur refaite (`supplier_account_panel.dart`) : dette en grand animée + barre payé/reçu, gros bouton « Versement », tuiles d'actions, derniers paiements, contacts copiables. « Je le paie » → « Versement ».
+- Audit sécurité : aucun bloquant ; corrigés : clé déjà prise → 409, montant > reçu refusé à l'écran. Mineurs notés : le rejeu d'une réception ne compare pas le paiement (pas de double paiement possible) ; un paiement refusé rejette toute la réception (règle 3), y compris à la synchro.
+- Preuves : backend tsc/eslint, jest 176 (+ imports seul) ; app analyze 0, 576 tests.

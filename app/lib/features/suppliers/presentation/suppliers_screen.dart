@@ -28,6 +28,7 @@ import '../data/suppliers_models.dart';
 import '../../sales/application/sales_controller.dart';
 import '../../../ui/widgets/contact_profile.dart';
 import '../../../ui/widgets/ampere_controls.dart';
+import 'supplier_account_panel.dart';
 import 'supplier_return_dialog.dart';
 
 /// Droits fournisseurs, MIROIRS des guards serveur (`docs/permissions.md`) :
@@ -243,7 +244,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
                                 if (rights.canPay && s.balanceDue > 0)
                                   (
                                     LucideIcons.handCoins,
-                                    'Je le paie',
+                                    'Versement',
                                     () => _pay(s),
                                   ),
                                 (
@@ -299,39 +300,15 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
 
   Future<void> _openActions(Supplier supplier, SupplierRights rights) async {
     // Fiche CONTACT (2026-10-06) : coordonnées, compte, actions, supprimer.
-    final action = await showContactProfile(
+    // Fiche COMPTE (2026-11-15) : dette en grand, « Versement », tuiles,
+    // derniers paiements.
+    final action = await showSupplierAccount(
       context,
-      name: supplier.name,
-      kind: 'Fournisseur',
-      contactName: supplier.contactName,
-      phone: supplier.phone,
-      email: supplier.email,
-      address: supplier.address,
-      notes: supplier.notes,
-      figures: [
-        (
-          label: 'Marchandise reçue',
-          value: formatDA(supplier.receivedAmount),
-          tone: StatusTone.neutral,
-        ),
-        (
-          label: 'Payé',
-          value: formatDA(supplier.paidAmount),
-          tone: StatusTone.neutral,
-        ),
-        (
-          label: 'Reste dû',
-          value: formatDA(supplier.balanceDue),
-          tone: supplier.balanceDue > 0 ? StatusTone.warn : StatusTone.ok,
-        ),
-      ],
+      supplier: supplier,
+      canPay: rights.canPay,
       actions: [
         if (rights.canPay && supplier.balanceDue > 0)
-          (
-            icon: LucideIcons.banknote,
-            label: 'Enregistrer un paiement',
-            value: 'pay',
-          ),
+          (icon: LucideIcons.banknote, label: 'Versement', value: 'pay'),
         if (rights.canSeePurchases)
           (
             icon: LucideIcons.package,
@@ -600,7 +577,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Payer ${widget.name}'),
+      title: Text('Versement à ${widget.name}'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -509,68 +509,94 @@ export class SuppliersService {
       return SuppliersService.paymentDto(existing, balanceDue);
     };
     return runOnce(replay, () =>
-      this.prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${dto.supplierId}::uuid FOR UPDATE`;
-        const supplier = await tx.supplier.findUnique({
-          where: { id: dto.supplierId },
-        });
-        if (!supplier) throw SuppliersService.notFound();
-
-        const { balanceDue } = await SuppliersService.debt(tx, supplier);
-        if (dto.amount > balanceDue) {
-          throw new BusinessException(
-            ErrorCode.VALIDATION_FAILED,
-            `Paiement supérieur au reste dû (${formatDA(balanceDue)})`,
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        const session = dto.fromCash
-          ? await CashSessionsService.lockOpenSession(tx, { userId: user.id })
-          : null;
-        if (dto.fromCash && !session) {
-          throw new BusinessException(
-            ErrorCode.CASH_SESSION_REQUIRED,
-            'Ouvrez votre caisse avant de payer un fournisseur en espèces',
-            HttpStatus.UNPROCESSABLE_ENTITY,
-          );
-        }
-
-        const payment = await tx.supplierPayment.create({
-          data: {
-            id: dto.id,
-            clientMutationId: dto.clientMutationId,
-            supplierId: supplier.id,
-            userId: user.id,
-            cashSessionId: session?.id ?? null,
-            amount: dto.amount,
-            method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
-            note: dto.note ?? null,
-          },
-        });
-        if (session) {
-          // Garde commun : jamais plus que le contenu du tiroir (CASH_INSUFFICIENT).
-          await CashSessionsService.withdraw(tx, session, {
-            userId: user.id,
-            amount: dto.amount,
-            // Rapprochement caisse ↔ paiement par l'id du paiement.
-            note: `Paiement fournisseur ${payment.id} — ${supplier.name}`,
-          });
-        }
-        await writeAudit(tx, actor, {
-          action: 'CREATE',
-          entityType: 'SupplierPayment',
-          entityId: payment.id,
-          newValue: {
-            supplierId: supplier.id,
-            amount: dto.amount,
-            method: payment.method,
-            fromCash: dto.fromCash,
-          },
-        });
-        return SuppliersService.paymentDto(payment, balanceDue - dto.amount);
-      }),
+      this.prisma.$transaction((tx) =>
+        SuppliersService.payInTx(tx, dto, user, actor),
+      ),
     );
+  }
+
+  /// Cœur du paiement, dans la transaction de l'appelant : la route, et la
+  /// RÉCEPTION qui paie le fournisseur à la livraison (2026-11-15). Jamais
+  /// au-delà du reste dû. `autoOpenCash` : sans caisse ouverte, un paiement
+  /// en espèces l'ouvre (règle 12, plus de blocage) au lieu d'être refusé.
+  static async payInTx(
+    tx: Prisma.TransactionClient,
+    dto: Pick<
+      CreateSupplierPaymentDto,
+      | 'id'
+      | 'clientMutationId'
+      | 'supplierId'
+      | 'amount'
+      | 'fromCash'
+      | 'method'
+      | 'note'
+    >,
+    user: AuthenticatedUser,
+    actor: ActorContext,
+    options: { purchaseOrderId?: string | null; autoOpenCash?: boolean } = {},
+  ): Promise<SupplierPaymentDto> {
+    await tx.$queryRaw`SELECT "id" FROM "Supplier" WHERE "id" = ${dto.supplierId}::uuid FOR UPDATE`;
+    const supplier = await tx.supplier.findUnique({
+      where: { id: dto.supplierId },
+    });
+    if (!supplier) throw SuppliersService.notFound();
+
+    const { balanceDue } = await SuppliersService.debt(tx, supplier);
+    if (dto.amount > balanceDue) {
+      throw new BusinessException(
+        ErrorCode.VALIDATION_FAILED,
+        `Paiement supérieur au reste dû (${formatDA(balanceDue)})`,
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const session = !dto.fromCash
+      ? null
+      : options.autoOpenCash
+        ? await CashSessionsService.ensureOpenSession(tx, user.id)
+        : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
+    if (dto.fromCash && !session) {
+      throw new BusinessException(
+        ErrorCode.CASH_SESSION_REQUIRED,
+        'Ouvrez votre caisse avant de payer un fournisseur en espèces',
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const payment = await tx.supplierPayment.create({
+      data: {
+        id: dto.id,
+        clientMutationId: dto.clientMutationId,
+        supplierId: supplier.id,
+        purchaseOrderId: options.purchaseOrderId ?? null,
+        userId: user.id,
+        cashSessionId: session?.id ?? null,
+        amount: dto.amount,
+        method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
+        note: dto.note ?? null,
+      },
+    });
+    if (session) {
+      // Garde commun : jamais plus que le contenu du tiroir (CASH_INSUFFICIENT).
+      await CashSessionsService.withdraw(tx, session, {
+        userId: user.id,
+        amount: dto.amount,
+        // Rapprochement caisse ↔ paiement par l'id du paiement.
+        note: `Paiement fournisseur ${payment.id} — ${supplier.name}`,
+      });
+    }
+    await writeAudit(tx, actor, {
+      action: 'CREATE',
+      entityType: 'SupplierPayment',
+      entityId: payment.id,
+      newValue: {
+        supplierId: supplier.id,
+        amount: dto.amount,
+        method: payment.method,
+        fromCash: dto.fromCash,
+      },
+    });
+    return SuppliersService.paymentDto(payment, balanceDue - dto.amount);
   }
 
   async payments(
