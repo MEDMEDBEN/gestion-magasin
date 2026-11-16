@@ -642,7 +642,6 @@ class SalesActions {
     required int expectedTotalTtc,
     DateTime? dueDate,
     int? receivedAmount,
-    bool issueInvoice = false,
   }) async {
     final cart = _ref.read(cartProvider);
     // Caisse où entrent les espèces (dernier état lu, même hors ligne) : le
@@ -686,7 +685,6 @@ class SalesActions {
         expectedTotalTtc: expectedTotalTtc,
         dueDate: dueDate == null ? null : isoDay(dueDate),
         discountAmount: cart.discountHt,
-        issueInvoice: issueInvoice,
       ),
       online: _api.createSale,
       // Caisse encore en file : la vente doit passer APRÈS son ouverture.

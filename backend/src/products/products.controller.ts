@@ -55,6 +55,7 @@ import {
   ProductDto,
   ProductListDto,
   ProductListQueryDto,
+  CostChangeDto,
   PriceChangeDto,
   ProspectDto,
   SetProductPriceDto,
@@ -308,6 +309,18 @@ export class ProductsController {
     @Param('id', CanonicalUuidPipe) id: string,
   ): Promise<ProspectDto[]> {
     return this.productsService.prospects(id);
+  }
+
+  /// Historique des prix d'achat : mêmes lecteurs que le coût (`cost.read`).
+  @Roles(...ALL_ROLES)
+  @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.COST_READ)
+  @Get(':id/cost-history')
+  @ApiOperation({ summary: 'Historique des prix d’achat (réceptions)' })
+  @ApiOkResponse({ type: [CostChangeDto] })
+  costHistory(
+    @Param('id', CanonicalUuidPipe) id: string,
+  ): Promise<CostChangeDto[]> {
+    return this.productsService.costHistory(id);
   }
 
   /// Mêmes lecteurs que les prix eux-mêmes : les trois rôles avec

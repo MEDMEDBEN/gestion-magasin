@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../catalog/presentation/price_history.dart';
 import '../../../core/money.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
 import '../../../ui/widgets/form_panel.dart';
+import '../../../ui/widgets/screen_state.dart';
 import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../../catalog/presentation/product_photo.dart';
@@ -164,6 +166,25 @@ class ProductInfoPanel extends ConsumerWidget {
               LucideIcons.shoppingBag,
             ),
           ],
+        ),
+        // Prix d'achat changé à une réception (2026-11-16) : à revoir.
+        if (product.priceReviewNeeded) ...[
+          const SizedBox(height: 10),
+          const AmpereInlineAlert(
+            tone: StatusTone.warn,
+            icon: LucideIcons.triangleAlert,
+            message:
+                'Prix d’achat changé à la dernière réception : vérifiez le '
+                'prix de vente.',
+          ),
+        ],
+        const SizedBox(height: 6),
+        Align(
+          child: TextButton.icon(
+            onPressed: () => showProductPriceHistory(context, ref, product),
+            icon: const Icon(LucideIcons.history, size: 16),
+            label: const Text('Historique des prix (achat et vente)'),
+          ),
         ),
         if (price != null && cost != null) ...[
           const SizedBox(height: 8),

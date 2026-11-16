@@ -72,6 +72,16 @@ class CatalogApi {
         return [for (final r in response.data!) r as Map<String, dynamic>];
       });
 
+  /// Historique des prix d'ACHAT (2026-11-16), le plus récent d'abord : `at`,
+  /// `receptionNumber`, `supplierName`, `unitPriceHt`, `quantity`.
+  Future<List<Map<String, dynamic>>> costHistory(String productId) =>
+      guardApi(() async {
+        final response = await _dio.get<List<dynamic>>(
+          '/products/$productId/cost-history',
+        );
+        return [for (final r in response.data!) r as Map<String, dynamic>];
+      });
+
   /// Clients à prévenir d'un produit (P2 n°23, ADMIN) : `name`, `phone`,
   /// `email`, `purchases`, `lastPurchaseAt`, `message`.
   Future<List<Map<String, dynamic>>> prospects(String productId) =>

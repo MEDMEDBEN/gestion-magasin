@@ -477,12 +477,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Historique des prix'));
     await tester.pumpAndSettle();
+    // Deux onglets (2026-11-16) : achat, puis vente.
+    await tester.tap(find.text('Prix de vente'));
+    await tester.pumpAndSettle();
     expect(
-      find.text('DETAIL : ${formatDA(145000)} → ${formatDA(150000)}'),
+      find.text('${formatDA(145000)} → ${formatDA(150000)}'),
       findsOneWidget,
     );
     expect(
-      find.text('DETAIL : premier prix → ${formatDA(145000)}'),
+      find.text('Premier prix → ${formatDA(145000)}'),
       findsOneWidget,
     ); // P2 n°23 : réservé à l'admin.
     expect(find.text('Clients à prévenir'), findsNothing);

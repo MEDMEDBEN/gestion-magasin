@@ -316,6 +316,11 @@ export class ProductDto {
       'Dernier prix d’achat réceptionné, en centimes (base de la marge). `null` sans `cost.read` (vendeur).',
   })
   lastPurchasePriceHt!: number | null;
+  @ApiProperty({
+    description:
+      'Le prix d’achat a changé à une réception depuis le dernier tarif fixé : prix de vente à revoir.',
+  })
+  priceReviewNeeded!: boolean;
   @ApiProperty() allowBackorder!: boolean;
   @ApiProperty() isActive!: boolean;
   @ApiProperty({
@@ -421,6 +426,16 @@ export class ProspectDto {
   @ApiProperty() lastPurchaseAt!: Date;
   @ApiProperty({ description: 'Message à modèle fixe, au nom de ce client.' })
   message!: string;
+}
+
+/// Une réception du produit : le prix d'achat payé ce jour-là (2026-11-16).
+export class CostChangeDto {
+  @ApiProperty() at!: Date;
+  @ApiProperty() receptionNumber!: string;
+  @ApiProperty() supplierName!: string;
+  @ApiProperty({ description: 'Prix d’achat unitaire HT, centimes' })
+  unitPriceHt!: number;
+  @ApiProperty({ example: '12.000' }) quantity!: string;
 }
 
 /// Un changement de tarif (P1 bis n°21n) : lu de l'AUDIT, où `setPriceInTx`

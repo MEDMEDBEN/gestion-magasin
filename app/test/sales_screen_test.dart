@@ -1264,7 +1264,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Le prix d'achat est sur la ligne (2026-10-05) : savoir jusqu'où baisser.
-    expect(find.textContaining('achat ${formatDA(100000)}'), findsOneWidget);
+    expect(find.textContaining('Achat ${formatDA(100000)}'), findsOneWidget);
 
     // Au-delà du montant de la ligne (1 450 DA) : refusé.
     await tester.tap(find.byTooltip('Remise'));

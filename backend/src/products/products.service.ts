@@ -20,6 +20,7 @@ import {
   CreateProductDto,
   LabelsDto,
   ProductsExportDto,
+  CostChangeDto,
   PriceChangeDto,
   ProspectDto,
   ProductDto,
@@ -339,7 +340,8 @@ export class ProductsService {
     });
     const updated = await tx.product.update({
       where: { id },
-      data: { updatedAt: new Date() },
+      // Un tarif refixé : le « prix à revoir » est traité.
+      data: { updatedAt: new Date(), costChangedAt: null },
       include: PRODUCT_INCLUDE,
     });
     await writeAudit(tx, actor, {
@@ -440,6 +442,35 @@ export class ProductsService {
   /// Historique des prix de vente d'un produit (P1 bis n°21n), du plus récent
   /// au plus ancien (200 derniers). L'auteur est une donnée d'audit : montré à
   /// l'ADMIN seulement.
+  /// Historique des PRIX D'ACHAT (2026-11-16) : chaque réception, son
+  /// fournisseur et son prix unitaire HT — le plus récent d'abord.
+  async costHistory(id: string): Promise<CostChangeDto[]> {
+    if (!(await this.prisma.product.findUnique({ where: { id } }))) {
+      throw ProductsService.notFound();
+    }
+    const rows = await this.prisma.receptionLine.findMany({
+      where: { productId: id },
+      include: {
+        reception: {
+          select: {
+            number: true,
+            receivedAt: true,
+            supplier: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [{ reception: { receivedAt: 'desc' } }, { id: 'desc' }],
+      take: 100,
+    });
+    return rows.map((r) => ({
+      at: r.reception.receivedAt,
+      receptionNumber: r.reception.number,
+      supplierName: r.reception.supplier.name,
+      unitPriceHt: r.unitPriceHt,
+      quantity: formatQuantity(r.receivedQuantity),
+    }));
+  }
+
   async priceHistory(
     id: string,
     user: AuthenticatedUser,
@@ -509,6 +540,7 @@ export class ProductsService {
       minThreshold: formatQuantity(product.minThreshold),
       safetyStock: formatQuantity(product.safetyStock),
       lastPurchasePriceHt: product.lastPurchasePriceHt,
+      priceReviewNeeded: product.costChangedAt !== null,
       allowBackorder: product.allowBackorder,
       isActive: product.isActive,
       imageKey: product.imageUrl,

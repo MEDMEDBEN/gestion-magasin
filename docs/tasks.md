@@ -3940,3 +3940,10 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - App : section « Paiement au fournisseur » dans la réception (Rien / Tout / montant, « sorti de la caisse », reste en dette en direct) ; fiche fournisseur refaite (`supplier_account_panel.dart`) : dette en grand animée + barre payé/reçu, gros bouton « Versement », tuiles d'actions, derniers paiements, contacts copiables. « Je le paie » → « Versement ».
 - Audit sécurité : aucun bloquant ; corrigés : clé déjà prise → 409, montant > reçu refusé à l'écran. Mineurs notés : le rejeu d'une réception ne compare pas le paiement (pas de double paiement possible) ; un paiement refusé rejette toute la réception (règle 3), y compris à la synchro.
 - Preuves : backend tsc/eslint, jest 176 (+ imports seul) ; app analyze 0, 576 tests.
+
+## 2026-11-16 (suite) — Prix d'achat : historique, « prix à revoir », panier
+- Migration `20261116090000_product_cost_changed` (ADD COLUMN `Product.costChangedAt`, additive) : posé par une réception qui CHANGE le prix d'achat, remis à NULL par `setPriceInTx` (tarif refixé). `ProductDto.priceReviewNeeded`.
+- `GET /products/:id/cost-history` (product.read + cost.read) : réceptions (date, fournisseur, n°, prix HT, quantité).
+- App : fenêtre « Historique des prix » (onglets Achat / Vente, `catalog/presentation/price_history.dart`) — actions de ligne du catalogue, fiche produit, Infos produit (Vente) ; badge « Prix à revoir » (catalogue, panier, Infos produit) ; ligne du panier « Vente X · Achat Y » en couleurs (achat rouge si vente à perte). Curseur catalogue `v3` (re-téléchargement une fois).
+- Case « Facture (au lieu d'un ticket) » RETIRÉE de l'encaissement (demande MEDMEDBEN) ; le serveur garde `issueInvoice` (inutilisé par l'app).
+- Preuves : backend tsc/eslint ; app analyze 0, 576 tests. Migration à appliquer au déploiement (`prisma migrate deploy`, fait par le conteneur au démarrage).

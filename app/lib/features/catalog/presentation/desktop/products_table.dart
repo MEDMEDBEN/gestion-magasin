@@ -117,7 +117,7 @@ class ProductsTable extends StatelessWidget {
 }
 
 /// Colonne des boutons Modifier / Supprimer.
-const double _actionsWidth = 150;
+const double _actionsWidth = 190;
 
 class _Columns {
   static const name = 8;
@@ -331,6 +331,14 @@ class _ProductRow extends StatelessWidget {
                             product: product,
                             stock: stock![product.id],
                           ),
+                          // Prix d'achat changé (2026-11-16).
+                          if (product.priceReviewNeeded) ...[
+                            const SizedBox(height: 3),
+                            const AmpereBadge(
+                              label: 'Prix à revoir',
+                              tone: StatusTone.warn,
+                            ),
+                          ],
                           const SizedBox(height: 2),
                           Text(
                             'seuil ${formatQuantity(product.minThreshold)} '

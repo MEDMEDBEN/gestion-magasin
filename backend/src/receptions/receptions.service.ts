@@ -225,9 +225,21 @@ export class ReceptionsService {
         },
       });
       if (newer > 0) continue;
+      const before = await tx.product.findUnique({
+        where: { id: line.productId },
+        select: { lastPurchasePriceHt: true },
+      });
+      // Prix d'achat qui CHANGE : le prix de vente est « à revoir »
+      // (2026-11-16) jusqu'à ce qu'un tarif soit refixé.
+      const changed =
+        before?.lastPurchasePriceHt != null &&
+        before.lastPurchasePriceHt !== line.unitPriceHt;
       await tx.product.update({
         where: { id: line.productId },
-        data: { lastPurchasePriceHt: line.unitPriceHt },
+        data: {
+          lastPurchasePriceHt: line.unitPriceHt,
+          ...(changed && { costChangedAt: receivedAt }),
+        },
       });
     }
 

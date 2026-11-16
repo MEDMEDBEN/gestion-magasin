@@ -466,6 +466,10 @@ model Product {
   safetyStock         Decimal     @default(0) @db.Decimal(14, 3)
   /// Coût = dernier prix d'achat réceptionné, en centimes (CLAUDE.md règle 5).
   lastPurchasePriceHt Int?
+  /// Prix d'achat CHANGÉ par une réception depuis le dernier prix de vente
+  /// fixé (2026-11-16) : « prix à revoir ». Remis à NULL quand un tarif est
+  /// fixé.
+  costChangedAt       DateTime?
   /// Autorise une opération qui rendrait le stock négatif (CLAUDE.md règle 9).
   allowBackorder      Boolean     @default(false)
   isActive            Boolean     @default(true)

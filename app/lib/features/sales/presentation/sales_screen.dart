@@ -957,15 +957,11 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final cart = ref.read(cartProvider);
     // Caisse fermée : la vente passe quand même, le serveur ouvre LA caisse
     // (fond 0) — plus de blocage (décision du 2026-11-08).
-    final invoice = widget.rights.canInvoice ? ValueNotifier(false) : null;
     final received = await showPaymentDialog(
       context,
       total: estimate.totalTtc,
       customerName: cart.customer?.name,
-      invoice: invoice,
     );
-    final issueInvoice = invoice?.value ?? false;
-    invoice?.dispose();
     if (received == null || !mounted) return;
     final kept = received < estimate.totalTtc ? received : estimate.totalTtc;
     // Crédit : l'échéance est obligatoire (le serveur la refuse sinon).
@@ -993,7 +989,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             expectedTotalTtc: estimate.totalTtc,
             dueDate: dueDate,
             receivedAmount: received,
-            issueInvoice: issueInvoice,
           );
       if (!mounted) return;
       final change = received - kept;
@@ -1018,7 +1013,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             total: estimate.totalTtc,
             kept: kept,
             change: change,
-            invoice: issueInvoice,
           );
       }
     } on ApiException catch (error) {
@@ -1054,7 +1048,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     required int total,
     required int kept,
     required int change,
-    bool invoice = false,
   }) {
     return showDialog<void>(
       context: context,
@@ -1074,11 +1067,6 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               const Divider(),
               Text('Total TTC : ${formatDA(total)}'),
               Text('Encaissé : ${formatDA(kept)}'),
-              if (invoice)
-                const Text(
-                  'Facture demandée : son numéro légal sera attribué à la '
-                  'synchronisation.',
-                ),
               if (change > 0)
                 Text(
                   'Monnaie à rendre : ${formatDA(change)}',
@@ -2571,6 +2559,8 @@ class _CartLineRow extends ConsumerWidget {
       onPressed: onPressed,
     );
     final badges = [
+      if (line.product.priceReviewNeeded)
+        const AmpereBadge(label: 'Prix à revoir', tone: StatusTone.warn),
       if (missingPrice)
         const AmpereBadge(label: 'Prix non fixé', tone: StatusTone.error)
       else if (unitPriceHt != tariffPriceHt)
@@ -2604,18 +2594,37 @@ class _CartLineRow extends ConsumerWidget {
             ),
           ),
         ),
-        Text(
-          [
-            if (unitPriceHt != null)
-              '${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
-            // Prix d'achat visible (2026-10-05) : jusqu'où baisser.
-            if (line.product.lastPurchasePriceHt case final cost?)
-              'achat ${formatDA(cost)}',
-            line.product.sku,
-          ].join(' · '),
+        // Vente ET achat côte à côte, lisibles (demande du 2026-11-16) :
+        // le vendeur voit d'un coup d'œil sa marge sur la ligne.
+        Text.rich(
+          TextSpan(
+            children: [
+              if (unitPriceHt != null)
+                TextSpan(
+                  text:
+                      'Vente ${formatDA(unitPriceHt!)} / ${line.product.unit.short}',
+                  style: AmpereType.meta.copyWith(
+                    color: colors.accent,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if (line.product.lastPurchasePriceHt case final cost?) ...[
+                const TextSpan(text: '   '),
+                TextSpan(
+                  text: 'Achat ${formatDA(cost)}',
+                  style: AmpereType.meta.copyWith(
+                    color: unitPriceHt != null && unitPriceHt! < cost
+                        ? colors.error
+                        : colors.warn,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
+          ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: AmpereType.meta.copyWith(color: colors.ink3),
+          style: AmpereType.meta.copyWith(fontFeatures: AmpereType.tabular),
         ),
         if (badges.isNotEmpty)
           Wrap(spacing: 4, runSpacing: 2, children: badges),

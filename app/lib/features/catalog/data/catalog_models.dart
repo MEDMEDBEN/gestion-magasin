@@ -101,6 +101,10 @@ abstract class Product with _$Product {
     @JsonKey(fromJson: quantityFromJson, toJson: quantityToJson)
     required Quantity safetyStock,
     int? lastPurchasePriceHt,
+
+    /// Le prix d'achat a changé à une réception : prix de vente « à revoir »
+    /// (2026-11-16), jusqu'à ce qu'un tarif soit refixé.
+    @Default(false) bool priceReviewNeeded,
     required bool allowBackorder,
     required bool isActive,
     required DateTime updatedAt,
