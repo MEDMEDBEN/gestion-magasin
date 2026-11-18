@@ -3947,3 +3947,8 @@ humaine en attente · 🟢 terminé et validé par MEDMEDBEN
 - App : fenêtre « Historique des prix » (onglets Achat / Vente, `catalog/presentation/price_history.dart`) — actions de ligne du catalogue, fiche produit, Infos produit (Vente) ; badge « Prix à revoir » (catalogue, panier, Infos produit) ; ligne du panier « Vente X · Achat Y » en couleurs (achat rouge si vente à perte). Curseur catalogue `v3` (re-téléchargement une fois).
 - Case « Facture (au lieu d'un ticket) » RETIRÉE de l'encaissement (demande MEDMEDBEN) ; le serveur garde `issueInvoice` (inutilisé par l'app).
 - Preuves : backend tsc/eslint ; app analyze 0, 576 tests. Migration à appliquer au déploiement (`prisma migrate deploy`, fait par le conteneur au démarrage).
+
+## 2026-11-18 — Facture directe à chaque vente
+- Décision MEDMEDBEN : après une vente il n'y a QUE la facture. `SalesService.createInTx` se termine par `autoInvoice` (numéro FA-… sous transaction, règle 11) : route en ligne, synchro hors ligne, devis converti, confrères. Sans mentions légales / sans `invoice.issue` → reste un ticket (bouton « Émettre la facture » conservé pour ce cas). `CreateSaleDto.issueInvoice` ignoré (compat).
+- App : vocabulaire « ticket » retiré de la vente (« Nouvelle vente », « Vente · n article(s) », file : « facture émise à la synchronisation ») ; « Imprimer la facture » quand la vente est facturée.
+- CLAUDE.md règle 11 mise à jour. Preuves : backend tsc/eslint, jest 176 ; app analyze 0, 576 tests. e2e `sales*.e2e-spec.ts` NON relancés (Docker) — à vérifier : avec les mentions légales configurées, une vente sort désormais facturée.

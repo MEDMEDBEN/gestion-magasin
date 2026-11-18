@@ -1385,7 +1385,7 @@ void main() {
     expect(find.text('Prix d’achat'), findsOneWidget);
     expect(find.text('Code-barres'), findsOneWidget);
     expect(find.text('Fournisseur'), findsOneWidget);
-    expect(find.text('Nouveau ticket'), findsOneWidget);
+    expect(find.text('Nouvelle vente'), findsOneWidget);
   });
 
   testWidgets('caisse : prélèvement avec motif, clé d’idempotence envoyée', (

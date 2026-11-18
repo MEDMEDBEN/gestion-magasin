@@ -96,12 +96,9 @@ export class CreateSaleDto {
   @ClientMutationId()
   clientMutationId!: string;
 
-  /// Facture demandée à la caisse (2026-11-15) : le numéro légal FA-… est
-  /// attribué SERVEUR à l'enregistrement — tout de suite en ligne, à la
-  /// synchronisation pour une vente faite hors ligne (règle 11).
-  @ApiPropertyOptional({
-    description: 'Émettre la facture (numéro légal attribué serveur)',
-  })
+  /// IGNORÉ depuis le 2026-11-18 : toute vente est facturée (facture
+  /// directe). Encore accepté pour les applications pas encore mises à jour.
+  @ApiPropertyOptional({ deprecated: true })
   @IsBoolean()
   @IsOptional()
   issueInvoice?: boolean;

@@ -840,7 +840,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
               children: [
                 Text(
                   'Magasin : ${formatQuantity(known.store)} $unit'
-                  '${inCart > Quantity.zero ? ' (déjà ${formatQuantity(inCart)} $unit au ticket)' : ''}'
+                  '${inCart > Quantity.zero ? ' (déjà ${formatQuantity(inCart)} $unit au panier)' : ''}'
                   ' · dépôt : ${formatQuantity(known.depot)} $unit',
                   style: AmpereType.bodyStrong.copyWith(color: colors.ink),
                 ),
@@ -1061,8 +1061,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             children: [
               const Text(
                 'Pas de connexion : la vente est enregistrée sur cet appareil, '
-                'pas encore confirmée par le serveur. Le ticket officiel sera '
-                'disponible après la synchronisation.',
+                'pas encore confirmée par le serveur. Sa facture (n° FA-…) sera '
+                'émise à la synchronisation.',
               ),
               const Divider(),
               Text('Total TTC : ${formatDA(total)}'),
@@ -1204,7 +1204,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
     final ok = await showAmpereConfirmDialog(
       context,
       title: 'Vider le panier ?',
-      body: 'Toutes les lignes du ticket en cours seront retirées.',
+      body: 'Toutes les lignes de la vente en cours seront retirées.',
       confirmLabel: 'Vider',
     );
     if (ok && mounted) ref.read(cartProvider.notifier).clear();
@@ -1330,8 +1330,8 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                         Expanded(
                           child: Text(
                             articles == 0
-                                ? 'Nouveau ticket'
-                                : 'Ticket · $articles article(s)',
+                                ? 'Nouvelle vente'
+                                : 'Vente · $articles article(s)',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: AmpereType.bodyStrong.copyWith(
@@ -1637,7 +1637,7 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             Icon(LucideIcons.receipt, size: 15, color: colors.ink2),
             const SizedBox(width: 8),
             Text(
-              'Ticket',
+              'Vente',
               style: AmpereType.bodyStrong.copyWith(color: colors.ink),
             ),
             const SizedBox(width: 8),

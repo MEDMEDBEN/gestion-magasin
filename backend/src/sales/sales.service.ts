@@ -70,10 +70,7 @@ export class SalesService {
       () => this.replay(this.prisma, dto, user),
       () =>
         this.prisma.$transaction(async (tx) => {
-          const created = await this.createInTx(tx, dto, user);
-          const sale = await this.invoiceIfRequested(tx, created, dto, user, {
-            userId: user.id,
-          });
+          const sale = await this.createInTx(tx, dto, user);
           const overrides = SalesService.priceOverrides(sale, dto);
           // Spec §24 : une vente normale ne pollue pas le journal ; une vente à
           // prix MODIFIÉ, si — l'admin doit la voir (décision 2026-09-22).
@@ -320,7 +317,12 @@ export class SalesService {
       });
     }
     // Spec §24 : les ventes normales ne polluent pas le journal d'audit.
-    return this.toDto(tx, sale);
+    // FACTURE DIRECTE (décision MEDMEDBEN du 2026-11-18) : chaque vente reçoit
+    // sa facture FA-… ici, serveur, dans SA transaction (règle 11) — en ligne
+    // tout de suite, hors ligne à la synchronisation (même cœur).
+    return this.autoInvoice(tx, await this.toDto(tx, sale), user, {
+      userId: user.id,
+    });
   }
 
   async findAll(
@@ -462,18 +464,17 @@ export class SalesService {
     );
   }
 
-  /// Facture demandée AVEC la vente (`issueInvoice`) : émise dans la même
-  /// transaction. Sans le droit, ou sans les mentions légales du magasin, la
-  /// vente reste un TICKET (jamais une vente perdue pour une facture) — on
-  /// pourra la facturer ensuite.
-  async invoiceIfRequested(
+  /// Facture émise AVEC la vente, dans la même transaction. Sans le droit
+  /// (`invoice.issue`), ou sans les mentions légales du magasin, la vente reste
+  /// un ticket (jamais une vente perdue pour une facture) — « Émettre la
+  /// facture » reste alors possible ensuite.
+  async autoInvoice(
     tx: Prisma.TransactionClient,
     sale: SaleDto,
-    dto: CreateSaleDto,
     user: AuthenticatedUser,
     actor: ActorContext,
   ): Promise<SaleDto> {
-    if (!dto.issueInvoice || sale.invoiceNumber) return sale;
+    if (sale.invoiceNumber) return sale;
     if (!user.permissions.includes(PERMISSIONS.INVOICE_ISSUE)) return sale;
     try {
       return await this.issueInvoiceInTx(tx, sale.id, user, actor);
