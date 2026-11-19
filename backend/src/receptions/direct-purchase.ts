@@ -36,7 +36,7 @@ type Db = Prisma.TransactionClient;
 export class DirectPurchaseLineDto {
   @ApiProperty() @IsCanonicalUuid() productId!: string;
 
-  @ApiProperty({ description: 'Prix d’achat unitaire HT, centimes (≥ 0).' })
+  @ApiProperty({ description: 'Prix d’achat unitaire HT, centimes (> 0).' })
   @IsInt()
   @Min(0)
   @Max(MAX_MONEY)
@@ -106,8 +106,17 @@ export class DirectPurchaseDto {
 
 /// Espace de noms des clés dérivées (une réception par lieu).
 const KEY_NAMESPACE = '5b0f4f2a-9c1e-4d6a-8e3b-2f7c1a9d0e44';
-const keyFor = (key: string, place: 'MAGASIN' | 'DEPOT') =>
-  place === 'MAGASIN' ? key : uuidv5(`${key}:DEPOT`, KEY_NAMESPACE);
+export const directPurchaseKeys = (key: string) => ({
+  MAGASIN: key,
+  DEPOT: uuidv5(`${key}:DEPOT`, KEY_NAMESPACE),
+});
+
+type Line = {
+  productId: string;
+  receivedQuantity: string;
+  unitPriceHt: number;
+};
+type Place = 'MAGASIN' | 'DEPOT';
 
 @Injectable()
 export class DirectPurchaseService {
@@ -122,43 +131,18 @@ export class DirectPurchaseService {
     actor: ActorContext,
   ): Promise<DirectPurchaseDto> {
     return runOnce(
-      () => this.replay(this.prisma, dto),
+      () => this.replay(this.prisma, dto, user),
       () =>
         this.prisma.$transaction((tx) => this.createInTx(tx, dto, user, actor)),
     );
   }
 
-  /// Renvoi (réponse perdue) : les réceptions de CETTE clé, telles quelles.
-  async replay(db: Db | PrismaService, dto: CreateDirectPurchaseDto) {
-    const keys = [
-      keyFor(dto.clientMutationId, 'MAGASIN'),
-      keyFor(dto.clientMutationId, 'DEPOT'),
-    ];
-    const found = await db.reception.findMany({
-      where: { clientMutationId: { in: keys } },
-      select: { id: true },
-    });
-    if (found.length === 0) return null;
-    return {
-      receptions: await Promise.all(
-        found.map((r) => this.receptions.findOne(r.id)),
-      ),
-    };
-  }
-
-  /// Une réception par lieu servi (règle 6 : le stock suit ce qui entre),
-  /// TOUT dans la transaction de l'appelant (règle 3) ; le paiement part avec
-  /// la DERNIÈRE, quand la dette contient tout l'achat.
-  async createInTx(
-    tx: Db,
-    dto: CreateDirectPurchaseDto,
-    user: AuthenticatedUser,
-    actor: ActorContext | null,
-    receivedAt: Date = new Date(),
-  ): Promise<DirectPurchaseDto> {
+  /// Le plan de l'achat : la réception de CHAQUE lieu, telle qu'elle sera
+  /// créée (même calcul pour créer et pour reconnaître un renvoi).
+  private async plan(db: Db | PrismaService, dto: CreateDirectPurchaseDto) {
     const [store, depot] = await Promise.all(
       (['MAGASIN', 'DEPOT'] as const).map((type) =>
-        tx.location.findFirst({ where: { type, isActive: true } }),
+        db.location.findFirst({ where: { type, isActive: true } }),
       ),
     );
     if (!store || !depot) {
@@ -180,19 +164,13 @@ export class DirectPurchaseService {
       }
       return q;
     };
-    const buckets = { MAGASIN: [] as Line[], DEPOT: [] as Line[] };
-    type Line = {
-      productId: string;
-      receivedQuantity: string;
-      unitPriceHt: number;
-    };
+    const buckets: Record<Place, Line[]> = { MAGASIN: [], DEPOT: [] };
     const split = new Set<string>();
     for (const line of dto.lines) {
       const toStore = qty(line.toStore, 'toStore');
-      const toDepot = qty(line.toDepot, 'toDepot').plus(
-        qty(line.toSplit, 'toSplit'),
-      );
-      if (!qty(line.toSplit, 'toSplit').isZero()) split.add(line.productId);
+      const toSplit = qty(line.toSplit, 'toSplit');
+      const toDepot = qty(line.toDepot, 'toDepot').plus(toSplit);
+      if (!toSplit.isZero()) split.add(line.productId);
       if (toStore.isZero() && toDepot.isZero()) {
         throw new BusinessException(
           ErrorCode.VALIDATION_FAILED,
@@ -200,46 +178,82 @@ export class DirectPurchaseService {
           HttpStatus.UNPROCESSABLE_ENTITY,
         );
       }
-      if (!toStore.isZero()) {
-        buckets.MAGASIN.push({
-          productId: line.productId,
-          receivedQuantity: toStore.toFixed(3),
-          unitPriceHt: line.unitPriceHt,
-        });
-      }
-      if (!toDepot.isZero()) {
-        buckets.DEPOT.push({
-          productId: line.productId,
-          receivedQuantity: toDepot.toFixed(3),
-          unitPriceHt: line.unitPriceHt,
-        });
+      for (const [place, q] of [
+        ['MAGASIN', toStore],
+        ['DEPOT', toDepot],
+      ] as const) {
+        if (!q.isZero()) {
+          buckets[place].push({
+            productId: line.productId,
+            receivedQuantity: q.toFixed(3),
+            unitPriceHt: line.unitPriceHt,
+          });
+        }
       }
     }
+    const keys = directPurchaseKeys(dto.clientMutationId);
     const places = (['MAGASIN', 'DEPOT'] as const).filter(
       (p) => buckets[p].length > 0,
     );
+    const receptions = places.map((place, i) => ({
+      clientMutationId: keys[place],
+      id: keys[place],
+      supplierId: dto.supplierId,
+      locationId: place === 'MAGASIN' ? store.id : depot.id,
+      lines: buckets[place],
+      note: dto.note ?? null,
+      // Le paiement part avec la DERNIÈRE : la dette contient tout l'achat.
+      ...(i === places.length - 1 &&
+        dto.paidAmount && {
+          payment: { amount: dto.paidAmount, fromCash: false },
+        }),
+    }));
+    return { receptions, split };
+  }
+
+  /// Renvoi (réponse perdue) : les réceptions de CETTE clé — du MÊME auteur
+  /// et du MÊME contenu (`ReceptionsService.replay` le vérifie), TOUTES
+  /// présentes ; sinon conflit (panier modifié depuis, clé d'un autre compte).
+  async replay(
+    db: Db | PrismaService,
+    dto: CreateDirectPurchaseDto,
+    user: AuthenticatedUser,
+  ): Promise<DirectPurchaseDto | null> {
+    const keys = Object.values(directPurchaseKeys(dto.clientMutationId));
+    const any = await db.reception.count({
+      where: { clientMutationId: { in: keys } },
+    });
+    if (any === 0) return null;
+    const { receptions: planned } = await this.plan(db, dto);
+    const found: ReceptionDto[] = [];
+    for (const place of planned) {
+      const existing = await this.receptions.replay(db, place, user);
+      if (existing) found.push(existing);
+    }
+    if (found.length !== planned.length || found.length !== any) {
+      throw new BusinessException(
+        ErrorCode.CONFLICT,
+        'Achat déjà enregistré avec un autre contenu : vérifiez avant de le refaire',
+        HttpStatus.CONFLICT,
+      );
+    }
+    return { receptions: found };
+  }
+
+  /// Une réception par lieu servi (règle 6 : le stock suit ce qui entre),
+  /// TOUT dans la transaction de l'appelant (règle 3).
+  async createInTx(
+    tx: Db,
+    dto: CreateDirectPurchaseDto,
+    user: AuthenticatedUser,
+    actor: ActorContext | null,
+    receivedAt: Date = new Date(),
+  ): Promise<DirectPurchaseDto> {
+    const { receptions: planned, split } = await this.plan(tx, dto);
     const receptions: ReceptionDto[] = [];
-    for (const [i, place] of places.entries()) {
-      const last = i === places.length - 1;
+    for (const place of planned) {
       receptions.push(
-        await this.receptions.createInTx(
-          tx,
-          {
-            clientMutationId: keyFor(dto.clientMutationId, place),
-            id: keyFor(dto.clientMutationId, place),
-            supplierId: dto.supplierId,
-            locationId: place === 'MAGASIN' ? store.id : depot.id,
-            lines: buckets[place],
-            note: dto.note ?? null,
-            ...(last &&
-              dto.paidAmount && {
-                payment: { amount: dto.paidAmount, fromCash: false },
-              }),
-          },
-          user,
-          actor,
-          receivedAt,
-        ),
+        await this.receptions.createInTx(tx, place, user, actor, receivedAt),
       );
     }
     if (split.size > 0) {

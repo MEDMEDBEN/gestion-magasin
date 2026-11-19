@@ -193,8 +193,8 @@ class _ProductRow extends StatelessWidget {
                           ),
                         if (product.priceReviewNeeded)
                           const AmpereBadge(
-                            label: 'Prix à revoir',
-                            tone: StatusTone.warn,
+                            label: 'prix à revoir',
+                            tone: StatusTone.info,
                           ),
                         if (!product.isActive)
                           const AmpereBadge(

@@ -105,6 +105,10 @@ abstract class Product with _$Product {
     /// Le prix d'achat a changé à une réception : prix de vente « à revoir »
     /// (2026-11-16), jusqu'à ce qu'un tarif soit refixé.
     @Default(false) bool priceReviewNeeded,
+
+    /// Acheté « en total » : stock à répartir entre magasin et dépôt
+    /// (2026-11-19) — un repère, pas une urgence.
+    @Default(false) bool splitPending,
     required bool allowBackorder,
     required bool isActive,
     required DateTime updatedAt,

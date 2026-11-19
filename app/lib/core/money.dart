@@ -37,7 +37,8 @@ String _groupThousands(int value) {
 }
 
 /// Convertit une saisie utilisateur en centimes, sans jamais passer par un double.
-/// Accepte « 1450 », « 1450,50 », « 1450.5 ». Renvoie null si la saisie est invalide.
+/// Accepte « 1450 », « 1450,50 », « 1450.5 ». Renvoie null si la saisie est
+/// invalide — ou NÉGATIVE (2026-11-19).
 Money? parseDA(String input) {
   // On retire tout ce qui n'est ni chiffre, ni signe, ni séparateur décimal :
   // cela couvre d'un coup toutes les variantes d'espace (dont l'espace fine
@@ -51,7 +52,9 @@ Money? parseDA(String input) {
   if (parts.length > 2) return null;
 
   final wholePart = parts[0].isEmpty ? '0' : parts[0];
-  if (!RegExp(r'^-?\d+$').hasMatch(wholePart)) return null;
+  // Une SAISIE de montant n'est jamais négative (encaissé, donné, prix,
+  // remise… — demande MEDMEDBEN du 2026-11-19) : « -5 » est invalide.
+  if (!RegExp(r'^\d+$').hasMatch(wholePart)) return null;
 
   var centimes = int.parse(wholePart) * 100;
 

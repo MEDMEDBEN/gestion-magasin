@@ -663,7 +663,7 @@ void main() {
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
 
       // Le ticket PDF (généré serveur) part vers l'impression / le partage.
-      await tester.tap(find.text('Imprimer le ticket'));
+      await tester.tap(find.text('Imprimer le bon'));
       await tester.pumpAndSettle();
       expect(printed, ['TK-2026-000042.pdf:%PDF-']);
     },
@@ -720,7 +720,7 @@ void main() {
       );
       expect(find.text('Vente en attente de synchronisation'), findsOneWidget);
       expect(find.textContaining('Monnaie à rendre'), findsOneWidget);
-      expect(find.text('Imprimer le ticket'), findsNothing);
+      expect(find.text('Imprimer le bon'), findsNothing);
 
       await tester.tap(find.text('Compris'));
       await tester.pumpAndSettle();
@@ -1028,11 +1028,15 @@ void main() {
       await tester.tap(find.text('L’ajouter quand même'));
       await tester.pumpAndSettle();
       expect(find.text('Câble 3G2,5'), findsOneWidget);
-      // Alerte compacte (2026-11-10) : une ligne, ✕ pour la masquer.
-      expect(find.textContaining('la vente passe quand même'), findsOneWidget);
-      await tester.tap(find.byTooltip('Masquer'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('la vente passe quand même'), findsNothing);
+      // Téléphone (2026-11-19) : un SIGNE, le message au toucher.
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Tooltip &&
+              (w.message ?? '').contains('la vente passe quand même'),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.textContaining('Encaisser'));
       await tester.pumpAndSettle();
       expect(find.text('Valider la vente'), findsOneWidget);
@@ -1159,11 +1163,12 @@ void main() {
 
       await tester.tap(find.text('TK-2026-000007').last);
       await tester.pumpAndSettle();
-      expect(find.text('Réimprimer le ticket'), findsOneWidget);
-      expect(find.text('Émettre la facture'), findsOneWidget);
+      expect(find.text('Réimprimer le bon'), findsOneWidget);
+      // Plus de choix ticket / facture (2026-11-19) : la vente EST facturée.
+      expect(find.text('Émettre la facture'), findsNothing);
       // Le vendeur n'annule pas une vente (ADMIN + sale.cancel).
       expect(find.text('Annuler la vente'), findsNothing);
-      await tester.tap(find.text('Réimprimer le ticket'));
+      await tester.tap(find.text('Réimprimer le bon'));
       await tester.pumpAndSettle();
       expect(printed.single, startsWith('TK-2026-000007.pdf'));
     },

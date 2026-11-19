@@ -340,9 +340,10 @@ export class ProductsController {
   async splitDone(
     @Param('id', CanonicalUuidPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
   ): Promise<ProductDto> {
     return ProductsService.forViewer(
-      await this.productsService.splitDone(id),
+      await this.productsService.splitDone(id, actorOf(user, ip)),
       user,
     );
   }

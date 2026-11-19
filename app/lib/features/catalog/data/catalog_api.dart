@@ -48,6 +48,10 @@ class CatalogApi {
     });
   }
 
+  /// Action sur un produit (`keep-price`, `split-done`) : rend le produit.
+  Future<Product> productAction(String id, String action) =>
+      _send('POST', '/products/$id/$action', const {}, Product.fromJson);
+
   /// Effacement DÉFINITIF d'un produit sans historique (sinon 409).
   Future<void> deleteProduct(String id) =>
       guardApi(() => _dio.delete<void>('/products/$id'));

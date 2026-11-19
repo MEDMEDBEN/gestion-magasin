@@ -117,7 +117,11 @@ aucune migration destructive sans confirmation).
 | Lire une photo de facture (`POST /receptions/scan-invoice`, P2 n°24 — lignes proposées, rien d'écrit) | ✅ | ❌ | ✅ (`reception.create`) |
 | Préparer des commandes BROUILLON depuis le réapprovisionnement (`POST /replenishment/orders`, P2 n°22) ; message au fournisseur (`GET /purchase-orders/:id/message`) | ✅ | ❌ | ✅ (`purchase.create`) |
 | Retour de marchandise au fournisseur (`POST /supplier-returns`, bon RF) | ✅ (`reception.create`) | ❌ | ✅ (`reception.create`) |
-| Réceptionner **hors commande** | ✅ | ❌ (sauf achat à un CONFRÈRE, voir ci-dessous) | ❌ |
+| Réceptionner **hors commande** (« réception libre », décision MEDMEDBEN du 2026-11-07) | ✅ | ❌ (sauf achat à un CONFRÈRE, voir ci-dessous) | ✅ (`reception.create`) |
+| **Achat direct** `POST /purchases/direct` (2026-11-19) : panier → stock (une réception par lieu) + dette ; synchro `PURCHASE_ORDER` | ✅ | ❌ | ✅ (`reception.create`) |
+| Payer le fournisseur DANS l'achat ou la réception (`paidAmount` / `payment`) — hors caisse depuis le 2026-11-19 | ✅ (`supplier.payment.create`) | ❌ | ❌ (403, toute l'opération annulée) |
+| « Garder le prix » malgré un prix d'achat changé (`POST /products/:id/keep-price`) | ✅ | ❌ | ✅ (`price.manage`) |
+| « C'est réparti » (`POST /products/:id/split-done`, stock acheté en total) | ✅ | ❌ | ✅ (`stock.read.warehouse`) |
 
 **Décisions du 2026-09-20 (audit sécurité de P0 #7)**
 - **Le prix d'achat vient de la commande confirmée**, jamais du bon de réception : l'admin engage le prix en

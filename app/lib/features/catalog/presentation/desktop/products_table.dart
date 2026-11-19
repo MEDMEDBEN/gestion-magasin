@@ -275,21 +275,40 @@ class _ProductRow extends StatelessWidget {
             ])
               Expanded(
                 flex: flex,
-                child: Text(
-                  amount == null ? '—' : formatDA(amount),
-                  textAlign: TextAlign.end,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  // Le prix de VENTE est celui qu'on cherche : en avant.
-                  style: (main ? AmpereType.bodyStrong : AmpereType.bodyDesktop)
-                      .copyWith(
-                        color: amount == null
-                            ? colors.ink3
-                            : main
-                            ? colors.accentHi
-                            : colors.ink2,
-                        fontFeatures: AmpereType.tabular,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      amount == null ? '—' : formatDA(amount),
+                      textAlign: TextAlign.end,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      // Le prix de VENTE est celui qu'on cherche : en avant.
+                      style:
+                          (main
+                                  ? AmpereType.bodyStrong
+                                  : AmpereType.bodyDesktop)
+                              .copyWith(
+                                color: amount == null
+                                    ? colors.ink3
+                                    : main
+                                    ? colors.accentHi
+                                    : colors.ink2,
+                                fontFeatures: AmpereType.tabular,
+                              ),
+                    ),
+                    // Prix d'achat changé à un achat (2026-11-19) : un repère
+                    // près du prix de vente, pas une alerte.
+                    if (main && product.priceReviewNeeded)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: AmpereBadge(
+                          label: 'prix à revoir',
+                          tone: StatusTone.info,
+                        ),
                       ),
+                  ],
                 ),
               ),
             // Quantités par lieu (demande MEDMEDBEN du 2026-11-13).
@@ -331,14 +350,6 @@ class _ProductRow extends StatelessWidget {
                             product: product,
                             stock: stock![product.id],
                           ),
-                          // Prix d'achat changé (2026-11-16).
-                          if (product.priceReviewNeeded) ...[
-                            const SizedBox(height: 3),
-                            const AmpereBadge(
-                              label: 'Prix à revoir',
-                              tone: StatusTone.warn,
-                            ),
-                          ],
                           const SizedBox(height: 2),
                           Text(
                             'seuil ${formatQuantity(product.minThreshold)} '

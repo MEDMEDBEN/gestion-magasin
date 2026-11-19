@@ -467,17 +467,24 @@ export class ProductsService {
   }
 
   /// « Réparti » (2026-11-19) : le stock acheté en total a été réparti.
-  async splitDone(id: string): Promise<ProductDto> {
-    if (!(await this.prisma.product.findUnique({ where: { id } }))) {
-      throw ProductsService.notFound();
-    }
-    return ProductsService.toDto(
-      await this.prisma.product.update({
+  async splitDone(id: string, actor: ActorContext): Promise<ProductDto> {
+    return this.prisma.$transaction(async (tx) => {
+      if (!(await tx.product.findUnique({ where: { id } }))) {
+        throw ProductsService.notFound();
+      }
+      const product = await tx.product.update({
         where: { id },
         data: { splitPending: false },
         include: PRODUCT_INCLUDE,
-      }),
-    );
+      });
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'Product',
+        entityId: id,
+        newValue: { splitDone: true },
+      });
+      return ProductsService.toDto(product);
+    });
   }
 
   /// Historique des PRIX D'ACHAT (2026-11-16) : chaque réception, son

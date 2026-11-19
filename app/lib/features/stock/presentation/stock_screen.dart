@@ -626,15 +626,31 @@ class _LevelRow extends StatelessWidget {
               ),
               for (final (label, value) in figures)
                 Expanded(
-                  child: Text(
-                    '$value $unit',
-                    textAlign: TextAlign.end,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.bodyStrong.copyWith(
-                      color: label == 'Disponible' ? colors.ink : colors.ink2,
-                      fontFeatures: AmpereType.tabular,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      // Acheté « en total » (2026-11-19) : à répartir — un
+                      // repère discret, pas une alerte.
+                      if (product.splitPending &&
+                          (label == 'Magasin' || label == 'Dépôt')) ...[
+                        const _SplitMark(),
+                        const SizedBox(width: 4),
+                      ],
+                      Flexible(
+                        child: Text(
+                          '$value $unit',
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AmpereType.bodyStrong.copyWith(
+                            color: label == 'Disponible'
+                                ? colors.ink
+                                : colors.ink2,
+                            fontFeatures: AmpereType.tabular,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -723,6 +739,9 @@ class _LevelRow extends StatelessWidget {
                               fontFeatures: AmpereType.tabular,
                             ),
                           ),
+                          if (product.splitPending &&
+                              (label == 'Magasin' || label == 'Dépôt'))
+                            const _SplitMark(),
                         ],
                       ),
                     ),
@@ -849,6 +868,23 @@ class _ProductStockPanel extends ConsumerWidget {
             ),
           ],
         ),
+        if (product.splitPending) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Acheté en total : à répartir entre le magasin et le dépôt (un '
+            'transfert le fait ; sinon, marquez-le réparti).',
+            style: AmpereType.meta.copyWith(color: colors.info),
+          ),
+          const SizedBox(height: 6),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await ref.read(catalogActionsProvider).splitDone(product.id);
+              if (context.mounted) Navigator.of(context).pop();
+            },
+            icon: const Icon(LucideIcons.check, size: 16),
+            label: const Text('C’est réparti'),
+          ),
+        ],
         if (onAddStock != null) ...[
           const SizedBox(height: 12),
           FilledButton.icon(
@@ -1206,6 +1242,30 @@ class _LossesSectionState extends ConsumerState<_LossesSection> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Repère « à répartir » (2026-11-19) : discret, bleu information.
+class _SplitMark extends StatelessWidget {
+  const _SplitMark();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    return Tooltip(
+      message: 'Acheté en total : à répartir entre magasin et dépôt',
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+        decoration: BoxDecoration(
+          color: colors.infoBg,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          'à répartir',
+          style: AmpereType.meta.copyWith(color: colors.info, fontSize: 10),
+        ),
+      ),
     );
   }
 }

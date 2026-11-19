@@ -77,7 +77,7 @@ class _SalesHistorySectionState extends ConsumerState<SalesHistorySection> {
                   controller: _search,
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.search),
-                    hintText: 'N° de ticket, de facture ou client',
+                    hintText: 'N° de bon, de facture ou client',
                   ),
                   onSubmitted: (value) => setState(() => _query = value),
                 ),
@@ -298,7 +298,7 @@ class _SaleTile extends StatelessWidget {
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            invoice ? 'Facture' : 'Ticket',
+                            invoice ? 'Facture' : 'Bon',
                             style: AmpereType.label.copyWith(
                               color: invoice ? colors.accentHi : colors.ink2,
                             ),
@@ -625,19 +625,6 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
             onPressed: _busy ? null : _cancel,
             child: const Text('Annuler la vente'),
           ),
-        if (widget.rights.canInvoice &&
-            !cancelled &&
-            !_hasReturns &&
-            sale.invoiceNumber == null)
-          OutlinedButton(
-            onPressed: _busy
-                ? null
-                : () => _run(() async {
-                    final invoiced = await actions.invoice(sale.id);
-                    if (mounted) setState(() => _sale = invoiced);
-                  }),
-            child: const Text('Émettre la facture'),
-          ),
         OutlinedButton.icon(
           onPressed: _busy
               ? null
@@ -645,7 +632,7 @@ class _SaleDetailDialogState extends ConsumerState<_SaleDetailDialog> {
           icon: const Icon(Icons.print_outlined, size: 18),
           label: Text(
             sale.invoiceNumber == null
-                ? 'Réimprimer le ticket'
+                ? 'Réimprimer le bon'
                 : 'Réimprimer la facture',
           ),
         ),

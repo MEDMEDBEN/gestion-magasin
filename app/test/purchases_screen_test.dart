@@ -207,7 +207,7 @@ void main() {
     (tester) async {
       final api = await _pump(tester, _magasinier());
 
-      await tester.tap(find.text('Nouvelle commande'));
+      await tester.tap(find.text('Commande à venir'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Choisir un fournisseur'));
@@ -245,7 +245,7 @@ void main() {
   /// enregistre par le chemin habituel.
   testWidgets('nouvelle commande remplie depuis une facture', (tester) async {
     final api = await _pump(tester, _magasinier());
-    await tester.tap(find.text('Nouvelle commande'));
+    await tester.tap(find.text('Commande à venir'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Choisir un fournisseur'));
     await tester.pumpAndSettle();
@@ -265,7 +265,7 @@ void main() {
 
   testWidgets('formulaire incomplet : rien n’est envoyé', (tester) async {
     final api = await _pump(tester, _magasinier());
-    await tester.tap(find.text('Nouvelle commande'));
+    await tester.tap(find.text('Commande à venir'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enregistrer la commande'));
     await tester.pumpAndSettle();

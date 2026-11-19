@@ -57,7 +57,11 @@ class FormPanelFrame extends StatelessWidget {
     this.onSubmit,
     this.saving = false,
     this.error,
+    this.headerAction,
   });
+
+  /// Action secondaire dans l'en-tête (ex. « Ajouter au panier d'achat »).
+  final Widget? headerAction;
 
   final GlobalKey<FormState> formKey;
   final String title;
@@ -87,6 +91,7 @@ class FormPanelFrame extends StatelessWidget {
                     style: AmpereType.sectionTitle.copyWith(color: colors.ink),
                   ),
                 ),
+                ?headerAction,
                 IconButton(
                   tooltip: 'Fermer',
                   onPressed: close,

@@ -25,7 +25,12 @@ String quantityToJson(Quantity value) => value.toStringAsFixed(quantityScale);
 Quantity? parseQuantity(String input) {
   final cleaned = input.replaceAll(' ', '').replaceAll(',', '.').trim();
   if (cleaned.isEmpty) return null;
-  return Decimal.tryParse(cleaned);
+  final value = Decimal.tryParse(cleaned);
+  // Une SAISIE de quantité n'est jamais négative (création, achat, stock,
+  // comptage… — 2026-11-19). Seul le STOCK peut passer sous zéro, par une
+  // vente au-delà du stock (règle 9), jamais par ce qu'on tape.
+  if (value == null || value < Decimal.zero) return null;
+  return value;
 }
 
 /// Affichage : on retire les zéros de fin inutiles (« 12,500 » → « 12,5 »).

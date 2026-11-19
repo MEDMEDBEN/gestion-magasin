@@ -500,7 +500,7 @@ class _SuppliersScreenState extends ConsumerState<SuppliersScreen> {
 
   Future<void> _openForm(Supplier? existing) => openFormPanel<void>(
     context,
-    _SupplierForm(
+    SupplierForm(
       existing: existing,
       canSetDebt: SupplierRights(widget.user).isAdmin,
     ),
@@ -552,7 +552,6 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
   late final TextEditingController _amount = TextEditingController(
     text: formatDA(widget.balanceDue, withSymbol: false),
   );
-  bool _fromCash = true;
   String? _error;
 
   @override
@@ -571,7 +570,7 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
       setState(() => _error = 'Au-delà du reste dû');
       return;
     }
-    Navigator.of(context).pop((amount: amount, fromCash: _fromCash));
+    Navigator.of(context).pop((amount: amount, fromCash: false));
   }
 
   @override
@@ -595,16 +594,10 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
             ),
             onSubmitted: (_) => _submit(),
           ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _fromCash,
-            onChanged: (v) => setState(() => _fromCash = v),
-            title: const Text('Payé depuis la caisse'),
-            subtitle: Text(
-              _fromCash
-                  ? 'Sortie enregistrée dans votre caisse ouverte (rapport Z).'
-                  : 'Virement ou espèces hors tiroir : la caisse n’est pas touchée.',
-            ),
+          const SizedBox(height: 8),
+          const Text(
+            'Le versement réduit la dette du fournisseur. Il ne touche pas la '
+            'caisse : il est seulement inscrit dans son historique.',
           ),
         ],
       ),
@@ -619,8 +612,8 @@ class _SupplierPaymentDialogState extends State<SupplierPaymentDialog> {
   }
 }
 
-class _SupplierForm extends ConsumerStatefulWidget {
-  const _SupplierForm({this.existing, required this.canSetDebt});
+class SupplierForm extends ConsumerStatefulWidget {
+  const SupplierForm({super.key, this.existing, required this.canSetDebt});
 
   final Supplier? existing;
 
@@ -628,10 +621,10 @@ class _SupplierForm extends ConsumerStatefulWidget {
   final bool canSetDebt;
 
   @override
-  ConsumerState<_SupplierForm> createState() => _SupplierFormState();
+  ConsumerState<SupplierForm> createState() => SupplierFormState();
 }
 
-class _SupplierFormState extends ConsumerState<_SupplierForm> {
+class SupplierFormState extends ConsumerState<SupplierForm> {
   final _formKey = GlobalKey<FormState>();
   late final _name = TextEditingController(text: widget.existing?.name ?? '');
   late final _phone = TextEditingController(text: widget.existing?.phone ?? '');
@@ -663,7 +656,7 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
       _error = null;
     });
     try {
-      await ref
+      final saved = await ref
           .read(suppliersActionsProvider)
           .save(
             id: widget.existing?.id,
@@ -678,7 +671,7 @@ class _SupplierFormState extends ConsumerState<_SupplierForm> {
                 ? parseDA(_opening.text) ?? 0
                 : null,
           );
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) Navigator.of(context).pop(saved);
     } on ApiException catch (error) {
       if (mounted) {
         setState(() {

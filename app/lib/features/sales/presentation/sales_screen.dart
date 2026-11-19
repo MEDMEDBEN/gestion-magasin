@@ -1521,7 +1521,17 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
                 },
               ),
               const SizedBox(height: 14),
-              ..._ticketBody(),
+              // Le panier dans un PANNEAU, pas posé sur le fond (2026-11-19).
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _ticketBody(),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -1773,42 +1783,64 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
           // Alertes en UNE ligne, masquables (demande MEDMEDBEN du
           // 2026-11-10 : elles prenaient trop de place). Le texte entier est
           // dans l'infobulle ; une alerte qui CHANGE réapparaît.
-          for (final (error, message) in [
-            if (estimate.invalidGlobalDiscount)
-              (
-                true,
-                'Remise > total (${formatDA(estimate.maxDiscountHt)} au plus) : '
-                    'réduisez-la.',
-              ),
-            if (estimate.missingPrices.isNotEmpty)
-              (
-                true,
-                'Sans prix : '
-                    '${estimate.missingPrices.map((p) => p.name).join(', ')}'
-                    ' — vente refusée.',
-              ),
-            if (estimate.invalidDiscounts.isNotEmpty)
-              (true, 'Une remise dépasse sa ligne : corrigez-la.'),
-            if (estimate.belowCost.isNotEmpty)
-              (
-                false,
-                'À perte : '
-                    '${estimate.belowCost.map((p) => p.name).join(', ')}',
-              ),
-            if (shortages.isNotEmpty)
-              (
-                false,
-                'Rupture : '
-                    '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
-                    ' — la vente passe quand même.',
-              ),
-          ])
-            if (!_dismissed.contains(message))
-              _CartNotice(
-                message: message,
-                error: error,
-                onClose: () => setState(() => _dismissed.add(message)),
-              ),
+          // Alertes en UNE ligne, masquables ; sur TÉLÉPHONE, de simples
+          // signes (demande du 2026-11-19) — le détail au toucher.
+          ...() {
+            final notices = <(bool, String)>[
+              if (estimate.invalidGlobalDiscount)
+                (
+                  true,
+                  'Remise > total (${formatDA(estimate.maxDiscountHt)} au plus) : '
+                      'réduisez-la.',
+                ),
+              if (estimate.missingPrices.isNotEmpty)
+                (
+                  true,
+                  'Sans prix : '
+                      '${estimate.missingPrices.map((p) => p.name).join(', ')}'
+                      ' — vente refusée.',
+                ),
+              if (estimate.invalidDiscounts.isNotEmpty)
+                (true, 'Une remise dépasse sa ligne : corrigez-la.'),
+              if (estimate.belowCost.isNotEmpty)
+                (
+                  false,
+                  'À perte : '
+                      '${estimate.belowCost.map((p) => p.name).join(', ')}',
+                ),
+              if (shortages.isNotEmpty)
+                (
+                  false,
+                  'Rupture : '
+                      '${shortages.map((s) => '${s.$1.name} (reste ${formatQuantity(s.$2)} ${s.$1.unit.short})').join(', ')}'
+                      ' — la vente passe quand même.',
+                ),
+            ];
+            if (_phone) {
+              return [
+                if (notices.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final (error, message) in notices)
+                          _NoticeSign(error: error, message: message),
+                      ],
+                    ),
+                  ),
+              ];
+            }
+            return [
+              for (final (error, message) in notices)
+                if (!_dismissed.contains(message))
+                  _CartNotice(
+                    message: message,
+                    error: error,
+                    onClose: () => setState(() => _dismissed.add(message)),
+                  ),
+            ];
+          }(),
           const SizedBox(height: 8),
           // Les gestes du panier en boutons étiquetés et colorés (demande
           // MEDMEDBEN du 2026-10-13 : « remise, devis… dans un bouton clair »).
@@ -2559,8 +2591,6 @@ class _CartLineRow extends ConsumerWidget {
       onPressed: onPressed,
     );
     final badges = [
-      if (line.product.priceReviewNeeded)
-        const AmpereBadge(label: 'Prix à revoir', tone: StatusTone.warn),
       if (missingPrice)
         const AmpereBadge(label: 'Prix non fixé', tone: StatusTone.error)
       else if (unitPriceHt != tariffPriceHt)
@@ -2743,7 +2773,7 @@ class _TicketDialog extends ConsumerStatefulWidget {
 }
 
 class _TicketDialogState extends ConsumerState<_TicketDialog> {
-  late Sale _sale = widget.sale;
+  late final Sale _sale = widget.sale;
   bool _busy = false;
 
   Future<void> _print() async {
@@ -2793,31 +2823,12 @@ class _TicketDialogState extends ConsumerState<_TicketDialog> {
         ),
       ),
       actions: [
-        if (widget.canInvoice && _sale.invoiceNumber == null)
-          OutlinedButton(
-            onPressed: _busy
-                ? null
-                : () async {
-                    setState(() => _busy = true);
-                    try {
-                      final invoiced = await ref
-                          .read(salesActionsProvider)
-                          .invoice(_sale.id);
-                      if (mounted) setState(() => _sale = invoiced);
-                    } on ApiException catch (error) {
-                      if (context.mounted) _snack(context, error.userMessage);
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
-                  },
-            child: const Text('Émettre la facture'),
-          ),
         OutlinedButton.icon(
           onPressed: _busy ? null : _print,
           icon: const Icon(LucideIcons.printer, size: 16),
           label: Text(
             _sale.invoiceNumber == null
-                ? 'Imprimer le ticket'
+                ? 'Imprimer le bon'
                 : 'Imprimer la facture',
           ),
         ),
@@ -3307,4 +3318,38 @@ class _SectionHeading extends StatelessWidget {
     text.toUpperCase(),
     style: AmpereType.label.copyWith(color: AmpereColors.of(context).ink3),
   );
+}
+
+/// Signe d'alerte (téléphone, 2026-11-19) : une pastille, le message au
+/// toucher — pas de bandeau.
+class _NoticeSign extends StatelessWidget {
+  const _NoticeSign({required this.error, required this.message});
+
+  final bool error;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final tone = error ? colors.error : colors.warn;
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 4),
+      child: Container(
+        width: 30,
+        height: 30,
+        decoration: BoxDecoration(
+          color: (error ? colors.errorBg : colors.warnBg),
+          shape: BoxShape.circle,
+          border: Border.all(color: tone.withValues(alpha: 0.5)),
+        ),
+        child: Icon(
+          error ? LucideIcons.circleAlert : LucideIcons.triangleAlert,
+          size: 15,
+          color: tone,
+        ),
+      ),
+    );
+  }
 }

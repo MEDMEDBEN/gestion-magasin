@@ -59,4 +59,9 @@ void main() {
     final sum = Decimal.parse('0.1') + Decimal.parse('0.2');
     expect(sum, Decimal.parse('0.3'));
   });
+
+  // 2026-11-19 : une SAISIE n'est jamais négative (quantité, montant).
+  test('parseQuantity : une saisie négative est refusée', () {
+    expect(parseQuantity('-1'), isNull);
+  });
 }

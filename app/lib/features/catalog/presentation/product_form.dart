@@ -4,9 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../purchases/application/purchase_cart.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../auth/data/auth_models.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/money.dart';
 import '../../../core/photos.dart';
+import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
 import '../../../ui/theme/ampere_colors.dart';
 import '../../../ui/theme/ampere_typography.dart';
@@ -40,7 +44,15 @@ class ProductForm extends ConsumerStatefulWidget {
     this.canContactCustomers = false,
     this.initialBarcode,
     this.initialName,
+    this.initialSupplierName,
+    this.forPurchase = false,
   });
+
+  /// Fournisseur pré-rempli (créé depuis un achat, 2026-11-19).
+  final String? initialSupplierName;
+
+  /// Ouvert DEPUIS l'achat : pas de stock ici, il se saisit sur la ligne.
+  final bool forPurchase;
 
   /// Nouveau produit : nom déjà dicté (assistant, 2026-10-05).
   final String? initialName;
@@ -66,6 +78,9 @@ class ProductForm extends ConsumerStatefulWidget {
   @override
   ConsumerState<ProductForm> createState() => _ProductFormState();
 }
+
+/// Stock de départ : réglé au fournisseur ?
+enum _Paid { all, part, none }
 
 class _ProductFormState extends ConsumerState<ProductForm> {
   final _formKey = GlobalKey<FormState>();
@@ -134,7 +149,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     _categoryId = p?.categoryId;
     _storageLocationId = p?.storageLocationId;
     _mainSupplierId = p?.mainSupplierId;
-    _supplierName.text = p?.mainSupplierName ?? '';
+    _supplierName.text =
+        p?.mainSupplierName ?? widget.initialSupplierName ?? '';
     _allowBackorder = p?.allowBackorder ?? false;
     _isActive = p?.isActive ?? true;
   }
@@ -152,6 +168,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _storeStock,
       _depotStock,
       _supplierName,
+      _paidPart,
       ..._prices.values,
     ]) {
       c.dispose();
@@ -202,6 +219,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           _supplierName.text = v;
           _mainSupplierId = null;
         },
+        validator: (v) =>
+            (v ?? '').trim().isEmpty ? 'Fournisseur obligatoire' : null,
         onFieldSubmitted: (_) => onSubmit(),
       ),
     );
@@ -295,7 +314,10 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       payload = {
         for (final e in values.entries)
           if (e.value != null) e.key: e.value,
-        if (initialStock.isNotEmpty) 'initialStock': initialStock,
+        // Stock de départ avec fournisseur et prix = un ACHAT (2026-11-19) :
+        // il entre par l'achat (dette ou réglé), pas en « stock initial ».
+        if (initialStock.isNotEmpty && !_viaPurchase)
+          'initialStock': initialStock,
       };
     } else {
       // Un code-barres ne se retire pas : vidé, il reste inchangé.
@@ -324,6 +346,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             removePhoto: _removePhoto,
             prices: _changedPrices(),
           );
+      if (existing == null && _viaPurchase) await _purchaseStock(saved);
       if (mounted) Navigator.of(context).pop(saved);
     } on PhotoNotSaved catch (partial) {
       // Le produit est enregistré : on ferme sur lui, et on dit que la photo
@@ -390,6 +413,214 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             when price != current[entry.key])
           entry.key: price,
     };
+  }
+
+  /// Le stock saisi passe par un achat : fournisseur connu, prix > 0.
+  bool get _viaPurchase =>
+      !widget.forPurchase &&
+      widget.canReadSuppliers &&
+      _stockTotal > Quantity.zero &&
+      (parseDA(_cost.text) ?? 0) > 0;
+
+  /// Ligne d'achat de ce produit : où va le stock saisi.
+  PurchaseLine _lineFor(Product product) {
+    final store = parseQuantity(_storeStock.text) ?? Quantity.zero;
+    final depot = parseQuantity(_depotStock.text) ?? Quantity.zero;
+    final cost = parseDA(_cost.text) ?? 0;
+    if (store > Quantity.zero && depot > Quantity.zero) {
+      return PurchaseLine(
+        product: product,
+        unitPriceHt: cost,
+        destination: PurchaseDestination.both,
+        toStore: store,
+        toDepot: depot,
+      );
+    }
+    return PurchaseLine(
+      product: product,
+      unitPriceHt: cost,
+      destination: store > Quantity.zero
+          ? PurchaseDestination.store
+          : PurchaseDestination.depot,
+      quantity: store > Quantity.zero ? store : depot,
+    );
+  }
+
+  /// Achat du stock de départ, réglé / en partie / pas encore.
+  Future<void> _purchaseStock(Product product) async {
+    final amount = _stockAmount;
+    final paid = !_canPay
+        ? 0
+        : switch (_paid) {
+            _Paid.all => amount,
+            _Paid.none => 0,
+            _Paid.part => parseDA(_paidPart.text) ?? 0,
+          };
+    try {
+      await ref.read(purchaseSubmitProvider)(
+        cart: PurchaseCart(
+          id: ref.read(uuidProvider).v7(),
+          supplierId: _mainSupplierId,
+          supplierName: _supplierName.text.trim(),
+          lines: [_lineFor(product)],
+        ),
+        paidAmount: paid,
+        clearCart: false,
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Produit créé, mais son achat n’est pas passé : '
+              '${error.userMessage}',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  /// « Ajouter au panier d'achat » : le produit est créé (sans stock), puis
+  /// posé dans le brouillon d'achat avec les quantités saisies.
+  Future<void> _addToPurchaseCart() async {
+    if (!_formKey.currentState!.validate()) return;
+    try {
+      _mainSupplierId = await _resolveSupplier();
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.userMessage);
+      return;
+    }
+    if (!mounted) return;
+    final values = _values();
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final saved = await ref.read(catalogActionsProvider).saveProduct(null, {
+        for (final e in values.entries)
+          if (e.value != null) e.key: e.value,
+      }, prices: _changedPrices());
+      final cart = ref.read(purchaseCartProvider.notifier);
+      if (ref.read(purchaseCartProvider).supplierId == null) {
+        cart.setSupplier(_mainSupplierId, _supplierName.text.trim());
+      }
+      final line = _lineFor(saved);
+      cart.add(
+        saved,
+        unitPriceHt: line.unitPriceHt,
+        destination: line.destination,
+        quantity: line.quantity,
+        toStore: line.toStore,
+        toDepot: line.toDepot,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${saved.name} ajouté au panier d’achat '
+            '(${ref.read(purchaseCartProvider).lines.length} produit(s)) — '
+            'Achats → Nouvel achat pour valider.',
+          ),
+        ),
+      );
+      Navigator.of(context).pop(saved);
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.userMessage;
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  /// Stock saisi à la création = un ACHAT (2026-11-19) : prix d'achat ×
+  /// quantité (magasin + dépôt). Est-il réglé au fournisseur ?
+  _Paid _paid = _Paid.all;
+
+  /// « Garder le prix » vient d'être choisi.
+  bool _reviewDone = false;
+  final _paidPart = TextEditingController();
+
+  Quantity get _stockTotal =>
+      (parseQuantity(_storeStock.text) ?? Quantity.zero) +
+      (parseQuantity(_depotStock.text) ?? Quantity.zero);
+
+  int get _stockAmount {
+    final cost = parseDA(_cost.text) ?? 0;
+    final total = _stockTotal;
+    if (cost <= 0 || total <= Quantity.zero) return 0;
+    return (total * Quantity.fromInt(cost)).round().toBigInt().toInt();
+  }
+
+  bool get _canPay => switch (ref.read(authControllerProvider).value) {
+    AuthSignedIn(:final user) =>
+      user.hasRole('ADMIN') && user.can('supplier.payment.create'),
+    _ => false,
+  };
+
+  Widget _paidSection(AmpereColors colors) {
+    final amount = _stockAmount;
+    if (amount == 0 || !widget.canReadSuppliers) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: colors.surface2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: colors.line),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Achat : ${formatDA(amount)} (prix d’achat × quantité)',
+                style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+              ),
+              if (_canPay) ...[
+                const SizedBox(height: 8),
+                SegmentedButton<_Paid>(
+                  segments: const [
+                    ButtonSegment(value: _Paid.all, label: Text('Réglé')),
+                    ButtonSegment(value: _Paid.part, label: Text('En partie')),
+                    ButtonSegment(value: _Paid.none, label: Text('Pas encore')),
+                  ],
+                  selected: {_paid},
+                  onSelectionChanged: (s) => setState(() => _paid = s.first),
+                ),
+                if (_paid == _Paid.part) ...[
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: _paidPart,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Somme donnée au fournisseur',
+                      suffixText: 'DA',
+                    ),
+                    validator: (v) {
+                      final a = parseDA(v ?? '');
+                      return a == null || a <= 0 || a > amount
+                          ? 'Entre 1 et ${formatDA(amount)}'
+                          : null;
+                    },
+                  ),
+                ],
+              ] else
+                Text(
+                  'Le montant va en dette chez le fournisseur.',
+                  style: AmpereType.meta.copyWith(color: colors.ink3),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /// Prix d'achat : modifiable tant qu'il est inconnu (admin), sinon affiché
@@ -682,12 +913,54 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           onChanged: _locked ? null : (v) => setState(() => _unit = v!),
         ),
       ),
+      // Fournisseur et prix d'achat OBLIGATOIRES, avec les premiers champs
+      // (demande MEDMEDBEN du 2026-11-19).
+      if (widget.canReadSuppliers) field('Fournisseur *', _supplierField(deco)),
+      _costSection(colors, inputStyle),
+      formFieldGap,
+      // Prix d'achat changé à un achat (2026-11-19) : revoir le prix de vente,
+      // ou le GARDER tel quel d'un geste.
+      if (widget.existing?.priceReviewNeeded == true && !_reviewDone) ...[
+        Material(
+          color: colors.infoBg,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            child: Row(
+              children: [
+                Icon(LucideIcons.tag, size: 16, color: colors.info),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Le prix d’achat a changé au dernier achat : modifiez le '
+                    'prix de vente, ou gardez-le.',
+                    style: AmpereType.meta.copyWith(color: colors.ink),
+                  ),
+                ),
+                if (widget.canSetPrices)
+                  TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () async {
+                            await ref
+                                .read(catalogActionsProvider)
+                                .keepPrice(widget.existing!.id);
+                            if (mounted) setState(() => _reviewDone = true);
+                          },
+                    child: const Text('Garder le prix'),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        formFieldGap,
+      ],
       if (priceTiers.isNotEmpty) ...[
         if (!widget.canSetPrices) const AmpereFieldLabel('Prix de vente'),
         _pricesSection(colors, priceTiers),
         formFieldGap,
       ],
-      if (!_isEdit) ...[
+      if (!_isEdit && !widget.forPurchase) ...[
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -701,6 +974,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           ],
         ),
         formFieldGap,
+        _paidSection(colors),
       ] else if (existingStock != null)
         field(
           'Stock actuel',
@@ -795,8 +1069,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final details = <Widget>[
       if (widget.canEdit || widget.existing?.imageKey != null)
         field('Photo', _photoSection(colors)),
-      if (widget.canReadSuppliers)
-        field('Fournisseur principal', _supplierField(deco)),
       // Un magasin et un dépôt (2026-11-15) : la liste des rangements ne
       // s'affiche que si des emplacements ont été créés.
       if (bins.isNotEmpty || _storageLocationId != null)
@@ -835,8 +1107,6 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           validator: _validateQuantity,
         ),
       ),
-      _costSection(colors, inputStyle),
-      formFieldGap,
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         value: _allowBackorder,
@@ -891,6 +1161,15 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           ? 'Modifier le produit'
           : 'Nouveau produit',
       submitLabel: _isEdit ? 'Enregistrer' : 'Créer le produit',
+      // Optionnel : le produit va dans le PANIER D'ACHAT (brouillon) pour
+      // en ajouter d'autres avant de valider l'achat (2026-11-19).
+      headerAction: !_isEdit && !widget.forPurchase && widget.canReadSuppliers
+          ? TextButton.icon(
+              onPressed: _saving ? null : _addToPurchaseCart,
+              icon: const Icon(LucideIcons.shoppingCart, size: 16),
+              label: const Text('Ajouter au panier d’achat'),
+            )
+          : null,
       onSubmit: widget.canEdit ? _submit : null,
       saving: _saving,
       error: _error,

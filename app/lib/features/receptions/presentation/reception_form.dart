@@ -59,7 +59,6 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
 
   /// Payé au fournisseur à la livraison (2026-11-15) — ADMIN qui paie.
   final _paid = TextEditingController();
-  bool _paidFromCash = false;
 
   bool get _canPay => switch (ref.read(authControllerProvider).value) {
     AuthSignedIn(:final user) =>
@@ -147,7 +146,6 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
             locationId: _locationId!,
             lines: lines,
             paidAmount: _canPay ? _paidAmount : 0,
-            paidFromCash: _paidFromCash,
           );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -324,17 +322,6 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
                     ? 'Au plus ${formatDA(total)} (le reçu de cette livraison)'
                     : null;
               },
-            ),
-            CheckboxListTile(
-              value: _paidFromCash,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              onChanged: _saving
-                  ? null
-                  : (v) => setState(() => _paidFromCash = v ?? false),
-              title: const Text('Sorti de la caisse du magasin'),
-              subtitle: const Text('Sinon : hors caisse (virement, poche…)'),
             ),
             const SizedBox(height: 4),
             Text(

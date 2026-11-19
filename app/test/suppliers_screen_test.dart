@@ -282,8 +282,8 @@ void main() {
       findsOneWidget,
     );
     await tester.enterText(find.byType(TextField).last, '1000');
-    await tester.tap(find.text('Payé depuis la caisse'));
-    await tester.pumpAndSettle();
+    // Versement indépendant de la caisse (2026-11-19) : plus de choix.
+    expect(find.text('Payé depuis la caisse'), findsNothing);
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();
 

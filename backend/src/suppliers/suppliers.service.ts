@@ -478,7 +478,7 @@ export class SuppliersService {
   }
 
   /// Paiement fournisseur (ADMIN) : jamais au-delà du reste dû. Payé depuis la
-  /// caisse → SORTIE dans la session ouverte (règle 12, visible au rapport Z) ;
+  /// caisse → inscrit au compte fournisseur, HORS caisse (2026-11-19) (règle 12, visible au rapport Z) ;
   /// sinon (virement, espèces hors tiroir) la caisse n'est pas touchée.
   async pay(
     dto: CreateSupplierPaymentDto,

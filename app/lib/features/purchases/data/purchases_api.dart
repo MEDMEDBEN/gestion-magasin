@@ -53,6 +53,20 @@ class PurchasesApi {
   Future<PurchaseOrder> close(String id, String reason) =>
       _send('POST', '/purchase-orders/$id/close', {'reason': reason});
 
+  /// ACHAT DIRECT (2026-11-19) : le panier entre en stock, le reste en dette.
+  /// Rend les numéros des réceptions créées (une par lieu).
+  Future<List<String>> directPurchase(Map<String, dynamic> body) =>
+      guardApi(() async {
+        final response = await _dio.post<Map<String, dynamic>>(
+          '/purchases/direct',
+          data: body,
+        );
+        return [
+          for (final r in (response.data!['receptions'] as List))
+            (r as Map<String, dynamic>)['number'] as String,
+        ];
+      });
+
   Future<PurchaseOrder> _send(
     String method,
     String path,

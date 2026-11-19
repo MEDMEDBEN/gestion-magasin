@@ -1,3 +1,5 @@
+import '../application/purchase_cart.dart';
+import 'direct_purchase_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -174,14 +176,28 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
       ],
     );
 
+    final draftLines = ref.watch(purchaseCartProvider).lines.length;
     final actions = [
+      // ACHAT DIRECT (2026-11-19) : le panier entre en stock d'un coup.
+      if (user.can('reception.create'))
+        ActionTile(
+          icon: LucideIcons.shoppingCart,
+          title: draftLines > 0
+              ? 'Reprendre l’achat ($draftLines produit(s))'
+              : 'Nouvel achat',
+          subtitle:
+              'Fournisseur, produits, payé ou non : tout entre en stock, le '
+              'reste va en dette.',
+          tone: StatusTone.ok,
+          prominent: true,
+          onTap: () => openDirectPurchase(context, user),
+        ),
       if (rights.canWrite)
         ActionTile(
           icon: LucideIcons.plus,
-          title: 'Nouvelle commande',
-          subtitle: 'Choisir le fournisseur et les produits à commander.',
+          title: 'Commande à venir',
+          subtitle: 'Commander maintenant, réceptionner à la livraison.',
           tone: StatusTone.info,
-          prominent: true,
           onTap: () => _newOrder(rights),
         ),
       if (menu.contains('Réappro'))

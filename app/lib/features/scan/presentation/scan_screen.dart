@@ -5,7 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../../ui/widgets/form_panel.dart';
 import '../../../ui/widgets/screen_state.dart';
+import '../../catalog/application/catalog_controller.dart';
+import '../../catalog/data/catalog_models.dart';
+import '../../sales/presentation/product_info_panel.dart';
 import '../../auth/data/auth_models.dart';
 import 'scanned_product_sheet.dart';
 
@@ -97,6 +101,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
     // salle de vente le temps que l'utilisateur décide.
     unawaited(_controller?.stop());
     setState(() => _code = value);
+    // SCAN RAPIDE (2026-11-19) : produit connu → sa fiche d'infos tout de
+    // suite (photo, prix de vente et d'achat, stock). Le scan de la VENTE,
+    // lui, ajoute au panier. Code inconnu : la feuille propose de le créer.
+    final known = (ref.read(activeProductsProvider).value ?? const <Product>[])
+        .where((p) => p.barcode == value)
+        .firstOrNull;
+    if (known != null) unawaited(_showInfo(known));
+  }
+
+  Future<void> _showInfo(Product product) async {
+    await openFormPanel<void>(context, ProductInfoPanel(product: product));
+    if (mounted) _scanAgain(null);
   }
 
   @override
@@ -133,7 +149,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen>
             onRetry: () => unawaited(controller.start()),
           ),
         ),
-        if (code != null)
+        if (code != null &&
+            !(ref.read(activeProductsProvider).value ?? const <Product>[]).any(
+              (p) => p.barcode == code,
+            ))
           Align(
             alignment: Alignment.bottomCenter,
             child: Material(

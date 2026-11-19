@@ -374,6 +374,22 @@ class CatalogActions {
     }
   }
 
+  /// « Réparti » (2026-11-19) : lève le repère « à répartir ».
+  Future<Product> splitDone(String id) async {
+    final product = await _api.productAction(id, 'split-done');
+    await _repository.saveAll(products: [product]);
+    _onStockChanged();
+    return product;
+  }
+
+  /// « Garder le prix » (2026-11-19) : le prix de vente reste malgré le
+  /// nouveau prix d'achat — le repère « prix à revoir » est levé.
+  Future<Product> keepPrice(String id) async {
+    final product = await _api.productAction(id, 'keep-price');
+    await _repository.saveAll(products: [product]);
+    return product;
+  }
+
   /// Effacement DÉFINITIF (serveur PUIS cache de ce poste) d'un produit sans
   /// historique. Les autres postes l'oublient à leur prochaine synchro.
   /// 409 (il a un historique) : remonte tel quel, l'écran propose de le

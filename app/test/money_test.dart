@@ -65,4 +65,9 @@ void main() {
       }
     });
   });
+
+  // 2026-11-19 : une SAISIE n'est jamais négative (quantité, montant).
+  test('parseDA : une saisie négative est refusée', () {
+    expect(parseDA('-5'), isNull);
+  });
 }

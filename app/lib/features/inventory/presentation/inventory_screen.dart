@@ -605,16 +605,31 @@ Future<void> startSuggestedCount(
 /// qui bougent le plus (ventes, achats, transferts, ajouts) et pas comptés
 /// depuis 24 h. Grand et lisible, en tête du tableau de bord du stock et de
 /// l'Inventaire. Une SUGGESTION : rien n'est bloqué si on ne compte pas.
-class CountSuggestionsCard extends ConsumerWidget {
+class CountSuggestionsCard extends ConsumerStatefulWidget {
   const CountSuggestionsCard({super.key, required this.rights});
 
   final InventoryRights rights;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CountSuggestionsCard> createState() =>
+      _CountSuggestionsCardState();
+}
+
+class _CountSuggestionsCardState extends ConsumerState<CountSuggestionsCard> {
+  /// Produits DÉCOCHÉS (tout est coché au départ) — 2026-11-19 : on choisit
+  /// ceux qu'on compte.
+  final _skipped = <String>{};
+
+  @override
+  Widget build(BuildContext context) {
+    final rights = widget.rights;
     final colors = AmpereColors.of(context);
     final items = ref.watch(countSuggestionsProvider).value;
     if (items == null) return const SizedBox.shrink();
+    final chosen = [
+      for (final x in items)
+        if (!_skipped.contains(x.productId)) x.productId,
+    ];
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
@@ -664,6 +679,15 @@ class CountSuggestionsCard extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
+                      if (rights.canCount)
+                        Checkbox(
+                          value: !_skipped.contains(s.productId),
+                          onChanged: (v) => setState(
+                            () => v == true
+                                ? _skipped.remove(s.productId)
+                                : _skipped.add(s.productId),
+                          ),
+                        ),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -700,13 +724,13 @@ class CountSuggestionsCard extends ConsumerWidget {
                     minimumSize: const Size.fromHeight(48),
                     textStyle: AmpereType.h4,
                   ),
-                  onPressed: () => startSuggestedCount(context, ref, rights, [
-                    for (final x in items) x.productId,
-                  ]),
+                  onPressed: chosen.isEmpty
+                      ? null
+                      : () => startSuggestedCount(context, ref, rights, chosen),
                   icon: const Icon(LucideIcons.play, size: 18),
                   label: Text(
-                    'Compter ces ${items.length} produit'
-                    '${items.length > 1 ? 's' : ''}',
+                    'Compter ces ${chosen.length} produit'
+                    '${chosen.length > 1 ? 's' : ''}',
                   ),
                 ),
             ],
