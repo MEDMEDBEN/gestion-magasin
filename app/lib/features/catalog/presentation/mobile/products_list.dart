@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../ui/widgets/page_kit.dart';
 
@@ -180,6 +181,7 @@ class _ProductRow extends StatelessWidget {
                   ),
                   if (category != null ||
                       !product.isActive ||
+                      product.priceReviewNeeded ||
                       stock != null) ...[
                     const SizedBox(height: 6),
                     Wrap(
@@ -193,8 +195,9 @@ class _ProductRow extends StatelessWidget {
                           ),
                         if (product.priceReviewNeeded)
                           const AmpereBadge(
-                            label: 'prix à revoir',
-                            tone: StatusTone.info,
+                            label: 'Prix à revoir',
+                            tone: StatusTone.warn,
+                            icon: LucideIcons.triangleAlert,
                           ),
                         if (!product.isActive)
                           const AmpereBadge(

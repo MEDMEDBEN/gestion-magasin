@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../../core/money.dart';
 import '../../../../core/quantity.dart';
@@ -304,8 +305,9 @@ class _ProductRow extends StatelessWidget {
                       const Padding(
                         padding: EdgeInsets.only(top: 2),
                         child: AmpereBadge(
-                          label: 'prix à revoir',
-                          tone: StatusTone.info,
+                          label: 'Prix à revoir',
+                          tone: StatusTone.warn,
+                          icon: LucideIcons.triangleAlert,
                         ),
                       ),
                   ],

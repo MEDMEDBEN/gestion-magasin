@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
 import '../../../core/quantity.dart';
+import '../../catalog/application/catalog_controller.dart';
 import '../../catalog/data/catalog_models.dart';
 import '../data/purchases_api.dart';
 import '../../stock/application/stock_controller.dart';
@@ -182,8 +183,16 @@ Future<WriteOutcome<List<String>>> submitPurchase(
     },
     online: ref.read(purchasesApiProvider).directPurchase,
   );
+  // Le serveur a changé ces produits (prix d'achat, « prix à revoir »,
+  // « à répartir ») : le catalogue local les relit TOUT DE SUITE.
+  if (outcome is Applied<List<String>>) {
+    await ref
+        .read(catalogActionsProvider)
+        .refreshProducts(cart.lines.map((l) => l.product.id));
+  }
   if (clearCart) ref.read(purchaseCartProvider.notifier).clear();
   ref.invalidate(stockByProductProvider);
+  ref.invalidate(soldByProductProvider);
   ref.invalidate(supplierSearchProvider);
   return outcome;
 }

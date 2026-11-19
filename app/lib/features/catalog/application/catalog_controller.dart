@@ -374,6 +374,23 @@ class CatalogActions {
     }
   }
 
+  /// Relit DU SERVEUR des produits qui viennent de changer (achat : nouveau
+  /// prix d'achat, « prix à revoir », « à répartir ») et les pose dans le
+  /// cache — sans attendre la descente delta, qui ne livre un produit qu'un
+  /// peu après sa modification (2026-11-19). Une erreur n'empêche rien.
+  Future<void> refreshProducts(Iterable<String> ids) async {
+    final fresh = <Product>[];
+    for (final id in ids.toSet()) {
+      try {
+        fresh.add(await _api.product(id));
+      } on Object {
+        // Hors ligne ou produit introuvable : la synchro le rattrapera.
+      }
+    }
+    if (fresh.isNotEmpty) await _repository.saveAll(products: fresh);
+    _onStockChanged();
+  }
+
   /// « Réparti » (2026-11-19) : lève le repère « à répartir ».
   Future<Product> splitDone(String id) async {
     final product = await _api.productAction(id, 'split-done');

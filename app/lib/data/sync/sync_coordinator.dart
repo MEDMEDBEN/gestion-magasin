@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/providers.dart';
+import '../../features/catalog/application/catalog_controller.dart';
 import 'sync_engine.dart';
 
 /// Chef d'orchestre de la synchronisation : QUAND pousser la file.
@@ -49,6 +50,18 @@ class SyncCoordinator extends Notifier<SyncOutcome?> {
       // Le cycle d'un compte déconnecté entre-temps ne s'affiche pas au suivant.
       if (ref.mounted && ref.read(currentUserIdProvider) == userId) {
         state = outcome;
+      }
+      // Des opérations hors ligne viennent d'être appliquées (achat, produit…) :
+      // le catalogue local est relu une fois le délai de stabilisation du
+      // serveur passé (5 s) — nouveau prix d'achat, repères (2026-11-19).
+      if (outcome.confirmed > 0) {
+        unawaited(
+          Future<void>.delayed(const Duration(seconds: 6), () {
+            if (ref.mounted) {
+              return ref.read(catalogSyncProvider.notifier).refresh();
+            }
+          }),
+        );
       }
       return outcome;
     } catch (error, stack) {
