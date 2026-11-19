@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { StockModule } from '../stock/stock.module';
+import { DirectPurchaseController } from './direct-purchase.controller';
+import { DirectPurchaseService } from './direct-purchase';
 import { ReceptionsController } from './receptions.controller';
 import { InvoiceScanService } from './invoice-scan';
 import { ReceptionsService } from './receptions.service';
@@ -8,8 +10,8 @@ import { ReceptionsService } from './receptions.service';
 /// avancement de la commande et dette fournisseur.
 @Module({
   imports: [StockModule],
-  controllers: [ReceptionsController],
-  providers: [ReceptionsService, InvoiceScanService],
-  exports: [ReceptionsService],
+  controllers: [ReceptionsController, DirectPurchaseController],
+  providers: [ReceptionsService, InvoiceScanService, DirectPurchaseService],
+  exports: [ReceptionsService, DirectPurchaseService],
 })
 export class ReceptionsModule {}

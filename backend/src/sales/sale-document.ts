@@ -66,8 +66,10 @@ function payment(sale: SaleDocumentData['sale']): [string, string][] {
 function renderSaleSlip(data: SaleDocumentData): Promise<Buffer> {
   const { sale } = data;
   return renderA4Document({
-    title: 'TICKET',
-    pdfTitle: `Ticket ${sale.number}`,
+    // « Ticket » = étiquette produit ; une vente sans facture est un BON
+    // (décision MEDMEDBEN du 2026-11-19), comme le devis.
+    title: 'BON DE VENTE',
+    pdfTitle: `Bon de vente ${sale.number}`,
     number: sale.number,
     meta: [
       ['Date', formatDateTime(new Date(sale.soldAt))],
@@ -82,7 +84,7 @@ function renderSaleSlip(data: SaleDocumentData): Promise<Buffer> {
     discount: sale.discountAmount,
     after: payment(sale),
     stamp: sale.status === 'ANNULEE' ? 'VENTE ANNULÉE' : undefined,
-    wordsSubject: 'le présent ticket',
+    wordsSubject: 'le présent bon',
     // Une seule signature : celle du vendeur (demande du 2026-11-07).
     signatures: ['Le vendeur'],
   });
@@ -96,7 +98,7 @@ function renderInvoice(data: SaleDocumentData): Promise<Buffer> {
     number: sale.invoiceNumber!,
     meta: [
       ['Date', formatDateTime(new Date(sale.invoicedAt ?? sale.soldAt))],
-      ['Ticket', sale.number],
+      ['Bon', sale.number],
       ['Vendeur', data.sellerName],
     ],
     store: data.store,

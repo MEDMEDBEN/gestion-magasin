@@ -321,6 +321,11 @@ export class ProductDto {
       'Le prix d’achat a changé à une réception depuis le dernier tarif fixé : prix de vente à revoir.',
   })
   priceReviewNeeded!: boolean;
+  @ApiProperty({
+    description:
+      'Acheté « en total » : stock à répartir entre magasin et dépôt.',
+  })
+  splitPending!: boolean;
   @ApiProperty() allowBackorder!: boolean;
   @ApiProperty() isActive!: boolean;
   @ApiProperty({

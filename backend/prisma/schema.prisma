@@ -470,6 +470,10 @@ model Product {
   /// fixé (2026-11-16) : « prix à revoir ». Remis à NULL quand un tarif est
   /// fixé.
   costChangedAt       DateTime?
+  /// Acheté « en total » (2026-11-19) : posé au DÉPÔT, à RÉPARTIR entre
+  /// magasin et dépôt. Repère simple (pas une urgence), levé par un transfert
+  /// du produit ou « Réparti ».
+  splitPending        Boolean     @default(false)
   /// Autorise une opération qui rendrait le stock négatif (CLAUDE.md règle 9).
   allowBackorder      Boolean     @default(false)
   isActive            Boolean     @default(true)

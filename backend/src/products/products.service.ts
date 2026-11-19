@@ -442,6 +442,44 @@ export class ProductsService {
   /// Historique des prix de vente d'un produit (P1 bis n°21n), du plus récent
   /// au plus ancien (200 derniers). L'auteur est une donnée d'audit : montré à
   /// l'ADMIN seulement.
+  /// « Garder le prix » (2026-11-19) : le prix d'achat a changé mais le prix
+  /// de vente reste bon — le repère « prix à revoir » est levé, tracé.
+  async keepPrice(id: string, actor: ActorContext): Promise<ProductDto> {
+    return this.prisma.$transaction(async (tx) => {
+      const before = await tx.product.findUnique({ where: { id } });
+      if (!before) throw ProductsService.notFound();
+      const product = await tx.product.update({
+        where: { id },
+        data: { costChangedAt: null },
+        include: PRODUCT_INCLUDE,
+      });
+      await writeAudit(tx, actor, {
+        action: 'UPDATE',
+        entityType: 'Product',
+        entityId: id,
+        newValue: {
+          priceKept: true,
+          lastPurchasePriceHt: product.lastPurchasePriceHt,
+        },
+      });
+      return ProductsService.toDto(product);
+    });
+  }
+
+  /// « Réparti » (2026-11-19) : le stock acheté en total a été réparti.
+  async splitDone(id: string): Promise<ProductDto> {
+    if (!(await this.prisma.product.findUnique({ where: { id } }))) {
+      throw ProductsService.notFound();
+    }
+    return ProductsService.toDto(
+      await this.prisma.product.update({
+        where: { id },
+        data: { splitPending: false },
+        include: PRODUCT_INCLUDE,
+      }),
+    );
+  }
+
   /// Historique des PRIX D'ACHAT (2026-11-16) : chaque réception, son
   /// fournisseur et son prix unitaire HT — le plus récent d'abord.
   async costHistory(id: string): Promise<CostChangeDto[]> {
@@ -541,6 +579,7 @@ export class ProductsService {
       safetyStock: formatQuantity(product.safetyStock),
       lastPurchasePriceHt: product.lastPurchasePriceHt,
       priceReviewNeeded: product.costChangedAt !== null,
+      splitPending: product.splitPending,
       allowBackorder: product.allowBackorder,
       isActive: product.isActive,
       imageKey: product.imageUrl,

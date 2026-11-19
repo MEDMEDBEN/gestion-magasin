@@ -495,8 +495,7 @@ export class SuppliersService {
         existing,
         user.id,
         existing.supplierId === dto.supplierId &&
-          existing.amount === dto.amount &&
-          (existing.cashSessionId !== null) === dto.fromCash,
+          existing.amount === dto.amount,
         {
           code: ErrorCode.PAYMENT_ALREADY_RECORDED,
           message: `Paiement déjà enregistré : ${formatDA(existing.amount)} — vérifiez avant d’en refaire un`,
@@ -550,18 +549,10 @@ export class SuppliersService {
       );
     }
 
-    const session = !dto.fromCash
-      ? null
-      : options.autoOpenCash
-        ? await CashSessionsService.ensureOpenSession(tx, user.id)
-        : await CashSessionsService.lockOpenSession(tx, { userId: user.id });
-    if (dto.fromCash && !session) {
-      throw new BusinessException(
-        ErrorCode.CASH_SESSION_REQUIRED,
-        'Ouvrez votre caisse avant de payer un fournisseur en espèces',
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
+    // Décision MEDMEDBEN du 2026-11-19 : régler un fournisseur NE TOUCHE PAS
+    // la caisse (ni limite au tiroir, ni sortie) — c'est l'historique du
+    // compte fournisseur, rien d'autre. `fromCash` est ignoré.
+    void options.autoOpenCash;
 
     const payment = await tx.supplierPayment.create({
       data: {
@@ -570,21 +561,12 @@ export class SuppliersService {
         supplierId: supplier.id,
         purchaseOrderId: options.purchaseOrderId ?? null,
         userId: user.id,
-        cashSessionId: session?.id ?? null,
+        cashSessionId: null,
         amount: dto.amount,
-        method: dto.fromCash ? 'ESPECES' : (dto.method ?? 'VIREMENT'),
+        method: dto.method ?? (dto.fromCash ? 'ESPECES' : 'AUTRE'),
         note: dto.note ?? null,
       },
     });
-    if (session) {
-      // Garde commun : jamais plus que le contenu du tiroir (CASH_INSUFFICIENT).
-      await CashSessionsService.withdraw(tx, session, {
-        userId: user.id,
-        amount: dto.amount,
-        // Rapprochement caisse ↔ paiement par l'id du paiement.
-        note: `Paiement fournisseur ${payment.id} — ${supplier.name}`,
-      });
-    }
     await writeAudit(tx, actor, {
       action: 'CREATE',
       entityType: 'SupplierPayment',
@@ -593,7 +575,7 @@ export class SuppliersService {
         supplierId: supplier.id,
         amount: dto.amount,
         method: payment.method,
-        fromCash: dto.fromCash,
+        outsideCash: true,
       },
     });
     return SuppliersService.paymentDto(payment, balanceDue - dto.amount);

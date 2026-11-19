@@ -311,6 +311,42 @@ export class ProductsController {
     return this.productsService.prospects(id);
   }
 
+  /// « Garder le prix de vente » malgré un prix d'achat changé : mêmes droits
+  /// que fixer un prix.
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.PRICE_MANAGE)
+  @Post(':id/keep-price')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Lève « prix à revoir » : le prix de vente reste' })
+  @ApiOkResponse({ type: ProductDto })
+  async keepPrice(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Ip() ip: string,
+  ): Promise<ProductDto> {
+    return ProductsService.forViewer(
+      await this.productsService.keepPrice(id, actorOf(user, ip)),
+      user,
+    );
+  }
+
+  /// « Réparti » : le stock acheté en total est rangé (magasin / dépôt).
+  @Roles(RoleCode.ADMIN, RoleCode.MAGASINIER)
+  @RequirePermissions(PERMISSIONS.STOCK_READ_WAREHOUSE)
+  @Post(':id/split-done')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Lève « à répartir » d’un produit' })
+  @ApiOkResponse({ type: ProductDto })
+  async splitDone(
+    @Param('id', CanonicalUuidPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ProductDto> {
+    return ProductsService.forViewer(
+      await this.productsService.splitDone(id),
+      user,
+    );
+  }
+
   /// Historique des prix d'achat : mêmes lecteurs que le coût (`cost.read`).
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRODUCT_READ, PERMISSIONS.COST_READ)

@@ -63,9 +63,9 @@ function data(
 // Le ticket de caisse est un document complet, au gabarit du devis
 // (demande MEDMEDBEN du 2026-11-07) : plus de rouleau thermique.
 describe('ticket de caisse (document A4/A5)', () => {
-  it('titré TICKET, au format des documents, plusieurs pages si besoin', async () => {
+  it('titré BON DE VENTE (jamais « ticket »), au format des documents, plusieurs pages si besoin', async () => {
     const short = await renderSaleDocument(data(3, 20, 'A4'));
-    expect(short.toString('latin1')).toMatch(/Ticket TK-2026-000001/);
+    expect(short.toString('latin1')).toMatch(/Bon de vente TK-2026-000001/);
     // A4 = 595,28 × 841,89 pt.
     expect(short.toString('latin1')).toMatch(/MediaBox \[0 0 595\.2/);
     expect(pages(short)).toBe(1);

@@ -7,6 +7,7 @@ import { StockModule } from '../stock/stock.module';
 import { TransfersModule } from '../transfers/transfers.module';
 import { CashSessionHandler } from './handlers/cash-session.handler';
 import { CustomerPaymentHandler } from './handlers/customer-payment.handler';
+import { DirectPurchaseHandler } from './handlers/direct-purchase.handler';
 import { ProductHandler } from './handlers/product.handler';
 import { QuoteHandler } from './handlers/quote.handler';
 import { ReceptionHandler } from './handlers/reception.handler';
@@ -43,6 +44,7 @@ import { SyncService } from './sync.service';
     TransferHandler,
     ProductHandler,
     QuoteHandler,
+    DirectPurchaseHandler,
     {
       provide: SYNC_MUTATION_HANDLERS,
       useFactory: (...handlers: SyncMutationHandler[]) => handlers,
@@ -55,6 +57,7 @@ import { SyncService } from './sync.service';
         TransferHandler,
         ProductHandler,
         QuoteHandler,
+        DirectPurchaseHandler,
       ],
     },
   ],

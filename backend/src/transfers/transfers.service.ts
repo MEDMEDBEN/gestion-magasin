@@ -113,6 +113,11 @@ export class TransfersService {
       'toLocationId',
     );
     const lines = await TransfersService.buildLines(tx, dto);
+    // Un transfert du produit = il est en train d'être RÉPARTI (2026-11-19).
+    await tx.product.updateMany({
+      where: { id: { in: lines.map((l) => l.productId) }, splitPending: true },
+      data: { splitPending: false },
+    });
     const number = await nextDocumentNumber(tx, 'TRANSFERT', 'TRF', 5);
     const transfer = await tx.transfer.create({
       include: TRANSFER_INCLUDE,
@@ -181,6 +186,14 @@ export class TransfersService {
             'toLocationId',
           );
           const lines = await TransfersService.buildLines(tx, dto);
+          // Un transfert du produit = il est en train d'être RÉPARTI (2026-11-19).
+          await tx.product.updateMany({
+            where: {
+              id: { in: lines.map((l) => l.productId) },
+              splitPending: true,
+            },
+            data: { splitPending: false },
+          });
           const number = await nextDocumentNumber(tx, 'TRANSFERT', 'TRF', 5);
           const now = new Date();
           const transfer = await tx.transfer.create({
