@@ -422,29 +422,13 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       _stockTotal > Quantity.zero &&
       (parseDA(_cost.text) ?? 0) > 0;
 
-  /// Ligne d'achat de ce produit : où va le stock saisi.
-  PurchaseLine _lineFor(Product product) {
-    final store = parseQuantity(_storeStock.text) ?? Quantity.zero;
-    final depot = parseQuantity(_depotStock.text) ?? Quantity.zero;
-    final cost = parseDA(_cost.text) ?? 0;
-    if (store > Quantity.zero && depot > Quantity.zero) {
-      return PurchaseLine(
-        product: product,
-        unitPriceHt: cost,
-        destination: PurchaseDestination.both,
-        toStore: store,
-        toDepot: depot,
-      );
-    }
-    return PurchaseLine(
-      product: product,
-      unitPriceHt: cost,
-      destination: store > Quantity.zero
-          ? PurchaseDestination.store
-          : PurchaseDestination.depot,
-      quantity: store > Quantity.zero ? store : depot,
-    );
-  }
+  /// Ligne d'achat de ce produit : le stock saisi, par lieu.
+  PurchaseCartLine _lineFor(Product product) => PurchaseCartLine(
+    product: product,
+    unitPriceHt: parseDA(_cost.text) ?? 0,
+    store: parseQuantity(_storeStock.text),
+    depot: parseQuantity(_depotStock.text),
+  );
 
   /// Achat du stock de départ, réglé / en partie / pas encore.
   Future<void> _purchaseStock(Product product) async {
@@ -510,10 +494,8 @@ class _ProductFormState extends ConsumerState<ProductForm> {
       cart.add(
         saved,
         unitPriceHt: line.unitPriceHt,
-        destination: line.destination,
-        quantity: line.quantity,
-        toStore: line.toStore,
-        toDepot: line.toDepot,
+        store: line.store,
+        depot: line.depot,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

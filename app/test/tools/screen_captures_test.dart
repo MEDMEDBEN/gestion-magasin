@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_magasin/features/purchases/presentation/direct_purchase_screen.dart';
+import 'package:gestion_magasin/features/purchases/application/purchase_cart.dart';
 import 'package:gestion_magasin/ui/theme/palettes.dart';
 import 'package:gestion_magasin/ui/widgets/signal_background.dart';
 import 'package:gestion_magasin/core/providers.dart';
@@ -2519,6 +2521,59 @@ void main() {
         await t.pumpAndSettle();
         await t.tap(find.text('Réceptionner au magasin'));
       },
+    ),
+  );
+
+  // Achat direct (2026-11-19) : tableau compact, barre d'ajout en haut.
+  for (final (name, size) in [
+    ('75 achat direct poste', const Size(1440, 900)),
+    ('76 achat direct telephone', const Size(390, 844)),
+  ]) {
+    testWidgets(name, skip: skip, (tester) async {
+      await _capture(
+        tester,
+        name: name.replaceAll(' ', '_'),
+        size: size,
+        dark: false,
+        home: const _PrefilledPurchase(),
+      );
+    });
+  }
+}
+
+/// Un panier d'achat déjà rempli (fournisseur + trois produits).
+class _PrefilledPurchase extends ConsumerStatefulWidget {
+  const _PrefilledPurchase();
+
+  @override
+  ConsumerState<_PrefilledPurchase> createState() => _PrefilledPurchaseState();
+}
+
+class _PrefilledPurchaseState extends ConsumerState<_PrefilledPurchase> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      final cart = ref.read(purchaseCartProvider.notifier);
+      cart.setSupplier('s1', 'Sonelec Distribution');
+      for (final (i, p) in _products.take(3).indexed) {
+        cart.add(
+          p,
+          unitPriceHt: 85000 + i * 12000,
+          store: Decimal.fromInt(5 + i),
+          depot: i == 1 ? Decimal.fromInt(20) : null,
+          split: i == 2 ? Decimal.fromInt(50) : null,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => DirectPurchaseScreen(
+    user: authUser(
+      id: 'me',
+      fullName: 'Radhi Badache',
+      permissions: _adminPermissions,
     ),
   );
 }

@@ -22,9 +22,13 @@ import '../application/purchase_cart.dart';
 /// Ce qui est payé au fournisseur à l'achat.
 enum _Paid { all, part, none }
 
-/// NOUVEL ACHAT (demande MEDMEDBEN du 2026-11-19) : un PANIER D'ACHAT complet
-/// — fournisseur (ou le créer), ses produits (ou en créer), où ranger, ce
-/// qu'on paie. À la validation, tout entre en stock d'un coup ; le non-payé
+/// Au-delà : le tableau ; en dessous (téléphone), des lignes sur deux rangs.
+const _tableWidth = 760.0;
+
+/// NOUVEL ACHAT (demandes MEDMEDBEN du 2026-11-19) : en haut, le fournisseur
+/// et l'ajout des produits ; au milieu, le panier en TABLEAU — une colonne par
+/// champ (prix d'achat, magasin, dépôt, à répartir) ; en bas, le total, le
+/// paiement et la validation. Tout entre en stock d'un coup ; le non-payé
 /// devient la dette du fournisseur.
 Future<void> openDirectPurchase(BuildContext context, AuthUser user) =>
     Navigator.of(context).push(
@@ -70,7 +74,6 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
 
   Future<void> _createProduct() async {
     final rights = CatalogRights(widget.user);
-    final cart = ref.read(purchaseCartProvider);
     final saved = await openFormPanel<Product>(
       context,
       ProductForm(
@@ -79,8 +82,8 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
         canReadStock: rights.canReadStock,
         canReadSuppliers: rights.canReadSuppliers,
         canSetPrices: rights.canSetPrices,
-        initialSupplierName: cart.supplierName,
-        // Dans un achat, la quantité se saisit sur la ligne du panier.
+        initialSupplierName: ref.read(purchaseCartProvider).supplierName,
+        // Les quantités se saisissent sur la ligne du panier.
         forPurchase: true,
       ),
     );
@@ -88,38 +91,36 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
     ref.read(purchaseCartProvider.notifier).add(saved);
   }
 
+  int _paidAmount(int total) => !_canPay
+      ? 0
+      : switch (_paid) {
+          _Paid.all => total,
+          _Paid.none => 0,
+          _Paid.part => parseDA(_partial.text) ?? -1,
+        };
+
   Future<void> _submit(PurchaseCart cart) async {
+    String? problem;
     if (cart.supplierId == null) {
-      setState(() => _error = 'Choisissez le fournisseur.');
-      return;
-    }
-    if (cart.isEmpty) {
-      setState(() => _error = 'Ajoutez au moins un produit.');
-      return;
-    }
-    for (final l in cart.lines) {
-      if (l.total <= Quantity.zero) {
-        setState(() => _error = 'Quantité manquante : ${l.product.name}.');
-        return;
-      }
-      // Prix d'achat obligatoire (> 0) : c'est le coût de la marge.
-      if (l.unitPriceHt <= 0) {
-        setState(() => _error = 'Prix d’achat manquant : ${l.product.name}.');
-        return;
+      problem = 'Choisissez le fournisseur.';
+    } else {
+      for (final l in cart.lines) {
+        if (l.total <= Quantity.zero) {
+          problem = 'Quantité manquante : ${l.product.name}.';
+          break;
+        }
+        if (l.unitPriceHt <= 0) {
+          problem = 'Prix d’achat manquant : ${l.product.name}.';
+          break;
+        }
       }
     }
-    final paid = !_canPay
-        ? 0
-        : switch (_paid) {
-            _Paid.all => cart.total,
-            _Paid.none => 0,
-            _Paid.part => parseDA(_partial.text) ?? -1,
-          };
-    if (paid < 0 || paid > cart.total) {
-      setState(
-        () => _error =
-            'Montant payé : entre 0 et ${formatDA(cart.total)} (le total).',
-      );
+    final paid = _paidAmount(cart.total);
+    if (problem == null && (paid < 0 || paid > cart.total)) {
+      problem = 'Somme payée : entre 0 et ${formatDA(cart.total)}.';
+    }
+    if (problem != null) {
+      setState(() => _error = problem);
       return;
     }
     setState(() {
@@ -161,6 +162,143 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
     final colors = AmpereColors.of(context);
     final cart = ref.watch(purchaseCartProvider);
     final notifier = ref.read(purchaseCartProvider.notifier);
+    final wide = MediaQuery.sizeOf(context).width >= _tableWidth;
+
+    return Scaffold(
+      backgroundColor: colors.bg,
+      appBar: AppBar(
+        title: Text(
+          cart.supplierName == null || !wide
+              ? 'Nouvel achat'
+              : 'Nouvel achat — ${cart.supplierName}',
+        ),
+        actions: [
+          if (!cart.isEmpty)
+            TextButton.icon(
+              onPressed: _saving ? null : notifier.clear,
+              icon: const Icon(LucideIcons.trash2, size: 16),
+              label: const Text('Vider'),
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _AddBar(
+            cart: cart,
+            wide: wide,
+            allProducts: _allProducts,
+            onAllProducts: (v) => setState(() => _allProducts = v),
+            onCreateSupplier: _saving ? null : _createSupplier,
+            onCreateProduct: CatalogRights(widget.user).canWriteProducts
+                ? (_saving ? null : _createProduct)
+                : null,
+          ),
+          Expanded(
+            child: cart.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          LucideIcons.shoppingCart,
+                          size: 32,
+                          color: colors.ink3,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          cart.supplierId == null
+                              ? 'Choisissez le fournisseur, puis ajoutez ses produits.'
+                              : 'Ajoutez les produits achetés (barre du haut).',
+                          textAlign: TextAlign.center,
+                          style: AmpereType.body.copyWith(color: colors.ink3),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                    children: [
+                      Material(
+                        color: colors.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(color: colors.line),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (wide) const _TableHeader(),
+                            for (final (i, line) in cart.lines.indexed) ...[
+                              if (i > 0 || wide)
+                                Divider(height: 1, color: colors.lineSoft),
+                              _LineRow(
+                                key: ValueKey(line.product.id),
+                                line: line,
+                                wide: wide,
+                                onChanged: (l) => notifier.update(i, l),
+                                onRemove: () => notifier.remove(i),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, left: 4),
+                        child: Text(
+                          '« À répartir » : posé au dépôt, à partager ensuite '
+                          'entre magasin et dépôt (repère dans Stock).',
+                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          _PayBar(
+            cart: cart,
+            wide: wide,
+            canPay: _canPay,
+            paid: _paid,
+            partial: _partial,
+            saving: _saving,
+            error: _error,
+            onPaid: (v) => setState(() => _paid = v),
+            onPartialChanged: () => setState(() {}),
+            onSubmit: () => _submit(cart),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── En haut : fournisseur + ajout des produits ──────────────────────────────
+
+class _AddBar extends ConsumerWidget {
+  const _AddBar({
+    required this.cart,
+    required this.wide,
+    required this.allProducts,
+    required this.onAllProducts,
+    required this.onCreateSupplier,
+    required this.onCreateProduct,
+  });
+
+  final PurchaseCart cart;
+  final bool wide;
+  final bool allProducts;
+  final ValueChanged<bool> onAllProducts;
+  final VoidCallback? onCreateSupplier;
+
+  /// `null` : pas le droit de créer un produit.
+  final VoidCallback? onCreateProduct;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final colors = AmpereColors.of(context);
+    final notifier = ref.read(purchaseCartProvider.notifier);
     final suppliers =
         ref.watch(supplierSearchProvider('')).value ?? const <Supplier>[];
     final products =
@@ -169,314 +307,233 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
     // Ses produits d'abord : ceux dont il est le fournisseur principal.
     final offered = [
       for (final p in products)
-        if (_allProducts ||
+        if (allProducts ||
             supplierName == null ||
-            (p.mainSupplierName?.trim().toLowerCase() == supplierName))
+            p.mainSupplierName?.trim().toLowerCase() == supplierName)
           p,
     ];
-    final canCreateProduct = CatalogRights(widget.user).canWriteProducts;
-    final rest = switch (_paid) {
-      _Paid.all => 0,
-      _Paid.none => cart.total,
-      _Paid.part => (cart.total - (parseDA(_partial.text) ?? 0)).clamp(
-        0,
-        cart.total,
+    const dense = InputDecoration(isDense: true);
+
+    final supplier = Autocomplete<Supplier>(
+      key: ValueKey('fournisseur-${cart.supplierId}'),
+      initialValue: TextEditingValue(text: cart.supplierName ?? ''),
+      displayStringForOption: (s) => s.name,
+      optionsBuilder: (v) {
+        final q = v.text.trim().toLowerCase();
+        return suppliers
+            .where((s) => s.name.toLowerCase().contains(q))
+            .take(10);
+      },
+      onSelected: (s) => notifier.setSupplier(s.id, s.name),
+      fieldViewBuilder: (context, controller, focus, _) => TextField(
+        controller: controller,
+        focusNode: focus,
+        decoration: dense.copyWith(
+          prefixIcon: const Icon(LucideIcons.truck, size: 17),
+          hintText: 'Fournisseur',
+        ),
       ),
-    };
+    );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nouvel achat'),
-        actions: [
-          if (!cart.isEmpty)
-            TextButton.icon(
-              onPressed: _saving ? null : notifier.clear,
-              icon: const Icon(LucideIcons.trash2, size: 16),
-              label: const Text('Vider'),
-            ),
-        ],
+    final product = Autocomplete<Product>(
+      key: ValueKey('produit-${cart.lines.length}-$allProducts'),
+      displayStringForOption: (p) => p.name,
+      optionsBuilder: (v) {
+        final q = v.text.trim().toLowerCase();
+        final inCart = {for (final l in cart.lines) l.product.id};
+        return offered
+            .where(
+              (p) =>
+                  !inCart.contains(p.id) &&
+                  (q.isEmpty ||
+                      p.name.toLowerCase().contains(q) ||
+                      p.sku.toLowerCase().contains(q) ||
+                      p.barcode == q),
+            )
+            .take(12);
+      },
+      onSelected: notifier.add,
+      fieldViewBuilder: (context, controller, focus, _) => TextField(
+        controller: controller,
+        focusNode: focus,
+        decoration: dense.copyWith(
+          prefixIcon: const Icon(LucideIcons.search, size: 17),
+          hintText: cart.supplierId == null || allProducts
+              ? 'Ajouter un produit (nom, référence, code-barres)'
+              : 'Ajouter un produit de ${cart.supplierName}',
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          // ── 1. Fournisseur ─────────────────────────────────────────────
-          Text(
-            'FOURNISSEUR',
-            style: AmpereType.label.copyWith(color: colors.ink3),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Autocomplete<Supplier>(
-                  key: ValueKey('fournisseur-${cart.supplierId}'),
-                  initialValue: TextEditingValue(text: cart.supplierName ?? ''),
-                  displayStringForOption: (s) => s.name,
-                  optionsBuilder: (v) {
-                    final q = v.text.trim().toLowerCase();
-                    return suppliers
-                        .where((s) => s.name.toLowerCase().contains(q))
-                        .take(10);
-                  },
-                  onSelected: (s) => notifier.setSupplier(s.id, s.name),
-                  fieldViewBuilder: (context, controller, focus, onSubmit) =>
-                      TextField(
-                        controller: controller,
-                        focusNode: focus,
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(LucideIcons.truck, size: 18),
-                          hintText: 'Chercher le fournisseur',
-                        ),
-                      ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _saving ? null : _createSupplier,
-                icon: const Icon(LucideIcons.userPlus, size: 16),
-                label: const Text('Créer'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
+    );
 
-          // ── 2. Produits ────────────────────────────────────────────────
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'PRODUITS',
-                  style: AmpereType.label.copyWith(color: colors.ink3),
-                ),
-              ),
-              if (cart.supplierId != null)
-                FilterChip(
-                  label: const Text('Tous les produits'),
-                  selected: _allProducts,
-                  onSelected: (v) => setState(() => _allProducts = v),
-                ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Expanded(
-                child: Autocomplete<Product>(
-                  key: ValueKey('produit-${cart.lines.length}-$_allProducts'),
-                  displayStringForOption: (p) => p.name,
-                  optionsBuilder: (v) {
-                    final q = v.text.trim().toLowerCase();
-                    return offered
-                        .where(
-                          (p) =>
-                              q.isEmpty ||
-                              p.name.toLowerCase().contains(q) ||
-                              p.sku.toLowerCase().contains(q) ||
-                              p.barcode == q,
-                        )
-                        .take(12);
-                  },
-                  onSelected: notifier.add,
-                  fieldViewBuilder: (context, controller, focus, onSubmit) =>
-                      TextField(
-                        controller: controller,
-                        focusNode: focus,
-                        decoration: InputDecoration(
-                          prefixIcon: const Icon(LucideIcons.search, size: 18),
-                          hintText: cart.supplierId == null || _allProducts
-                              ? 'Ajouter un produit'
-                              : 'Produits de ${cart.supplierName}',
-                        ),
-                      ),
-                ),
-              ),
-              if (canCreateProduct) ...[
-                const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  onPressed: _saving ? null : _createProduct,
-                  icon: const Icon(LucideIcons.packagePlus, size: 16),
-                  label: const Text('Nouveau produit'),
-                ),
-              ],
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (cart.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Text(
-                'Le panier d’achat est vide.',
-                textAlign: TextAlign.center,
-                style: AmpereType.body.copyWith(color: colors.ink3),
-              ),
-            ),
-          for (final (i, line) in cart.lines.indexed)
-            _LineCard(
-              key: ValueKey(line.product.id),
-              line: line,
-              onChanged: (l) => notifier.update(i, l),
-              onRemove: () => notifier.remove(i),
-            ),
+    final supplierTools = IconButton.outlined(
+      tooltip: 'Nouveau fournisseur',
+      onPressed: onCreateSupplier,
+      icon: const Icon(LucideIcons.userPlus, size: 17),
+    );
+    final productTools = [
+      if (cart.supplierId != null)
+        FilterChip(
+          label: const Text('Tous'),
+          tooltip:
+              'Montrer tous les produits, pas seulement ceux du fournisseur',
+          selected: allProducts,
+          onSelected: onAllProducts,
+        ),
+      if (onCreateProduct != null)
+        IconButton.outlined(
+          tooltip: 'Nouveau produit',
+          onPressed: onCreateProduct,
+          icon: const Icon(LucideIcons.packagePlus, size: 17),
+        ),
+    ];
 
-          // ── 3. Total et paiement ───────────────────────────────────────
-          if (!cart.isEmpty) ...[
-            const SizedBox(height: 8),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'TOTAL DE L’ACHAT',
-                            style: AmpereType.label.copyWith(
-                              color: colors.ink3,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          formatDA(cart.total),
-                          style: AmpereType.h2.copyWith(
-                            color: colors.ink,
-                            fontFeatures: AmpereType.tabular,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (_canPay) ...[
-                      const SizedBox(height: 12),
-                      SegmentedButton<_Paid>(
-                        segments: const [
-                          ButtonSegment(
-                            value: _Paid.all,
-                            icon: Icon(LucideIcons.circleCheck, size: 16),
-                            label: Text('Payé en totalité'),
-                          ),
-                          ButtonSegment(
-                            value: _Paid.part,
-                            icon: Icon(LucideIcons.circleDot, size: 16),
-                            label: Text('En partie'),
-                          ),
-                          ButtonSegment(
-                            value: _Paid.none,
-                            icon: Icon(LucideIcons.circle, size: 16),
-                            label: Text('Pas payé'),
-                          ),
-                        ],
-                        selected: {_paid},
-                        onSelectionChanged: (s) =>
-                            setState(() => _paid = s.first),
-                      ),
-                      if (_paid == _Paid.part) ...[
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _partial,
-                          autofocus: true,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: const InputDecoration(
-                            labelText: 'Somme donnée au fournisseur',
-                            suffixText: 'DA',
-                          ),
-                          onChanged: (_) => setState(() {}),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      Text(
-                        rest == 0
-                            ? 'Payé en entier — aucune dette.'
-                            : 'Va en dette chez le fournisseur : ${formatDA(rest)}',
-                        style: AmpereType.bodyStrong.copyWith(
-                          color: rest == 0 ? colors.ok : colors.warn,
-                        ),
-                      ),
-                    ] else
-                      Text(
-                        'Le total va en dette chez le fournisseur (le paiement '
-                        'se fait par l’administrateur).',
-                        style: AmpereType.meta.copyWith(color: colors.ink3),
-                      ),
+    return Material(
+      color: colors.surface,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colors.line)),
+        ),
+        child: wide
+            ? Row(
+                children: [
+                  SizedBox(width: 280, child: supplier),
+                  const SizedBox(width: 6),
+                  supplierTools,
+                  const SizedBox(width: 16),
+                  Expanded(child: product),
+                  for (final t in productTools) ...[
+                    const SizedBox(width: 6),
+                    t,
                   ],
-                ),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: supplier),
+                      const SizedBox(width: 6),
+                      supplierTools,
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(child: product),
+                      for (final t in productTools) ...[
+                        const SizedBox(width: 6),
+                        t,
+                      ],
+                    ],
+                  ),
+                ],
               ),
-            ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!, style: AmpereType.body.copyWith(color: colors.error)),
-          ],
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52),
-            ),
-            onPressed: _saving || cart.isEmpty ? null : () => _submit(cart),
-            icon: const Icon(LucideIcons.packageCheck, size: 18),
-            label: Text(
-              _saving ? 'Enregistrement…' : 'Valider l’achat — entrée en stock',
-            ),
-          ),
+      ),
+    );
+  }
+}
+
+// ── Le panier en tableau ────────────────────────────────────────────────────
+
+/// Largeurs des colonnes chiffrées (poste).
+class _Col {
+  static const price = 120.0;
+  static const qty = 104.0;
+  static const amount = 120.0;
+  static const remove = 40.0;
+}
+
+class _TableHeader extends StatelessWidget {
+  const _TableHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    Widget head(String text, double? width, {bool end = true}) {
+      final t = Text(
+        text.toUpperCase(),
+        textAlign: end ? TextAlign.end : TextAlign.start,
+        style: AmpereType.label.copyWith(color: colors.ink3),
+      );
+      return width == null
+          ? Expanded(child: t)
+          : SizedBox(width: width, child: t);
+    }
+
+    return Container(
+      color: colors.surface2,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          head('Produit', null, end: false),
+          head('Prix d’achat', _Col.price),
+          const SizedBox(width: 8),
+          head('Magasin', _Col.qty),
+          const SizedBox(width: 8),
+          head('Dépôt', _Col.qty),
+          const SizedBox(width: 8),
+          head('À répartir', _Col.qty),
+          const SizedBox(width: 8),
+          head('Montant', _Col.amount),
+          const SizedBox(width: _Col.remove),
         ],
       ),
     );
   }
 }
 
-/// Une ligne : prix d'achat, où ranger, combien.
-class _LineCard extends StatefulWidget {
-  const _LineCard({
+class _LineRow extends StatefulWidget {
+  const _LineRow({
     super.key,
     required this.line,
+    required this.wide,
     required this.onChanged,
     required this.onRemove,
   });
 
-  final PurchaseLine line;
-  final ValueChanged<PurchaseLine> onChanged;
+  final PurchaseCartLine line;
+  final bool wide;
+  final ValueChanged<PurchaseCartLine> onChanged;
   final VoidCallback onRemove;
 
   @override
-  State<_LineCard> createState() => _LineCardState();
+  State<_LineRow> createState() => _LineRowState();
 }
 
-class _LineCardState extends State<_LineCard> {
-  late final _price = TextEditingController(
-    text: formatDA(widget.line.unitPriceHt, withSymbol: false),
-  );
-  late final _qty = TextEditingController(text: _show(widget.line.quantity));
-  late final _store = TextEditingController(text: _show(widget.line.toStore));
-  late final _depot = TextEditingController(text: _show(widget.line.toDepot));
-
+class _LineRowState extends State<_LineRow> {
   static String _show(Quantity q) =>
       q == Quantity.zero ? '' : formatQuantity(q);
 
+  late final _price = TextEditingController(
+    text: widget.line.unitPriceHt == 0
+        ? ''
+        : formatDA(widget.line.unitPriceHt, withSymbol: false),
+  );
+  late final _store = TextEditingController(text: _show(widget.line.store));
+  late final _depot = TextEditingController(text: _show(widget.line.depot));
+  late final _split = TextEditingController(text: _show(widget.line.split));
+
   @override
   void dispose() {
-    for (final c in [_price, _qty, _store, _depot]) {
+    for (final c in [_price, _store, _depot, _split]) {
       c.dispose();
     }
     super.dispose();
   }
 
-  /// Saisie → ligne ; une quantité ou un prix négatif est refusé (2026-11-19).
-  void _push({PurchaseDestination? destination}) {
-    Quantity q(TextEditingController c) {
-      final v = parseQuantity(c.text);
-      return v == null || v < Quantity.zero ? Quantity.zero : v;
-    }
-
-    final price = parseDA(_price.text);
+  /// Saisie → ligne. Une saisie négative ou invalide compte pour 0 (et le
+  /// champ le signale) — jamais de valeur négative (2026-11-19).
+  void _push() {
+    Quantity q(TextEditingController c) =>
+        parseQuantity(c.text) ?? Quantity.zero;
     widget.onChanged(
       widget.line.copyWith(
-        unitPriceHt: price == null || price < 0 ? 0 : price,
-        destination: destination,
-        quantity: q(_qty),
-        toStore: q(_store),
-        toDepot: q(_depot),
+        unitPriceHt: parseDA(_price.text) ?? 0,
+        store: q(_store),
+        depot: q(_depot),
+        split: q(_split),
       ),
     );
   }
@@ -486,118 +543,297 @@ class _LineCardState extends State<_LineCard> {
     final colors = AmpereColors.of(context);
     final line = widget.line;
     final unit = line.product.unit.short;
-    String? positive(String? v) {
-      final raw = v?.trim() ?? '';
-      if (raw.isEmpty) return null;
-      final q = parseQuantity(raw);
-      return q == null || q < Quantity.zero ? 'Quantité positive' : null;
-    }
 
-    Widget qtyField(String label, TextEditingController c) => Expanded(
-      child: TextFormField(
-        controller: c,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        autovalidateMode: AutovalidateMode.onUserInteraction,
-        validator: positive,
-        decoration: InputDecoration(labelText: label, suffixText: unit),
-        onChanged: (_) => _push(),
+    Widget field(
+      TextEditingController c, {
+      String? label,
+      String? suffix,
+      bool money = false,
+    }) => TextFormField(
+      controller: c,
+      textAlign: TextAlign.end,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      validator: (v) {
+        final raw = v?.trim() ?? '';
+        if (raw.isEmpty) return null;
+        final ok = money ? parseDA(raw) != null : parseQuantity(raw) != null;
+        return ok ? null : 'Invalide';
+      },
+      style: AmpereType.bodyStrong.copyWith(fontFeatures: AmpereType.tabular),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: label,
+        suffixText: suffix,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
       ),
+      onChanged: (_) => _push(),
     );
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 6, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    final name = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          line.product.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.bodyStrong.copyWith(color: colors.ink),
+        ),
+        Text(
+          [
+            line.product.sku,
+            if (line.product.lastPurchasePriceHt case final last?)
+              'dernier achat ${formatDA(last)}',
+          ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AmpereType.meta.copyWith(color: colors.ink3),
+        ),
+      ],
+    );
+    final amount = Text(
+      formatDA(line.amount),
+      textAlign: TextAlign.end,
+      style: AmpereType.bodyStrong.copyWith(
+        color: colors.ink,
+        fontFeatures: AmpereType.tabular,
+      ),
+    );
+    final remove = IconButton(
+      tooltip: 'Retirer',
+      visualDensity: VisualDensity.compact,
+      onPressed: widget.onRemove,
+      icon: Icon(LucideIcons.x, size: 16, color: colors.ink3),
+    );
+
+    if (widget.wide) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 0, 6),
+        child: Row(
           children: [
-            Row(
+            Expanded(child: name),
+            SizedBox(
+              width: _Col.price,
+              child: field(_price, suffix: 'DA', money: true),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: _Col.qty,
+              child: field(_store, suffix: unit),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: _Col.qty,
+              child: field(_depot, suffix: unit),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: _Col.qty,
+              child: field(_split, suffix: unit),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(width: _Col.amount, child: amount),
+            SizedBox(width: _Col.remove, child: remove),
+          ],
+        ),
+      );
+    }
+    // Téléphone : deux rangs — nom et montant, puis les quatre champs.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 0, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: name),
+              amount,
+              remove,
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    line.product.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AmpereType.bodyStrong.copyWith(color: colors.ink),
-                  ),
+                  flex: 5,
+                  child: field(_price, label: 'Prix', money: true),
                 ),
-                Text(
-                  formatDA(line.amount),
-                  style: AmpereType.bodyStrong.copyWith(
-                    color: colors.ink,
-                    fontFeatures: AmpereType.tabular,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Retirer',
-                  onPressed: widget.onRemove,
-                  icon: Icon(LucideIcons.x, size: 17, color: colors.ink3),
-                ),
+                const SizedBox(width: 6),
+                Expanded(flex: 4, child: field(_store, label: 'Magasin')),
+                const SizedBox(width: 6),
+                Expanded(flex: 4, child: field(_depot, label: 'Dépôt')),
+                const SizedBox(width: 6),
+                Expanded(flex: 4, child: field(_split, label: 'Répartir')),
               ],
             ),
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  TextField(
-                    controller: _price,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── En bas : total, paiement, validation ────────────────────────────────────
+
+class _PayBar extends StatelessWidget {
+  const _PayBar({
+    required this.cart,
+    required this.wide,
+    required this.canPay,
+    required this.paid,
+    required this.partial,
+    required this.saving,
+    required this.error,
+    required this.onPaid,
+    required this.onPartialChanged,
+    required this.onSubmit,
+  });
+
+  final PurchaseCart cart;
+  final bool wide;
+  final bool canPay;
+  final _Paid paid;
+  final TextEditingController partial;
+  final bool saving;
+  final String? error;
+  final ValueChanged<_Paid> onPaid;
+  final VoidCallback onPartialChanged;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AmpereColors.of(context);
+    final given = switch (paid) {
+      _Paid.all => cart.total,
+      _Paid.none => 0,
+      _Paid.part => parseDA(partial.text) ?? 0,
+    };
+    final rest = canPay
+        ? (cart.total - given).clamp(0, cart.total)
+        : cart.total;
+
+    final total = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'TOTAL · ${cart.lines.length} produit(s)',
+          style: AmpereType.label.copyWith(color: colors.ink3),
+        ),
+        Text(
+          formatDA(cart.total),
+          style: AmpereType.h3.copyWith(
+            color: colors.ink,
+            fontFeatures: AmpereType.tabular,
+          ),
+        ),
+      ],
+    );
+    final payment = canPay
+        ? Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SegmentedButton<_Paid>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                segments: const [
+                  ButtonSegment(value: _Paid.all, label: Text('Payé')),
+                  ButtonSegment(value: _Paid.part, label: Text('En partie')),
+                  ButtonSegment(value: _Paid.none, label: Text('Pas payé')),
+                ],
+                selected: {paid},
+                onSelectionChanged: (s) => onPaid(s.first),
+              ),
+              if (paid == _Paid.part)
+                SizedBox(
+                  width: 150,
+                  child: TextField(
+                    controller: partial,
+                    autofocus: true,
+                    textAlign: TextAlign.end,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    decoration: InputDecoration(
-                      labelText: 'Prix d’achat / $unit',
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Somme donnée',
                       suffixText: 'DA',
-                      helperText: line.product.lastPurchasePriceHt == null
-                          ? null
-                          : 'Dernier prix : ${formatDA(line.product.lastPurchasePriceHt!)}',
                     ),
-                    onChanged: (_) => _push(),
+                    onChanged: (_) => onPartialChanged(),
                   ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final d in PurchaseDestination.values)
-                        ChoiceChip(
-                          label: Text(d.label),
-                          selected: line.destination == d,
-                          onSelected: (_) => _push(destination: d),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: switch (line.destination) {
-                      PurchaseDestination.both => [
-                        qtyField('Au magasin', _store),
-                        const SizedBox(width: 10),
-                        qtyField('Au dépôt', _depot),
-                      ],
-                      PurchaseDestination.split => [
-                        qtyField('Quantité totale (à répartir)', _qty),
-                      ],
-                      PurchaseDestination.store => [
-                        qtyField('Quantité au magasin', _qty),
-                      ],
-                      PurchaseDestination.depot => [
-                        qtyField('Quantité au dépôt', _qty),
-                      ],
-                    },
-                  ),
-                  if (line.destination == PurchaseDestination.split)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Posé au dépôt et marqué « à répartir » dans la page '
-                        'Stock.',
-                        style: AmpereType.meta.copyWith(color: colors.ink3),
-                      ),
-                    ),
+                ),
+            ],
+          )
+        : null;
+    final debt = Text(
+      cart.isEmpty
+          ? ''
+          : rest == 0
+          ? 'Aucune dette'
+          : 'Dette : ${formatDA(rest)}',
+      style: AmpereType.bodyStrong.copyWith(
+        color: rest == 0 ? colors.ok : colors.warn,
+      ),
+    );
+    final submit = FilledButton.icon(
+      style: FilledButton.styleFrom(minimumSize: const Size(0, 46)),
+      onPressed: saving || cart.isEmpty ? null : onSubmit,
+      icon: const Icon(LucideIcons.packageCheck, size: 18),
+      label: Text(saving ? 'Enregistrement…' : 'Valider l’achat'),
+    );
+
+    return Material(
+      color: colors.surface,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: colors.line)),
+        ),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          10,
+          16,
+          10 + MediaQuery.paddingOf(context).bottom,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  error!,
+                  style: AmpereType.body.copyWith(color: colors.error),
+                ),
+              ),
+            if (wide)
+              Row(
+                children: [
+                  total,
+                  const SizedBox(width: 24),
+                  if (payment != null) Flexible(child: payment),
+                  const Spacer(),
+                  debt,
+                  const SizedBox(width: 16),
+                  submit,
+                ],
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(child: total),
+                  debt,
                 ],
               ),
-            ),
+              if (payment != null) ...[const SizedBox(height: 8), payment],
+              const SizedBox(height: 8),
+              submit,
+            ],
           ],
         ),
       ),

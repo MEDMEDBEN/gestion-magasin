@@ -8,79 +8,55 @@ import '../data/purchases_api.dart';
 import '../../stock/application/stock_controller.dart';
 import '../../suppliers/application/suppliers_controller.dart';
 
-/// Où va la marchandise achetée (demande MEDMEDBEN du 2026-11-19).
-enum PurchaseDestination {
-  store('Magasin'),
-  depot('Dépôt'),
-  both('Les deux'),
-  split('En total (à répartir)');
-
-  const PurchaseDestination(this.label);
-  final String label;
-}
-
-/// Une ligne du PANIER D'ACHAT.
-class PurchaseLine {
-  PurchaseLine({
+/// Une ligne du PANIER D'ACHAT (2026-11-19) : une colonne par lieu — ce qui
+/// va au magasin, au dépôt, et « à répartir » (posé au dépôt, repère dans
+/// Stock). Les trois se cumulent ; au moins une > 0 pour valider.
+class PurchaseCartLine {
+  PurchaseCartLine({
     required this.product,
     required this.unitPriceHt,
-    this.destination = PurchaseDestination.depot,
-    Quantity? quantity,
-    Quantity? toStore,
-    Quantity? toDepot,
-  }) : quantity = quantity ?? _zero,
-       toStore = toStore ?? _zero,
-       toDepot = toDepot ?? _zero;
+    Quantity? store,
+    Quantity? depot,
+    Quantity? split,
+  }) : store = store ?? _zero,
+       depot = depot ?? _zero,
+       split = split ?? _zero;
 
   static final _zero = Quantity.zero;
 
   final Product product;
 
-  /// Prix d'achat unitaire HT, centimes (≥ 0).
+  /// Prix d'achat unitaire HT, centimes (> 0 pour valider).
   final int unitPriceHt;
-  final PurchaseDestination destination;
+  final Quantity store;
+  final Quantity depot;
+  final Quantity split;
 
-  /// Quantité unique (magasin, dépôt ou en total).
-  final Quantity quantity;
-
-  /// « Les deux » : la part de chaque lieu.
-  final Quantity toStore;
-  final Quantity toDepot;
-
-  Quantity get total =>
-      destination == PurchaseDestination.both ? toStore + toDepot : quantity;
+  Quantity get total => store + depot + split;
 
   int get amount =>
       (total * Quantity.fromInt(unitPriceHt)).round().toBigInt().toInt();
 
-  PurchaseLine copyWith({
+  PurchaseCartLine copyWith({
     int? unitPriceHt,
-    PurchaseDestination? destination,
-    Quantity? quantity,
-    Quantity? toStore,
-    Quantity? toDepot,
-  }) => PurchaseLine(
+    Quantity? store,
+    Quantity? depot,
+    Quantity? split,
+  }) => PurchaseCartLine(
     product: product,
     unitPriceHt: unitPriceHt ?? this.unitPriceHt,
-    destination: destination ?? this.destination,
-    quantity: quantity ?? this.quantity,
-    toStore: toStore ?? this.toStore,
-    toDepot: toDepot ?? this.toDepot,
+    store: store ?? this.store,
+    depot: depot ?? this.depot,
+    split: split ?? this.split,
   );
 
   /// Corps de la ligne pour `POST /purchases/direct`.
   Map<String, Object?> toJson() => {
     'productId': product.id,
     'unitPriceHt': unitPriceHt,
-    ...switch (destination) {
-      PurchaseDestination.store => {'toStore': quantityToJson(quantity)},
-      PurchaseDestination.depot => {'toDepot': quantityToJson(quantity)},
-      PurchaseDestination.split => {'toSplit': quantityToJson(quantity)},
-      PurchaseDestination.both => {
-        'toStore': quantityToJson(toStore),
-        'toDepot': quantityToJson(toDepot),
-      },
-    },
+    if (store > Quantity.zero) 'toStore': quantityToJson(store),
+    if (depot > Quantity.zero) 'toDepot': quantityToJson(depot),
+    if (split > Quantity.zero) 'toSplit': quantityToJson(split),
   };
 }
 
@@ -98,7 +74,7 @@ class PurchaseCart {
   final String id;
   final String? supplierId;
   final String? supplierName;
-  final List<PurchaseLine> lines;
+  final List<PurchaseCartLine> lines;
 
   int get total => lines.fold(0, (sum, l) => sum + l.amount);
   bool get isEmpty => lines.isEmpty;
@@ -118,36 +94,35 @@ class PurchaseCartNotifier extends Notifier<PurchaseCart> {
     lines: state.lines,
   );
 
-  /// Ajoute un produit (ou augmente sa ligne si elle existe déjà).
+  /// Ajoute un produit (une ligne par produit : un second ajout la remplace).
   void add(
     Product product, {
     int? unitPriceHt,
-    PurchaseDestination destination = PurchaseDestination.depot,
-    Quantity? quantity,
-    Quantity? toStore,
-    Quantity? toDepot,
+    Quantity? store,
+    Quantity? depot,
+    Quantity? split,
   }) {
-    final line = PurchaseLine(
+    final line = PurchaseCartLine(
       product: product,
       unitPriceHt: unitPriceHt ?? product.lastPurchasePriceHt ?? 0,
-      destination: destination,
-      quantity: quantity,
-      toStore: toStore,
-      toDepot: toDepot,
+      store: store,
+      depot: depot,
+      split: split,
     );
     state = PurchaseCart(
       id: state.id,
       supplierId: state.supplierId,
       supplierName: state.supplierName,
+      // Le dernier ajouté EN TÊTE : il est sous les yeux, sous la barre d'ajout.
       lines: [
+        line,
         for (final l in state.lines)
           if (l.product.id != product.id) l,
-        line,
       ],
     );
   }
 
-  void update(int index, PurchaseLine line) => state = PurchaseCart(
+  void update(int index, PurchaseCartLine line) => state = PurchaseCart(
     id: state.id,
     supplierId: state.supplierId,
     supplierName: state.supplierName,
