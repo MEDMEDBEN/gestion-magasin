@@ -44,6 +44,10 @@ chmod +x install.sh add-site.sh
 ## 2. Passer gestion-magasin sur le socle (depuis l'ancien Traefik du projet)
 
 ```bash
+# a0. Arrêter l'ancien portfolio (il est sur le réseau de l'ancien Traefik).
+#     AVANT son git pull : c'est l'ancien fichier qui connaît ses conteneurs.
+cd /portfolio && docker compose down
+
 # a. Arrêter l'ancien Traefik et l'ancien Nginx du projet (libère 80/443).
 #    Les DONNÉES restent : jamais « -v ».
 cd /gestion-magasin/infra
@@ -62,6 +66,12 @@ cd /opt/proxy && ./install.sh
 # e. Relancer le magasin : backend + publication de la version web.
 cd /gestion-magasin/infra
 docker compose up -d --build --remove-orphans
+
+# f. Relancer le portfolio sur le socle (site publié + API de simulation).
+#    Sa conf est déjà là : nginx/conf.d/mohamedbennabi.tech.conf (+ www → racine)
+#    et traefik/dynamic/mohamedbennabi.tech.yml.
+cd /portfolio && git pull
+docker compose up -d --build --remove-orphans
 ```
 
 Vérifier :
@@ -70,6 +80,8 @@ docker compose -f /opt/proxy/docker-compose.yml ps     # traefik et nginx « run
 docker compose ps                                       # backend + postgres « running », web « exited (0) »
 ls /opt/proxy/sites/elec.mohamedbennabi.tech            # index.html, main.dart.js…
 curl -I https://elec.mohamedbennabi.tech                # HTTP/2 200
+curl -I https://mohamedbennabi.tech                     # HTTP/2 200 (portfolio)
+curl -s https://mohamedbennabi.tech/api/health          # {"status":"ok",…}
 ```
 Le service `web` s'arrête après avoir publié les fichiers : c'est normal (le Nginx
 commun les sert). Chaque `docker compose up -d --build` republie la version web.

@@ -1,0 +1,19 @@
+# Portfolio : la racine ET www (deux routeurs = deux certificats séparés ; si
+# www n'a pas de DNS, seul son certificat échoue, la racine reste en ligne).
+# Nginx fait la redirection www → racine (conf.d/mohamedbennabi.tech.conf).
+http:
+  routers:
+    mohamedbennabi-tech:
+      rule: "Host(`mohamedbennabi.tech`)"
+      entryPoints: [websecure]
+      service: nginx
+      middlewares: [hsts]
+      tls:
+        certResolver: le
+    www-mohamedbennabi-tech:
+      rule: "Host(`www.mohamedbennabi.tech`)"
+      entryPoints: [websecure]
+      service: nginx
+      middlewares: [hsts]
+      tls:
+        certResolver: le
