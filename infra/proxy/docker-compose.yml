@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SOCLE COMMUN DU VPS : UN Traefik + UN Nginx pour TOUS les sites et applis.
+#
+#   Internet ──► Traefik (80/443, HTTPS Let's Encrypt)
+#                   └──► Nginx (un fichier de site par domaine)
+#                          ├─ fichiers web du site   (/srv/sites/<domaine>)
+#                          └─ /api, etc. ─► backend de l'appli (réseau « proxy »)
+#
+# À placer dans /opt/proxy (voir README.md). Chaque appli rejoint le réseau
+# Docker « proxy » ; ajouter un site = ./add-site.sh <domaine> [backend:port].
+# ─────────────────────────────────────────────────────────────────────────────
+name: proxy
+
+services:
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      # Routes lues dans des FICHIERS (un par site) : pas d'accès au socket
+      # Docker — un conteneur compromis ne pilote pas Traefik.
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL:?ACME_EMAIL manquant dans .env}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "./traefik/dynamic:/etc/traefik/dynamic:ro"
+      - "./letsencrypt:/letsencrypt"
+    networks: [proxy]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - "./nginx/conf.d:/etc/nginx/conf.d:ro"
+      - "./nginx/snippets:/etc/nginx/snippets:ro"
+      - "./sites:/srv/sites:ro"
+    networks: [proxy]
+
+networks:
+  proxy:
+    name: proxy
+    external: true

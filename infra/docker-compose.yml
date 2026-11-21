@@ -1,71 +1,52 @@
-# ─────────────────────────────────────────────────────────
-# Production — à lancer sur le VPS uniquement
-# Traefik gère le HTTPS automatique (Let's Encrypt) et route
-# le trafic : /api vers le backend, le reste vers la version web.
-# ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# GESTION MAGASIN — production, branchée sur le SOCLE COMMUN du VPS
+# (/opt/proxy : un Traefik + un Nginx pour tous les sites, voir proxy/README.md).
+#
+#   https://${API_DOMAIN}/api/…  → Traefik → Nginx commun → backend (ce projet)
+#   https://${API_DOMAIN}/…      → Traefik → Nginx commun → fichiers web publiés
+#                                   par le service « web » dans ${SITES_DIR}
+#
+# Prérequis : le socle tourne (réseau « proxy » créé par /opt/proxy/install.sh).
+# Lancer : docker compose up -d --build --remove-orphans
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  traefik:
-    image: traefik:v3.6
-    restart: unless-stopped
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
-      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.le.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./traefik/letsencrypt:/letsencrypt"
-
   backend:
     build:
       context: ../backend
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      # TOUJOURS deux proxys devant le backend dans ce mode (Traefik puis
+      # Nginx) : fixé ici, il l'emporte sur une ancienne valeur du .env (1).
+      TRUST_PROXY_HOPS: "2"
     depends_on:
       postgres:
         condition: service_healthy
-    # Les fichiers joints vivent sur un VOLUME du serveur (STORAGE_DIR) : plus
-    # de service de stockage à provisionner ni à sauvegarder séparément.
     volumes:
       - backend_storage:/app/var/storage
-    labels:
-      - "traefik.enable=true"
-      # Seul /api va au backend ; le reste du domaine sert la version web.
-      - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN}`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls.certresolver=le"
-      # HSTS : le navigateur n'essaie plus jamais le http (page de connexion web).
-      - "traefik.http.middlewares.hsts.headers.stsSeconds=31536000"
-      - "traefik.http.middlewares.hsts.headers.stsIncludeSubdomains=true"
-      - "traefik.http.routers.backend.middlewares=hsts"
-      - "traefik.http.services.backend.loadbalancer.server.port=3000"
+    networks:
+      default: {}
+      proxy:
+        # Nom que le Nginx commun utilise (proxy/nginx/conf.d/<domaine>.conf).
+        aliases: [magasin-backend]
 
-  # Version WEB de l'app (iPhone, navigateur) sur le même domaine que l'API :
-  # https://${API_DOMAIN}/ — compilée au `docker compose build`.
+  # Version WEB : compilée au build, puis COPIÉE dans le dossier du site servi
+  # par le Nginx commun — le conteneur s'arrête ensuite (aucun serveur ici).
+  # Les fichiers sont recopiés par-dessus à chaque build (Flutter garde les
+  # mêmes noms de fichiers).
   web:
     build:
       context: ../app
       dockerfile: Dockerfile.web
       args:
         API_BASE_URL: https://${API_DOMAIN:?API_DOMAIN manquant dans .env}/api
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.web.rule=Host(`${API_DOMAIN}`)"
-      - "traefik.http.routers.web.entrypoints=websecure"
-      - "traefik.http.routers.web.tls.certresolver=le"
-      - "traefik.http.routers.web.middlewares=hsts"
-      - "traefik.http.services.web.loadbalancer.server.port=80"
+    restart: "no"
+    entrypoint: ["sh", "-c", "cp -a /usr/share/nginx/html/. /dest/ && echo 'Version web publiée.'"]
+    volumes:
+      - "${SITES_DIR:-/opt/proxy/sites}/${API_DOMAIN}:/dest"
+    network_mode: none
 
   postgres:
     image: postgres:16-alpine
@@ -81,7 +62,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    # Pas de port exposé publiquement — accessible seulement depuis le réseau Docker interne
+    # Jamais sur le réseau « proxy » : la base reste interne au projet.
+
+networks:
+  proxy:
+    name: proxy
+    external: true
 
 volumes:
   postgres_data:

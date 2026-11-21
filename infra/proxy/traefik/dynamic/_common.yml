@@ -1,0 +1,13 @@
+# Commun à tous les sites : le service Nginx et l'en-tête HSTS.
+http:
+  services:
+    nginx:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://nginx:80"
+  middlewares:
+    hsts:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true

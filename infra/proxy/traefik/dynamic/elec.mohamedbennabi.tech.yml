@@ -1,0 +1,10 @@
+# Site elec.mohamedbennabi.tech : HTTPS par Traefik, puis Nginx (fichier conf.d/elec.mohamedbennabi.tech.conf).
+http:
+  routers:
+    elec-mohamedbennabi-tech:
+      rule: "Host(`elec.mohamedbennabi.tech`)"
+      entryPoints: [websecure]
+      service: nginx
+      middlewares: [hsts]
+      tls:
+        certResolver: le
