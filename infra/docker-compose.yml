@@ -10,6 +10,10 @@
 # Lancer : docker compose up -d --build --remove-orphans
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Nom du projet FIGÉ : les données vivent dans les volumes « infra_postgres_data »
+# et « infra_backend_storage ». Ne jamais le changer (sinon base neuve et vide).
+name: infra
+
 services:
   backend:
     build:

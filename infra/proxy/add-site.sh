@@ -7,6 +7,8 @@
 #       → fichiers web + /api/ vers le conteneur « shop-backend » port 3000
 #   ./add-site.sh shop.mondomaine.com shop-backend:3000 /backend/
 #       → même chose, avec un autre préfixe que /api/
+#   ./add-site.sh app.mondomaine.com mon-app:3000 /
+#       → TOUT le site vers le conteneur (Next.js, WordPress…), aucun fichier ici
 #
 # Avant : l'enregistrement DNS A du domaine doit pointer vers ce VPS (sinon pas
 # de certificat), et le conteneur backend doit être sur le réseau « proxy ».
@@ -17,7 +19,7 @@ DOMAIN="${1:-}"
 BACKEND="${2:-}"
 PREFIX="${3:-/api/}"
 if [ -z "$DOMAIN" ]; then
-  sed -n '2,13p' "$0"
+  sed -n '2,15p' "$0"
   exit 1
 fi
 case "$DOMAIN" in
@@ -32,16 +34,19 @@ if [ -e "$CONF" ] || [ -e "$ROUTE" ]; then
 fi
 
 ROUTER=$(echo "$DOMAIN" | tr '.' '-')
-mkdir -p "sites/$DOMAIN"
-if [ -z "$(ls -A "sites/$DOMAIN")" ]; then
-  echo "<!doctype html><meta charset=utf-8><title>$DOMAIN</title><p>$DOMAIN est en ligne." > "sites/$DOMAIN/index.html"
-fi
-
-if [ -n "$BACKEND" ]; then
-  sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__BACKEND__#$BACKEND#g" -e "s#__PREFIX__#$PREFIX#g" \
-    templates/site-api.conf.tpl > "$CONF"
+if [ -n "$BACKEND" ] && [ "$PREFIX" = "/" ]; then
+  # Appli complète : le conteneur sert tout, pas de dossier de fichiers.
+  sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__BACKEND__#$BACKEND#g"     templates/site-app.conf.tpl > "$CONF"
 else
-  sed -e "s#__DOMAIN__#$DOMAIN#g" templates/site-static.conf.tpl > "$CONF"
+  mkdir -p "sites/$DOMAIN"
+  if [ -z "$(ls -A "sites/$DOMAIN")" ]; then
+    echo "<!doctype html><meta charset=utf-8><title>$DOMAIN</title><p>$DOMAIN est en ligne." > "sites/$DOMAIN/index.html"
+  fi
+  if [ -n "$BACKEND" ]; then
+    sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__BACKEND__#$BACKEND#g" -e "s#__PREFIX__#$PREFIX#g"       templates/site-api.conf.tpl > "$CONF"
+  else
+    sed -e "s#__DOMAIN__#$DOMAIN#g" templates/site-static.conf.tpl > "$CONF"
+  fi
 fi
 sed -e "s#__DOMAIN__#$DOMAIN#g" -e "s#__ROUTER__#$ROUTER#g" \
   templates/router.yml.tpl > "$ROUTE"

@@ -43,6 +43,19 @@ chmod +x install.sh add-site.sh
 
 ## 2. Passer gestion-magasin sur le socle (depuis l'ancien Traefik du projet)
 
+**Les données ne partent pas** : la base et les fichiers sont dans les volumes
+Docker `infra_postgres_data` et `infra_backend_storage`. L'ancien et le nouveau
+compose utilisent les mêmes (nom de projet figé : `name: infra`). `down` arrête
+les conteneurs sans toucher aux volumes ; seul `down -v` les efface — ne JAMAIS
+l'utiliser. Par prudence, une sauvegarde avant de commencer :
+```bash
+cd /gestion-magasin/infra
+docker volume ls | grep infra_                     # infra_postgres_data doit exister
+docker compose -f docker-compose.standalone.yml exec -T postgres \
+  sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > ~/sauvegarde-$(date +%F).sql
+ls -lh ~/sauvegarde-*.sql                          # le fichier ne doit pas être vide
+```
+
 ```bash
 # a0. Arrêter l'ancien portfolio (il est sur le réseau de l'ancien Traefik).
 #     AVANT son git pull : c'est l'ancien fichier qui connaît ses conteneurs.
@@ -120,7 +133,15 @@ puis :
 cd /opt/proxy
 ./add-site.sh shop.mondomaine.com shop-backend:8080          # /api/ → shop-backend:8080
 ./add-site.sh admin.mondomaine.com admin-api:3000 /backend/   # autre préfixe
+./add-site.sh app.mondomaine.com mon-app:3000 /               # TOUT vers le conteneur
 ```
+Le dernier cas (préfixe `/`) est pour une appli qui sert elle-même ses pages
+(Next.js, WordPress, Odoo…) : aucun dossier `sites/` n'est créé.
+
+**Où mettre le `.env` de chaque projet** : dans le dossier du projet, à côté de
+son `docker-compose.yml` (ex. `/gestion-magasin/infra/.env`, `/shop/.env`). Le
+socle n'a que le sien (`/opt/proxy/.env` : `ACME_EMAIL`). Les `.env` ne vont
+jamais dans git (secrets) : on garde un `.env.example` sans valeurs réelles.
 
 Le script crée `nginx/conf.d/<domaine>.conf`, `traefik/dynamic/<domaine>.yml` et
 `sites/<domaine>/`, vérifie Nginx (`nginx -t`) puis le recharge. Le certificat HTTPS

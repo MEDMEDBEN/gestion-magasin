@@ -4,6 +4,10 @@
 # Le mode normal est docker-compose.yml + le socle commun infra/proxy.
 # ─────────────────────────────────────────────────────────
 
+# Nom du projet FIGÉ : les données vivent dans les volumes « infra_postgres_data »
+# et « infra_backend_storage ». Ne jamais le changer (sinon base neuve et vide).
+name: infra
+
 services:
   traefik:
     image: traefik:v3.6
