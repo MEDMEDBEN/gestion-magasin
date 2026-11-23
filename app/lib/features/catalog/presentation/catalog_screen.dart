@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/error/api_exception.dart';
 import '../../../core/error/error_codes.dart';
+import '../../../core/providers.dart' show localSettingsStoreProvider;
 import '../../../core/quantity.dart';
 import '../../../ui/breakpoints.dart';
 import '../../../ui/theme/ampere_colors.dart';
@@ -143,11 +144,65 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
       centered: true,
     );
     if (saved == null || saved == product) return;
+    if (product == null && rights.canPrintLabels && saved.isActive) {
+      _offerLabel(saved);
+      return;
+    }
     _showSnack(
       product == null
           ? '${saved.name} créé — code-barres ${saved.barcode}.'
           : '${saved.name} mis à jour.',
     );
+  }
+
+  /// Produit tout juste créé (demande MEDMEDBEN du 2026-11-23) : son
+  /// étiquette est PROPOSÉE, sans rien bloquer — une carte flottante, un
+  /// geste pour imprimer, elle s'efface seule sinon.
+  void _offerLabel(Product saved) {
+    if (!mounted) return;
+    final c = AmpereColors.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          key: const ValueKey('label-offer'),
+          behavior: SnackBarBehavior.floating,
+          width: MediaQuery.sizeOf(context).width > 640 ? 520 : null,
+          duration: const Duration(seconds: 10),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          content: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: c.okBg,
+                child: Icon(LucideIcons.check, size: 18, color: c.ok),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${saved.name} créé',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    Text('Code-barres ${saved.barcode}'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          action: SnackBarAction(
+            label: 'Imprimer l’étiquette',
+            onPressed: () => _printLabels([saved]),
+          ),
+        ),
+      );
   }
 
   /// « Supprimer » (demande MEDMEDBEN du 2026-11-15) : EFFACEMENT DÉFINITIF
@@ -215,14 +270,29 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
       );
       return;
     }
-    final copies = await askLabels(context, productCount: products.length);
-    if (copies == null || !mounted) return;
+    final store = ref.read(localSettingsStoreProvider);
+    final saved = await savedLabelParts(store);
+    if (!mounted) return;
+    final request = await askLabels(
+      context,
+      productCount: products.length,
+      parts: saved,
+      productName: products.length == 1 ? products.single.name : null,
+    );
+    if (request == null || !mounted) return;
+    // Le contenu choisi devient celui proposé la prochaine fois, sur ce poste.
+    await saveLabelParts(store, request.parts);
     try {
       final pdf = await ref
           .read(catalogApiProvider)
           .labels(
             items: [
-              for (final p in products) (productId: p.id, copies: copies),
+              for (final p in products)
+                (productId: p.id, copies: request.copies),
+            ],
+            parts: [
+              for (final part in LabelPart.values)
+                if (request.parts.contains(part)) part.code,
             ],
           );
       await ref.read(printPdfProvider)(pdf, 'etiquettes.pdf');

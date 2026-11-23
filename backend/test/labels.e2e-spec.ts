@@ -198,6 +198,38 @@ describe('Étiquettes (e2e)', () => {
     expect(json(res).message).toContain(`Produit étiquette ${counter}`);
   });
 
+  /// Contenu au choix (2026-11-23) : sans PRIX demandé, un produit sans prix
+  /// au tarif s'imprime ; sans CODE-BARRES, un code illisible ne bloque pas.
+  it('contenu choisi : nom + code-barres sans prix, nom seul, contenu vide refusé', async () => {
+    const p = await product({ detail: 1000 });
+    const spy = jest.spyOn(labelsModule, 'renderLabels');
+    try {
+      await labels(tokens.vendeur, {
+        priceTierId: grosId, // pas de prix GROS : sans importance ici
+        parts: ['NAME', 'BARCODE'],
+        items: [{ productId: p, copies: 2 }],
+      }).expect(200);
+      expect(spy.mock.calls[0][1]).toEqual(['NAME', 'BARCODE']);
+      const long = await product({
+        detail: 1000,
+        barcode: `LONG-${suffix}-${'Y'.repeat(30)}`,
+      });
+      const res = await labels(tokens.vendeur, {
+        parts: ['NAME'],
+        items: [{ productId: long, copies: 1 }],
+      }).expect(200);
+      expect(pages(res.body as Buffer)).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+    for (const parts of [[], ['NAME', 'NAME'], ['LOGO']]) {
+      await labels(tokens.vendeur, {
+        parts,
+        items: [{ productId: p, copies: 1 }],
+      }).expect(400);
+    }
+  });
+
   it('produit désactivé : pas d’étiquette, et il est nommé', async () => {
     const p = await product({ detail: 1000, isActive: false });
     const res = await labels(tokens.vendeur, {

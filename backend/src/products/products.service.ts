@@ -15,7 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { storeIdentity } from '../settings/store-settings';
 import { StorageService } from '../storage/storage.service';
 import { StockLedgerService } from '../stock/stock-ledger.service';
-import { labelFor, renderLabels } from './labels';
+import { LABEL_PARTS, labelFor, renderLabels } from './labels';
 import {
   CreateProductDto,
   LabelsDto,
@@ -147,6 +147,9 @@ export class ProductsService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const parts = dto.parts ?? LABEL_PARTS;
+    // Sans prix sur l'étiquette, un produit sans prix s'imprime quand même.
+    const withPrice = parts.includes('PRICE');
     const ids = [...new Set(dto.items.map((item) => item.productId))];
     const [products, tier] = await Promise.all([
       this.prisma.product.findMany({
@@ -177,7 +180,7 @@ export class ProductsService {
         HttpStatus.UNPROCESSABLE_ENTITY,
       );
     }
-    if (!tier) {
+    if (withPrice && !tier) {
       throw new BusinessException(
         ErrorCode.PRICE_NOT_DEFINED,
         'Tarif introuvable ou inactif',
@@ -186,12 +189,14 @@ export class ProductsService {
     }
     const byId = new Map(products.map((p) => [p.id, p]));
     const priceOf = (id: string) =>
-      byId.get(id)!.prices.find((p) => p.priceTierId === tier.id)?.priceHt;
+      withPrice
+        ? byId.get(id)!.prices.find((p) => p.priceTierId === tier!.id)?.priceHt
+        : 0;
     const unpriced = products.filter((p) => priceOf(p.id) === undefined);
     if (unpriced.length > 0) {
       throw new BusinessException(
         ErrorCode.PRICE_NOT_DEFINED,
-        `Sans prix au tarif ${tier.name} : ` +
+        `Sans prix au tarif ${tier!.name} : ` +
           unpriced
             .slice(0, 5)
             .map((p) => p.name)
@@ -208,6 +213,7 @@ export class ProductsService {
         );
         return Array<typeof label>(item.copies).fill(label);
       }),
+      parts,
     );
   }
 

@@ -63,11 +63,16 @@ class RecordingCatalogApi extends CatalogApi {
   /// Étiquettes demandées : support, puis (produit, exemplaires).
   final List<List<({String productId, int copies})>> labelCalls = [];
 
+  /// Contenu demandé à chaque impression (`NAME`, `PRICE`, `BARCODE`).
+  final List<List<String>?> labelParts = [];
+
   @override
   Future<Uint8List> labels({
     required List<({String productId, int copies})> items,
+    List<String>? parts,
   }) async {
     labelCalls.add(items);
+    labelParts.add(parts);
     return Uint8List(4);
   }
 

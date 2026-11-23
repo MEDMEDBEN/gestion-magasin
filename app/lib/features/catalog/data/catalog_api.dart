@@ -148,13 +148,17 @@ class CatalogApi {
 
   /// Étiquettes (PDF rendu serveur) : TOUJOURS 35 × 45 mm portrait (décision
   /// MEDMEDBEN du 2026-11-13). Prix unitaire TTC du tarif par défaut.
+  /// `parts` : contenu de l'étiquette (`NAME`, `PRICE`, `BARCODE`) ; absent,
+  /// les trois.
   Future<Uint8List> labels({
     required List<({String productId, int copies})> items,
+    List<String>? parts,
   }) async {
     final response = await guardBytes(
       () => _dio.post<List<int>>(
         '/products/labels',
         data: {
+          'parts': ?parts,
           'items': [
             for (final item in items)
               {'productId': item.productId, 'copies': item.copies},

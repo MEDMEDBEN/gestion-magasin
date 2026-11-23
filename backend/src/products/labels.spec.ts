@@ -3,6 +3,7 @@ import { Prisma } from '../generated/prisma/client';
 import {
   Label,
   LABEL,
+  type LabelPart,
   labelFor,
   MIN_MODULE_MM,
   moduleWidthMm,
@@ -70,6 +71,28 @@ describe('étiquettes', () => {
     );
     expect(pdf.length).toBeLessThan(1_000_000); // ~630 o par page, l'image une fois;
     expect(Date.now() - start).toBeLessThan(8_000);
+  });
+
+  /// 2026-11-23 : contenu au choix — toutes les combinaisons se rendent, une
+  /// page par étiquette ; sans code-barres, aucun code n'est contrôlé.
+  it('contenu au choix : chaque combinaison donne une page par étiquette', async () => {
+    const label = labelFor(cable, 145000);
+    const combos: LabelPart[][] = [
+      ['BARCODE'],
+      ['NAME'],
+      ['PRICE'],
+      ['NAME', 'PRICE'],
+      ['NAME', 'BARCODE'],
+      ['PRICE', 'BARCODE'],
+    ];
+    for (const parts of combos) {
+      expect(pages(await renderLabels([label, label], parts))).toBe(2);
+    }
+    const long = labelFor({ ...cable, barcode: 'X'.repeat(40) }, 1000);
+    await expect(
+      renderLabels([long], ['NAME', 'PRICE']),
+    ).resolves.toBeInstanceOf(Buffer);
+    await expect(renderLabels([long], ['BARCODE'])).rejects.toBeDefined();
   });
 
   /// Décision MEDMEDBEN du 2026-11-13 : UNE étiquette par page, 35 × 45 mm

@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayNotEmpty,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -26,6 +27,7 @@ import {
   IsCanonicalUuid,
   IsOptionalNotNull,
 } from '../../common/validation';
+import { LABEL_PARTS, type LabelPart } from '../labels';
 
 /// Doit rester aligné sur l'enum `ProductUnit` du schéma Prisma.
 /// Unités PROPOSÉES à la saisie (décision MEDMEDBEN du 2026-10-05). Les autres
@@ -544,6 +546,19 @@ export class LabelsDto {
   @IsCanonicalUuid()
   @IsOptional()
   priceTierId?: string;
+
+  @ApiPropertyOptional({
+    enum: LABEL_PARTS,
+    isArray: true,
+    description:
+      'Contenu de l’étiquette (au moins un). Absent : nom, prix et code-barres.',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsIn(LABEL_PARTS, { each: true })
+  @IsOptional()
+  parts?: LabelPart[];
 
   @ApiProperty({ type: [LabelItemDto] })
   @IsArray()

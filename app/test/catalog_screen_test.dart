@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gestion_magasin/core/error/api_exception.dart';
 import 'package:gestion_magasin/core/money.dart';
+import 'package:gestion_magasin/core/providers.dart'
+    show localSettingsStoreProvider;
 import 'package:gestion_magasin/core/photos.dart';
 import 'package:gestion_magasin/data/local/app_database.dart';
 import 'package:gestion_magasin/data/local/local_settings_store.dart';
@@ -23,6 +25,20 @@ import 'package:gestion_magasin/ui/theme/app_theme.dart';
 
 import 'support/catalog_fakes.dart';
 import 'support/fakes.dart';
+
+/// Réglages du poste en mémoire (les requêtes Drift ne se résolvent pas dans
+/// le temps simulé de `testWidgets`).
+class _MemorySettings extends LocalSettingsStore {
+  _MemorySettings(super.db);
+
+  final values = <String, String>{};
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
+}
 
 /// Mise à jour du catalogue neutralisée : les écrans lisent des valeurs fixes.
 class _IdleSync extends CatalogSyncController {
@@ -92,11 +108,13 @@ void main() {
   late RecordingCatalogApi api;
   late _ApiOnlyActions actions;
   final printed = <String>[];
+  late _MemorySettings settings;
 
   setUp(() {
     printed.clear();
     db = AppDatabase.forTesting();
     api = RecordingCatalogApi();
+    settings = _MemorySettings(db);
   });
   tearDown(() => db.close());
 
@@ -145,6 +163,7 @@ void main() {
           pickPhoto ?? () async => pickedPhoto,
         ),
         catalogApiProvider.overrideWithValue(api),
+        localSettingsStoreProvider.overrideWithValue(settings),
         printPdfProvider.overrideWithValue((bytes, name) async {
           printed.add(name);
         }),
@@ -207,7 +226,7 @@ void main() {
 
     await tester.tap(find.text('Étiquettes'));
     await tester.pumpAndSettle();
-    expect(find.text('Étiquettes — 1 produit(s)'), findsOneWidget);
+    expect(find.text('Étiquette — Câble'), findsOneWidget);
     await tester.enterText(find.byType(TextField).last, '101');
     await tester.tap(find.text('Imprimer'));
     await tester.pumpAndSettle();
@@ -220,6 +239,53 @@ void main() {
     expect(api.labelCalls.single.map((i) => (i.productId, i.copies)), [
       ('p1', 2),
     ]);
+  });
+
+  /// 2026-11-23 : contenu au choix (nom, prix, code-barres), retenu sur le
+  /// poste pour la fois suivante ; rien de coché = pas d'impression.
+  testWidgets('étiquettes : contenu choisi, envoyé et retenu', (tester) async {
+    useScreenSize(tester, const Size(900, 900));
+    await tester.pumpWidget(
+      wrap(
+        _vendeur(),
+        products: [product(id: 'p1', name: 'Câble')],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Étiquettes'));
+    await tester.pumpAndSettle();
+    // Tout est coché la première fois.
+    for (final code in ['NAME', 'PRICE', 'BARCODE']) {
+      final chip = tester.widget<FilterChip>(
+        find.byKey(ValueKey('label-part-$code')),
+      );
+      expect(chip.selected, isTrue);
+    }
+    // Code-barres sans prix.
+    await tester.tap(find.byKey(const ValueKey('label-part-PRICE')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(api.labelParts.single, ['NAME', 'BARCODE']);
+    expect(settings.values['labels.parts'], 'NAME,BARCODE');
+
+    // La fois suivante : le même contenu ; tout décoché = bouton inactif.
+    await tester.tap(find.text('Étiquettes'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<FilterChip>(find.byKey(const ValueKey('label-part-PRICE')))
+          .selected,
+      isFalse,
+    );
+    await tester.tap(find.byKey(const ValueKey('label-part-NAME')));
+    await tester.tap(find.byKey(const ValueKey('label-part-BARCODE')));
+    await tester.pumpAndSettle();
+    expect(find.text('Choisissez au moins un élément.'), findsOneWidget);
+    await tester.tap(find.text('Imprimer'));
+    await tester.pumpAndSettle();
+    expect(api.labelCalls, hasLength(1));
   });
 
   testWidgets('étiquettes : pas de bouton sans le droit de lire les prix', (
@@ -346,7 +412,7 @@ void main() {
 
     await tester.tap(find.byTooltip('Étiquette').last);
     await tester.pumpAndSettle();
-    expect(find.text('Étiquettes — 1 produit(s)'), findsOneWidget);
+    expect(find.text('Étiquette — Disjoncteur'), findsOneWidget);
     await tester.tap(find.text('Imprimer'));
     await tester.pumpAndSettle();
     expect(api.labelCalls.single.map((i) => i.productId), ['p2']);
@@ -542,7 +608,15 @@ void main() {
     'ADMIN : créer un produit n’envoie que les champs saisis (code-barres généré serveur)',
     (tester) async {
       useScreenSize(tester, const Size(400, 2200));
-      await tester.pumpWidget(wrap(_admin()));
+      // `price.read` : le droit d'imprimer l'étiquette proposée à la fin.
+      await tester.pumpWidget(
+        wrap(
+          authUser(
+            roles: const ['ADMIN'],
+            permissions: [..._allProductPermissions, 'price.read'],
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Aucun produit'), findsOneWidget);
@@ -587,6 +661,16 @@ void main() {
         {'locationId': 'mag', 'quantity': '120.000'},
       ]);
       expect(sent.containsKey('isActive'), isFalse);
+
+      // 2026-11-23 : l'étiquette du produit créé est PROPOSÉE, sans bloquer.
+      expect(find.text('Disjoncteur 16A créé'), findsOneWidget);
+      await tester.tap(find.text('Imprimer l’étiquette'));
+      await tester.pumpAndSettle();
+      expect(find.text('Étiquette — Disjoncteur 16A'), findsOneWidget);
+      await tester.tap(find.text('Imprimer'));
+      await tester.pumpAndSettle();
+      expect(api.labelCalls.single.map((i) => i.productId), ['new']);
+      expect(printed, ['etiquettes.pdf']);
     },
   );
 
