@@ -835,6 +835,31 @@ void main() {
     expect(actions.lastPhoto, photo);
   });
 
+  /// 2026-11-23 : la photo de la fiche s'ouvre en GRAND, zoomable.
+  testWidgets('photo : un clic l’agrandit, la croix la ferme', (tester) async {
+    useScreenSize(tester, const Size(400, 2200));
+    final photo = Uint8List.fromList(
+      img.encodeJpg(img.Image(width: 8, height: 8)),
+    );
+    await tester.pumpWidget(wrap(_admin(), pickedPhoto: photo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Nouveau produit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Plus de détails'));
+    await tester.pumpAndSettle();
+    // Sans photo : rien à agrandir.
+    expect(find.byKey(const ValueKey('photo-agrandir')), findsNothing);
+    await tester.tap(find.text('Ajouter une photo'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('photo-agrandir')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('photo-zoom')), findsOneWidget);
+    await tester.tap(find.byTooltip('Fermer').last);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('photo-zoom')), findsNothing);
+  });
+
   testWidgets('photo illisible (HEIC…) : un message, pas un silence', (
     tester,
   ) async {

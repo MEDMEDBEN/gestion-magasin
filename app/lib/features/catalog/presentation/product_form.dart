@@ -777,23 +777,74 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     final existing = widget.existing;
     final hasPhoto =
         _newPhoto != null || (!_removePhoto && existing?.imageKey != null);
+    // La photo s'ouvre en GRAND au clic (2026-11-23).
+    final bytes =
+        _newPhoto ??
+        (hasPhoto
+            ? ref
+                  .watch(
+                    productImageProvider((
+                      productId: existing!.id,
+                      imageKey: existing.imageKey!,
+                    )),
+                  )
+                  .value
+            : null);
+    final preview = ClipRRect(
+      borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
+      child: SizedBox(
+        width: 96,
+        height: 96,
+        child: _newPhoto != null
+            ? Image.memory(_newPhoto!, fit: BoxFit.cover)
+            : hasPhoto
+            ? ProductThumbnail(product: existing!, size: 96)
+            : ColoredBox(
+                color: colors.surface2,
+                child: Icon(LucideIcons.image, color: colors.ink3),
+              ),
+      ),
+    );
     return Row(
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
-          child: SizedBox(
-            width: 96,
-            height: 96,
-            child: _newPhoto != null
-                ? Image.memory(_newPhoto!, fit: BoxFit.cover)
-                : hasPhoto
-                ? ProductThumbnail(product: existing!, size: 96)
-                : ColoredBox(
-                    color: colors.surface2,
-                    child: Icon(LucideIcons.image, color: colors.ink3),
+        if (bytes == null)
+          preview
+        else
+          Tooltip(
+            message: 'Agrandir la photo',
+            child: InkWell(
+              key: const ValueKey('photo-agrandir'),
+              borderRadius: BorderRadius.circular(
+                AmpereGeometry.iconChipRadius,
+              ),
+              onTap: () => showPhotoViewer(
+                context,
+                bytes: bytes,
+                title: _name.text.trim().isEmpty ? 'Photo' : _name.text.trim(),
+              ),
+              child: Stack(
+                children: [
+                  preview,
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(
+                        LucideIcons.maximize2,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
+                ],
+              ),
+            ),
           ),
-        ),
         const SizedBox(width: 14),
         if (widget.canEdit)
           Expanded(
