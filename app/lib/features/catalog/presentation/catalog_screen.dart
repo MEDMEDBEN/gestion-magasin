@@ -130,6 +130,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
   }
 
   Future<void> _openProduct(CatalogRights rights, [Product? product]) async {
+    var labelSent = false;
     final saved = await openFormPanel<Product>(
       context,
       ProductForm(
@@ -140,10 +141,16 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
         canReadSuppliers: rights.canReadSuppliers,
         canSetPrices: rights.canSetPrices,
         canContactCustomers: rights.canContactCustomers,
+        onPrintLabel: product == null && rights.canPrintLabels
+            ? (created) {
+                labelSent = true;
+                _printLabelNow(created);
+              }
+            : null,
       ),
       centered: true,
     );
-    if (saved == null || saved == product) return;
+    if (saved == null || saved == product || labelSent) return;
     if (product == null && rights.canPrintLabels && saved.isActive) {
       _offerLabel(saved);
       return;
@@ -282,22 +289,42 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
     if (request == null || !mounted) return;
     // Le contenu choisi devient celui proposé la prochaine fois, sur ce poste.
     await saveLabelParts(store, request.parts);
+    await _sendLabels(products, copies: request.copies, parts: request.parts);
+  }
+
+  /// « Créer + étiquette » : UNE étiquette, tout de suite, sans boîte de
+  /// dialogue — au contenu retenu sur ce poste.
+  Future<void> _printLabelNow(Product product) async {
+    final parts = await savedLabelParts(ref.read(localSettingsStoreProvider));
+    _showSnack('${product.name} créé — étiquette envoyée à l’imprimante.');
+    await _sendLabels([product], copies: 1, parts: parts);
+  }
+
+  Future<void> _sendLabels(
+    List<Product> products, {
+    required int copies,
+    required Set<LabelPart> parts,
+  }) async {
     try {
       final pdf = await ref
           .read(catalogApiProvider)
           .labels(
             items: [
-              for (final p in products)
-                (productId: p.id, copies: request.copies),
+              for (final p in products) (productId: p.id, copies: copies),
             ],
             parts: [
               for (final part in LabelPart.values)
-                if (request.parts.contains(part)) part.code,
+                if (parts.contains(part)) part.code,
             ],
           );
       await ref.read(printPdfProvider)(pdf, 'etiquettes.pdf');
     } on ApiException catch (error) {
-      _showSnack(error.userMessage);
+      _showSnack(
+        error.isOffline
+            ? 'Hors ligne : l’étiquette s’imprimera depuis le catalogue, '
+                  'une fois le produit synchronisé.'
+            : error.userMessage,
+      );
     } on Exception {
       _showSnack('Impression impossible sur ce poste.');
     }

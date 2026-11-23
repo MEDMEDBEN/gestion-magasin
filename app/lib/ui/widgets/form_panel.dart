@@ -58,7 +58,12 @@ class FormPanelFrame extends StatelessWidget {
     this.saving = false,
     this.error,
     this.headerAction,
+    this.secondarySubmit,
   });
+
+  /// Seconde action d'enregistrement, À CÔTÉ de la principale (ex. « Créer
+  /// + étiquette »).
+  final Widget? secondarySubmit;
 
   /// Action secondaire dans l'en-tête (ex. « Ajouter au panier d'achat »).
   final Widget? headerAction;
@@ -122,21 +127,31 @@ class FormPanelFrame extends StatelessWidget {
                 children: [
                   // Ctrl+S ou Ctrl+Entrée enregistrent ; Entrée passe au
                   // champ suivant ; Échap ferme (ui/keyboard/keyboard.dart).
-                  Tooltip(
-                    message: 'Ctrl+S',
-                    child: FilledButton(
-                      onPressed: saving ? null : onSubmit,
-                      child: saving
-                          ? SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: colors.onAccent,
-                              ),
-                            )
-                          : Text(submitLabel),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Tooltip(
+                          message: 'Ctrl+S',
+                          child: FilledButton(
+                            onPressed: saving ? null : onSubmit,
+                            child: saving
+                                ? SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: colors.onAccent,
+                                    ),
+                                  )
+                                : Text(submitLabel),
+                          ),
+                        ),
+                      ),
+                      if (secondarySubmit case final second?) ...[
+                        const SizedBox(width: 8),
+                        second,
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 4),
                   TextButton(onPressed: close, child: const Text('Annuler')),

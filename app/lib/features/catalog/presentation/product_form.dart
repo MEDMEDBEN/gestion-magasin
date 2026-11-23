@@ -46,6 +46,7 @@ class ProductForm extends ConsumerStatefulWidget {
     this.initialName,
     this.initialSupplierName,
     this.forPurchase = false,
+    this.onPrintLabel,
   });
 
   /// Fournisseur pré-rempli (créé depuis un achat, 2026-11-19).
@@ -53,6 +54,10 @@ class ProductForm extends ConsumerStatefulWidget {
 
   /// Ouvert DEPUIS l'achat : pas de stock ici, il se saisit sur la ligne.
   final bool forPurchase;
+
+  /// « Créer + étiquette » (demande MEDMEDBEN du 2026-11-23) : appelé avec le
+  /// produit créé, une fois le panneau fermé. Absent : pas de bouton.
+  final void Function(Product product)? onPrintLabel;
 
   /// Nouveau produit : nom déjà dicté (assistant, 2026-10-05).
   final String? initialName;
@@ -278,7 +283,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
     'purchasePriceHt': p.lastPurchasePriceHt,
   };
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool withLabel = false}) async {
     if (!_formKey.currentState!.validate()) return;
     if (widget.canReadSuppliers) {
       try {
@@ -348,6 +353,7 @@ class _ProductFormState extends ConsumerState<ProductForm> {
           );
       if (existing == null && _viaPurchase) await _purchaseStock(saved);
       if (mounted) Navigator.of(context).pop(saved);
+      if (withLabel) widget.onPrintLabel?.call(saved);
     } on PhotoNotSaved catch (partial) {
       // Le produit est enregistré : on ferme sur lui, et on dit que la photo
       // n'est pas passée (la rajouter depuis sa fiche).
@@ -1153,6 +1159,17 @@ class _ProductFormState extends ConsumerState<ProductForm> {
             )
           : null,
       onSubmit: widget.canEdit ? _submit : null,
+      secondarySubmit: !_isEdit && widget.canEdit && widget.onPrintLabel != null
+          ? Tooltip(
+              message: 'Créer le produit et imprimer son étiquette',
+              child: FilledButton.tonalIcon(
+                key: const ValueKey('creer-etiquette'),
+                onPressed: _saving ? null : () => _submit(withLabel: true),
+                icon: const Icon(LucideIcons.printer, size: 17),
+                label: const Text('+ Étiquette'),
+              ),
+            )
+          : null,
       saving: _saving,
       error: _error,
       children: [

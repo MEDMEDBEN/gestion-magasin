@@ -674,6 +674,60 @@ void main() {
     },
   );
 
+  /// 2026-11-23 : « + Étiquette » à côté de « Créer le produit » — le produit
+  /// est créé, puis UNE étiquette part tout de suite, sans boîte de dialogue.
+  testWidgets('créer + étiquette : une étiquette imprimée directement', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(
+      wrap(
+        authUser(
+          roles: const ['ADMIN'],
+          permissions: [..._allProductPermissions, 'price.read'],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Nouveau produit'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('champ-nom')), 'Gaine');
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-reference')),
+      'GAI',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('champ-prix-achat')),
+      '50',
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('creer-etiquette')));
+    await tester.tap(find.byKey(const ValueKey('creer-etiquette')));
+    await tester.pumpAndSettle();
+
+    expect(api.productCalls.single.$1, isNull);
+    expect(api.labelCalls.single.map((i) => (i.productId, i.copies)), [
+      ('new', 1),
+    ]);
+    expect(api.labelParts.single, ['NAME', 'PRICE', 'BARCODE']);
+    expect(printed, ['etiquettes.pdf']);
+    // Pas de seconde proposition : l'étiquette est déjà partie.
+    expect(find.text('Imprimer l’étiquette'), findsNothing);
+  });
+
+  testWidgets('sans droit aux étiquettes : pas de bouton « + Étiquette »', (
+    tester,
+  ) async {
+    useScreenSize(tester, const Size(400, 2200));
+    await tester.pumpWidget(wrap(_admin()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Nouveau produit'));
+    await tester.pumpAndSettle();
+    // Admin de test SANS price.read : pas d'étiquette proposée.
+    expect(find.byKey(const ValueKey('creer-etiquette')), findsNothing);
+    expect(find.text('Créer le produit'), findsOneWidget);
+  });
+
   testWidgets('ADMIN : un seuil invalide est refusé AVANT l’envoi', (
     tester,
   ) async {
