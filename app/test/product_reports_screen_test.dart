@@ -200,7 +200,9 @@ void main() {
     expect(api.dormantDays, [120, 30]);
   });
 
-  testWidgets('les trois classements de la demande sont là, chacun nommé', (
+  // Quantité unique (2026-11-23) : les demandes au dépôt sont cachées ; seul
+  // le classement des ventes reste.
+  testWidgets('demande : les plus vendus, sans les demandes au dépôt', (
     tester,
   ) async {
     await _pump(
@@ -216,12 +218,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Les plus vendus'), findsOneWidget);
-    expect(find.text('Les plus demandés au dépôt'), findsOneWidget);
-    expect(find.text('Demandés et NON servis'), findsOneWidget);
+    expect(find.text('Les plus demandés au dépôt'), findsNothing);
+    expect(find.text('Demandés et NON servis'), findsNothing);
     // Le chiffre d'affaires n'apparaît que sur les ventes.
     expect(find.text(formatDA(50000)), findsOneWidget);
-    // Un classement vide le dit, au lieu de laisser un trou.
-    expect(find.text('Rien sur la période.'), findsOneWidget);
   });
 
   testWidgets('changer la fenêtre de demande redemande au serveur', (

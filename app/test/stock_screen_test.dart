@@ -206,7 +206,9 @@ void main() {
     expect(stock.at('ailleurs'), Decimal.zero);
   });
 
-  testWidgets('VENDEUR : niveaux par emplacement, aucune section Pertes', (
+  // Quantité unique (2026-11-23) : UNE quantité (tous lieux), plus de
+  // colonnes Magasin / Dépôt.
+  testWidgets('VENDEUR : une seule quantité, aucune section Pertes', (
     tester,
   ) async {
     useScreenSize(tester, const Size(400, 900));
@@ -214,9 +216,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Câble 3G2,5'), findsOneWidget);
-    expect(find.text('20 pce'), findsOneWidget);
-    expect(find.text('50 pce'), findsOneWidget);
-    expect(find.text('70 pce'), findsNWidgets(2)); // total + disponible
+    expect(find.text('20 pce'), findsNothing);
+    expect(find.text('50 pce'), findsNothing);
+    expect(find.text('Dépôt'), findsNothing);
+    expect(find.text('70 pce'), findsNWidgets(2)); // quantité + disponible
     // 70 < seuil 100 : signalé par un LIBELLÉ, pas seulement une couleur.
     expect(find.text('Stock faible · 70 pce'), findsOneWidget);
     expect(find.textContaining('Pertes'), findsNothing);
@@ -243,10 +246,6 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Câble 3G2,5 — DIS-16A').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dépôt').last);
-      await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField).at(0), '2,5');
       await tester.enterText(find.byType(TextFormField).at(1), 'Carton écrasé');
       await tester.tap(find.text('Déclarer et retirer du stock'));
@@ -254,7 +253,7 @@ void main() {
 
       expect(api.declared, {
         'productId': 'p1',
-        'locationId': 'depot',
+        'locationId': 'magasin',
         'quantity': '2.500',
         'comment': 'Carton écrasé',
       });
@@ -288,10 +287,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Câble 3G2,5 — DIS-16A').first);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dépôt').last);
-    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextFormField).at(0), '12');
 
     await tester.enterText(
@@ -302,7 +297,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.entered, {
       'productId': 'p1',
-      'locationId': 'depot',
+      'locationId': 'magasin',
       'quantity': '12.000',
       'comment': 'Stock déjà en rayon',
     });

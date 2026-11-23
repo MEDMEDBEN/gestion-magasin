@@ -224,7 +224,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   ActionTile(
                     icon: LucideIcons.clipboardCheck,
                     title: 'Inventaire complet',
-                    subtitle: 'Tous les produits d’un lieu (magasin ou dépôt).',
+                    subtitle: 'Tous les produits, un par un.',
                     tone: StatusTone.neutral,
                     onTap: () => _start(context, rights, InventoryType.full),
                   ),

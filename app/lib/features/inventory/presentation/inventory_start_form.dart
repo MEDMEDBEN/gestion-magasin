@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -86,7 +87,7 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
     // Le stock vit au magasin ou au dépôt ; rien d'autre ne se compte.
     final stockLocations = [
       for (final l in ref.watch(locationsProvider).value ?? const [])
-        if (l.isActive && (l.type == 'MAGASIN' || l.type == 'DEPOT')) l,
+        if (l.isActive && isStockLocationType(l.type)) l,
     ];
 
     // Un seul choix utile la plupart du temps : déjà sélectionné.
@@ -102,22 +103,24 @@ class _InventoryStartFormState extends ConsumerState<InventoryStartForm> {
       submitLabel: 'Commencer le comptage',
       onSubmit: _saving ? null : _submit,
       children: [
-        const AmpereFieldLabel('Lieu compté'),
-        DropdownButtonFormField<String>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: stockLocations.any((l) => l.id == _locationId)
-              ? _locationId
-              : null,
-          isExpanded: true,
-          hint: const Text('Magasin ou dépôt'),
-          items: [
-            for (final l in stockLocations)
-              DropdownMenuItem(value: l.id, child: Text(l.name)),
-          ],
-          onChanged: _saving ? null : (v) => setState(() => _locationId = v),
-          validator: (v) => v == null ? 'Choisissez un lieu' : null,
-        ),
-        const SizedBox(height: 16),
+        if (stockLocations.length != 1) ...[
+          const AmpereFieldLabel('Lieu compté'),
+          DropdownButtonFormField<String>(
+            icon: const Icon(LucideIcons.chevronDown, size: 17),
+            initialValue: stockLocations.any((l) => l.id == _locationId)
+                ? _locationId
+                : null,
+            isExpanded: true,
+            hint: const Text('Magasin ou dépôt'),
+            items: [
+              for (final l in stockLocations)
+                DropdownMenuItem(value: l.id, child: Text(l.name)),
+            ],
+            onChanged: _saving ? null : (v) => setState(() => _locationId = v),
+            validator: (v) => v == null ? 'Choisissez un lieu' : null,
+          ),
+          const SizedBox(height: 16),
+        ],
         const AmpereFieldLabel('Quoi compter'),
         SegmentedButton<InventoryType>(
           segments: [

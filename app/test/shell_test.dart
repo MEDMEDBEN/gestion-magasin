@@ -214,7 +214,8 @@ void main() {
       expect(tabsOf(tester).take(2), ['Accueil', 'Vente']);
     });
 
-    testWidgets('mobile : onglets du MAGASINIER = stock et transferts', (
+    // Quantité unique (2026-11-23) : plus d'onglet Transferts.
+    testWidgets('mobile : onglets du MAGASINIER = stock, sans transferts', (
       tester,
     ) async {
       await _pumpShell(
@@ -229,7 +230,8 @@ void main() {
         ),
         size: const Size(400, 800),
       );
-      expect(tabsOf(tester).take(3), ['Accueil', 'Stock', 'Transferts']);
+      expect(tabsOf(tester).take(2), ['Accueil', 'Stock']);
+      expect(tabsOf(tester), isNot(contains('Transferts')));
     });
 
     testWidgets('< 768 : coquille mobile à onglets', (tester) async {

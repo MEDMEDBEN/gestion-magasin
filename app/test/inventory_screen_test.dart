@@ -205,10 +205,8 @@ void main() {
     await revealAll(tester); // téléphone : rubriques repliées
     await tester.tap(find.text('Inventaire complet'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dépôt').last);
-    await tester.pumpAndSettle();
+    // Quantité unique (2026-11-23) : le magasin seul, sans choix de lieu.
+    expect(find.text('Lieu compté'), findsNothing);
     await tester.tap(find.text('Quelques produits'));
     await tester.pumpAndSettle();
 
@@ -224,7 +222,7 @@ void main() {
     await tester.tap(find.text('Commencer le comptage'));
     await tester.pumpAndSettle();
     expect(api.created, containsPair('type', 'TOURNANT'));
-    expect(api.created, containsPair('locationId', 'depot'));
+    expect(api.created, containsPair('locationId', 'magasin'));
     expect(api.created!.containsKey('zone'), isFalse);
     expect(api.created!['productIds'], ['p1']);
     expect(api.created!['clientMutationId'], isA<String>());

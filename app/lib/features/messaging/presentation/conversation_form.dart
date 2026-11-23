@@ -57,10 +57,7 @@ class _ConversationFormState extends ConsumerState<ConversationForm> {
       children: [
         const AmpereInlineAlert(
           tone: StatusTone.info,
-          message:
-              'Pour une question ou une consigne. Pour demander de la '
-              'marchandise au dépôt, faites une demande de transfert : elle '
-              'se suit et déplace vraiment le stock.',
+          message: 'Pour une question ou une consigne à l’équipe.',
         ),
         const SizedBox(height: 16),
         TextFormField(

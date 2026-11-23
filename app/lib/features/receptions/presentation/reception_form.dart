@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -188,8 +189,12 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
     // Le stock vit au magasin ou au dépôt ; les positions ne portent pas de stock.
     final stockLocations = [
       for (final l in ref.watch(locationsProvider).value ?? const [])
-        if (l.isActive && (l.type == 'MAGASIN' || l.type == 'DEPOT')) l,
+        if (l.isActive && isStockLocationType(l.type)) l,
     ];
+    // Un seul lieu possible (quantité unique) : choisi d'office, sans champ.
+    if (_locationId == null && stockLocations.length == 1) {
+      _locationId = stockLocations.single.id;
+    }
 
     return FormPanelFrame(
       formKey: _formKey,
@@ -217,22 +222,24 @@ class _ReceptionFormState extends ConsumerState<ReceptionForm> {
           ),
         ),
         const SizedBox(height: 8),
-        const AmpereFieldLabel('Emplacement de réception'),
-        DropdownButtonFormField<String>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: stockLocations.any((l) => l.id == _locationId)
-              ? _locationId
-              : null,
-          isExpanded: true,
-          hint: const Text('Où la marchandise entre-t-elle ?'),
-          items: [
-            for (final l in stockLocations)
-              DropdownMenuItem(value: l.id, child: Text(l.name)),
-          ],
-          onChanged: _saving ? null : (v) => setState(() => _locationId = v),
-          validator: (v) => v == null ? 'Choisissez un emplacement' : null,
-        ),
-        const SizedBox(height: 16),
+        if (stockLocations.length != 1) ...[
+          const AmpereFieldLabel('Emplacement de réception'),
+          DropdownButtonFormField<String>(
+            icon: const Icon(LucideIcons.chevronDown, size: 17),
+            initialValue: stockLocations.any((l) => l.id == _locationId)
+                ? _locationId
+                : null,
+            isExpanded: true,
+            hint: const Text('Où la marchandise entre-t-elle ?'),
+            items: [
+              for (final l in stockLocations)
+                DropdownMenuItem(value: l.id, child: Text(l.name)),
+            ],
+            onChanged: _saving ? null : (v) => setState(() => _locationId = v),
+            validator: (v) => v == null ? 'Choisissez un emplacement' : null,
+          ),
+          const SizedBox(height: 16),
+        ],
         for (final fields in _lines) _lineRow(fields, products, colors),
         const Divider(height: 24),
         Text(

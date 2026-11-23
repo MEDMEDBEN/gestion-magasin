@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -793,7 +794,10 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
       for (final l in locations)
         if (l.type == type) l.id,
     });
-    return (store: at('MAGASIN'), depot: at('DEPOT'));
+    // Quantité unique (2026-11-23) : tout le stock compte.
+    return depotEnabled
+        ? (store: at('MAGASIN'), depot: at('DEPOT'))
+        : (store: levels.total, depot: Quantity.zero);
   }
 
   /// Lignes du ticket qui dépassent le stock du MAGASIN, sauf produit en
@@ -831,17 +835,19 @@ class _SaleSectionState extends ConsumerState<_SaleSection> {
             icon: Icon(LucideIcons.packageX, color: colors.error, size: 32),
             title: Text(
               known.store <= Quantity.zero
-                  ? '« ${product.name} » est en rupture au magasin'
-                  : 'Plus de « ${product.name} » au magasin',
+                  ? '« ${product.name} » est en rupture'
+                        '${depotEnabled ? ' au magasin' : ''}'
+                  : 'Plus de « ${product.name} »'
+                        '${depotEnabled ? ' au magasin' : ' en stock'}',
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Magasin : ${formatQuantity(known.store)} $unit'
+                  '${depotEnabled ? 'Magasin' : 'Quantité'} : ${formatQuantity(known.store)} $unit'
                   '${inCart > Quantity.zero ? ' (déjà ${formatQuantity(inCart)} $unit au panier)' : ''}'
-                  ' · dépôt : ${formatQuantity(known.depot)} $unit',
+                  '${depotEnabled ? ' · dépôt : ${formatQuantity(known.depot)} $unit' : ''}',
                   style: AmpereType.bodyStrong.copyWith(color: colors.ink),
                 ),
                 const SizedBox(height: 10),
@@ -2237,6 +2243,8 @@ class _ProductGrid extends ConsumerWidget {
     };
     Quantity? atStore(Product p) => stock == null
         ? null
+        : !depotEnabled
+        ? stock[p.id]?.total ?? Quantity.zero
         : stock[p.id]?.ofType('MAGASIN', storeIds) ?? Quantity.zero;
     final found = query.trim().isEmpty
         ? products

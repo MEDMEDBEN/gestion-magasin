@@ -1019,7 +1019,9 @@ void main() {
       }
 
       await scan();
-      expect(find.textContaining('en rupture au magasin'), findsOneWidget);
+      // Quantité unique (2026-11-23) : « en rupture », sans lieu.
+      expect(find.textContaining('est en rupture'), findsOneWidget);
+      expect(find.textContaining('dépôt'), findsNothing);
       await tester.tap(find.text('Ne pas l’ajouter'));
       await tester.pumpAndSettle();
       expect(find.text('Panier vide'), findsOneWidget);

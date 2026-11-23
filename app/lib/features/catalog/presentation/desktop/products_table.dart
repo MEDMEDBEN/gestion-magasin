@@ -1,3 +1,4 @@
+import '../../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -160,8 +161,11 @@ class _HeaderRow extends StatelessWidget {
           cell('Prix vente', _Columns.sale, end: true),
           cell('Prix achat', _Columns.cost, end: true),
           if (withStock) ...[
-            cell('Magasin', _Columns.qty, end: true),
-            cell('Dépôt', _Columns.qty, end: true),
+            if (depotEnabled) ...[
+              cell('Magasin', _Columns.qty, end: true),
+              cell('Dépôt', _Columns.qty, end: true),
+            ] else
+              cell('Quantité', _Columns.qty, end: true),
           ],
           const SizedBox(width: 16),
           cell('État', _Columns.status),
@@ -313,15 +317,16 @@ class _ProductRow extends StatelessWidget {
                   ],
                 ),
               ),
-            // Quantités par lieu (demande MEDMEDBEN du 2026-11-13).
+            // Quantité unique (2026-11-23) ; par lieu quand le dépôt revient.
             if (stock != null)
-              for (final type in ['MAGASIN', 'DEPOT'])
+              for (final type
+                  in depotEnabled ? ['MAGASIN', 'DEPOT'] : ['MAGASIN'])
                 Expanded(
                   flex: _Columns.qty,
                   child: Text(
                     type == 'DEPOT' && !showDepot
                         ? '—'
-                        : '${formatQuantity((stock![product.id] ?? const ProductStock([])).ofType(type))} '
+                        : '${formatQuantity(depotEnabled ? (stock![product.id] ?? const ProductStock([])).ofType(type) : (stock![product.id] ?? const ProductStock([])).total)} '
                               '${product.unit.short}',
                     textAlign: TextAlign.end,
                     maxLines: 1,

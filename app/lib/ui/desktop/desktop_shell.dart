@@ -1,3 +1,4 @@
+import '../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -241,7 +242,7 @@ const _hints = {
   'Vente': 'Encaisser, tickets, clients',
   'Devis': 'Préparer et suivre les devis',
   'Catalogue': 'Produits, prix, catégories',
-  'Stock': 'Niveaux au magasin et au dépôt',
+  'Stock': 'La quantité de chaque produit',
   'Tâches': 'Le planning de l’équipe',
   'Transferts': 'Entre le dépôt et le magasin',
   'Achats': 'Commandes et réceptions fournisseurs',
@@ -946,7 +947,7 @@ class _Today extends ConsumerWidget {
     final stock = summary?.stock;
     final customers = summary?.customers;
     final sales = summary?.sales;
-    final transfers = summary?.transfers;
+    final transfers = depotEnabled ? summary?.transfers : null;
     final purchases = summary?.purchases;
 
     // L'alerte la plus grave du moment, une seule.

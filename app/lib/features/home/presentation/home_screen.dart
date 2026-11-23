@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -327,7 +328,7 @@ class _Blocks extends StatelessWidget {
   Widget build(BuildContext context) {
     final sales = summary.sales;
     final stock = summary.stock;
-    final transfers = summary.transfers;
+    final transfers = depotEnabled ? summary.transfers : null;
     final purchases = summary.purchases;
     final customers = summary.customers;
     final suppliers = summary.suppliers;

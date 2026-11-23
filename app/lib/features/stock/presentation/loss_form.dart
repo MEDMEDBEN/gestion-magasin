@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -137,8 +138,12 @@ class _LossFormState extends ConsumerState<LossForm> {
     // portent pas de stock.
     final stockLocations = [
       for (final l in ref.watch(locationsProvider).value ?? const [])
-        if (l.isActive && (l.type == 'MAGASIN' || l.type == 'DEPOT')) l,
+        if (l.isActive && isStockLocationType(l.type)) l,
     ];
+    // Un seul lieu possible (quantité unique) : choisi d'office, sans champ.
+    if (_locationId == null && stockLocations.length == 1) {
+      _locationId = stockLocations.single.id;
+    }
     final inputStyle = AmpereType.input.copyWith(color: colors.ink);
 
     return FormPanelFrame(
@@ -206,23 +211,25 @@ class _LossFormState extends ConsumerState<LossForm> {
                 },
               ),
         ),
-        formFieldGap,
-        const AmpereFieldLabel('Où'),
-        DropdownButtonFormField<String>(
-          icon: const Icon(LucideIcons.chevronDown, size: 17),
-          initialValue: _locationId,
-          hint: const Text('Magasin ou dépôt'),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(LucideIcons.warehouse, size: 17),
+        if (stockLocations.length != 1) ...[
+          formFieldGap,
+          const AmpereFieldLabel('Où'),
+          DropdownButtonFormField<String>(
+            icon: const Icon(LucideIcons.chevronDown, size: 17),
+            initialValue: _locationId,
+            hint: const Text('Magasin ou dépôt'),
+            decoration: const InputDecoration(
+              prefixIcon: Icon(LucideIcons.warehouse, size: 17),
+            ),
+            items: [
+              for (final l in stockLocations)
+                DropdownMenuItem(value: l.id, child: Text(l.name)),
+            ],
+            validator: (v) =>
+                v == null ? 'Choisissez le magasin ou le dépôt' : null,
+            onChanged: _saving ? null : (v) => setState(() => _locationId = v),
           ),
-          items: [
-            for (final l in stockLocations)
-              DropdownMenuItem(value: l.id, child: Text(l.name)),
-          ],
-          validator: (v) =>
-              v == null ? 'Choisissez le magasin ou le dépôt' : null,
-          onChanged: _saving ? null : (v) => setState(() => _locationId = v),
-        ),
+        ],
         formFieldGap,
         AmpereFieldLabel(widget.entry ? 'Quantité ajoutée' : 'Quantité perdue'),
         TextFormField(

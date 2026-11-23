@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -306,18 +307,21 @@ class _DemandTab extends ConsumerWidget {
                   lines: data.bestSellers,
                   withRevenue: true,
                 ),
-                _DemandSection(
-                  title: 'Les plus demandés au dépôt',
-                  hint: 'Quantités réclamées par le magasin.',
-                  lines: data.mostRequested,
-                ),
-                _DemandSection(
-                  title: 'Demandés et NON servis',
-                  hint:
-                      'Ce qui manquait à la préparation : la demande qu’une '
-                      'rupture a fait perdre.',
-                  lines: data.unmetDemand,
-                ),
+                // Demandes au dépôt : cachées avec lui (quantité unique).
+                if (depotEnabled) ...[
+                  _DemandSection(
+                    title: 'Les plus demandés au dépôt',
+                    hint: 'Quantités réclamées par le magasin.',
+                    lines: data.mostRequested,
+                  ),
+                  _DemandSection(
+                    title: 'Demandés et NON servis',
+                    hint:
+                        'Ce qui manquait à la préparation : la demande qu’une '
+                        'rupture a fait perdre.',
+                    lines: data.unmetDemand,
+                  ),
+                ],
               ],
             ),
           ),

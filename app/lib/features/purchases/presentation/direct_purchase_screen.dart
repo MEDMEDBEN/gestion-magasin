@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -245,14 +246,15 @@ class _DirectPurchaseScreenState extends ConsumerState<DirectPurchaseScreen> {
                           ],
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6, left: 4),
-                        child: Text(
-                          '« À répartir » : posé au dépôt, à partager ensuite '
-                          'entre magasin et dépôt (repère dans Stock).',
-                          style: AmpereType.meta.copyWith(color: colors.ink3),
+                      if (depotEnabled)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6, left: 4),
+                          child: Text(
+                            '« À répartir » : posé au dépôt, à partager ensuite '
+                            'entre magasin et dépôt (repère dans Stock).',
+                            style: AmpereType.meta.copyWith(color: colors.ink3),
+                          ),
                         ),
-                      ),
                     ],
                   ),
           ),
@@ -470,12 +472,14 @@ class _TableHeader extends StatelessWidget {
           head('Produit', null, end: false),
           head('Prix d’achat', _Col.price),
           const SizedBox(width: 8),
-          head('Magasin', _Col.qty),
+          head(depotEnabled ? 'Magasin' : 'Quantité', _Col.qty),
           const SizedBox(width: 8),
-          head('Dépôt', _Col.qty),
-          const SizedBox(width: 8),
-          head('À répartir', _Col.qty),
-          const SizedBox(width: 8),
+          if (depotEnabled) ...[
+            head('Dépôt', _Col.qty),
+            const SizedBox(width: 8),
+            head('À répartir', _Col.qty),
+            const SizedBox(width: 8),
+          ],
           head('Montant', _Col.amount),
           const SizedBox(width: _Col.remove),
         ],
@@ -623,16 +627,18 @@ class _LineRowState extends State<_LineRow> {
               child: field(_store, suffix: unit),
             ),
             const SizedBox(width: 8),
-            SizedBox(
-              width: _Col.qty,
-              child: field(_depot, suffix: unit),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: _Col.qty,
-              child: field(_split, suffix: unit),
-            ),
-            const SizedBox(width: 8),
+            if (depotEnabled) ...[
+              SizedBox(
+                width: _Col.qty,
+                child: field(_depot, suffix: unit),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: _Col.qty,
+                child: field(_split, suffix: unit),
+              ),
+              const SizedBox(width: 8),
+            ],
             SizedBox(width: _Col.amount, child: amount),
             SizedBox(width: _Col.remove, child: remove),
           ],
@@ -662,11 +668,19 @@ class _LineRowState extends State<_LineRow> {
                   child: field(_price, label: 'Prix', money: true),
                 ),
                 const SizedBox(width: 6),
-                Expanded(flex: 4, child: field(_store, label: 'Magasin')),
-                const SizedBox(width: 6),
-                Expanded(flex: 4, child: field(_depot, label: 'Dépôt')),
-                const SizedBox(width: 6),
-                Expanded(flex: 4, child: field(_split, label: 'Répartir')),
+                Expanded(
+                  flex: 4,
+                  child: field(
+                    _store,
+                    label: depotEnabled ? 'Magasin' : 'Quantité',
+                  ),
+                ),
+                if (depotEnabled) ...[
+                  const SizedBox(width: 6),
+                  Expanded(flex: 4, child: field(_depot, label: 'Dépôt')),
+                  const SizedBox(width: 6),
+                  Expanded(flex: 4, child: field(_split, label: 'Répartir')),
+                ],
               ],
             ),
           ),

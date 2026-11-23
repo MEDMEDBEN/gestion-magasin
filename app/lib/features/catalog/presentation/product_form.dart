@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -949,16 +950,24 @@ class _ProductFormState extends ConsumerState<ProductForm> {
         formFieldGap,
       ],
       if (!_isEdit && !widget.forPurchase) ...[
+        // Quantité unique (2026-11-23) : un seul champ ; par lieu si le
+        // dépôt revient.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _quantityField(
-              'Stock au magasin',
+              depotEnabled ? 'Stock au magasin' : 'Quantité',
               _storeStock,
-              'champ-stock-magasin',
+              depotEnabled ? 'champ-stock-magasin' : 'champ-quantite',
             ),
-            const SizedBox(width: 12),
-            _quantityField('Stock au dépôt', _depotStock, 'champ-stock-depot'),
+            if (depotEnabled) ...[
+              const SizedBox(width: 12),
+              _quantityField(
+                'Stock au dépôt',
+                _depotStock,
+                'champ-stock-depot',
+              ),
+            ],
           ],
         ),
         formFieldGap,

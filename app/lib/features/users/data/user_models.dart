@@ -52,8 +52,8 @@ extension AppRoleCode on AppRole {
   /// Ce que le rôle fait, en une ligne — évite à l'admin de deviner.
   String get description => switch (this) {
     AppRole.admin => 'Accès complet, validation et paramètres',
-    AppRole.vendeur => 'Ventes, clients, caisse, demandes au dépôt',
-    AppRole.magasinier => 'Stock dépôt, réceptions, transferts, inventaires',
+    AppRole.vendeur => 'Ventes, clients, caisse',
+    AppRole.magasinier => 'Stock, réceptions, inventaires, pertes',
   };
 
   static AppRole? fromCode(String code) => switch (code) {

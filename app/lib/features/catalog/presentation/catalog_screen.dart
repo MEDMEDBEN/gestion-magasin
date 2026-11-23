@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -363,7 +364,8 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen>
     final sections = [
       _Section.products,
       if (rights.canManageCategories) _Section.categories,
-      if (rights.canManageLocations) _Section.locations,
+      // Emplacements du dépôt : cachés avec lui (quantité unique).
+      if (depotEnabled && rights.canManageLocations) _Section.locations,
     ];
     final section = sections.contains(_section) ? _section : sections.first;
 

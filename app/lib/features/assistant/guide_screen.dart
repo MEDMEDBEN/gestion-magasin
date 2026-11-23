@@ -43,12 +43,10 @@ class GuideScreen extends StatelessWidget {
       ],
     ),
     (
-      'Stock et dépôt',
+      'Stock',
       [
-        'Stock : quantités au magasin et au dépôt, cherchez par nom ou '
+        'Stock : la quantité de chaque produit, cherchez par nom ou '
             'code-barres.',
-        'Transferts : le magasin demande, le dépôt prépare et expédie, le '
-            'magasin réceptionne.',
         'Achats : commande au fournisseur, puis réception (même partielle) ; '
             'une facture peut être lue par photo.',
       ],

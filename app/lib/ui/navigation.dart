@@ -1,3 +1,4 @@
+import '../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -133,9 +134,11 @@ List<AppDestination> destinationsFor(AuthUser user) => [
     ),
   // `/transfers` : les 3 rôles lisent la liste (guard de rôle seul) ; l'entrée
   // n'est proposée qu'à qui tient un bout du flux (demander, préparer, recevoir).
-  if (user.can('transfer.request') ||
-      user.can('transfer.prepare') ||
-      user.can('transfer.receive'))
+  // Caché depuis la quantité unique (2026-11-23), voir core/single_stock.dart.
+  if (depotEnabled &&
+      (user.can('transfer.request') ||
+          user.can('transfer.prepare') ||
+          user.can('transfer.receive')))
     AppDestination(
       icon: LucideIcons.arrowLeftRight,
       label: 'Transferts',

@@ -330,16 +330,12 @@ void main() {
       // Le champ propose le reste à recevoir, pas la quantité commandée.
       expect(find.text('70'), findsOneWidget);
 
-      await tester.tap(find.byType(DropdownButtonFormField<String>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Dépôt').last);
-      await tester.pumpAndSettle();
       await tester.tap(find.text('Enregistrer la réception'));
       await tester.pumpAndSettle();
 
       final sent = api.sent.single;
       expect(sent['purchaseOrderId'], 'o1');
-      expect(sent['locationId'], 'depot');
+      expect(sent['locationId'], 'magasin');
       expect(sent['clientMutationId'], isA<String>());
       expect(sent['lines'], [
         {
@@ -393,10 +389,6 @@ void main() {
       orders: [_order(PurchaseStatus.confirmed)],
     );
     await _openReceptionForm(tester);
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dépôt').last);
-    await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Quantité reçue'),
       '10',
@@ -438,10 +430,6 @@ void main() {
     );
     await _openReceptionForm(tester);
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dépôt').last);
-    await tester.pumpAndSettle();
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Quantité reçue'),
       '101',
@@ -453,20 +441,19 @@ void main() {
     expect(api.sent, isNotEmpty);
   });
 
-  testWidgets('emplacement obligatoire : rien n’est envoyé sans lui', (
+  // Quantité unique (2026-11-23) : tout entre au magasin, sans choix de lieu.
+  testWidgets('réception : au magasin d’office, sans choix de lieu', (
     tester,
   ) async {
-    final api = await _pump(
+    await _pump(
       tester,
       _magasinier(),
       orders: [_order(PurchaseStatus.confirmed)],
     );
     await _openReceptionForm(tester);
-    await tester.tap(find.text('Enregistrer la réception'));
-    await tester.pumpAndSettle();
 
-    expect(find.text('Choisissez un emplacement'), findsOneWidget);
-    expect(api.sent, isEmpty);
+    expect(find.text('Emplacement de réception'), findsNothing);
+    expect(find.byType(DropdownButtonFormField<String>), findsNothing);
   });
 
   testWidgets('la liste des réceptions d’une commande s’affiche vraiment', (

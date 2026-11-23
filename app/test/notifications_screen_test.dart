@@ -123,13 +123,17 @@ void main() {
   testWidgets('toucher une alerte la marque lue ET ouvre l’opération', (
     tester,
   ) async {
-    final (api, ref) = await _pump(tester, items: [_notification()]);
+    // Transferts cachés (quantité unique, 2026-11-23) : une alerte produit.
+    final (api, ref) = await _pump(
+      tester,
+      items: [_notification(target: NotificationTarget.product)],
+    );
 
     await tester.tap(find.text('Demande TRF-2026-00007 à préparer'));
     await tester.pumpAndSettle();
 
     expect(api.read, ['n1']);
-    expect(ref.read(requestedDestinationProvider), 'Transferts');
+    expect(ref.read(requestedDestinationProvider), 'Catalogue');
   });
 
   testWidgets('une alerte DÉJÀ lue n’est pas remarquée lue une seconde fois', (

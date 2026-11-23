@@ -346,7 +346,7 @@ class _PurchasesScreenState extends ConsumerState<PurchasesScreen> {
                 icon: LucideIcons.info,
                 message:
                     'Aucune commande sur la période. Préparez une commande '
-                    'fournisseur : elle sera réceptionnée au dépôt.',
+                    'fournisseur : elle entrera en stock à la réception.',
               )
             else if (shown.isEmpty)
               const ScreenStateView(

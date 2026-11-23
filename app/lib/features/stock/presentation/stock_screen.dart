@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -392,8 +393,8 @@ class _LevelsSectionState extends ConsumerState<_LevelsSection>
                   ),
                   (
                     'Suivre ici',
-                    'Magasin, dépôt, transit : chaque produit, en couleur '
-                        'selon son état.',
+                    'La quantité de chaque produit, en couleur selon son '
+                        'état.',
                   ),
                 ],
               ),
@@ -577,10 +578,13 @@ class _LevelRow extends StatelessWidget {
         formatQuantity(stock.ofType(type, {locationIds[type]}));
 
     final figures = [
-      ('Magasin', at('MAGASIN')),
-      ('Dépôt', at('DEPOT')),
-      ('Transit', at('TRANSIT')),
-      ('Total', formatQuantity(stock.total)),
+      if (depotEnabled) ...[
+        ('Magasin', at('MAGASIN')),
+        ('Dépôt', at('DEPOT')),
+        ('Transit', at('TRANSIT')),
+        ('Total', formatQuantity(stock.total)),
+      ] else
+        ('Quantité', formatQuantity(stock.total)),
       ('Disponible', formatQuantity(stock.available)),
       ('Vendu', formatQuantity(sold ?? Quantity.zero)),
     ];
@@ -795,10 +799,13 @@ class _LevelTable extends StatelessWidget {
                   child: head('État', align: TextAlign.start),
                 ),
                 for (final label in [
-                  'Magasin',
-                  'Dépôt',
-                  'Transit',
-                  'Total',
+                  if (depotEnabled) ...[
+                    'Magasin',
+                    'Dépôt',
+                    'Transit',
+                    'Total',
+                  ] else
+                    'Quantité',
                   'Disponible',
                   'Vendu',
                 ])
@@ -868,7 +875,7 @@ class _ProductStockPanel extends ConsumerWidget {
             ),
           ],
         ),
-        if (product.splitPending) ...[
+        if (depotEnabled && product.splitPending) ...[
           const SizedBox(height: 12),
           Text(
             'Acheté en total : à répartir entre le magasin et le dépôt (un '
@@ -916,35 +923,48 @@ class _ProductStockPanel extends ConsumerWidget {
           ),
         ],
         const SizedBox(height: 16),
-        const AmpereFieldLabel('Par emplacement'),
-        if (stock == null || stock.levels.isEmpty)
+        // Quantité unique (2026-11-23) : une seule valeur, sans les lieux.
+        if (!depotEnabled) ...[
+          const AmpereFieldLabel('Quantité'),
           Text(
-            'Aucun stock enregistré pour ce produit.',
-            style: AmpereType.body.copyWith(color: colors.ink3),
-          )
-        else
-          for (final level in stock.levels)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      locationNames[level.locationId] ?? 'Emplacement',
-                      style: AmpereType.body.copyWith(color: colors.ink),
-                    ),
-                  ),
-                  Text(
-                    '${formatQuantity(level.quantity)} $unit'
-                    '${level.reservedQuantity > Quantity.zero ? ' · ${formatQuantity(level.reservedQuantity)} réservé' : ''}',
-                    style: AmpereType.bodyStrong.copyWith(
-                      color: colors.ink,
-                      fontFeatures: AmpereType.tabular,
-                    ),
-                  ),
-                ],
-              ),
+            '${formatQuantity(stock?.total ?? Quantity.zero)} $unit'
+            '${(stock?.total ?? Quantity.zero) != (stock?.available ?? Quantity.zero) ? ' · ${formatQuantity(stock!.available)} disponible' : ''}',
+            style: AmpereType.bodyStrong.copyWith(
+              color: colors.ink,
+              fontFeatures: AmpereType.tabular,
             ),
+          ),
+        ] else ...[
+          const AmpereFieldLabel('Par emplacement'),
+          if (stock == null || stock.levels.isEmpty)
+            Text(
+              'Aucun stock enregistré pour ce produit.',
+              style: AmpereType.body.copyWith(color: colors.ink3),
+            )
+          else
+            for (final level in stock.levels)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        locationNames[level.locationId] ?? 'Emplacement',
+                        style: AmpereType.body.copyWith(color: colors.ink),
+                      ),
+                    ),
+                    Text(
+                      '${formatQuantity(level.quantity)} $unit'
+                      '${level.reservedQuantity > Quantity.zero ? ' · ${formatQuantity(level.reservedQuantity)} réservé' : ''}',
+                      style: AmpereType.bodyStrong.copyWith(
+                        color: colors.ink,
+                        fontFeatures: AmpereType.tabular,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        ],
         const SizedBox(height: 20),
         const AmpereFieldLabel('Derniers mouvements'),
         movements.when(

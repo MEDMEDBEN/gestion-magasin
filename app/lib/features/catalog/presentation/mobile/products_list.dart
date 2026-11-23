@@ -1,3 +1,4 @@
+import '../../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -211,9 +212,12 @@ class _ProductRow extends StatelessWidget {
                           ),
                           // Quantités par lieu (2026-11-13).
                           Text(
-                            'Mag. ${formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('MAGASIN'))}'
-                            ' · Dép. ${showDepot ? formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('DEPOT')) : '—'}'
-                            ' ${product.unit.short}',
+                            depotEnabled
+                                ? 'Mag. ${formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('MAGASIN'))}'
+                                      ' · Dép. ${showDepot ? formatQuantity((stock![product.id] ?? const ProductStock([])).ofType('DEPOT')) : '—'}'
+                                      ' ${product.unit.short}'
+                                : 'Quantité : ${formatQuantity((stock![product.id] ?? const ProductStock([])).total)}'
+                                      ' ${product.unit.short}',
                             style: AmpereType.meta.copyWith(
                               color: colors.ink2,
                               fontFeatures: AmpereType.tabular,

@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,9 +111,17 @@ class ProductInfoPanel extends ConsumerWidget {
     // Stock par lieu (magasin, dépôt), lu en ligne ; hors ligne : inconnu.
     final levels = stock.value?[product.id];
     final stockRows = [
+      if (!depotEnabled)
+        row(
+          LucideIcons.package,
+          'Quantité',
+          stock.value == null
+              ? (stock.isLoading ? '…' : 'Hors ligne')
+              : '${formatQuantity(levels?.total ?? Quantity.zero)} $unit',
+        ),
       for (final (type, icon, label) in [
-        ('MAGASIN', LucideIcons.store, 'Stock Magasin'),
-        ('DEPOT', LucideIcons.warehouse, 'Stock Dépôt'),
+        if (depotEnabled) ('MAGASIN', LucideIcons.store, 'Stock Magasin'),
+        if (depotEnabled) ('DEPOT', LucideIcons.warehouse, 'Stock Dépôt'),
       ])
         row(
           icon,

@@ -1,3 +1,4 @@
+import '../../../core/single_stock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -86,9 +87,12 @@ class _SupplierReturnDialogState extends ConsumerState<_SupplierReturnDialog> {
   Widget build(BuildContext context) {
     final products = ref.watch(activeProductsProvider).value ?? const [];
     final locations = (ref.watch(locationsProvider).value ?? const [])
-        .where((l) => l.isActive && (l.type == 'DEPOT' || l.type == 'MAGASIN'))
+        .where((l) => l.isActive && isStockLocationType(l.type))
         .toList();
-    _locationId ??= locations.where((l) => l.type == 'DEPOT').firstOrNull?.id;
+    _locationId ??=
+        (locations.where((l) => l.type == 'DEPOT').firstOrNull ??
+                locations.firstOrNull)
+            ?.id;
     return AlertDialog(
       title: Text('Retour à ${widget.supplier.name}'),
       content: SizedBox(
@@ -114,18 +118,19 @@ class _SupplierReturnDialogState extends ConsumerState<_SupplierReturnDialog> {
               ),
               decoration: const InputDecoration(labelText: 'Quantité renvoyée'),
             ),
-            DropdownButtonFormField<String>(
-              initialValue: _locationId,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Part de'),
-              items: [
-                for (final l in locations)
-                  DropdownMenuItem(value: l.id, child: Text(l.name)),
-              ],
-              onChanged: _saving
-                  ? null
-                  : (v) => setState(() => _locationId = v),
-            ),
+            if (locations.length != 1)
+              DropdownButtonFormField<String>(
+                initialValue: _locationId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Part de'),
+                items: [
+                  for (final l in locations)
+                    DropdownMenuItem(value: l.id, child: Text(l.name)),
+                ],
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() => _locationId = v),
+              ),
             TextField(
               controller: _reason,
               enabled: !_saving,

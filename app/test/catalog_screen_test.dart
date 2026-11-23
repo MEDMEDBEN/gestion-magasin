@@ -590,14 +590,15 @@ void main() {
   );
 
   testWidgets(
-    'le MAGASINIER crée des produits et gère les emplacements, pas les catégories',
+    'le MAGASINIER crée des produits ; ni catégories ni emplacements (quantité unique)',
     (tester) async {
       useScreenSize(tester, const Size(400, 800));
       await tester.pumpWidget(wrap(_magasinier()));
       await tester.pumpAndSettle();
 
       await revealAll(tester); // téléphone : rubriques repliées
-      expect(find.text('Emplacements'), findsOneWidget);
+      // Emplacements du dépôt cachés avec lui (quantité unique, 2026-11-23).
+      expect(find.text('Emplacements'), findsNothing);
       expect(find.text('Catégories'), findsNothing);
       // Décision MEDMEDBEN du 2026-10-11 : il crée et modifie les produits.
       expect(find.byTooltip('Nouveau produit'), findsOneWidget);
@@ -632,7 +633,7 @@ void main() {
         'DIS-16A',
       );
       await tester.enterText(
-        find.byKey(const ValueKey('champ-stock-magasin')),
+        find.byKey(const ValueKey('champ-quantite')),
         '120',
       );
       // Le seuil est dans « Plus de détails » (replié à la création).

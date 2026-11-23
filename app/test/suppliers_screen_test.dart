@@ -209,14 +209,19 @@ Future<_FakeSuppliersApi> _pump(WidgetTester tester, AuthUser user) async {
         ),
         locationsProvider.overrideWith(
           (ref) => Stream.value([
-            StorageLocation(
-              id: 'depot',
-              code: 'DEP',
-              name: 'Dépôt',
-              type: 'DEPOT',
-              isActive: true,
-              updatedAt: DateTime.utc(2026),
-            ),
+            // Quantité unique (2026-11-23) : le dépôt n'est plus proposé.
+            for (final (id, code, name, type) in [
+              ('magasin', 'MAG', 'Magasin', 'MAGASIN'),
+              ('depot', 'DEP', 'Dépôt', 'DEPOT'),
+            ])
+              StorageLocation(
+                id: id,
+                code: code,
+                name: name,
+                type: type,
+                isActive: true,
+                updatedAt: DateTime.utc(2026),
+              ),
           ]),
         ),
         saveExportProvider.overrideWithValue(
@@ -457,37 +462,38 @@ void main() {
   });
 
   /// P1 bis n°21l : retour de marchandise depuis la fiche fournisseur.
-  testWidgets('retour de marchandise : produit, quantité, dépôt, motif', (
-    tester,
-  ) async {
-    final api = await _pump(tester, _admin());
-    await tester.tap(find.text('Sonelec'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Retour de marchandise'));
-    await tester.tap(find.text('Retour de marchandise'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Produit'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'retour de marchandise : produit, quantité, motif (part du magasin)',
+    (tester) async {
+      final api = await _pump(tester, _admin());
+      await tester.tap(find.text('Sonelec'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Retour de marchandise'));
+      await tester.tap(find.text('Retour de marchandise'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Produit'));
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.textContaining('Disjoncteur').last);
-    await tester.pumpAndSettle();
-    final fields = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(TextField),
-    );
-    await tester.enterText(fields.at(0), '3');
-    await tester.enterText(fields.at(1), 'Lot défectueux');
-    await tester.tap(find.text('Enregistrer le retour'));
-    await tester.pumpAndSettle();
-    final sent = api.returnsSent.single;
-    expect(sent['supplierId'], 's1');
-    expect(sent['locationId'], 'depot');
-    expect(sent['lines'], [
-      {'productId': 'p1', 'quantity': '3.000'},
-    ]);
-    expect(sent['clientMutationId'], isA<String>());
-    expect(find.textContaining('RF-2026-00001'), findsOneWidget);
-  });
+      await tester.tap(find.textContaining('Disjoncteur').last);
+      await tester.pumpAndSettle();
+      final fields = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(fields.at(0), '3');
+      await tester.enterText(fields.at(1), 'Lot défectueux');
+      await tester.tap(find.text('Enregistrer le retour'));
+      await tester.pumpAndSettle();
+      final sent = api.returnsSent.single;
+      expect(sent['supplierId'], 's1');
+      expect(sent['locationId'], 'magasin');
+      expect(sent['lines'], [
+        {'productId': 'p1', 'quantity': '3.000'},
+      ]);
+      expect(sent['clientMutationId'], isA<String>());
+      expect(find.textContaining('RF-2026-00001'), findsOneWidget);
+    },
+  );
 
   /// P1 bis n°21m : indicateurs fournisseur (magasinier compris).
   testWidgets('indicateurs : total acheté, produits, ponctualité, prix', (

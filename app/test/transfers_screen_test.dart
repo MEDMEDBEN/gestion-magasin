@@ -572,9 +572,14 @@ void main() {
     expect(find.textContaining('ÉCART'), findsNothing);
   });
 
-  test('menu : « Transferts » pour qui tient un bout du flux', () {
+  // Quantité unique (2026-11-23) : les transferts sont cachés à TOUS, même
+  // à qui tient un bout du flux (core/single_stock.dart les fait revenir).
+  test('menu : « Transferts » caché (quantité unique)', () {
     for (final user in [_vendeur(), _magasinier()]) {
-      expect(destinationsFor(user).map((d) => d.label), contains('Transferts'));
+      expect(
+        destinationsFor(user).map((d) => d.label),
+        isNot(contains('Transferts')),
+      );
     }
     // Un compte sans aucun droit de transfert ne voit pas l'entrée.
     expect(
