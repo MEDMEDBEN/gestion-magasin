@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/local/photo_cache.dart';
 import '../../../data/local/device_reset.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -69,6 +70,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         );
         return;
       }
+      // Les photos gardées sur le poste partent aussi (2026-11-25).
+      await ref.read(photoCacheProvider).clear();
       await ref.read(authControllerProvider.notifier).logout();
     } finally {
       if (mounted) setState(() => _busy = false);

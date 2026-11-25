@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error/api_exception.dart';
 import '../../../core/offline_write.dart';
 import '../../../core/providers.dart';
+import '../../../data/local/photo_cache.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_models.dart';
 import '../data/catalog_repository.dart';
@@ -31,7 +32,9 @@ class CatalogSyncController extends AsyncNotifier<void> {
     // Les tarifs descendent avec le catalogue : la vente hors ligne en a
     // besoin, même si l'écran Vente n'a jamais été ouvert en ligne.
     loadPriceTiers(ref).ignore();
-    return ref.read(catalogRepositoryProvider).pull();
+    return ref.read(catalogRepositoryProvider).pull().then((_) {
+      prefetchPhotos(ref).ignore();
+    });
   }
 
   /// Mise à jour à la demande (entrée en Vente, bouton « Actualiser »). Une
@@ -47,8 +50,50 @@ class CatalogSyncController extends AsyncNotifier<void> {
     // synchro : écrire l'état d'un provider détruit lève une exception.
     if (!ref.mounted) return;
     state = result;
+    if (!result.hasError) prefetchPhotos(ref).ignore();
   }
 }
+
+/// Photos du catalogue téléchargées EN ARRIÈRE-PLAN sur l'app installée
+/// (2026-11-25) : hors ligne, chaque produit garde sa photo. Seules celles
+/// qui manquent sur le poste partent, 2 à la fois (l'écran garde ses 4
+/// places) ; une seule tournée à la fois ; une erreur saute la photo.
+Future<void> prefetchPhotos(Ref ref) async {
+  final cache = ref.read(photoCacheProvider);
+  if (!cache.enabled || _prefetching) return;
+  _prefetching = true;
+  try {
+    final api = ref.read(catalogApiProvider);
+    final products = await ref
+        .read(catalogRepositoryProvider)
+        .watchProducts()
+        .first;
+    await Future.wait([
+      for (final product in products)
+        if (product.imageKey case final key?)
+          _prefetchGate.run(() async {
+            if (!ref.mounted) return;
+            if (await cache.read(product.id, key) != null) return;
+            try {
+              await cache.write(
+                product.id,
+                key,
+                await api.imageBytes(product.id),
+              );
+            } on Object {
+              // Hors ligne, photo absente du serveur… : la suivante.
+            }
+          }),
+    ]);
+  } on Object {
+    // Catalogue local illisible : rien à télécharger cette fois.
+  } finally {
+    _prefetching = false;
+  }
+}
+
+var _prefetching = false;
+final _prefetchGate = DownloadGate(2);
 
 final catalogSyncProvider = AsyncNotifierProvider<CatalogSyncController, void>(
   CatalogSyncController.new,
@@ -196,8 +241,16 @@ final productImageProvider = FutureProvider.autoDispose
       ref,
       photo,
     ) async {
+      // Sur le poste d'abord (app installée) : la photo s'affiche hors ligne.
+      final cache = ref.watch(photoCacheProvider);
+      final local = await cache.read(photo.productId, photo.imageKey);
+      if (local != null) {
+        ref.keepAlive();
+        return local;
+      }
       final api = ref.watch(catalogApiProvider);
       final bytes = await _photoGate.run(() => api.imageBytes(photo.productId));
+      cache.write(photo.productId, photo.imageKey, bytes).ignore();
       ref.keepAlive();
       return bytes;
     });
