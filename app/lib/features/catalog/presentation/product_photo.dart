@@ -29,7 +29,10 @@ class ProductThumbnail extends ConsumerWidget {
     final bytes = photo?.value;
     // Photo attendue mais illisible (réseau, fichier perdu au serveur) : on
     // le MONTRE, au lieu d'une vignette vide qui laisse croire à un oubli.
-    final failed = photo != null && photo.hasError && bytes == null;
+    final failed =
+        photo != null && photo.hasError && !photo.isLoading && bytes == null;
+    // Photo attendue, pas encore là : « en chargement », jamais « absente ».
+    final loading = photo != null && bytes == null && !failed;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(AmpereGeometry.iconChipRadius),
@@ -39,6 +42,18 @@ class ProductThumbnail extends ConsumerWidget {
         color: colors.surface2,
         child: bytes != null
             ? Image.memory(bytes, fit: BoxFit.cover, gaplessPlayback: true)
+            : loading
+            ? Center(
+                child: SizedBox(
+                  key: const ValueKey('photo-chargement'),
+                  width: size * 0.35,
+                  height: size * 0.35,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.ink3,
+                  ),
+                ),
+              )
             : failed
             ? Tooltip(
                 message: 'Photo indisponible',

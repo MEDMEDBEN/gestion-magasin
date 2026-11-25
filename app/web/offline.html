@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0B1017">
+  <!-- Réessaie tout seul : dès que le serveur répond, l'app revient. -->
+  <meta http-equiv="refresh" content="20">
+  <title>Shino Lighting — hors connexion</title>
+  <style>
+    :root {
+      --bg: #0B1017; --surface: #121A24; --line: #1F2B3A;
+      --ink: #E8EEF5; --ink2: #9FB0C3; --accent: #22D3EE;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    body { display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .card { width: 100%; max-width: 440px; background: var(--surface);
+      border: 1px solid var(--line); border-radius: 18px; padding: 32px 24px;
+      text-align: center; }
+    .bolt { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(34, 211, 238, 0.12); animation: pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 12px rgba(34, 211, 238, 0); }
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.35); } }
+    .brand { font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--ink2); margin: 0 0 6px; }
+    h1 { font-size: 22px; margin: 0 0 18px; }
+    .msg { font-size: 19px; line-height: 1.5; margin: 0 0 22px; }
+    .phone { display: block; font-size: 30px; font-weight: 800; letter-spacing: .04em;
+      color: var(--accent); text-decoration: none; margin: 0 0 22px; }
+    .hint { font-size: 13px; color: var(--ink2); margin: 0 0 20px; line-height: 1.5; }
+    .retry { display: inline-block; padding: 12px 22px; border-radius: 12px;
+      background: var(--accent); color: #04121A; font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="bolt" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#22D3EE"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>
+      </svg>
+    </div>
+    <p class="brand">Shino Lighting</p>
+    <h1>Pas de connexion au serveur</h1>
+    <p class="msg">Wee Lokman, matt9ale9ch !<br>Kach haja, rsel l Med :</p>
+    <a class="phone" href="tel:0551382115">0551 38 21 15</a>
+    <p class="hint">Internet est coupé ou le serveur ne répond pas.<br>
+      La page réessaie toute seule toutes les 20 secondes.</p>
+    <a class="retry" href="/">Réessayer</a>
+  </main>
+</body>
+</html>

@@ -237,23 +237,39 @@ final activeProductsProvider = StreamProvider.autoDispose<List<Product>>(
 /// ligne ». Une photo en échec n'est PAS gardée : elle se recharge au
 /// prochain affichage, au lieu de rester « indisponible » toute la session.
 final productImageProvider = FutureProvider.autoDispose
-    .family<Uint8List, ({String productId, String imageKey})>((
-      ref,
-      photo,
-    ) async {
-      // Sur le poste d'abord (app installée) : la photo s'affiche hors ligne.
-      final cache = ref.watch(photoCacheProvider);
-      final local = await cache.read(photo.productId, photo.imageKey);
-      if (local != null) {
+    .family<Uint8List, ({String productId, String imageKey})>(
+      (ref, photo) async {
+        // Sur le poste d'abord (app installée) : la photo s'affiche hors ligne.
+        final cache = ref.watch(photoCacheProvider);
+        final local = await cache.read(photo.productId, photo.imageKey);
+        if (local != null) {
+          ref.keepAlive();
+          return local;
+        }
+        final api = ref.watch(catalogApiProvider);
+        final bytes = await _fetchPhoto(() => api.imageBytes(photo.productId));
+        cache.write(photo.productId, photo.imageKey, bytes).ignore();
         ref.keepAlive();
-        return local;
-      }
-      final api = ref.watch(catalogApiProvider);
-      final bytes = await _photoGate.run(() => api.imageBytes(photo.productId));
-      cache.write(photo.productId, photo.imageKey, bytes).ignore();
-      ref.keepAlive();
-      return bytes;
-    });
+        return bytes;
+      },
+      // Nos propres essais (ci-dessous) : la photo reste « en chargement »
+      // pendant qu'on réessaie, au lieu d'afficher « indisponible » entre
+      // deux essais (2026-11-25).
+      retry: (_, _) => null,
+    );
+
+/// Une photo : jusqu'à 5 essais espacés (serveur occupé, réseau lent) ;
+/// « pas de photo » (404) ne se réessaie pas.
+Future<Uint8List> _fetchPhoto(Future<Uint8List> Function() download) async {
+  for (var attempt = 1; ; attempt++) {
+    try {
+      return await _photoGate.run(download);
+    } on ApiException catch (error) {
+      if (error.statusCode == 404 || attempt >= 5) rethrow;
+    }
+    await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
+  }
+}
 
 final _photoGate = DownloadGate(4);
 
