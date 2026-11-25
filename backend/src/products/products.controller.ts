@@ -380,6 +380,10 @@ export class ProductsController {
 
   @Roles(...ALL_ROLES)
   @RequirePermissions(PERMISSIONS.PRODUCT_READ)
+  // Un catalogue de plusieurs centaines de photos s'ouvre en une fois : la
+  // limite commune (120 / min) les refusait en 429 (« Photo indisponible »,
+  // 2026-11-25). Lecture d'un fichier, authentifiée : bornée plus large.
+  @Throttle({ default: { ttl: 60_000, limit: 2_000 } })
   @Get(':id/image')
   @ApiOperation({
     summary: 'Photo du produit (authentifiée)',

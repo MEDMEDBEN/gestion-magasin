@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -183,11 +185,52 @@ final activeProductsProvider = StreamProvider.autoDispose<List<Product>>(
 /// Photo d'un produit, chargée À LA DEMANDE (jamais préchargée en masse,
 /// docs/context.md) et gardée en mémoire pour la session. La clé versionnée
 /// (`imageKey`) fait recharger dès qu'une nouvelle photo est posée.
+///
+/// Au plus [_photoGate] téléchargements EN MÊME TEMPS (2026-11-25) : des
+/// centaines de photos lancées d'un coup bouchaient la connexion, et les
+/// requêtes de l'app (synchro, vente) dépassaient leur délai → « hors
+/// ligne ». Une photo en échec n'est PAS gardée : elle se recharge au
+/// prochain affichage, au lieu de rester « indisponible » toute la session.
 final productImageProvider = FutureProvider.autoDispose
-    .family<Uint8List, ({String productId, String imageKey})>((ref, photo) {
+    .family<Uint8List, ({String productId, String imageKey})>((
+      ref,
+      photo,
+    ) async {
+      final api = ref.watch(catalogApiProvider);
+      final bytes = await _photoGate.run(() => api.imageBytes(photo.productId));
       ref.keepAlive();
-      return ref.watch(catalogApiProvider).imageBytes(photo.productId);
+      return bytes;
     });
+
+final _photoGate = DownloadGate(4);
+
+/// File d'attente : au plus `slots` travaux à la fois, les suivants attendent
+/// leur tour dans l'ordre.
+class DownloadGate {
+  DownloadGate(this._free);
+
+  int _free;
+  final _waiting = Queue<Completer<void>>();
+
+  Future<T> run<T>(Future<T> Function() work) async {
+    if (_free > 0) {
+      _free--;
+    } else {
+      final turn = Completer<void>();
+      _waiting.add(turn);
+      await turn.future;
+    }
+    try {
+      return await work();
+    } finally {
+      if (_waiting.isNotEmpty) {
+        _waiting.removeFirst().complete();
+      } else {
+        _free++;
+      }
+    }
+  }
+}
 
 /// Tarifs actifs (DETAIL, GROS…). Lus en ligne, et MÉMORISÉS sur l'appareil :
 /// hors ligne, la vente en a besoin (tarif par défaut → prix des tuiles et du
